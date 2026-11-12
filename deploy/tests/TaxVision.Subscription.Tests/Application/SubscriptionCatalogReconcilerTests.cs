@@ -78,6 +78,20 @@ public sealed class SubscriptionCatalogReconcilerTests
         public void StopApplication() { }
     }
 
+    // D8: el reconciliador no mira el código del plan; solo deja fuera a los archivados.
+    [Fact]
+    public void Every_plan_that_is_not_archived_receives_the_catalog_entitlements()
+    {
+        var nowUtc = DateTime.UtcNow;
+        var gold = PlanTestData.PublishedPlan("gold-2027");
+        var archived = PlanTestData.PublishedPlan("old-2020");
+        Assert.True(archived.Deprecate(Guid.Empty, nowUtc).IsSuccess);
+        Assert.True(archived.Archive(Guid.Empty, nowUtc).IsSuccess);
+
+        Assert.True(SubscriptionCatalogReconciler.ReceivesCatalogEntitlements(gold));
+        Assert.False(SubscriptionCatalogReconciler.ReceivesCatalogEntitlements(archived));
+    }
+
     [Fact]
     public void Matching_modules_do_not_need_revision()
     {

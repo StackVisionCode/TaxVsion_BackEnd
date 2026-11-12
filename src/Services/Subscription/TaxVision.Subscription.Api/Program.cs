@@ -23,9 +23,11 @@ using Serilog;
 using StackExchange.Redis;
 using TaxVision.Subscription.Api.Bootstrap;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Revisions;
 using TaxVision.Subscription.Application.Seats.Commands.StartSeatReactivationCheckout;
 using TaxVision.Subscription.Application.Subscriptions.Commands.ChangePlan;
 using TaxVision.Subscription.Infrastructure;
+using TaxVision.Subscription.Infrastructure.Catalog;
 using TaxVision.Subscription.Infrastructure.Configuration;
 using TaxVision.Subscription.Infrastructure.Observability;
 using TaxVision.Subscription.Infrastructure.Persistence;
@@ -66,6 +68,7 @@ builder.Services.AddSessionDenylist(builder.Configuration);
 // Jobs de renovacion/expiracion. Cada uno es independiente: renovar la
 // suscripcion base no renueva seats ni add-ons, y viceversa (ver diseno §34).
 builder.Services.AddHostedService<TenantSubscriptionRenewalJob>();
+builder.Services.AddHostedService<SubscriberMigrationJob>();
 builder.Services.AddHostedService<SeatRenewalJob>();
 builder.Services.AddHostedService<AddOnRenewalJob>();
 builder.Services.AddHostedService<TrialExpirationJob>();
@@ -80,6 +83,7 @@ builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
 // publica versión nueva del plan (+ recálculo masivo) y retira los add-ons que no se ofrecen.
 // Compara antes de actuar — ver el doc-comment, ReviseModules no es idempotente.
 builder.Services.AddHostedService<SubscriptionCatalogReconciler>();
+builder.Services.AddHostedService<CatalogRevisionFollowUpStarter>();
 builder.Services.AddHostedService<AddOnCheckoutReconciliationJob>();
 builder.Services.AddHostedService<SubscriptionRenewalCheckoutReconciliationJob>();
 builder.Services.Configure<SeatReactivationOptions>(
@@ -273,6 +277,11 @@ await using (var seedScope = app.Services.CreateAsyncScope())
     await SubscriptionAddOnCatalogSeeder.SeedAsync(seedDb, CancellationToken.None);
     await SubscriptionSeatPricingSeeder.SeedAsync(seedDb, CancellationToken.None);
 }
+
+// D3 / R14: revisiones del catálogo, una sola vez, antes de atender tráfico. Si una falla, el servicio no arranca.
+await app
+    .Services.GetRequiredService<ICatalogRevisionRunner>()
+    .RunAsync(CatalogRevisionCatalog.All, CancellationToken.None);
 
 if (app.Environment.IsDevelopment())
 {

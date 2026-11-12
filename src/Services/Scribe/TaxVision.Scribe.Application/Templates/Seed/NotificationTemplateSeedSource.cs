@@ -42,6 +42,8 @@ public sealed record NotificationTemplateSeed(
     // v25 (por plantilla): auth.user_offboarding_incomplete.v1 nueva — retiro sin todos los acuses en plazo.
     // v26 (por plantilla): calendar.appointment_attendee_added.v1 nueva — a quien suman a una cita ya agendada.
     // v27 (por plantilla): botones Accept / Maybe / Decline (RSVP) en las 3 de cita y en la invitación de sala.
+    // v28 (por plantilla): subscription.billing_cycle_changed.v1 nueva — cambio de ciclo (a anual cobrado, a mensual agendado).
+    // v29 (por plantilla): subscription.renewal_upcoming muestra el total (plan + extras) y el ciclo; aviso de 30 días al anual.
     int ContentVersion = 1,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
@@ -109,6 +111,7 @@ public static class NotificationTemplateSeedSource
             SignatureDeclined,
             SignatureVerificationChallenge,
             OnboardingOtpRequested,
+            GiftcardShare,
             OnboardingRegistrationReady,
             OnboardingReceiptReady,
             OnboardingPaymentFailed,
@@ -116,6 +119,8 @@ public static class NotificationTemplateSeedSource
             SubscriptionSuspended,
             SubscriptionExpired,
             SubscriptionCancellationScheduled,
+            SubscriptionVersionChangeScheduled,
+            SubscriptionBillingCycleChanged,
             SubscriptionAccessEnding,
             SubscriptionRenewalUpcoming,
             SubscriptionReactivated,
@@ -297,6 +302,7 @@ public static class NotificationTemplateSeedSource
         ["subscription.suspended"] = "Your subscription is on hold. Renew to restore your team's access.",
         ["subscription.expired"] = "Your subscription has expired. Renew whenever you're ready.",
         ["subscription.cancellation_scheduled"] = "Your subscription is set to end. You keep full access until then.",
+        ["subscription.version_change_scheduled"] = "Your plan terms change at your next renewal. Here's what changes.",
         ["subscription.renewal_upcoming"] = "Your subscription renews soon — nothing to do, just a heads up.",
         ["subscription.reactivated"] = "You're all set — your subscription is active again.",
         ["subscription.recurring_charge"] = "Payment received — your subscription continues.",
@@ -1726,6 +1732,61 @@ public static class NotificationTemplateSeedSource
             ]
         );
 
+    // Giftcards — el PlatformAdmin envía una tarjeta por correo desde la administración (Growth publica el evento).
+    private static NotificationTemplateSeed GiftcardShare { get; } =
+        new(
+            EventKey: "giftcards.share_requested.v1",
+            TemplateKey: "giftcards.share",
+            Name: "Giftcards — Tarjeta de regalo",
+            Subject: "You received a {{ product_name }} gift card: {{ value_label }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Gift card</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You received a gift card</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ recipient_name }}</strong>, here is a gift for {{ product_name }}. It applies to any plan.</td></tr>
+              {% if personal_message != '' %}<tr><td style="padding:6px 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;font-style:italic;color:#496174;mso-line-height-rule:exactly;">&ldquo;{{ personal_message }}&rdquo;</td></tr>{% endif %}
+              <tr><td style="padding:14px 0 6px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0B3A5B" style="background-color:#0B3A5B;border-radius:18px;"><tr><td style="padding:26px 24px;font-family:Arial,Helvetica,sans-serif;color:#FFFFFF;">
+                <div style="font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#BBD7EE;">{{ product_name }} gift card</div>
+                <div style="padding:10px 0 2px 0;font-size:40px;line-height:46px;font-weight:bold;color:#FFFFFF;">{{ value_label }}</div>
+                <div style="font-size:13px;color:#BBD7EE;">on any plan</div>
+                <div style="padding-top:18px;"><span style="display:inline-block;background-color:#1D5280;border-radius:999px;padding:8px 16px;font-family:'Courier New',monospace;font-size:16px;font-weight:bold;letter-spacing:2px;color:#FFFFFF;">{{ code }}</span></div>
+                <div style="padding-top:12px;font-size:12px;color:#BBD7EE;">{{ expires_text }}</div>
+              </td></tr></table></td></tr>
+              <tr><td style="padding:18px 0 6px 0;"><a href="{{ redeem_url }}" style="display:inline-block;background-color:#E3FF00;border-radius:999px;padding:12px 26px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#0B3A5B;text-decoration:none;">Redeem your gift card</a></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Enter the code at sign-up, or use the button above. The discount is applied when you choose a plan.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                (
+                    "recipient_name",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Nombre del destinatario (con fallback ya resuelto)."
+                ),
+                (
+                    "value_label",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Beneficio tal como se ve en la tarjeta (20% OFF, $25 OFF)."
+                ),
+                ("code", VariableType.String, true, null, "Código de la giftcard."),
+                ("expires_text", VariableType.String, true, null, "Vigencia legible: 'Valid until …' o 'No expiry'."),
+                ("redeem_url", VariableType.String, true, null, "Enlace al alta con el código precargado."),
+                ("personal_message", VariableType.String, false, "", "Mensaje personal opcional del remitente."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
     private static NotificationTemplateSeed OnboardingRegistrationReady { get; } =
         new(
             EventKey: "onboarding.registration_ready.v1",
@@ -2077,6 +2138,126 @@ public static class NotificationTemplateSeedSource
             ]
         );
 
+    // D11 del plan único: una migración agenda otra edición del plan para la oficina.
+    private static NotificationTemplateSeed SubscriptionVersionChangeScheduled { get; } =
+        new(
+            EventKey: "subscription.version_change_scheduled.v1",
+            TemplateKey: "subscription.version_change_scheduled",
+            Name: "Suscripción — Cambio de condiciones del plan",
+            Subject: "Your {{ product_name }} plan terms change on {{ change_date }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your plan terms will change</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we're updating the terms of your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan. Nothing changes today: the new terms start with your renewal on <strong style="color:#1E466B;">{{ change_date }}</strong>.</td></tr>
+              <tr><td style="padding:18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>What changes:</strong> {{ change_summary }}</td></tr></table></td></tr>
+              <tr>
+                <td align="left" style="padding:8px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ manage_url }}" style="height:44px;v-text-anchor:middle;width:230px;" arcsize="23%" stroke="f" fillcolor="#1E466B"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Review my subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">Review my subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ manage_url }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Until {{ change_date }} you keep your current terms. If you'd rather change plans or cancel before then, you can do it from Manage subscription.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("change_date", VariableType.String, true, null, "Fecha en que entran las condiciones nuevas."),
+                (
+                    "change_summary",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Qué cambia (precio, usuarios, almacenamiento, módulos)."
+                ),
+                ("manage_url", VariableType.Url, true, null, "Manage subscription de la oficina."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
+    private static NotificationTemplateSeed SubscriptionBillingCycleChanged { get; } =
+        new(
+            EventKey: "subscription.billing_cycle_changed.v1",
+            TemplateKey: "subscription.billing_cycle_changed",
+            Name: "Suscripción — Cambio de ciclo de facturación",
+            Subject: "Your {{ product_name }} subscription is now billed every {{ cadence }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
+              {% if date_charged != "" %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">You're now on {{ cadence }}ly billing</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan, add-ons and extra seats are now billed every {{ cadence }}. We charged <strong style="color:#1E466B;">${{ amount }}</strong> on {{ date_charged }}; your receipt lists each item.</td></tr>
+              <tr><td style="padding:18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>Next renewal:</strong> {{ next_charge_date }}</td></tr></table></td></tr>
+              {% else %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your billing will change to every {{ cadence }}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, nothing changes today. Starting <strong style="color:#1E466B;">{{ next_charge_date }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan, add-ons and extra seats will be billed every {{ cadence }} at the current prices.</td></tr>
+              {% endif %}
+              <tr>
+                <td align="left" style="padding:8px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ manage_url }}" style="height:44px;v-text-anchor:middle;width:230px;" arcsize="23%" stroke="f" fillcolor="#1E466B"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Review my subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">Review my subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ manage_url }}</span></td></tr></table></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("cadence", VariableType.String, true, "month", "Ciclo nuevo: month o year."),
+                (
+                    "amount",
+                    VariableType.String,
+                    false,
+                    "",
+                    "Total cobrado al pasar a anual (vacío al pasar a mensual)."
+                ),
+                (
+                    "date_charged",
+                    VariableType.String,
+                    false,
+                    "",
+                    "Fecha del cobro (vacía si el cambio solo se agendó)."
+                ),
+                (
+                    "next_charge_date",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Próxima renovación, o desde cuándo rige el ciclo nuevo."
+                ),
+                ("manage_url", VariableType.Url, true, null, "Manage subscription de la oficina."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ],
+            ContentVersion: 28
+        );
+
     private static NotificationTemplateSeed SubscriptionExpired { get; } =
         new(
             EventKey: "subscription.expired.v1",
@@ -2130,6 +2311,9 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your subscription renews soon</td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, just a heads up — your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan renews on <strong style="color:#1E466B;">{{ renewal_date }}</strong> ({{ days_until_renewal }} day(s) from now). Nothing to do: we'll charge your card on file automatically.</td></tr>
+              {% if amount != "" %}
+              <tr><td style="padding:18px 0 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>Amount:</strong> ${{ amount }} every {{ cadence }}, including your add-ons and extra seats.</td></tr></table></td></tr>
+              {% endif %}
               <tr>
                 <td align="left" style="padding:26px 0 18px 0;">
                   <!--[if mso]>
@@ -2150,6 +2334,8 @@ public static class NotificationTemplateSeedSource
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("days_until_renewal", VariableType.String, true, null, "Días que faltan para la renovación."),
                 ("renewal_date", VariableType.String, true, null, "Fecha de la próxima renovación."),
+                ("amount", VariableType.String, false, "", "Total de la renovación: plan más add-ons y asientos (E4)."),
+                ("cadence", VariableType.String, false, "month", "Ciclo: month o year."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para gestionar la suscripción."),
                 (
                     "product_name",
@@ -2158,7 +2344,8 @@ public static class NotificationTemplateSeedSource
                     "TaxOffix",
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
-            ]
+            ],
+            ContentVersion: 29
         );
 
     private static NotificationTemplateSeed SubscriptionReactivated { get; } =

@@ -3,6 +3,7 @@ using BuildingBlocks.Results;
 using TaxVision.Codes.Application.Reservations.CancelReservation;
 using TaxVision.Codes.Application.Reservations.CommitReservation;
 using TaxVision.Referrals.Application.Qualifications.QualifyReferral;
+using TaxVision.Referrals.Application.Rewards.ClawbackWalletCreditReward;
 using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
 
@@ -96,6 +97,71 @@ public static class PaymentCancelledConsumer
 {
     public static Task Handle(PaymentCancelledIntegrationEvent message, IMessageBus bus, CancellationToken ct) =>
         PaymentReservationCancellation.CancelAsync(message, message.ReasonCode, bus, ct);
+}
+
+/// <summary>
+/// Reembolso del pago del REFERIDO: si fue total, el premio del referidor se cancela (aún no acreditado) o se
+/// revierte en su Wallet. Un reembolso parcial no lo toca. Idempotente: reentregar el evento es seguro.
+/// </summary>
+public static class PaymentRefundedConsumer
+{
+    public static Task Handle(PaymentRefundedIntegrationEvent message, IMessageBus bus, CancellationToken ct) =>
+        PaymentRewardClawback.ApplyAsync(
+            bus,
+            message.PaymentId,
+            message.CumulativeRefundedAmountCents,
+            $"The referred payment was refunded ({message.RefundReference}).",
+            ct
+        );
+}
+
+/// <summary>
+/// Chargeback: el proveedor retira los fondos al abrir la disputa, así que equivale a un reembolso total salvo que la
+/// disputa se GANE (en ese caso el premio se mantiene).
+/// </summary>
+public static class PaymentChargebackChangedConsumer
+{
+    public static Task Handle(
+        PaymentChargebackChangedIntegrationEvent message,
+        IMessageBus bus,
+        CancellationToken ct
+    ) =>
+        !string.Equals(message.DisputeStatus, "won", StringComparison.OrdinalIgnoreCase)
+            ? PaymentRewardClawback.ApplyAsync(
+                bus,
+                message.PaymentId,
+                refundedCents: null,
+                $"The referred payment was charged back (dispute {message.DisputeId}).",
+                ct
+            )
+            : Task.CompletedTask;
+}
+
+internal static class PaymentRewardClawback
+{
+    private static readonly Guid PaymentServiceActorId = new("51000000-0000-0000-0000-000000000001");
+
+    public static async Task ApplyAsync(
+        IMessageBus bus,
+        Guid paymentId,
+        long? refundedCents,
+        string reason,
+        CancellationToken ct
+    )
+    {
+        var result = await bus.InvokeAsync<Result<ClawbackWalletCreditRewardResult>>(
+            new ClawbackWalletCreditRewardCommand(paymentId, refundedCents, reason, PaymentServiceActorId),
+            ct
+        );
+        if (result.IsFailure)
+            throw GrowthErrorClassification.ToException(result.Error);
+
+        // El caso de uso devuelve la reversa a pedir (no publica); aquí se publica con el bus del consumer.
+        if (result.Value.Request is { } request)
+            await bus.PublishAsync(
+                TaxVision.Growth.Infrastructure.Messaging.WalletCreditRequestEvents.ToEvent(request)
+            );
+    }
 }
 
 internal static class PaymentReservationCancellation

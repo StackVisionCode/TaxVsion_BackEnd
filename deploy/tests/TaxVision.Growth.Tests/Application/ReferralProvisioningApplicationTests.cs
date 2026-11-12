@@ -54,7 +54,8 @@ public sealed class ReferralProvisioningApplicationTests
         Assert.Equal(ReferralProgramStatus.Draft, first.Value.Status);
         Assert.Equal(ReferralProgramPolicy.DefaultAttributionWindowDays, first.Value.Policy.AttributionWindowDays);
         Assert.Equal(ReferralProgramPolicy.DefaultWaitingPeriodDays, first.Value.Policy.WaitingPeriodDays);
-        Assert.Equal(ReferralRewardType.SubscriptionFeatureGrant, first.Value.Policy.RewardType);
+        Assert.Equal(ReferralRewardType.WalletCredit, first.Value.Policy.RewardType);
+        Assert.Equal(ReferralProgramPolicy.DefaultRewardBasisPoints, first.Value.Policy.RewardBasisPoints);
         Assert.Single(programs.Items);
         Assert.Equal(PlatformTenant.Id, programs.Items.Single().TenantId);
         Assert.Equal(1, idempotency.ExecutedBodyCount);

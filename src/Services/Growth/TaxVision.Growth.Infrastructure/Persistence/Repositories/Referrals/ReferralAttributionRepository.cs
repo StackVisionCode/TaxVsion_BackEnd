@@ -22,6 +22,21 @@ public sealed class ReferralAttributionRepository(GrowthDbContext dbContext, ITe
                     ct
                 );
 
+    public Task<ReferralAttribution?> GetByRefereeAsync(
+        Guid ownerTenantId,
+        Guid refereeId,
+        CancellationToken ct = default
+    ) =>
+        refereeId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
+            ? Task.FromResult<ReferralAttribution?>(null)
+            : dbContext
+                .ReferralAttributions.IgnoreQueryFilters()
+                .OrderByDescending(attribution => attribution.AttributedAtUtc)
+                .FirstOrDefaultAsync(
+                    attribution => attribution.RefereeId == refereeId && attribution.TenantId == ownerTenantId,
+                    ct
+                );
+
     public async Task AddAsync(ReferralAttribution attribution, CancellationToken ct = default)
     {
         TenantRepositoryGuard.EnsureMatches(tenantContext, attribution.TenantId);

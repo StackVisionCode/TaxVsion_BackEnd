@@ -208,6 +208,7 @@ export class PrismaLimitsRepository implements LimitsRepository {
       transcriptEnabled: row.TranscriptEnabled,
       callsEnabled: row.CallsEnabled,
       maxCallMinutes: row.MaxCallMinutes,
+      revisionNumber: row.LastEntitlementsRevision === null ? null : Number(row.LastEntitlementsRevision),
       updatedAtUtc: row.UpdatedAtUtc,
     };
   }
@@ -231,11 +232,44 @@ export class PrismaLimitsRepository implements LimitsRepository {
       CallsEnabled: s.callsEnabled,
       MaxCallMinutes: s.maxCallMinutes,
     };
-    await this.prisma.tenantCommunicationLimits.upsert({
-      where: { TenantId: s.tenantId },
-      create: { TenantId: s.tenantId, ...data },
-      update: data,
+    if (s.revisionNumber === null) {
+      await this.prisma.tenantCommunicationLimits.upsert({
+        where: { TenantId: s.tenantId },
+        create: { TenantId: s.tenantId, ...data },
+        update: data,
+      });
+      return;
+    }
+
+    // Guard de revisión en una sola sentencia: solo pisa si lo guardado no es más nuevo.
+    const revision = BigInt(s.revisionNumber);
+    const updated = await this.prisma.tenantCommunicationLimits.updateMany({
+      where: {
+        TenantId: s.tenantId,
+        OR: [{ LastEntitlementsRevision: null }, { LastEntitlementsRevision: { lte: revision } }],
+      },
+      data: { ...data, LastEntitlementsRevision: revision },
     });
+    if (updated.count > 0) return;
+
+    // No se actualizó: o hay una revisión más nueva (se ignora el evento) o la oficina todavía no tiene fila.
+    const existing = await this.prisma.tenantCommunicationLimits.findUnique({
+      where: { TenantId: s.tenantId },
+      select: { TenantId: true },
+    });
+    if (existing) return;
+    await this.prisma.tenantCommunicationLimits
+      .create({ data: { TenantId: s.tenantId, ...data, LastEntitlementsRevision: revision } })
+      .catch(async () => {
+        // Otro evento creó la fila en paralelo: se reintenta con el guard.
+        await this.prisma.tenantCommunicationLimits.updateMany({
+          where: {
+            TenantId: s.tenantId,
+            OR: [{ LastEntitlementsRevision: null }, { LastEntitlementsRevision: { lte: revision } }],
+          },
+          data: { ...data, LastEntitlementsRevision: revision },
+        });
+      });
   }
 
   async markSuspended(tenantId: string, suspended: boolean, _now: Date): Promise<void> {

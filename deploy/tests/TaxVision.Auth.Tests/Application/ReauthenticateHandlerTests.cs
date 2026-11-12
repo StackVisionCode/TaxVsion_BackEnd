@@ -24,7 +24,7 @@ public sealed class ReauthenticateHandlerTests
         var result = await HandleAsync(world, sessionId, Password, surface: SessionSurface.Account);
 
         Assert.True(result.IsSuccess);
-        var (issuedSid, surface, reauthAt, methods) = world.Jwt.Issued[^1];
+        var (issuedSid, surface, reauthAt, methods, _) = world.Jwt.Issued[^1];
         Assert.Equal(sessionId, issuedSid);
         Assert.Equal(SessionSurface.Account, surface);
         Assert.Equal(result.Value.ReauthenticatedAtUtc, reauthAt);

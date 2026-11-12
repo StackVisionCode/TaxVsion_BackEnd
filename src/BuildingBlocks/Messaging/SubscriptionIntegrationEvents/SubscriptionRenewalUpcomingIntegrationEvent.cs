@@ -12,4 +12,12 @@ public sealed record SubscriptionRenewalUpcomingIntegrationEvent : IntegrationEv
     public required DateTime DueAtUtc { get; init; }
     public required int DaysUntilDue { get; init; }
     public required string PlanCode { get; init; }
+
+    /// <summary>Nombre visible del plan (aditivo). Null en mensajes viejos: el consumidor cae al código.</summary>
+    public string? PlanName { get; init; }
+
+    /// <summary>Total que se cobrará en la renovación (plan más add-ons y asientos activos), y su ciclo. Opcionales.</summary>
+    public long? AmountCents { get; init; }
+    public string? Currency { get; init; }
+    public string? BillingCycle { get; init; }
 }

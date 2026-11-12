@@ -70,9 +70,11 @@ internal static class SubscriptionWolverineHost
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<SubscriptionDbContext>());
         services.AddScoped<ISubscriptionRepository, TenantSubscriptionRepository>();
         services.AddScoped<IPlanRepository, PlanRepository>();
+        services.AddScoped<IModuleRepository, ModuleRepository>();
         services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
         services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
         services.AddScoped<IAddOnDefinitionRepository, AddOnDefinitionRepository>();
+        services.AddScoped<ISeatPricingRepository, SeatPricingRepository>();
         services.AddScoped<ITenantEntitlementSnapshotRepository, TenantEntitlementSnapshotRepository>();
         services.AddScoped<ISubscriptionTenantSettingsRepository, SubscriptionTenantSettingsRepository>();
         services.AddSingleton<ICacheService, NoOpCacheService>();

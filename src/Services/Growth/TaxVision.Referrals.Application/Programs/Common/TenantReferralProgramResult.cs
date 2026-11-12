@@ -12,7 +12,10 @@ public sealed record TenantReferralProgramPolicyResult(
     int WaitingPeriodDays,
     int MaximumRewardsPerReferrerPerCalendarYear,
     ReferralRewardType RewardType,
-    string RewardDefinitionKey
+    string RewardDefinitionKey,
+    int RewardBasisPoints = 0,
+    long? RewardCapCents = null,
+    string? RewardCurrency = null
 );
 
 public sealed record TenantReferralProgramResult(
@@ -46,7 +49,10 @@ public sealed record TenantReferralProgramResult(
                 program.Policy.WaitingPeriodDays,
                 program.Policy.MaximumRewardsPerReferrerPerCalendarYear,
                 program.Policy.RewardType,
-                program.Policy.RewardDefinitionKey
+                program.Policy.RewardDefinitionKey,
+                program.Policy.RewardBasisPoints,
+                program.Policy.RewardCapCents,
+                program.Policy.RewardCurrency
             ),
             program.StartsAtUtc,
             program.EndsAtUtc

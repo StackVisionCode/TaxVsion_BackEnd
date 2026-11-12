@@ -17,7 +17,12 @@ namespace TaxVision.Subscription.Tests.Integration;
 /// </summary>
 public static class JwtTestTokenFactory
 {
-    public static string Mint(SubscriptionApiFactory factory, Guid tenantId, Guid userId)
+    public static string Mint(
+        SubscriptionApiFactory factory,
+        Guid tenantId,
+        Guid userId,
+        string actorType = "PlatformAdmin"
+    )
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(factory.JwtSecret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -26,8 +31,8 @@ public static class JwtTestTokenFactory
         {
             new Claim("sub", userId.ToString()),
             new Claim("tenant_id", tenantId.ToString()),
-            new Claim("actor_type", "PlatformAdmin"),
-            new Claim(ClaimTypes.Role, "PlatformAdmin"),
+            new Claim("actor_type", actorType),
+            new Claim(ClaimTypes.Role, actorType),
         };
 
         var token = new JwtSecurityToken(

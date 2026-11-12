@@ -97,6 +97,69 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
         return Result.Success(new OnboardingPricingOutcome(gross, totalDiscount, residual, currency, reservations));
     }
 
+    /// <summary>
+    /// Cotiza (SIN reservar) el precio con los códigos: el mismo orden y el mismo residual que <see cref="ReserveAsync"/>,
+    /// para que lo que se muestra sea lo que se cobra. Un código que no sirve no rompe la vista previa: queda marcado
+    /// como inválido y no descuenta. Cada cotización usa un sujeto efímero propio (la vista previa aún no tiene alta).
+    /// </summary>
+    public async Task<Result<OnboardingPricingPreviewOutcome>> PreviewAsync(
+        Guid planId,
+        string billingCycle,
+        IReadOnlyList<OnboardingCodeInput> codes,
+        CancellationToken ct
+    )
+    {
+        var priceResult = await pricing.GetGrossPriceAsync(planId, billingCycle, ct);
+        if (priceResult.IsFailure)
+            return Result.Failure<OnboardingPricingPreviewOutcome>(priceResult.Error);
+
+        var gross = priceResult.Value.GrossPriceCents;
+        var currency = priceResult.Value.Currency;
+        var residual = gross;
+        var lines = new List<Pricing.OnboardingPricingPreviewLine>();
+        var subject = Guid.NewGuid();
+
+        foreach (var code in codes.OrderBy(c => (int)c.BenefitType))
+        {
+            var hint = Hint(code.CodeToken);
+            if (residual <= 0)
+            {
+                lines.Add(new(code.BenefitType.ToString(), hint, false, 0, "Onboarding.CodeExhausted"));
+                continue;
+            }
+
+            var snapshot = ComputeSnapshot(subject, planId, residual, currency);
+            var quote = await growth.QuoteAsync(
+                new GrowthQuoteRequest(
+                    code.CodeToken,
+                    subject,
+                    planId,
+                    PlanVersion,
+                    residual,
+                    currency,
+                    snapshot,
+                    PreviewQuoteTtlSeconds
+                ),
+                ct
+            );
+            if (quote.IsFailure)
+            {
+                lines.Add(new(code.BenefitType.ToString(), hint, false, 0, quote.Error.Code));
+                continue;
+            }
+
+            lines.Add(new(code.BenefitType.ToString(), hint, true, quote.Value.DiscountAmountCents, null));
+            residual = quote.Value.NetAmountCents;
+        }
+
+        return Result.Success(new OnboardingPricingPreviewOutcome(gross, gross - residual, residual, currency, lines));
+    }
+
+    private const int PreviewQuoteTtlSeconds = 10 * 60;
+
+    /// <summary>Pista del código sin exponerlo completo: primeros 4 caracteres.</summary>
+    private static string Hint(string code) => code.Length <= 4 ? code : $"{code[..4]}…";
+
     private static string ComputeSnapshot(Guid onboardingId, Guid planId, long residualCents, string currency)
     {
         var canonical = $"{onboardingId:N}|{planId:N}|{residualCents}|{currency}";
@@ -114,4 +177,13 @@ public sealed record OnboardingPricingOutcome(
     long NetAmountCents,
     string Currency,
     IReadOnlyList<OnboardingCodeReservationInput> Reservations
+);
+
+/// <summary>Resultado de la vista previa: totales y una línea por código (válido o no).</summary>
+public sealed record OnboardingPricingPreviewOutcome(
+    long GrossAmountCents,
+    long DiscountAmountCents,
+    long NetAmountCents,
+    string Currency,
+    IReadOnlyList<Pricing.OnboardingPricingPreviewLine> Lines
 );

@@ -23,7 +23,7 @@ public sealed class PlatformStorageLimitBootstrapper(
     ILogger<PlatformStorageLimitBootstrapper> logger
 ) : IHostedService
 {
-    // El tenant de plataforma no tiene plan comercial: archivos con el mínimo (PlanFileAllowanceDefaults).
+    // El tenant de plataforma no tiene plan comercial: archivos con el respaldo mínimo (PlatformFileAllowanceFallback).
     private const string PlatformPlanCode = "platform";
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -44,7 +44,7 @@ public sealed class PlatformStorageLimitBootstrapper(
                 PlatformTenant.Id,
                 PlatformPlanCode,
                 options.Value.DefaultStorageQuotaBytes,
-                PlanFileAllowanceDefaults.MaxFileBytes
+                PlatformFileAllowanceFallback.MaxFileBytes
             )
         );
 

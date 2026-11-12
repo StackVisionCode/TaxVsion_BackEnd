@@ -356,6 +356,16 @@ internal static class EmbeddedDocumentTemplates
               </tr>
             </thead>
             <tbody>
+              {% if receipt.hasLines %}
+              {% for line in receipt.lines %}
+              <tr>
+                <td><div class="item-name">{{ line.description }}</div></td>
+                <td class="num">{{ line.quantity }}</td>
+                <td class="num">{{ line.unitPrice }} {{ receipt.currency }}</td>
+                <td class="num">{{ line.amount }} {{ receipt.currency }}</td>
+              </tr>
+              {% endfor %}
+              {% else %}
               <tr>
                 <td>
                   <div class="item-name">{{ receipt.description }}</div>
@@ -365,6 +375,7 @@ internal static class EmbeddedDocumentTemplates
                 <td class="num">{% if receipt.unitPrice != "" %}{{ receipt.unitPrice }} {{ receipt.currency }}{% else %}{{ receipt.price }} {{ receipt.currency }}{% endif %}</td>
                 <td class="num">{{ receipt.price }} {{ receipt.currency }}</td>
               </tr>
+              {% endif %}
             </tbody>
           </table>
 

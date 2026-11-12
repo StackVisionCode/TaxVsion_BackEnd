@@ -23,7 +23,7 @@ public sealed class RoleCatalogQueriesTests
     private static IReadOnlyList<Permission> Catalog() =>
         [
             Permission.Seed(Guid.NewGuid(), StaffCode, "customers", "Ver clientes"),
-            Permission.Seed(Guid.NewGuid(), CampaignsCode, "campaigns", "Ver campañas", minPlanTier: (int)PlanTier.Pro),
+            Permission.Seed(Guid.NewGuid(), CampaignsCode, "campaigns", "Ver campañas"),
             Permission.Seed(Guid.NewGuid(), PortalCode, "portal", "Portal docs", isCustomerPortal: true),
             Permission.Seed(
                 Guid.NewGuid(),
@@ -42,7 +42,7 @@ public sealed class RoleCatalogQueriesTests
         var roles = new StubRoleRepository { Catalog = Catalog() };
         var planLimits = new StubPlanLimitsStore
         {
-            Limits = TenantPlanLimits.Create(tenantId, "starter", 5, 5, 0, "[]"),
+            Limits = TenantPlanLimits.Create(tenantId, "starter", 5, 5, 0, """["customers"]"""),
         };
 
         var result = await GetPermissionsCatalogHandler.Handle(
@@ -59,9 +59,10 @@ public sealed class RoleCatalogQueriesTests
         Assert.True(dangerous.IsDangerous);
         Assert.False(dangerous.Grantable);
 
-        var outsideTier = result.Value.Single(permission => permission.Code == CampaignsCode);
-        Assert.Equal((int)PlanTier.Pro, outsideTier.MinPlanTier);
-        Assert.False(outsideTier.Grantable);
+        var outsidePlan = result.Value.Single(permission => permission.Code == CampaignsCode);
+        Assert.False(outsidePlan.Grantable);
+        // D8: el catálogo ya no expone un piso por tier; manda el módulo.
+        Assert.Null(typeof(PermissionResponse).GetProperty("MinPlanTier"));
 
         var staff = result.Value.Single(permission => permission.Code == StaffCode);
         Assert.True(staff.Grantable);
@@ -71,14 +72,15 @@ public sealed class RoleCatalogQueriesTests
         Assert.Equal(["CustomerPortal"], portal.AllowedActorTypes);
     }
 
+    // D8: el código del plan no decide nada; una oficina con el módulo puede concederlo.
     [Fact]
-    public async Task A_pro_tenant_can_grant_the_pro_tier_permission()
+    public async Task An_office_on_any_plan_code_can_grant_a_permission_of_an_enabled_module()
     {
         var tenantId = Guid.NewGuid();
         var roles = new StubRoleRepository { Catalog = Catalog() };
         var planLimits = new StubPlanLimitsStore
         {
-            Limits = TenantPlanLimits.Create(tenantId, "pro", 5, 5, 0, """["campaigns","customers"]"""),
+            Limits = TenantPlanLimits.Create(tenantId, "gold-2027", 5, 5, 0, """["campaigns","customers"]"""),
         };
 
         var result = await GetPermissionsCatalogHandler.Handle(
@@ -91,8 +93,8 @@ public sealed class RoleCatalogQueriesTests
         Assert.True(result.Value.Single(permission => permission.Code == CampaignsCode).Grantable);
     }
 
-    /// <summary>Un módulo que el plan no habilita deja la permission fuera del techo aunque el tier
-    /// alcance — es la dimensión de entitlements de §27.</summary>
+    /// <summary>Un módulo que el plan no habilita deja la permission fuera del techo — es la dimensión
+    /// de entitlements de §27.</summary>
     [Fact]
     public async Task A_module_the_plan_does_not_enable_is_not_grantable()
     {

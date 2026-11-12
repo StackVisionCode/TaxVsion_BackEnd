@@ -7,10 +7,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
+using TaxVision.Referrals.Application.Attributions.CreateReferralAttribution;
+using TaxVision.Referrals.Application.Programs.GetActiveReferralProgram;
 using TaxVision.Referrals.Application.Qualifications.QualifyReferral;
 using TaxVision.Referrals.Application.Rewards.ConfirmReferralRewardClawback;
 using TaxVision.Referrals.Application.Rewards.ConfirmReferralRewardGrant;
+using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Programs;
+using TaxVision.Referrals.Domain.Shares;
 using Wolverine;
 using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
 using AllowActorTypesAttribute = BuildingBlocks.Web.ActorTypeAuthorization.AllowActorTypesAttribute;
@@ -38,44 +42,18 @@ public sealed class InternalReferralsController(IMessageBus bus) : ControllerBas
         DateTime PaymentSucceededAtUtc
     );
 
+    /// <summary>Atribución del alta (pre-tenant). El código de referido solo identifica quién recomendó: no cambia el precio.</summary>
+    public sealed record OnboardingAttributionRequest(string ReferralCode, ReferralShareChannel? Channel, Guid? ShareId)
+    {
+        public override string ToString() =>
+            $"{nameof(OnboardingAttributionRequest)} {{ ReferralCode = <redacted>, Channel = {Channel}, ShareId = {ShareId} }}";
+    }
+
+    public sealed record OnboardingAttributionResponse(Guid AttributionId, string Status);
+
     public sealed record ConfirmGrantRequest(Guid AttemptId, string MaterializedBenefitReference);
 
     public sealed record ConfirmClawbackRequest(Guid AttemptId, string ReversalReference);
-
-    [HttpPost("qualifications")]
-    [HasServiceScope(GrowthServiceScopes.ReferralsQualify)]
-    // El JWT de servicio SÍ trae TenantId (JwtTokenGenerator.GenerateScopedServiceToken lo setea
-    // siempre) — el [RateLimitExempt] previo asumía lo contrario.
-    [RateLimit("growth.j.referrals_manage")]
-    [ProducesResponseType<QualifyReferralResult>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Qualify(
-        QualifyReferralRequest request,
-        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
-        CancellationToken ct
-    )
-    {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
-            return Unauthorized();
-
-        var result = await bus.InvokeAsync<Result<QualifyReferralResult>>(
-            new QualifyReferralCommand(
-                tenantId,
-                request.AttributionId,
-                request.QualifyingEventId,
-                request.PaymentId,
-                request.PaymentSource,
-                request.PaymentAmountCents,
-                request.PaymentCurrency,
-                request.IsFirstSuccessfulPayment,
-                request.PaymentSucceededAtUtc,
-                idempotencyKey,
-                actorId
-            ),
-            ct
-        );
-
-        return ToActionResult(result);
-    }
 
     [HttpPost("grants/{grantId:guid}/confirm")]
     [HasServiceScope(GrowthServiceScopes.ReferralsRewardConfirm)]

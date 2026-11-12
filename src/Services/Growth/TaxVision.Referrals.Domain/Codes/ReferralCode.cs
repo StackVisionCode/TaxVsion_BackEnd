@@ -21,6 +21,17 @@ public sealed class ReferralCode : TenantEntity
         Note = "No es un empleado: es la oficina o el contribuyente que refiere (OwnerType)."
     )]
     public Guid OwnerId { get; private set; }
+
+    /// <summary>
+    /// Usuario (dentro de la oficina dueña) que generó el código — el "IdUserRefer" del esquema.
+    /// Null en códigos emitidos antes de que se registrara. Solo el owner del tenant puede generar
+    /// o regenerar; el resto de usuarios copia y comparte pero no modifica.
+    /// </summary>
+    [UserReference(UserReferenceKind.Provenance)]
+    public Guid? OwnerUserId { get; private set; }
+
+    /// <summary>Motivo con el que se revoca un código al emitir uno nuevo para la misma oficina.</summary>
+    public const string SupersededReason = "Superseded";
     public string CodeHash { get; private set; } = default!;
     public string DisplayPrefix { get; private set; } = default!;
     public string LastFour { get; private set; } = default!;
@@ -53,7 +64,8 @@ public sealed class ReferralCode : TenantEntity
         string idempotencyKey,
         string payloadFingerprint,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        Guid? ownerUserId = null
     )
     {
         var accepting = program.EnsureAcceptingAttributions(nowUtc);
@@ -122,6 +134,7 @@ public sealed class ReferralCode : TenantEntity
             TenantScopeId = program.TenantScopeId,
             OwnerType = ownerType,
             OwnerId = ownerId,
+            OwnerUserId = ownerUserId == Guid.Empty ? null : ownerUserId,
             CodeHash = DomainGuards.NormalizeSha256Hex(codeHash),
             DisplayPrefix = displayPrefix,
             LastFour = lastFour,
@@ -170,6 +183,13 @@ public sealed class ReferralCode : TenantEntity
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
+
+    /// <summary>
+    /// Regeneración: el código anterior queda revocado y no sirve para nada (ni valida ni registra
+    /// referidos nuevos). Las atribuciones ya creadas con él conservan su premio — la atribución
+    /// guarda su propio <c>ReferralCodeId</c> y nunca se revalida contra el código.
+    /// </summary>
+    public Result Supersede(Guid actorUserId, DateTime nowUtc) => Revoke(SupersededReason, actorUserId, nowUtc);
 
     public Result Expire(Guid actorUserId, DateTime nowUtc)
     {

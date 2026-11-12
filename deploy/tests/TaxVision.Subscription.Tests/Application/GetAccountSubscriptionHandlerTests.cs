@@ -1,5 +1,6 @@
 using TaxVision.Subscription.Application.Subscriptions.Queries;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Seats;
@@ -17,6 +18,24 @@ namespace TaxVision.Subscription.Tests.Application;
 public sealed class GetAccountSubscriptionHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
+
+    private static readonly Module[] ModuleCatalog =
+    [
+        CoreModule("customers"),
+        CoreModule("documents"),
+        CoreModule("comms"),
+        CommercialModule("email"),
+        CommercialModule("meetings"),
+    ];
+
+    private static Module CoreModule(string code) => Module.Create(code, code, code).Value;
+
+    private static Module CommercialModule(string code)
+    {
+        var module = Module.Create(code, code, code).Value;
+        module.MarkAsCommercial();
+        return module;
+    }
 
     [Fact]
     public async Task Returns_the_contracted_plan_not_the_newest_published_one()
@@ -37,41 +56,60 @@ public sealed class GetAccountSubscriptionHandlerTests
         Assert.False(result.Value.Plan.BillingAccessBlocked);
     }
 
-    /// <summary>
-    /// El precio se congela con lo firmado; los MÓDULOS no. Los módulos los decide
-    /// <c>EntitlementSnapshotBuilder</c>, que lee la versión PUBLICADA — o sea que al revisar un plan
-    /// el tenant recibe el módulo nuevo de verdad (el gate le deja entrar).
-    ///
-    /// Antes esta pantalla leía los módulos de la versión contratada y el sistema se contradecía: el
-    /// backend concedía `meetings` a Enterprise mientras la pantalla de Plan no lo listaba y el add-on
-    /// de reuniones aparecía EN VENTA para quien ya lo tenía incluido.
-    /// </summary>
+    // D4: el cliente conserva precio Y módulos de lo que firmó. Una edición nueva no le da ni le quita nada.
+    // F8: la cuenta muestra el plan contratado aunque ya no esté a la venta y compara por rango.
     [Fact]
-    public async Task The_price_stays_contracted_but_the_modules_follow_the_published_version()
+    public async Task The_contracted_plan_carries_its_sales_rank()
     {
-        var plan = PlanWith("enterprise", "Enterprise", monthlyPrice: 199m, seatsMax: 25, modules: ["comms"]);
-        var contracted = plan.GetPublishedVersion()!;
-        var subscription = ActiveSubscription(plan, contracted);
-        PublishNewerVersionWithModules(plan, monthlyPrice: 299m, seatsMax: 25, modules: ["comms", "meetings"]);
+        var plan = PlanWith("pro", "Pro", monthlyPrice: 49m, seatsMax: 5, modules: ["documents"]);
+        Assert.True(plan.SetSalesRank(SalesRank.Create(2).Value, Guid.Empty, DateTime.UtcNow).IsSuccess);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
 
         var result = await HandleAsync(plan, subscription);
 
         Assert.True(result.IsSuccess);
-        // El precio, el firmado.
-        Assert.Equal(19900, result.Value.Plan.CurrentCyclePriceCents);
-        // Los módulos, los vigentes.
-        Assert.Contains("meetings", result.Value.Plan.EnabledModules);
-        Assert.Contains("comms", result.Value.Plan.EnabledModules);
+        Assert.Equal(2, result.Value.Plan.Rank);
+    }
+
+    // D6: el landing ofrece cambiar de ciclo solo si la edición firmada tiene precio en ese ciclo.
+    // La edición admite Monthly y Yearly, pero solo tiene precio mensual (caso de una edición vieja).
+    [Fact]
+    public async Task The_contracted_plan_lists_only_the_cycles_its_edition_has_a_price_for()
+    {
+        var plan = PlanWith("pro", "Pro", monthlyPrice: 49m, seatsMax: 5, modules: ["documents"]);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
+
+        var result = await HandleAsync(plan, subscription);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(["Monthly"], result.Value.Plan.BillingCycles);
     }
 
     [Fact]
-    public async Task An_add_on_for_a_module_the_revised_plan_now_includes_is_not_for_sale()
+    public async Task The_price_and_the_modules_stay_contracted()
     {
-        // El síntoma exacto que se vio en el Account: "Reuniones" ofrecido a un Enterprise que ya las
-        // tiene. Vender eso le cobraría al tenant por algo que ya está usando.
-        var plan = PlanWith("enterprise", "Enterprise", monthlyPrice: 199m, seatsMax: 25, modules: ["comms"]);
+        var plan = PlanWith("enterprise", "Enterprise", monthlyPrice: 199m, seatsMax: 25, modules: ["email"]);
+        var contracted = plan.GetPublishedVersion()!;
+        var subscription = ActiveSubscription(plan, contracted);
+        PublishNewerVersionWithModules(plan, monthlyPrice: 299m, seatsMax: 25, modules: ["email", "meetings"]);
+
+        var result = await HandleAsync(plan, subscription);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(19900, result.Value.Plan.CurrentCyclePriceCents);
+        Assert.Contains("email", result.Value.Plan.EnabledModules);
+        Assert.DoesNotContain("meetings", result.Value.Plan.EnabledModules);
+        // Los módulos base siempre vienen, aunque la edición firmada no los liste.
+        Assert.Contains("comms", result.Value.Plan.EnabledModules);
+    }
+
+    // La pantalla, la venta de add-ons y el gate leen la misma regla: lo que no tiene, se le puede vender.
+    [Fact]
+    public async Task An_add_on_for_a_module_only_the_new_edition_includes_stays_for_sale()
+    {
+        var plan = PlanWith("enterprise", "Enterprise", monthlyPrice: 199m, seatsMax: 25, modules: ["email"]);
         var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
-        PublishNewerVersionWithModules(plan, monthlyPrice: 199m, seatsMax: 25, modules: ["comms", "meetings"]);
+        PublishNewerVersionWithModules(plan, monthlyPrice: 199m, seatsMax: 25, modules: ["email", "meetings"]);
 
         var result = await HandleAsync(
             plan,
@@ -81,7 +119,7 @@ public sealed class GetAccountSubscriptionHandlerTests
 
         Assert.True(result.IsSuccess);
         var meetings = result.Value.AddOns.Single(addOn => addOn.Code == "addon-meetings");
-        Assert.NotEqual("Available", meetings.Eligibility);
+        Assert.Equal(AddOnEligibility.Available, meetings.Eligibility);
     }
 
     // Aceptación de la fase: en un plan que ya trae el módulo, el add-on no se ofrece.
@@ -181,6 +219,7 @@ public sealed class GetAccountSubscriptionHandlerTests
             new GetAccountSubscriptionQuery(TenantId),
             new FakeSubscriptionRepo(subscription: null),
             new FakePlanRepo(plan),
+            new FakeModuleRepo(ModuleCatalog),
             new CapturingSeatRepo(),
             new FakeAddOnDefinitionRepository(),
             new FakeTenantAddOnRepo(),
@@ -308,6 +347,7 @@ public sealed class GetAccountSubscriptionHandlerTests
             new GetAccountSubscriptionQuery(TenantId),
             new FakeSubscriptionRepo(subscription),
             new FakePlanRepo(plan),
+            new FakeModuleRepo(ModuleCatalog),
             seats ?? new CapturingSeatRepo(),
             new FakeAddOnDefinitionRepository(addOns ?? []),
             new FakeTenantAddOnRepo(owned ?? []),

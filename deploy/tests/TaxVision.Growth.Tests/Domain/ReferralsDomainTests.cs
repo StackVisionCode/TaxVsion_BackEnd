@@ -10,7 +10,7 @@ namespace TaxVision.Growth.Tests.Domain;
 public sealed class ReferralsDomainTests
 {
     [Fact]
-    public void Tenant_to_tenant_defaults_match_the_approved_non_monetary_policy()
+    public void Tenant_to_tenant_defaults_match_the_approved_wallet_credit_policy()
     {
         var policy = ReferralProgramPolicy.TenantToTenantDefaults();
 
@@ -18,7 +18,7 @@ public sealed class ReferralsDomainTests
         Assert.Equal(QualifyingEventRule.FirstSuccessfulPayment, policy.QualifyingEvent);
         Assert.Equal(30, policy.WaitingPeriodDays);
         Assert.Equal(10, policy.MaximumRewardsPerReferrerPerCalendarYear);
-        Assert.Equal(ReferralRewardType.SubscriptionFeatureGrant, policy.RewardType);
+        Assert.Equal(ReferralRewardType.WalletCredit, policy.RewardType);
     }
 
     [Fact]

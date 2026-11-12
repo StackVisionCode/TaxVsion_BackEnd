@@ -1,9 +1,12 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.AddOns;
+using TaxVision.Subscription.Application.Catalog.Audit;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.ValueObjects;
 using Wolverine;
@@ -17,6 +20,8 @@ public static class CreateQuotaAddOnHandler
         CreateQuotaAddOnCommand command,
         IAddOnDefinitionRepository addOnDefinitions,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
+        ICorrelationContext correlation,
         IMessageBus bus,
         CancellationToken ct
     )
@@ -56,6 +61,18 @@ public static class CreateQuotaAddOnHandler
             return Result.Failure<Guid>(built.Error);
 
         await addOnDefinitions.AddAsync(built.Value, ct);
+        await CatalogAudit.RecordAsync(
+            audit,
+            CatalogAuditActor.ForUser(command.ActorUserId),
+            "addon.created",
+            CatalogAuditViews.Target(built.Value),
+            before: null,
+            CatalogAuditViews.Of(built.Value),
+            reason: null,
+            correlation.CorrelationId,
+            DateTime.UtcNow,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new CatalogChangedIntegrationEvent
@@ -63,7 +80,7 @@ public static class CreateQuotaAddOnHandler
                 ChangeKind = "addon.created",
                 EntityId = built.Value.Id,
                 EntityCode = built.Value.Code.Value,
-                CorrelationId = string.Empty,
+                CorrelationId = correlation.CorrelationId,
             }
         );
         return Result.Success(built.Value.Id);

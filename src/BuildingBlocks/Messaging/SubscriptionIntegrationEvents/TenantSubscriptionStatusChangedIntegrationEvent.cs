@@ -65,6 +65,13 @@ public enum SubscriptionChangeReason
 
     /// <summary>El período venció hace días y el cobro de la renovación nunca salió: se suspende.</summary>
     RenewalOverdue,
+
+    /// <summary>D11: se agendó el paso a otra edición del plan en su próxima renovación. No es una transición:
+    /// viaja por este canal para avisarle al cliente con la fecha y lo que cambia.</summary>
+    VersionChangeScheduled,
+
+    // Cambio de ciclo: a anual al pagarse, a mensual al agendarse.
+    BillingCycleChanged,
 }
 
 /// <summary>
@@ -75,7 +82,9 @@ public enum SubscriptionChangeReason
 /// comportamiento actual. <see cref="IntegrationEvent.TenantId"/> y <see cref="IntegrationEvent.CorrelationId"/>
 /// vienen de la base.
 /// </summary>
-[MessageIdentity("BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantSubscriptionStatusChangedIntegrationEvent")]
+[MessageIdentity(
+    "BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantSubscriptionStatusChangedIntegrationEvent"
+)]
 public sealed record TenantSubscriptionStatusChangedIntegrationEvent : IntegrationEvent
 {
     public required Guid TenantSubscriptionId { get; init; }
@@ -128,4 +137,15 @@ public sealed record TenantSubscriptionStatusChangedIntegrationEvent : Integrati
     /// (<see cref="RenewalChargeFailedIntegrationEvent"/>): no se manda además el de "suspended".
     /// </summary>
     public bool NotifiedByChargeFailedEmail { get; init; }
+
+    // D11 (aditivo): cambio de edición agendado, solo con el motivo VersionChangeScheduled.
+
+    /// <summary>Desde cuándo rige la edición nueva (su primera renovación después del aviso).</summary>
+    public DateTime? VersionChangeEffectiveAtUtc { get; init; }
+
+    /// <summary>Qué cambia, en inglés y listo para el correo (precio, límites, módulos).</summary>
+    public string? VersionChangeSummary { get; init; }
+
+    /// <summary>La migración que lo agendó; con el tenant arma la clave de idempotencia del aviso.</summary>
+    public Guid? MigrationId { get; init; }
 }

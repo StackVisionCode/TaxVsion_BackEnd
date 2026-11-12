@@ -90,6 +90,10 @@ public sealed class AddOnRenewalJob(
             return true;
         }
 
+        // Un cambio de ciclo en curso o agendado lo aplica la base primero; el add-on renueva después.
+        if (subscription.HoldsExtraRenewals(addOn.CurrentPeriodEndUtc))
+            return false;
+
         var newPeriodEndUtc = subscription.NextCoTermEnd(addOn.CurrentPeriodEndUtc);
 
         var idempotencyKey = IdempotencyKeyFactory.AddOnRenewal(addOn.Id, addOn.CurrentPeriodEndUtc);

@@ -11,7 +11,11 @@ namespace BuildingBlocks.Messaging.BillingIntegrationEvents;
 /// <see cref="IntegrationEvent.TenantId"/> viaja como <c>PlatformTenant.Id</c> (el tenant real aún no
 /// existe); la factura nace bajo ese dueño y se re-hospeda al tenant real cuando la saga lo activa.
 /// Regla: solo <c>NetAmountCents &gt; 0</c> lleva <see cref="PaymentId"/> (net = 0 ⇒ sin pago).
+///
+/// RETIRADO (2026-11-11): Auth ya no lo publica y Billing no lo consume; el documento del cobro es el recibo
+/// del pago en PaymentApp. Se conserva una versión para los mensajes que queden en colas; borrar después.
 /// </summary>
+[Obsolete("Retirado: el documento del cobro de la plataforma es el recibo del pago en PaymentApp.")]
 [MessageIdentity("BuildingBlocks.Messaging.BillingIntegrationEvents.OnboardingInvoiceRequestedIntegrationEvent")]
 public sealed record OnboardingInvoiceRequestedIntegrationEvent : IntegrationEvent
 {

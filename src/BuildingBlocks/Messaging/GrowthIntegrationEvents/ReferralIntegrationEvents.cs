@@ -41,3 +41,20 @@ public sealed record ReferralRewardReversedIntegrationEvent : GrowthIntegrationE
     public required Guid SourceFinancialEventId { get; init; }
     public required string ReasonCode { get; init; }
 }
+
+/// <summary>
+/// Alguien se registró con el código de referido de una oficina: se le avisa al referidor. El evento viaja con el
+/// tenant del REFERIDOR (no del referido, que aún no tiene tenant) y no lleva datos del referido.
+/// </summary>
+[MessageIdentity("growth.referrals.attributed.v1")]
+public sealed record ReferralAttributedIntegrationEvent : GrowthIntegrationEvent
+{
+    public override string EventType => "growth.referrals.attributed";
+    public required Guid AttributionId { get; init; }
+
+    /// <summary>Usuario de la oficina que generó el código, si se conoce.</summary>
+    public Guid? ReferrerUserId { get; init; }
+
+    /// <summary>Canal por el que llegó el enlace (email, whatsapp…), si se conoce.</summary>
+    public string? Channel { get; init; }
+}

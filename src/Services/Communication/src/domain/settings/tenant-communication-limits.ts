@@ -24,6 +24,8 @@ export interface TenantCommunicationLimitsSnapshot {
   readonly transcriptEnabled: boolean | null;
   readonly callsEnabled: boolean | null;
   readonly maxCallMinutes: number | null;
+  /** Revisión de entitlements del evento; null en mensajes viejos (se aplica sin comparar). */
+  readonly revisionNumber: number | null;
   readonly updatedAtUtc: Date;
 }
 

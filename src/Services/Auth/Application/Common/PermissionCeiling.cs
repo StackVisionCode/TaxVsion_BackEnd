@@ -1,7 +1,6 @@
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Domain.Roles;
-using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Common;
@@ -16,7 +15,6 @@ namespace TaxVision.Auth.Application.Common;
 ///       PermissionCatalog
 ///     ∩ { p | p.IsAssignableByTenant }
 ///     ∩ { p | targetActor ∈ p.AllowedActorTypes }
-///     ∩ { p | tier(tenant) ≥ p.MinPlanTier }
 ///     ∩ { p | module(p) = null ∨ module(p) ∈ EnabledModules(tenant) }
 ///     − { p | p.PlatformOnly }
 ///     − { p | p.IsDangerous }
@@ -27,7 +25,7 @@ namespace TaxVision.Auth.Application.Common;
 /// <b>Dos mitades, a propósito.</b> <see cref="IsNeverGrantable"/> es la mitad <i>dura</i>: no
 /// depende del plan contratado ni de nada que el tenant pueda comprar, así que se exige en TODOS
 /// los caminos de concesión (crear rol, editar permisos, asignar rol, invitar, aceptar). La mitad
-/// <i>comercial</i> (tier y módulo habilitado) se exige solo al escribir configuración nueva de un
+/// <i>comercial</i> (módulo habilitado) se exige solo al escribir configuración nueva de un
 /// rol: una configuración anterior a un downgrade queda <b>dormida</b>, no se borra, y el gate de
 /// módulo en runtime es el que la vuelve inefectiva (§27, opción híbrida). Aplicarla también al
 /// asignar dejaría un rol entero inasignable tras un downgrade, que es justo lo que el plan
@@ -50,8 +48,8 @@ namespace TaxVision.Auth.Application.Common;
 /// implementar hasta que roles.manage sea delegable de verdad.
 /// </para>
 ///
-/// Es una función pura: recibe el catálogo, el tier y los módulos ya resueltos, sin tocar
-/// infraestructura.
+/// Es una función pura: recibe el catálogo y los módulos ya resueltos, sin tocar infraestructura.
+/// Plan único D8: ni el nombre ni el tier del plan deciden nada; solo los módulos de la foto.
 /// </summary>
 public static class PermissionCeiling
 {
@@ -74,17 +72,10 @@ public static class PermissionCeiling
     public static bool IsNeverGrantable(Permission permission) =>
         !permission.IsAssignableByTenant || permission.PlatformOnly || permission.IsDangerous || permission.IsReserved;
 
-    /// <summary>La mitad comercial: el plan contratado expone la permission y su módulo está
-    /// habilitado. <paramref name="enabledModules"/> vacío = todavía no conocemos los módulos del
-    /// tenant, no se bloquea (el gate en runtime es el enforcement real).</summary>
-    public static bool IsWithinPlan(Permission permission, PlanTier planTier, IReadOnlySet<string> enabledModules)
+    /// <summary>La mitad comercial: el módulo de la permission está habilitado en la oficina. Sin
+    /// módulos conocidos (todavía no llegó la proyección) falla cerrado para lo que tiene módulo.</summary>
+    public static bool IsWithinPlan(Permission permission, IReadOnlySet<string> enabledModules)
     {
-        if ((int)planTier < permission.MinPlanTier)
-            return false;
-
-        if (enabledModules.Count == 0)
-            return true;
-
         var module = PermissionModuleMap.ModuleFor(permission.Code);
         return module is null || enabledModules.Contains(module);
     }
@@ -92,12 +83,11 @@ public static class PermissionCeiling
     /// <summary>La fórmula completa de §27, para el flag <c>grantable</c> del catálogo.</summary>
     public static bool IsGrantable(
         Permission permission,
-        PlanTier planTier,
         IReadOnlySet<string> enabledModules,
         UserActorType? targetActorType
     ) =>
         !IsNeverGrantable(permission)
-        && IsWithinPlan(permission, planTier, enabledModules)
+        && IsWithinPlan(permission, enabledModules)
         && (targetActorType is null || permission.AllowedActorTypes.Contains(targetActorType.Value));
 
     /// <summary>
@@ -108,13 +98,12 @@ public static class PermissionCeiling
     public static Result Validate(
         IReadOnlyCollection<Permission> catalog,
         IReadOnlyCollection<Guid>? requestedPermissionIds,
-        PlanTier planTier,
         IReadOnlySet<string> enabledModules
     ) =>
         Evaluate(
             catalog,
             requestedPermissionIds,
-            permission => !IsNeverGrantable(permission) && IsWithinPlan(permission, planTier, enabledModules),
+            permission => !IsNeverGrantable(permission) && IsWithinPlan(permission, enabledModules),
             "These permissions cannot be assigned by the tenant (reserved to the platform, "
                 + "or not included in the current plan)"
         );

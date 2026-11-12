@@ -18,6 +18,13 @@ public interface IWalletRepository
     /// <summary>Agrega un asiento al ledger (append-only). Lo usa el cobro money-IN/OUT (F2/F3).</summary>
     Task AddLedgerEntryAsync(LedgerEntry entry, CancellationToken ct = default);
 
+    /// <summary>El asiento del ledger de ese tenant con esa clave de operación, o null. Hace idempotentes los créditos.</summary>
+    Task<LedgerEntry?> GetLedgerEntryByOperationKeyAsync(
+        Guid tenantId,
+        string operationKey,
+        CancellationToken ct = default
+    );
+
     /// <summary>Asientos del ledger del tenant, más recientes primero (paginado).</summary>
     Task<PagedResult<LedgerEntry>> ListLedgerAsync(Guid tenantId, int page, int size, CancellationToken ct = default);
 

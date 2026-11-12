@@ -20,7 +20,7 @@ public sealed class ExchangeAccountHandoffHandlerTests
 
         Assert.True(result.IsSuccess);
         Assert.Single(world.Sessions.Sessions);
-        var (issuedSid, surface, _, _) = world.Jwt.Issued[^1];
+        var (issuedSid, surface, _, _, _) = world.Jwt.Issued[^1];
         Assert.Equal(sessionId, issuedSid);
         Assert.Equal(SessionSurface.Account, surface);
         Assert.True(await world.Sessions.HasActiveChainAsync(sessionId, SessionSurface.Account));

@@ -30,6 +30,7 @@ function limits(patch: Partial<TenantCommunicationLimitsSnapshot> = {}): TenantC
     transcriptEnabled: null,
     callsEnabled: null,
     maxCallMinutes: null,
+    revisionNumber: null,
     updatedAtUtc: new Date(),
     ...patch,
   };

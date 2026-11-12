@@ -1,8 +1,11 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Audit;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.ValueObjects;
 using Wolverine;
@@ -18,6 +21,8 @@ public static class CreatePlanHandler
         CreatePlanCommand command,
         IPlanRepository plans,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
+        ICorrelationContext correlation,
         IMessageBus bus,
         ILogger<SubscriptionPlan> logger,
         CancellationToken ct
@@ -29,7 +34,7 @@ public static class CreatePlanHandler
 
         if (!Enum.TryParse<PlanTier>(command.Tier, ignoreCase: true, out var tier))
             return Result.Failure<CreatePlanResult>(
-                new Error("Plan.InvalidTier", "Tier must be one of Standard/Pro/Enterprise/Trial.")
+                new Error("Plan.InvalidTier", $"Tier must be one of {string.Join("/", Enum.GetNames<PlanTier>())}.")
             );
 
         if (await plans.ExistsByCodeAsync(command.Code, ct))
@@ -70,6 +75,18 @@ public static class CreatePlanHandler
             return Result.Failure<CreatePlanResult>(addVersion.Error);
 
         await plans.AddAsync(plan, ct);
+        await CatalogAudit.RecordAsync(
+            audit,
+            CatalogAuditActor.ForUser(command.ActorUserId),
+            "plan.created",
+            CatalogAuditViews.Target(plan),
+            before: null,
+            CatalogAuditViews.Of(plan),
+            reason: null,
+            correlation.CorrelationId,
+            DateTime.UtcNow,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new CatalogChangedIntegrationEvent

@@ -175,6 +175,57 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
             ManageUrl = "https://www.taxoffix.io/account/plan",
         };
 
+    // D11 del plan único: cambian las condiciones del plan; un correo por migración aunque el evento se repita.
+    [Fact]
+    public async Task A_scheduled_plan_terms_change_sends_its_template_with_the_date_and_summary_once()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribe = new CapturingScribeRenderClient();
+        var migrationId = Guid.NewGuid();
+        var evt = Event("Active", "VersionChangeScheduled") with
+        {
+            VersionChangeEffectiveAtUtc = new DateTime(2026, 12, 15, 0, 0, 0, DateTimeKind.Utc),
+            VersionChangeSummary = "price $129.00 → $99.00 per month",
+            MigrationId = migrationId,
+        };
+
+        await HandleAsync(evt, gateway, scribe);
+        await HandleAsync(evt with { EventId = Guid.NewGuid() }, gateway, scribe);
+
+        Assert.Equal("subscription.version_change_scheduled", gateway.Queued[0].TemplateKey);
+        Assert.Equal("subscription.version_change_scheduled.v1", scribe.LastEventKey);
+        Assert.Equal("December 15, 2026", scribe.LastVariables!["change_date"]);
+        Assert.Equal("price $129.00 → $99.00 per month", scribe.LastVariables["change_summary"]);
+        Assert.Equal($"{evt.TenantId:N}:version-change:{migrationId:N}", gateway.Queued[0].IdempotencyKey);
+        Assert.Equal(gateway.Queued[0].IdempotencyKey, gateway.Queued[1].IdempotencyKey);
+    }
+
+    // Cambio de ciclo: su propia plantilla, y un reenvío del mismo cambio no repite el correo.
+    [Fact]
+    public async Task A_billing_cycle_change_sends_its_template_once_with_amount_and_dates()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribe = new CapturingScribeRenderClient();
+        var evt = Event("Active", "BillingCycleChanged") with
+        {
+            Amount = "1589.00",
+            Cadence = "year",
+            DateCharged = "November 12, 2026",
+            NextChargeDate = "November 12, 2027",
+        };
+
+        await HandleAsync(evt, gateway, scribe);
+        await HandleAsync(evt with { EventId = Guid.NewGuid() }, gateway, scribe);
+
+        Assert.Equal("subscription.billing_cycle_changed", gateway.Queued[0].TemplateKey);
+        Assert.Equal("subscription.billing_cycle_changed.v1", scribe.LastEventKey);
+        Assert.Equal("1589.00", scribe.LastVariables!["amount"]);
+        Assert.Equal("year", scribe.LastVariables["cadence"]);
+        Assert.Equal("November 12, 2027", scribe.LastVariables["next_charge_date"]);
+        Assert.Equal(gateway.Queued[0].IdempotencyKey, gateway.Queued[1].IdempotencyKey);
+        Assert.NotNull(gateway.Queued[0].IdempotencyKey);
+    }
+
     private static TenantSubscriptionEmailRequestedIntegrationEvent Event(
         string status,
         string reason,

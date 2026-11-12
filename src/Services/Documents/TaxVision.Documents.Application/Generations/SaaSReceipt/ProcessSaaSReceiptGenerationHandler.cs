@@ -163,6 +163,17 @@ public static class ProcessSaaSReceiptGenerationHandler
                 // Subtítulo opcional por tipo de cobro (seats/add-on/wallet-top-up); vacío cae al
                 // fallback "{{ issuer.name }} subscription" de la plantilla.
                 ["secondaryDescription"] = receipt.SecondaryDescription ?? string.Empty,
+                // Una fila por cosa cobrada; sin líneas la plantilla muestra la fila única de siempre.
+                ["hasLines"] = receipt.Lines is { Count: > 0 },
+                ["lines"] = (receipt.Lines ?? [])
+                    .Select(line => new Dictionary<string, object>
+                    {
+                        ["description"] = line.Description,
+                        ["quantity"] = line.Quantity.ToString(CultureInfo.InvariantCulture),
+                        ["unitPrice"] = ReceiptRenderData.Money(line.UnitAmountCents),
+                        ["amount"] = ReceiptRenderData.Money(line.Quantity * line.UnitAmountCents),
+                    })
+                    .ToList(),
                 ["issuer"] = ReceiptRenderData.Issuer(issuer, brandLogoDataUri),
                 // Vacíos cuando la oficina no tiene perfil: la plantilla cae al nombre de la oficina.
                 ["billedTo"] = new Dictionary<string, object>

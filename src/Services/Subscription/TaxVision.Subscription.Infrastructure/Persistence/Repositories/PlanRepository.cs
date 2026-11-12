@@ -10,7 +10,15 @@ public sealed class PlanRepository(SubscriptionDbContext db) : IPlanRepository
     public async Task<IReadOnlyList<SubscriptionPlan>> GetPublishedAsync(CancellationToken ct = default) =>
         await WithVersions(db.Plans.AsNoTracking())
             .Where(plan => plan.Status == PlanStatus.Published)
-            .OrderBy(plan => plan.Tier)
+            .OrderBy(plan => plan.SalesRank)
+            .ThenBy(plan => plan.Code)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<SubscriptionPlan>> GetOnSaleAsync(CancellationToken ct = default) =>
+        await WithVersions(db.Plans.AsNoTracking())
+            .Where(plan => plan.Status == PlanStatus.Published && plan.IsOnSale)
+            .OrderBy(plan => plan.SalesRank)
+            .ThenBy(plan => plan.Code)
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<SubscriptionPlan>> GetAllAsync(CancellationToken ct = default) =>

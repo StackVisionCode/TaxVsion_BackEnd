@@ -1,5 +1,6 @@
 using TaxVision.Subscription.Application.Entitlements;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Seats;
@@ -68,6 +69,7 @@ public sealed class EntitlementSnapshotBuilderTests
             tenantId,
             new FakeSubscriptionRepo(BuildSubscription(tenantId, plan, SubscriptionStatus.Active)),
             new FakePlanRepo(plan),
+            new FakeModuleRepo(ModuleCatalog),
             new FakeSeatRepo(seats),
             new FakeTenantAddOnRepo([]),
             new FakeAddOnDefinitionRepository(),
@@ -79,6 +81,49 @@ public sealed class EntitlementSnapshotBuilderTests
         // Available + Active + PastDue = 3.
         Assert.Equal(3, snapshot.Value.SeatCount);
         Assert.Equal(1, snapshot.Value.AvailableSeatCount);
+    }
+
+    // D4: publicar una edición con menos asientos no le cambia la foto a quien firmó la anterior.
+    [Fact]
+    public async Task Publishing_an_edition_with_fewer_seats_does_not_change_a_contracted_customer()
+    {
+        var tenantId = Guid.NewGuid();
+        var plan = BuildPublishedPlan();
+        var contracted = plan.GetPublishedVersion()!;
+        var subscription = BuildSubscription(tenantId, plan, SubscriptionStatus.Active);
+        PlanTestData.PublishNewEdition(plan, monthlyUsd: 99m, seatsMax: 1);
+
+        var snapshot = await EntitlementSnapshotBuilder.BuildAsync(
+            tenantId,
+            new FakeSubscriptionRepo(subscription),
+            new FakePlanRepo(plan),
+            new FakeModuleRepo(ModuleCatalog),
+            new FakeSeatRepo(),
+            new FakeTenantAddOnRepo([]),
+            new FakeAddOnDefinitionRepository(),
+            new FakeSnapshotRepo(),
+            CancellationToken.None
+        );
+
+        Assert.True(snapshot.IsSuccess, snapshot.IsFailure ? snapshot.Error.Message : null);
+        Assert.Equal(contracted.Id, snapshot.Value.PlanVersionId);
+        Assert.Equal("3", ModuleValue(snapshot.Value, "seats.max"));
+        // Módulo base que la edición no lista: igual se enciende.
+        Assert.Equal("True", ModuleValue(snapshot.Value, "module.customers"));
+    }
+
+    private static readonly Module[] ModuleCatalog =
+    [
+        Module.Create("customers", "Customers", "Customers").Value,
+        Module.Create("documents", "Documents", "Documents").Value,
+        Commercial("email"),
+    ];
+
+    private static Module Commercial(string code)
+    {
+        var module = Module.Create(code, code, code).Value;
+        module.MarkAsCommercial();
+        return module;
     }
 
     private static SubscriptionSeat BuildSeat(Guid tenantId, SeatStatus targetStatus)
@@ -153,6 +198,7 @@ public sealed class EntitlementSnapshotBuilderTests
             tenantId,
             new FakeSubscriptionRepo(subscription),
             new FakePlanRepo(plan),
+            new FakeModuleRepo(ModuleCatalog),
             new FakeSeatRepo(),
             new FakeTenantAddOnRepo(addOns),
             addOnDefs,

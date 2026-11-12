@@ -19,6 +19,8 @@ public sealed class SetAddOnPricesHandlerTests
             new SetAddOnPricesCommand(definition.Id, 39m, 390m, Guid.NewGuid()),
             addOns,
             unitOfWork,
+            new InMemoryCatalogAuditLog(),
+            new FakeCorrelationContext(),
             new CapturingMessageBus(),
             CancellationToken.None
         );
@@ -42,6 +44,8 @@ public sealed class SetAddOnPricesHandlerTests
             new SetAddOnPricesCommand(Guid.NewGuid(), 39m, 390m, Guid.NewGuid()),
             addOns,
             unitOfWork,
+            new InMemoryCatalogAuditLog(),
+            new FakeCorrelationContext(),
             new CapturingMessageBus(),
             CancellationToken.None
         );

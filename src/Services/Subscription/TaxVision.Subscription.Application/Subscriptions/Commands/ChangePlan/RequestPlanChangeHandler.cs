@@ -47,6 +47,9 @@ public static class RequestPlanChangeHandler
         ICorrelationContext correlation,
         ISubscriptionAuditLogWriter audit,
         ILogger<TenantSubscription> logger,
+        ITenantAddOnRepository addOns,
+        IAddOnDefinitionRepository addOnDefinitions,
+        ISeatPricingRepository seatPricing,
         CancellationToken ct
     )
     {
@@ -84,6 +87,19 @@ public static class RequestPlanChangeHandler
 
         if (isUpgrade)
         {
+            // Plan y, si cambia el ciclo, cada extra al precio vigente del ciclo nuevo: un solo cobro (C2).
+            var quote = await PlanChangeQuote.BuildAsync(
+                subscription,
+                change,
+                addOns,
+                addOnDefinitions,
+                seats,
+                seatPricing,
+                ct
+            );
+            if (quote.Blocked is not null)
+                return Result.Failure<PlanChangeRequested>(quote.Blocked);
+
             var chargeToken = Guid.NewGuid();
             var paymentIdempotencyKey = IdempotencyKeyFactory.PlanChangeCharge(chargeToken);
 
@@ -91,12 +107,13 @@ public static class RequestPlanChangeHandler
                 plan,
                 planVersion,
                 requestedCycle,
-                targetPrice.AmountCents,
+                quote.TotalCents,
                 targetPrice.Currency,
                 paymentIdempotencyKey,
                 command.RequestedByUserId,
                 nowUtc,
-                command.WantsHostedCheckout
+                command.WantsHostedCheckout,
+                quote.Lines
             );
             if (upgradeResult.IsFailure)
                 return Result.Failure<PlanChangeRequested>(upgradeResult.Error);
@@ -143,7 +160,19 @@ public static class RequestPlanChangeHandler
                     command.CancelUrl!,
                     awaitingPayment.PaymentIdempotencyKey,
                     "Stripe",
-                    "Card"
+                    "Card",
+                    [
+                        .. awaitingPayment.Lines.Select(
+                            line => new BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine(
+                                line.Description,
+                                line.Quantity,
+                                line.UnitAmountCents
+                            )
+                        ),
+                    ],
+                    PlanChangeQuote.IsCycleSwitch(subscription, change)
+                        ? $"Switch to {(change.EffectiveCycle == TaxVision.Subscription.Domain.ValueObjects.BillingCycle.Yearly ? "yearly" : "monthly")} billing"
+                        : null
                 );
             }
             else
@@ -160,6 +189,19 @@ public static class RequestPlanChangeHandler
                         TargetPlanPrice = awaitingPayment.ChargeAmountCents,
                         Currency = awaitingPayment.ChargeCurrency,
                         RequestedByUserId = awaitingPayment.RequestedByUserId,
+                        Lines =
+                        [
+                            .. awaitingPayment.Lines.Select(
+                                line => new BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine(
+                                    line.Description,
+                                    line.Quantity,
+                                    line.UnitAmountCents
+                                )
+                            ),
+                        ],
+                        ConceptDisplayName = PlanChangeQuote.IsCycleSwitch(subscription, change)
+                            ? $"Switch to {(change.EffectiveCycle == TaxVision.Subscription.Domain.ValueObjects.BillingCycle.Yearly ? "yearly" : "monthly")} billing"
+                            : null,
                     }
                 );
             }

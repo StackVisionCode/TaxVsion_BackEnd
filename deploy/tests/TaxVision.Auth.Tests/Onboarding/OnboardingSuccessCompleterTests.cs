@@ -213,6 +213,8 @@ public sealed class OnboardingSuccessCompleterTests
                 ),
                 Onboardings,
                 new OnboardingCodeReserver(null!, null!),
+                null!, // sin ReferralCode el handler nunca toca el cliente de Growth
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<StartOnboardingCheckoutCommand>.Instance,
                 Completer(),
                 new FakePlanCatalogClient("Enterprise"),
                 new FakePaymentAppOnboardingClient(

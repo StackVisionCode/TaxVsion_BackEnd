@@ -4,19 +4,15 @@ using TaxVision.Referrals.Domain.Programs;
 namespace TaxVision.Referrals.Application.Attributions.CreateReferralAttribution;
 
 /// <summary>
-/// The RefereeBenefit* fields describe the program's policy terms (never a secret) so
-/// that Growth.Api's ReferralsController — the only layer that knows both the Referrals
-/// and Codes bounded contexts — can decide whether to issue a discount CodeDefinition for
-/// the referee right after the attribution succeeds. Null when the program has no referee
-/// benefit configured.
+/// Resultado de registrar la atribución. El referido no recibe ningún beneficio: solo el referidor gana (premio
+/// en % del plan, a su Wallet), así que aquí no viaja ningún término de descuento.
 /// </summary>
 public sealed record CreateReferralAttributionResult(
     Guid AttributionId,
     ReferralAttributionStatus Status,
     bool WasReplay,
-    ReferralRefereeBenefitType? RefereeBenefitType,
-    int? RefereeBenefitPercentageBasisPoints,
-    long? RefereeBenefitFixedAmountCents,
-    string? RefereeBenefitCurrency,
-    int RefereeBenefitExpirationDays
+    // Quién referió (para avisarle). Opcionales con default: los resultados guardados antes de existir no los traen.
+    Guid ReferrerTenantId = default,
+    Guid? ReferrerUserId = null,
+    string? Channel = null
 );

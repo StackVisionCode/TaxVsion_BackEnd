@@ -67,4 +67,11 @@ public interface ITenantOnboardingRepository
         int pageSize,
         CancellationToken ct = default
     );
+
+    /// <summary>Altas pagadas cuya oficina ya existe, en orden estable para paginar el reenvío de vínculos.</summary>
+    Task<IReadOnlyList<OnboardingPaymentLink>> ListPaymentLinksAsync(
+        int skip,
+        int take,
+        CancellationToken ct = default
+    );
 }

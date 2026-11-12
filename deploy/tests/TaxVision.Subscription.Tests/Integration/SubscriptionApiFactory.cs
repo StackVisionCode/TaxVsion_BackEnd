@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using TaxVision.Subscription.Infrastructure.Catalog;
+using TaxVision.Subscription.Tests.TestDoubles;
 using Wolverine;
 
 namespace TaxVision.Subscription.Tests.Integration;
@@ -49,6 +51,8 @@ public sealed class SubscriptionApiFactory : WebApplicationFactory<Program>
                 options.Durability.Mode = DurabilityMode.MediatorOnly;
                 options.AutoBuildMessageStorageOnStartup = AutoCreate.None;
             });
+            // Este host usa la base local de desarrollo: las revisiones del catálogo no se aplican desde una prueba.
+            services.AddSingleton<ICatalogRevisionRunner, SkipCatalogRevisions>();
             foreach (var hosted in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
             {
                 if (hosted.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal) == true)

@@ -9,6 +9,24 @@ services:
   minio-provision:
     image: pgsty/mc:RELEASE.2026-08-04T00-00-00Z
 
+  # En local se entra por localhost, que no resuelve a un tenant por Host: sin este override
+  # /auth/login responde 404 (EnforceHostResolution=true es el default de appsettings.json).
+  auth-api:
+    environment:
+      TenantDomains__EnforceHostResolution: "false"
+      # Atajo SOLO local: el OTP del correo del alta en el landing es siempre 000000 (el SMTP local es de prueba).
+      # Auth se niega a arrancar con esto si EnforceHostResolution=true. Quitar para probar el envío real.
+      Onboarding__DevFixedOtpCode: "000000"
+      # Tras pagar, el comprador vuelve a {RegistrationUrlBase}/register?token=…: en local es el landing, no el dominio real.
+      Onboarding__RegistrationUrlBase: ${LOCAL_LANDING_URL:-http://localhost:4201}
+
+  # Códigos de regalo de demo para probar el alta en el landing (WELCOME100, WELCOME20, GIFTCARD5, GIFTCARD25).
+  # En producción NO se siembran: las giftcards las crea el PlatformAdmin.
+  growth-api:
+    environment:
+      Growth__Seeding__OnboardingDemoCodes: "true"
+      Giftcards__RedeemBaseUrl: ${LOCAL_LANDING_URL:-http://localhost:4201}
+
   caddy:
     profiles: [external]
 

@@ -144,11 +144,16 @@ public static class QualifyReferralHandler
                         command.ActorUserId,
                         nowUtc
                     );
-                    if (requested.IsFailure)
+                    // Un pago tan chico que el % del premio redondea a cero califica (consume el
+                    // evento y la atribución) pero no genera caso de premio: no hay nada que acreditar.
+                    if (requested.IsFailure && requested.Error.Code != "ReferralReward.NoRewardDue")
                         return Result.Failure<QualifyReferralResult>(requested.Error);
 
-                    reward = requested.Value;
-                    await rewards.AddAsync(reward, operationCt);
+                    if (requested.IsSuccess)
+                    {
+                        reward = requested.Value;
+                        await rewards.AddAsync(reward, operationCt);
+                    }
                 }
 
                 return Result.Success(

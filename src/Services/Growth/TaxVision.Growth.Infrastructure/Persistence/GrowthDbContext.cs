@@ -22,6 +22,7 @@ using TaxVision.Referrals.Domain.Fraud;
 using TaxVision.Referrals.Domain.Programs;
 using TaxVision.Referrals.Domain.Qualifications;
 using TaxVision.Referrals.Domain.Rewards;
+using TaxVision.Referrals.Domain.Shares;
 
 namespace TaxVision.Growth.Infrastructure.Persistence;
 
@@ -46,6 +47,8 @@ public sealed class GrowthDbContext(DbContextOptions<GrowthDbContext> options, I
     public DbSet<ReferralRewardCase> ReferralRewardCases => Set<ReferralRewardCase>();
     public DbSet<ReferralRewardAttempt> ReferralRewardAttempts => Set<ReferralRewardAttempt>();
     public DbSet<ReferralFraudReview> ReferralFraudReviews => Set<ReferralFraudReview>();
+    public DbSet<ReferralCodeShare> ReferralCodeShares => Set<ReferralCodeShare>();
+    public DbSet<ReferrerBenefit> ReferrerBenefits => Set<ReferrerBenefit>();
     public DbSet<ReferralRewardQuotaCounter> ReferralRewardQuotaCounters => Set<ReferralRewardQuotaCounter>();
     public DbSet<ReferralRewardQuotaReservation> ReferralRewardQuotaReservations =>
         Set<ReferralRewardQuotaReservation>();

@@ -1,6 +1,9 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
@@ -23,7 +26,9 @@ public sealed record StartOnboardingCheckoutCommand(
     string Method = "Card",
     string? ReferralCode = null,
     string? PromoCode = null,
-    string? GiftCode = null
+    string? GiftCode = null,
+    string? ReferralChannel = null,
+    Guid? ReferralShareId = null
 );
 
 /// <summary><see cref="FullyCovered"/> = un código cubrió el 100%: no hay pago ni CheckoutUrl; el
@@ -47,6 +52,8 @@ public static class StartOnboardingCheckoutHandler
         StartOnboardingCheckoutCommand command,
         ITenantOnboardingRepository onboardings,
         OnboardingCodeReserver reserver,
+        IGrowthOnboardingClient growth,
+        ILogger<StartOnboardingCheckoutCommand> logger,
         OnboardingSuccessCompleter successCompleter,
         IPlanCatalogClient planCatalog,
         IPaymentAppOnboardingClient paymentApp,
@@ -90,6 +97,10 @@ public static class StartOnboardingCheckoutHandler
                 return Result.Failure<StartOnboardingCheckoutResponse>(reopen.Error);
         }
 
+        // El código de referido NO es un descuento: solo identifica quién recomendó. Registra la atribución en Growth
+        // (best-effort: un fallo no bloquea el alta; el referido paga igual el precio completo) y la engancha al alta.
+        await DeclareReferralAsync(onboarding, command, bus, correlation, ct);
+
         var codes = BuildCodeInputs(command);
         if (codes.Count > 0 && onboarding.CodeReservations.Count == 0)
         {
@@ -103,7 +114,7 @@ public static class StartOnboardingCheckoutHandler
                 outcome.TotalDiscountCents,
                 outcome.NetAmountCents,
                 outcome.Currency,
-                referralAttributionId: null, // recompensa al referidor = follow-up (atribución pre-tenant)
+                referralAttributionId: onboarding.ReferralAttributionId,
                 outcome.Reservations,
                 DateTime.UtcNow
             );
@@ -245,17 +256,43 @@ public static class StartOnboardingCheckoutHandler
         return $"{successUrl}{separator}r={Uri.EscapeDataString(reference)}";
     }
 
+    /// <summary>
+    /// Declara el código de referido por EVENTO: Growth registra la atribución y avisa al referidor, sin que Auth lo llame
+    /// por HTTP ni guarde el Id. Idempotente por alta (Growth), así que reintentar el checkout no duplica nada; el código
+    /// SOLO identifica quién recomendó, nunca cambia el precio ni bloquea el alta.
+    /// </summary>
+    private static async Task DeclareReferralAsync(
+        TenantOnboarding onboarding,
+        StartOnboardingCheckoutCommand command,
+        IMessageBus bus,
+        ICorrelationContext correlation,
+        CancellationToken ct
+    )
+    {
+        if (string.IsNullOrWhiteSpace(command.ReferralCode))
+            return;
+
+        bus.TenantId = PlatformTenant.Id.ToString();
+        await bus.PublishAsync(
+            new OnboardingReferralDeclaredIntegrationEvent
+            {
+                TenantId = PlatformTenant.Id,
+                // Sin correlación de la petición, el alta hace de traza (igual que el carril $0).
+                CorrelationId = string.IsNullOrWhiteSpace(correlation.CorrelationId)
+                    ? onboarding.Id.ToString("N")
+                    : correlation.CorrelationId,
+                OnboardingId = onboarding.Id,
+                ReferralCode = command.ReferralCode.Trim(),
+                Channel = string.IsNullOrWhiteSpace(command.ReferralChannel) ? null : command.ReferralChannel.Trim(),
+                ShareId = command.ReferralShareId,
+            }
+        );
+    }
+
     private static List<OnboardingCodeInput> BuildCodeInputs(StartOnboardingCheckoutCommand command)
     {
+        // Solo promo y gift son descuentos. El referral NO entra aquí: premia al referidor, no al referido.
         var codes = new List<OnboardingCodeInput>();
-        if (!string.IsNullOrWhiteSpace(command.ReferralCode))
-            codes.Add(
-                new OnboardingCodeInput(
-                    command.ReferralCode.Trim(),
-                    OnboardingBenefitType.Referral,
-                    command.ReferralCode.Trim()
-                )
-            );
         if (!string.IsNullOrWhiteSpace(command.PromoCode))
             codes.Add(
                 new OnboardingCodeInput(command.PromoCode.Trim(), OnboardingBenefitType.Promo, command.PromoCode.Trim())

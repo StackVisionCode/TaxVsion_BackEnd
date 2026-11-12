@@ -1,10 +1,13 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Audit;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForPlan;
 using TaxVision.Subscription.Application.Plans;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Plans;
 using Wolverine;
 
@@ -12,13 +15,15 @@ namespace TaxVision.Subscription.Application.Plans.Commands.SetPlanModules;
 
 public static class SetPlanModulesHandler
 {
-    // Revisa los módulos del plan (nueva versión publicada, supersede la anterior), guarda, y encola
-    // el recálculo masivo para propagar el cambio a todos los tenants del plan.
+    // Publica una edición nueva con los módulos pedidos (supersede la anterior) para quien contrate desde ahora.
+    // Las oficinas existentes conservan su edición (D4): el recálculo no les cambia los módulos.
     public static async Task<Result> Handle(
         SetPlanModulesCommand command,
         IPlanRepository plans,
         IModuleRepository modules,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
+        ICorrelationContext correlation,
         IMessageBus bus,
         ILogger<SubscriptionPlan> logger,
         CancellationToken ct
@@ -28,6 +33,8 @@ public static class SetPlanModulesHandler
         if (plan is null)
             return Result.Failure(new Error("Plan.NotFound", "Plan not found."));
 
+        var before = CatalogAuditViews.Of(plan);
+
         var selection = await PlanModuleSelection.ComposeAsync(command.Modules, modules, ct);
         if (selection.IsFailure)
             return Result.Failure(selection.Error);
@@ -36,6 +43,20 @@ public static class SetPlanModulesHandler
         if (revised.IsFailure)
             return revised;
 
+        await CatalogAudit.RecordIfChangedAsync(
+            audit,
+            command.SystemActor is null
+                ? CatalogAuditActor.ForUser(command.ActorUserId)
+                : CatalogAuditActor.System(command.SystemActor),
+            "plan.modules",
+            CatalogAuditViews.Target(plan),
+            before,
+            CatalogAuditViews.Of(plan),
+            reason: null,
+            correlation.CorrelationId,
+            DateTime.UtcNow,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(new RecalculateEntitlementsForPlanCommand(command.PlanId));
         await bus.PublishAsync(

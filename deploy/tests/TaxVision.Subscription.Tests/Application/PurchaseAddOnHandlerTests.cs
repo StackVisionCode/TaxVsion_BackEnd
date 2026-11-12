@@ -108,7 +108,7 @@ public sealed class PurchaseAddOnHandlerTests
             new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(
                 new FakeSubscriptionRepo(AddOnTestCatalog.ActiveSubscription(TenantId, plan)),
                 new FakePlanRepo(plan),
-                new FakeModuleRepo(),
+                new FakeModuleRepo(AddOnTestCatalog.Modules(["customers", "documents"])),
                 new FakeAddOnDefinitionRepository(definition),
                 new NoSettingsRepo(),
                 addOns

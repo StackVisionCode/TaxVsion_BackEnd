@@ -22,9 +22,9 @@ const PREFIX_TO_MODULE: ReadonlyArray<readonly [string, string]> = [
   ['postmaster.', 'email'],
   ['email.', 'email'],
   // ⚠️ `communication.meeting.` va ANTES que `communication.` y es el unico par de prefijos que se
-  // solapa: gana el primero que calza. Las reuniones se venden aparte (modulo `meetings`, Pro y
-  // Enterprise) mientras que chat, llamadas y video van en todos los planes. Invertirlos deja las
-  // reuniones dentro de `comms` en silencio y las regala en Starter.
+  // solapa: gana el primero que calza. Las reuniones se venden aparte (modulo `meetings`) mientras
+  // que chat, llamadas y video van con `comms`. Invertirlos deja las reuniones dentro de `comms` en
+  // silencio y las regala a quien no compro `meetings`.
   ['communication.meeting.', 'meetings'],
   ['communication.', 'comms'],
   ['comms.', 'comms'],

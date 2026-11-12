@@ -32,5 +32,6 @@ public sealed record SaaSPaymentSnapshot(
     int? Quantity,
     long? UnitAmountCents,
     string? ConceptCode,
-    string? ConceptDisplayName
+    string? ConceptDisplayName,
+    IReadOnlyList<SaaSPaymentLineSnapshot>? Lines = null
 );

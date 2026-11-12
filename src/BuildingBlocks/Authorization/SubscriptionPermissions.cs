@@ -13,6 +13,9 @@ public static class SubscriptionPermissions
     public const string Reactivate = "subscription.reactivate";
     public const string Renew = "subscription.renew";
     public const string AdminCrossTenant = "subscription.admin.cross_tenant";
+
+    /// <summary>D13: editar el catálogo de planes, add-ons, módulos, rate limits y precios. Solo plataforma.</summary>
+    public const string CatalogManage = "subscription.catalog.manage";
     public const string SeatsManage = "seats.manage";
     public const string SeatSlotGatingManage = "seats.slot_gating.manage";
     public const string AddOnsManage = "addons.manage";

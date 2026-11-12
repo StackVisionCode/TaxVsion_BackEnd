@@ -63,8 +63,8 @@ internal static class UploadRegistration
 
         // Chequeada aparte de extension/content-type: antes las 3 condiciones caian en
         // el mismo File.UnsupportedType generico, y un archivo rechazado solo por
-        // tamano (ej. una grabacion de meeting sobre el MaxFileSizeBytes de un plan
-        // "starter") mostraba "tipo de archivo no permitido" — enganoso, llevaba a
+        // tamano (ej. una grabacion de meeting sobre el MaxFileSizeBytes de la oficina)
+        // mostraba "tipo de archivo no permitido" — enganoso, llevaba a
         // debuggear la whitelist de tipos en vez del limite real de tamano del plan.
         if (sizeBytes > policy.MaxFileSizeBytes)
             return Result.Failure<FileObject>(FileErrors.FileTooLarge);

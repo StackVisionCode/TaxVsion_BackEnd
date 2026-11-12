@@ -1,6 +1,9 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Audit;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.ValueObjects;
 
@@ -12,6 +15,8 @@ public static class SetSeatPricesHandler
         SetSeatPricesCommand command,
         ISeatPricingRepository seatPricing,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -30,6 +35,7 @@ public static class SetSeatPricesHandler
         if (pricing is null)
             return Result.Failure(new Error("SeatPricing.NotFound", "Seat pricing catalog does not exist."));
 
+        var before = CatalogAuditViews.Of(pricing);
         var updated = pricing.SetTypePrices(
             seatType,
             monthly.Value,
@@ -40,6 +46,18 @@ public static class SetSeatPricesHandler
         if (updated.IsFailure)
             return updated;
 
+        await CatalogAudit.RecordIfChangedAsync(
+            audit,
+            CatalogAuditActor.ForUser(command.ActorUserId),
+            "seat.prices",
+            new CatalogAuditTarget("SeatPricing", pricing.Id, command.SeatType),
+            before,
+            CatalogAuditViews.Of(pricing),
+            reason: null,
+            correlation.CorrelationId,
+            DateTime.UtcNow,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }

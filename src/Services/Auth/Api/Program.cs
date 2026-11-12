@@ -560,14 +560,14 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantResolutionFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingOtpRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingRegistrationReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // El comprador declaró un código de referido: Growth registra la atribución por evento (sin M2M de Auth).
+    options.PublishMessage<OnboardingReferralDeclaredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options
         .PublishMessage<OnboardingPaymentFailedNotificationRequestedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
-    // Gift/Referral — FINALIZE pide a Billing asentar la factura (fuente de verdad financiera).
-    options
-        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.OnboardingInvoiceRequestedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingReceiptReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Mantenimiento: completa en PaymentApp los pagos de alta viejos (oficina + recibo).
+    options.PublishMessage<OnboardingPaymentLinkReplayedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingProvisioningStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingProvisioningStepFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantOnboardingCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -636,6 +636,9 @@ if (!app.Environment.IsDevelopment())
 app.UseMiddleware<TenantHostResolutionMiddleware>();
 
 app.UseAuthentication();
+
+// Token solo-MFA: solo puede configurar el segundo factor; todo lo demás da 403 (deniega por defecto).
+app.UseMiddleware<MfaEnrollmentGateMiddleware>();
 
 // RBAC Fase 5 — setea BuildingBlocks.Web.Tenancy.TenantContext desde el JWT, para que el
 // HasQueryFilter global de AuthDbContext tenga tenant listo. Distinto de

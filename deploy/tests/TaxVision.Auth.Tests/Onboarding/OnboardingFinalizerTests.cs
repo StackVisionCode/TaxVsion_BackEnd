@@ -1,4 +1,3 @@
-using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
@@ -9,15 +8,28 @@ using TaxVision.Auth.Tests.Application;
 namespace TaxVision.Auth.Tests.Onboarding;
 
 /// <summary>
-/// Paso 3 de GRW-1: un commit tardío que Growth deja en revisión no corta la factura de onboarding.
-/// Cualquier otro fallo de Growth sigue cortando para que Wolverine reintente.
+/// El FINALIZE solo confirma las reservas de código en Growth. Un commit tardío que Growth deja en revisión
+/// no corta el alta; cualquier otro fallo corta para que Wolverine reintente. El documento del cobro es el
+/// recibo del pago en PaymentApp: Billing (facturas de la oficina a sus clientes) no recibe nada.
 /// </summary>
 public sealed class OnboardingFinalizerTests
 {
     private const string LateCommitPendingReviewCode = "Codes.CommitReservation.LateCommitPendingReview";
 
     [Fact]
-    public async Task Finalize_GrowthLateCommitPendingReview_StillPublishesInvoiceRequested()
+    public async Task Finalize_only_confirms_the_code_reservations_in_growth()
+    {
+        var growth = new ScriptedGrowthClient(new Dictionary<Guid, Error>());
+
+        var result = await NewFinalizer(growth)
+            .FinalizeAsync(Command(Reservation(order: 0), Reservation(order: 1)), CancellationToken.None);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Equal(2, growth.Commits.Count);
+    }
+
+    [Fact]
+    public async Task Finalize_GrowthLateCommitPendingReview_StillSucceeds()
     {
         var late = Reservation(order: 0);
         var onTime = Reservation(order: 1);
@@ -27,15 +39,10 @@ public sealed class OnboardingFinalizerTests
                 [late.CodeReservationId] = new(LateCommitPendingReviewCode, "Pending manual review."),
             }
         );
-        var bus = new FakeMessageBus();
-
-        var result = await NewFinalizer(growth).FinalizeAsync(Command(late, onTime), bus, CancellationToken.None);
+        var result = await NewFinalizer(growth).FinalizeAsync(Command(late, onTime), CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
         Assert.Equal(2, growth.Commits.Count);
-        var invoice = Assert.IsType<OnboardingInvoiceRequestedIntegrationEvent>(Assert.Single(bus.Published));
-        Assert.True(invoice.Adjustments.Single(a => a.GrowthReservationId == late.CodeReservationId).PendingReview);
-        Assert.False(invoice.Adjustments.Single(a => a.GrowthReservationId == onTime.CodeReservationId).PendingReview);
     }
 
     [Fact]
@@ -48,17 +55,14 @@ public sealed class OnboardingFinalizerTests
                 [reservation.CodeReservationId] = new("Growth.Unreachable", "Could not reach Growth."),
             }
         );
-        var bus = new FakeMessageBus();
-
-        var result = await NewFinalizer(growth).FinalizeAsync(Command(reservation), bus, CancellationToken.None);
+        var result = await NewFinalizer(growth).FinalizeAsync(Command(reservation), CancellationToken.None);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Growth.Unreachable", result.Error.Code);
-        Assert.Empty(bus.Published);
     }
 
     private static OnboardingFinalizer NewFinalizer(IGrowthOnboardingClient growth) =>
-        new(growth, new FakeCorrelationContext(), NullLogger<OnboardingFinalizer>.Instance);
+        new(growth, NullLogger<OnboardingFinalizer>.Instance);
 
     private static FinalizeReservationDto Reservation(int order) =>
         new(Guid.NewGuid(), "Promo", $"CODE{order}", 500, "snapshot", order);
@@ -118,8 +122,5 @@ public sealed class OnboardingFinalizerTests
             string idempotencyKey,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
-
-        public Task<Result> QualifyReferralAsync(GrowthQualifyRequest request, CancellationToken ct = default) =>
-            throw new NotSupportedException();
     }
 }

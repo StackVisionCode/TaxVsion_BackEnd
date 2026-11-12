@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Onboarding.Application.PaymentOptions;
+using TaxVision.Auth.Onboarding.Application.Pricing;
 using TaxVision.Auth.Onboarding.Application.Sessions;
 using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
 using Wolverine;
@@ -91,7 +92,10 @@ public sealed class OnboardingCheckoutController(
         string? Method = null,
         string? ReferralCode = null,
         string? PromoCode = null,
-        string? GiftCode = null
+        string? GiftCode = null,
+        // Canal y envío por los que llegó el referido (el enlace compartido lleva ?ch=&sid=). Solo atribución.
+        string? ReferralChannel = null,
+        Guid? ReferralShareId = null
     );
 
     [HttpPost("checkout")]
@@ -120,7 +124,9 @@ public sealed class OnboardingCheckoutController(
                 string.IsNullOrWhiteSpace(request.Method) ? "Card" : request.Method,
                 ReferralCode: request.ReferralCode,
                 PromoCode: request.PromoCode,
-                GiftCode: request.GiftCode
+                GiftCode: request.GiftCode,
+                ReferralChannel: request.ReferralChannel,
+                ReferralShareId: request.ReferralShareId
             ),
             ct
         );
@@ -215,6 +221,40 @@ public sealed class OnboardingCheckoutController(
                 planId,
                 string.IsNullOrWhiteSpace(billingCycle) ? "Monthly" : billingCycle,
                 currency
+            ),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Vista previa del precio con los códigos (gift/promo) antes de pagar: bruto → descuento → neto y si cada código
+    /// sirve. Cotiza sin reservar. Exige la misma sesión post-OTP que <c>payment-options</c>.
+    /// </summary>
+    [HttpGet("pricing-preview")]
+    [AllowAnonymous]
+    [EnableRateLimiting("onboarding-status")]
+    [RateLimitExempt("Anonymous onboarding pricing preview keeps the native limiter; a post-OTP session is required.")]
+    [ProducesResponseType<OnboardingPricingPreview>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> PricingPreview(
+        [FromQuery] Guid planId,
+        [FromQuery] string? billingCycle,
+        [FromQuery] string? promoCode,
+        [FromQuery] string? giftCode,
+        CancellationToken ct
+    )
+    {
+        var sessionResult = await sessions.ValidateAsync(OnboardingSessionHttp.ReadToken(Request), DateTime.UtcNow, ct);
+        if (sessionResult.IsFailure)
+            return StatusCode(sessionResult.Error.ToHttpStatusCode(), sessionResult.Error);
+
+        var result = await bus.InvokeAsync<Result<OnboardingPricingPreview>>(
+            new GetOnboardingPricingPreviewQuery(
+                planId,
+                string.IsNullOrWhiteSpace(billingCycle) ? "Monthly" : billingCycle,
+                promoCode,
+                giftCode
             ),
             ct
         );

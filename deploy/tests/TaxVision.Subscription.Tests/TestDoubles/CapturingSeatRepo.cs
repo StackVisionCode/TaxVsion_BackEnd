@@ -18,6 +18,11 @@ public sealed class CapturingSeatRepo : ISubscriptionSeatRepository
     public Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<SubscriptionSeat>>(Added);
 
+    public Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdForUpdateAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => GetByTenantIdAsync(tenantId, ct);
+
     public Task<SubscriptionSeat?> GetByIdAsync(Guid id, Guid t, CancellationToken ct = default) =>
         Task.FromResult(Added.FirstOrDefault(seat => seat.Id == id && seat.TenantId == t));
 

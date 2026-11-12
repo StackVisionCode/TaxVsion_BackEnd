@@ -143,8 +143,35 @@ public sealed class SubscriptionPlanVersion : BaseEntity
                 new Error("PlanVersion.NoPriceTiers", "Cannot publish a version without at least one price tier.")
             );
 
+        var completed = AddMissingPlatformKeys();
+        if (completed.IsFailure)
+            return completed;
+
         Status = PlanVersionStatus.Published;
         EffectiveFromUtc = effectiveFromUtc;
+        return Result.Success();
+    }
+
+    // D8/F7: toda edición publicada trae las claves de plataforma; las que ya fija no se pisan.
+    private Result AddMissingPlatformKeys()
+    {
+        foreach (var seed in EntitlementKeyCatalog.MissingFrom(this))
+        {
+            var key = EntitlementKey.Create(seed.Key);
+            if (key.IsFailure)
+                return key;
+            var definition = PlanEntitlementDefinition.Create(
+                Id,
+                key.Value,
+                seed.ValueType,
+                seed.DefaultValue,
+                description: seed.Key
+            );
+            if (definition.IsFailure)
+                return definition;
+            _entitlements.Add(definition.Value);
+        }
+
         return Result.Success();
     }
 

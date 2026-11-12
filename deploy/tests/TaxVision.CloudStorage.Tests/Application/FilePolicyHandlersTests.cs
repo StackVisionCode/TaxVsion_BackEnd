@@ -46,7 +46,7 @@ public sealed class FilePolicyHandlersTests
         await Project(limits, new Dictionary<string, string> { ["storage.max_bytes"] = "1000" });
 
         var allowance = (await limits.GetAsync(Tenant, default))!.PlanAllowance();
-        Assert.Equal(PlanFileAllowanceDefaults.MaxFileBytes, allowance.MaxFileBytes);
+        Assert.Equal(PlatformFileAllowanceFallback.MaxFileBytes, allowance.MaxFileBytes);
         Assert.DoesNotContain("archives", allowance.FileTypeGroups);
     }
 

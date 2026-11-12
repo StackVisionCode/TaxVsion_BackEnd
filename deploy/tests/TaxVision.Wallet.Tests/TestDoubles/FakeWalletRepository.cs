@@ -29,6 +29,12 @@ public sealed class FakeWalletRepository : IWalletRepository
         return Task.CompletedTask;
     }
 
+    public Task<LedgerEntry?> GetLedgerEntryByOperationKeyAsync(
+        Guid tenantId,
+        string operationKey,
+        CancellationToken ct = default
+    ) => Task.FromResult(LedgerEntries.FirstOrDefault(e => e.TenantId == tenantId && e.OperationKey == operationKey));
+
     public Task<PagedResult<LedgerEntry>> ListLedgerAsync(
         Guid tenantId,
         int page,

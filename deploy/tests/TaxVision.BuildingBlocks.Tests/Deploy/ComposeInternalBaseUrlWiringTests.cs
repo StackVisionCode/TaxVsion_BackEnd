@@ -44,6 +44,8 @@ public sealed class ComposeInternalBaseUrlWiringTests
             ("auth-api", "SubscriptionClient__BaseUrl", "http://subscription-api:8080"),
             ("tenant-api", "SubscriptionClient__BaseUrl", "http://subscription-api:8080"),
             ("notification-api", "Notification__Customer__BaseUrl", "http://customer-api:8080"),
+            // Plan único D11: la migración mide el almacenamiento de cada oficina en CloudStorage.
+            ("subscription-api", "Subscription__CloudStorage__BaseUrl", "http://cloudstorage-api:8080"),
         };
 
         var missing = new List<string>();

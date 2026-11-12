@@ -173,6 +173,7 @@ public sealed class RecalculateEntitlementsHandlerTests
             new RecalculateEntitlementsCommand(subscription.TenantId, onlyIfChanged),
             new FakeSubscriptionRepo(subscription),
             new FakePlanRepo(plan),
+            new FakeModuleRepo(AddOnTestCatalog.Modules(["customers"], ["signature"])),
             new FakeSeatRepo(),
             new FakeTenantAddOnRepo([.. addOns.Select(a => AddOnTestCatalog.Owned(subscription.TenantId, a))]),
             new FakeAddOnDefinitionRepository(addOns),

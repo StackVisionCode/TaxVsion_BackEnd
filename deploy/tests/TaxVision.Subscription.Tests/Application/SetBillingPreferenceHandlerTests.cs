@@ -120,6 +120,42 @@ public sealed class SetBillingPreferenceHandlerTests
         Assert.Empty(bus.Published);
     }
 
+    // D5: el mandato se firma por el precio que el cliente paga, no por el de la edición publicada.
+    [Fact]
+    public async Task The_mandate_uses_the_contracted_price_not_the_published_one()
+    {
+        var (subscription, plan) = ActiveSubscriptionWithMonthlyPrice(_tenantId, 29m);
+        PlanTestData.PublishNewEdition(plan, monthlyUsd: 99m);
+        var bus = new CapturingMessageBus();
+
+        var result = await SetBillingPreferenceHandler.Handle(
+            new SetBillingPreferenceCommand(
+                TenantId: _tenantId,
+                ActorUserId: _userId,
+                Mode: "Automatic",
+                ProviderCode: "Stripe",
+                ConsentText: "I agree to automatic billing.",
+                ConsentTextVersion: "v1-2026-10",
+                ConsentIpAddress: "1.2.3.4",
+                ConsentUserAgent: "jest"
+            ),
+            new FakeRepo(existing: null),
+            new FakeSubscriptionRepo(subscription),
+            new FakePlanRepo(plan),
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger<TenantBillingPreference>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(
+            2900,
+            Assert.Single(bus.Published.OfType<TenantBillingPreferenceChangedIntegrationEvent>()).AgreedAmountCents
+        );
+    }
+
     private static (TenantSubscription Subscription, SubscriptionPlan Plan) ActiveSubscriptionWithMonthlyPrice(
         Guid tenantId,
         decimal monthlyUsd

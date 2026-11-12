@@ -56,6 +56,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             ),
             onboardings,
             BuildReserver(),
+            new ThrowingGrowthClient(),
+            NullLogger<StartOnboardingCheckoutCommand>.Instance,
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
@@ -106,6 +108,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             ),
             onboardings,
             BuildReserver(),
+            new ThrowingGrowthClient(),
+            NullLogger<StartOnboardingCheckoutCommand>.Instance,
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
@@ -140,6 +144,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             ),
             onboardings,
             BuildReserver(),
+            new ThrowingGrowthClient(),
+            NullLogger<StartOnboardingCheckoutCommand>.Instance,
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
@@ -177,6 +183,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             ),
             onboardings,
             BuildReserver(),
+            new ThrowingGrowthClient(),
+            NullLogger<StartOnboardingCheckoutCommand>.Instance,
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
@@ -223,6 +231,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             ),
             onboardings,
             BuildReserver(),
+            new ThrowingGrowthClient(),
+            NullLogger<StartOnboardingCheckoutCommand>.Instance,
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
@@ -258,6 +268,8 @@ public sealed class StartOnboardingCheckoutHandlerTests
             ),
             onboardings,
             BuildReserver(),
+            new ThrowingGrowthClient(),
+            NullLogger<StartOnboardingCheckoutCommand>.Instance,
             BuildCompleter(),
             new FakePlanCatalogClient("Enterprise"),
             paymentApp,
@@ -313,8 +325,5 @@ public sealed class StartOnboardingCheckoutHandlerTests
             string idempotencyKey,
             CancellationToken ct = default
         ) => throw new InvalidOperationException("Growth must not be called in the no-code path.");
-
-        public Task<Result> QualifyReferralAsync(GrowthQualifyRequest request, CancellationToken ct = default) =>
-            throw new InvalidOperationException("Growth must not be called in the no-code path.");
     }
 }

@@ -23,7 +23,9 @@ public sealed record MySubscriptionResponse(
     DateTime? ExpiredAtUtc,
     string? SuspensionReason,
     LastPaymentFailureDto? LastPaymentFailure,
-    bool BillingAccessBlocked
+    bool BillingAccessBlocked,
+    // F8: rango de venta del plan contratado (aditivo); el CRM lo compara con los planes a la venta.
+    int PlanRank = 0
 );
 
 /// <summary>Último fallo de cobro de renovación (proyectado desde el <c>TenantSubscriptionRenewal</c> más

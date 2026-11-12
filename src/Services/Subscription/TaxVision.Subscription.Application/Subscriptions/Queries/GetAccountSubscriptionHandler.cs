@@ -3,6 +3,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.AddOns;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -26,6 +27,7 @@ public static class GetAccountSubscriptionHandler
         GetAccountSubscriptionQuery query,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
+        IModuleRepository modules,
         ISubscriptionSeatRepository seats,
         IAddOnDefinitionRepository addOnDefinitions,
         ITenantAddOnRepository tenantAddOns,
@@ -44,27 +46,20 @@ public static class GetAccountSubscriptionHandler
         if (plan is null)
             return Result.Failure<AccountSubscriptionResponse>(new Error("Plan.NotFound", "Plan does not exist."));
 
-        // La versión CONTRATADA, no la publicada: el tenant conserva el PRECIO y los LÍMITES que firmó.
-        var version =
-            plan.Versions.FirstOrDefault(candidate => candidate.Id == subscription.PlanVersionId)
-            ?? plan.GetPublishedVersion();
+        // D4/D5: la edición CONTRATADA, nunca la publicada. El cliente conserva precio, límites y módulos.
+        var version = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
         if (version is null)
             return Result.Failure<AccountSubscriptionResponse>(
-                new Error("Plan.NoPublishedVersion", "Plan has no published version.")
+                new Error("Plan.ContractedVersionNotFound", "The contracted plan edition does not exist.")
             );
 
         var price = PlanPricing.ResolveBaseSubscriptionPrice(version, subscription.BillingCycle);
 
-        // Los MÓDULOS, en cambio, salen de la versión publicada — la misma que usa
-        // `EntitlementSnapshotBuilder`, que es lo que de verdad concede o deniega el acceso.
-        //
-        // Leerlos de la versión contratada hacía que el sistema se contradijera en cuanto se revisaba
-        // un plan: el snapshot le daba el módulo nuevo al tenant (el gate lo dejaba entrar) mientras
-        // esta pantalla seguía sin listarlo, y el add-on correspondiente aparecía EN VENTA para alguien
-        // que ya lo tenía. La regla de "conservas lo que firmaste" aplica al precio, no a qué features
-        // están encendidas: eso lo decide el snapshot y aquí solo se refleja.
-        var publishedVersion = plan.GetPublishedVersion() ?? version;
-        var enabledModules = PlanVersionEntitlements.GetEnabledModules(publishedVersion);
+        // Misma regla que la foto de derechos: pantalla, venta de add-ons y gate no se contradicen.
+        var modulesResult = ContractedEntitlementPolicy.EnabledModules(version, await modules.GetAllAsync(ct));
+        if (modulesResult.IsFailure)
+            return Result.Failure<AccountSubscriptionResponse>(modulesResult.Error);
+        var enabledModules = modulesResult.Value;
 
         var planView = new AccountPlanView(
             plan.Code.Value,
@@ -77,7 +72,13 @@ public static class GetAccountSubscriptionHandler
             // Mismo criterio que TenantSubscriptionAccessConsumer en Auth: acá se corta el acceso.
             subscription.Status
                 is SubscriptionStatus.Suspended
-                    or SubscriptionStatus.Expired
+                    or SubscriptionStatus.Expired,
+            plan.SalesRank.Value,
+            // Misma regla que PlanChangeResolver: sin precio en la edición firmada no se pasa a ese ciclo.
+            Enum.GetValues<BillingCycle>()
+                .Where(cycle => PlanPricing.ResolveBaseSubscriptionPrice(version, cycle) is not null)
+                .Select(cycle => cycle.ToString())
+                .ToList()
         );
 
         var period = new AccountPeriodView(

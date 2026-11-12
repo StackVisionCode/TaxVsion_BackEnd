@@ -13,6 +13,7 @@ using TaxVision.Billing.Domain.Payments;
 using TaxVision.Billing.Domain.Permissions;
 using TaxVision.Billing.Domain.RateLimiting;
 using TaxVision.Billing.Domain.Settings;
+using TaxVision.Billing.Infrastructure.Persistence.Archive;
 
 namespace TaxVision.Billing.Infrastructure.Persistence;
 
@@ -33,7 +34,7 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options,
     public DbSet<IssuerProfile> IssuerProfiles => Set<IssuerProfile>();
     public DbSet<InvoicePaymentLink> InvoicePaymentLinks => Set<InvoicePaymentLink>();
     public DbSet<InvoiceNumberSequence> InvoiceNumberSequences => Set<InvoiceNumberSequence>();
-    public DbSet<OnboardingTenantMap> OnboardingTenantMaps => Set<OnboardingTenantMap>();
+    public DbSet<ArchivedPlatformInvoice> ArchivedPlatformInvoices => Set<ArchivedPlatformInvoice>();
     public DbSet<TenantBillingSettings> TenantBillingSettings => Set<TenantBillingSettings>();
     public DbSet<UnappliedPayment> UnappliedPayments => Set<UnappliedPayment>();
 

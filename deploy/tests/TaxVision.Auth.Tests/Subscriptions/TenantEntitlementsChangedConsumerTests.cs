@@ -69,6 +69,43 @@ public sealed class TenantEntitlementsChangedConsumerTests
         Assert.Equal(10, await ProjectedMaxUsersAsync(Event(maxStaffUsers: null, seatCount: 5, seatsMax: "10")));
     }
 
+    // Análisis 2026-11-11: sin guard de revisión, un evento que llega tarde bajaba los límites a un valor viejo.
+    [Fact]
+    public async Task An_older_revision_never_lowers_the_limits()
+    {
+        var store = new FakeTenantPlanLimitsStore();
+        var newer = Event(maxStaffUsers: 10, seatCount: 0, seatsMax: "10") with { RevisionNumber = 5 };
+        var older = newer with { RevisionNumber = 3, MaxStaffUsers = 2, PlanCode = "OLD" };
+
+        await HandleAsync(newer, store);
+        await HandleAsync(older, store);
+
+        Assert.Equal(10, store.Stored!.MaxUsers);
+        Assert.Equal("PRO", store.Stored.PlanCode);
+        Assert.Equal(5, store.Stored.LastEntitlementsRevision);
+    }
+
+    [Fact]
+    public async Task The_same_revision_is_applied_again_idempotently()
+    {
+        var store = new FakeTenantPlanLimitsStore();
+        var evt = Event(maxStaffUsers: 10, seatCount: 0, seatsMax: "10") with { RevisionNumber = 5 };
+
+        await HandleAsync(evt, store);
+        await HandleAsync(evt with { MaxStaffUsers = 12 }, store);
+
+        Assert.Equal(12, store.Stored!.MaxUsers);
+    }
+
+    private static Task HandleAsync(TenantEntitlementsChangedIntegrationEvent evt, FakeTenantPlanLimitsStore store) =>
+        TenantEntitlementsChangedConsumer.Handle(
+            evt,
+            store,
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
     private sealed class FakeTenantPlanLimitsStore : ITenantPlanLimitsStore
     {
         public TenantPlanLimits? Stored { get; private set; }

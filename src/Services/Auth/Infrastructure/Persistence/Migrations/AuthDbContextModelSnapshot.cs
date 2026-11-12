@@ -666,9 +666,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsReserved")
                         .HasColumnType("bit");
 
-                    b.Property<int>("MinPlanTier")
-                        .HasColumnType("int");
-
                     b.Property<string>("Module")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -695,7 +692,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "users",
                             PlatformOnly = false
                         },
@@ -709,7 +705,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "users",
                             PlatformOnly = false
                         },
@@ -723,7 +718,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "users",
                             PlatformOnly = false
                         },
@@ -737,7 +731,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = true,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "users",
                             PlatformOnly = false
                         },
@@ -751,7 +744,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "audit",
                             PlatformOnly = false
                         },
@@ -765,7 +757,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "settings",
                             PlatformOnly = false
                         },
@@ -779,7 +770,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = true,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "billing",
                             PlatformOnly = false
                         },
@@ -793,7 +783,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = true,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "billing",
                             PlatformOnly = false
                         },
@@ -807,7 +796,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = true,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "billing",
                             PlatformOnly = false
                         },
@@ -821,7 +809,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "billing",
                             PlatformOnly = false
                         },
@@ -835,7 +822,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "billing",
                             PlatformOnly = false
                         },
@@ -850,7 +836,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
                         },
@@ -865,7 +850,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
                         },
@@ -880,7 +864,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
                         },
@@ -895,7 +878,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
                         },
@@ -910,7 +892,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "documents",
                             PlatformOnly = false
                         },
@@ -925,7 +906,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "campaigns",
                             PlatformOnly = false
                         },
@@ -939,7 +919,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "billing",
                             PlatformOnly = false
                         },
@@ -954,7 +933,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "campaigns",
                             PlatformOnly = false
                         },
@@ -969,7 +947,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "campaigns",
                             PlatformOnly = false
                         },
@@ -984,7 +961,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "campaigns",
                             PlatformOnly = false
                         },
@@ -999,7 +975,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "wallet",
                             PlatformOnly = false
                         },
@@ -1014,7 +989,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "wallet",
                             PlatformOnly = false
                         },
@@ -1028,7 +1002,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "portal",
                             PlatformOnly = false
                         },
@@ -1042,7 +1015,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "portal",
                             PlatformOnly = false
                         },
@@ -1057,7 +1029,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1072,7 +1043,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1087,7 +1057,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1102,7 +1071,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1117,7 +1085,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = true
                         },
@@ -1132,7 +1099,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = true
                         },
@@ -1147,7 +1113,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = true
                         },
@@ -1162,7 +1127,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1177,7 +1141,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1192,7 +1155,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1207,7 +1169,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1222,7 +1183,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1237,7 +1197,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1252,7 +1211,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1267,7 +1225,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = true,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1282,7 +1239,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = true
                         },
@@ -1297,7 +1253,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1312,7 +1267,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1327,7 +1281,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "cloudstorage",
                             PlatformOnly = false
                         },
@@ -1342,7 +1295,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
                         },
@@ -1357,7 +1309,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
                         },
@@ -1372,7 +1323,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
                         },
@@ -1387,7 +1337,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
                         },
@@ -1402,7 +1351,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
                         },
@@ -1417,7 +1365,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "correspondence",
                             PlatformOnly = false
                         },
@@ -1432,7 +1379,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "connectors",
                             PlatformOnly = false
                         },
@@ -1447,7 +1393,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "connectors",
                             PlatformOnly = false
                         },
@@ -1462,7 +1407,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "connectors",
                             PlatformOnly = false
                         },
@@ -1477,7 +1421,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "connectors",
                             PlatformOnly = false
                         },
@@ -1492,7 +1435,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
                         },
@@ -1507,7 +1449,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
                         },
@@ -1522,7 +1463,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
                         },
@@ -1537,7 +1477,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
                         },
@@ -1552,7 +1491,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = false
                         },
@@ -1567,7 +1505,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "scribe",
                             PlatformOnly = true
                         },
@@ -1581,7 +1518,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "sms",
                             PlatformOnly = false
                         },
@@ -1595,7 +1531,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "sms",
                             PlatformOnly = false
                         },
@@ -1609,7 +1544,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "sms",
                             PlatformOnly = false
                         },
@@ -1623,7 +1557,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "catalog",
                             PlatformOnly = false
                         },
@@ -1637,7 +1570,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "catalog",
                             PlatformOnly = false
                         },
@@ -1651,7 +1583,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "catalog",
                             PlatformOnly = false
                         },
@@ -1665,7 +1596,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "inventory",
                             PlatformOnly = false
                         },
@@ -1679,7 +1609,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "inventory",
                             PlatformOnly = false
                         },
@@ -1693,7 +1622,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "inventory",
                             PlatformOnly = false
                         },
@@ -1708,7 +1636,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1723,7 +1650,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1738,7 +1664,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1753,7 +1678,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1768,7 +1692,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1783,7 +1706,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1798,7 +1720,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1813,7 +1734,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1828,7 +1748,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1843,7 +1762,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1858,7 +1776,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1873,7 +1790,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1888,7 +1804,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1903,7 +1818,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1918,7 +1832,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1933,7 +1846,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1948,7 +1860,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = false
                         },
@@ -1963,7 +1874,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = true,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "signature",
                             PlatformOnly = true
                         },
@@ -1978,7 +1888,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
                         },
@@ -1993,7 +1902,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "customers",
                             PlatformOnly = false
                         },
@@ -2007,7 +1915,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = true,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "domains",
                             PlatformOnly = false
                         },
@@ -2022,7 +1929,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2037,7 +1943,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2052,7 +1957,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2066,7 +1970,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2080,7 +1983,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2095,7 +1997,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2110,7 +2011,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2125,7 +2025,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2140,7 +2039,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2155,7 +2053,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2170,7 +2067,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2185,7 +2081,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 1,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2200,7 +2095,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2215,7 +2109,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2230,7 +2123,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2244,7 +2136,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2259,7 +2150,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2274,7 +2164,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = false
                         },
@@ -2289,7 +2178,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = true
                         },
@@ -2304,7 +2192,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = true
                         },
@@ -2319,7 +2206,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = true,
-                            MinPlanTier = 0,
                             Module = "communication",
                             PlatformOnly = true
                         },
@@ -2334,7 +2220,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
                         },
@@ -2349,7 +2234,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
                         },
@@ -2364,7 +2248,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
                         },
@@ -2379,7 +2262,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
                         },
@@ -2394,7 +2276,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "postmaster",
                             PlatformOnly = false
                         },
@@ -2408,7 +2289,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2422,7 +2302,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2436,7 +2315,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2450,7 +2328,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2464,7 +2341,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2478,7 +2354,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2492,7 +2367,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2506,7 +2380,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2520,7 +2393,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2534,7 +2406,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notification",
                             PlatformOnly = false
                         },
@@ -2548,7 +2419,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = false
                         },
@@ -2562,7 +2432,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = true
                         },
@@ -2576,7 +2445,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = false
                         },
@@ -2590,7 +2458,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = false
                         },
@@ -2604,7 +2471,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_app",
                             PlatformOnly = true
                         },
@@ -2618,7 +2484,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2632,7 +2497,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2646,7 +2510,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2660,7 +2523,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2674,7 +2536,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2688,7 +2549,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2702,7 +2562,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2716,7 +2575,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2730,7 +2588,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2744,7 +2601,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2758,7 +2614,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2772,7 +2627,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = false
                         },
@@ -2786,7 +2640,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "payment_client",
                             PlatformOnly = true
                         },
@@ -2800,77 +2653,162 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "branding",
                             PlatformOnly = false
                         },
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000123"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "codes.code.read",
-                            Description = "View the office's codes",
-                            IsAssignableByTenant = true,
+                            Description = "View giftcards and promotional codes (platform only)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "codes",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000124"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "codes.code.manage",
-                            Description = "Manage the office's codes",
-                            IsAssignableByTenant = true,
+                            Description = "Create and edit giftcards and promotional codes (platform only)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "codes",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000126"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "codes.code.activate",
-                            Description = "Activate codes",
-                            IsAssignableByTenant = true,
+                            Description = "Activate giftcards and promotional codes (platform only)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "codes",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000127"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "codes.code.revoke",
-                            Description = "Revoke codes",
-                            IsAssignableByTenant = true,
+                            Description = "Revoke giftcards and promotional codes (platform only)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "codes",
-                            PlatformOnly = false
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000223"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "codes.redemption.read",
+                            Description = "View who redeemed a giftcard and the discount applied (platform only)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "codes",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000224"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "referrals.admin.code.manage",
+                            Description = "List, generate and revoke any office's referral code (platform only)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "referrals",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000225"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "referrals.reward.manage",
+                            Description = "Review referral rewards: hold, release or reject (platform only)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "referrals",
+                            PlatformOnly = true
                         },
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000131"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.own.read",
-                            Description = "View your own referrals",
+                            Description = "View, copy and share your office's referral code",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000227"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "referrals.program.read",
+                            Description = "View the referral program terms",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000222"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "referrals.program.manage",
+                            Description = "Create, version, activate and suspend the referral program (platform only)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "referrals",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000226"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "referrals.code.manage",
+                            Description = "Generate and regenerate the office's referral code",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000221"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "referrals.reward.read",
+                            Description = "View the office's referrals, share history and referral rewards",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
                             Module = "referrals",
                             PlatformOnly = false
                         },
@@ -2884,7 +2822,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "growth",
                             PlatformOnly = true
                         },
@@ -2898,7 +2835,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "subscription",
                             PlatformOnly = false
                         },
@@ -2912,7 +2848,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "subscription",
                             PlatformOnly = true
                         },
@@ -2926,7 +2861,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "subscription",
                             PlatformOnly = true
                         },
@@ -2940,7 +2874,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "subscription",
                             PlatformOnly = true
                         },
@@ -2954,7 +2887,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
+                            Module = "subscription",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000220"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "subscription.catalog.manage",
+                            Description = "Edit the plan catalog: plans, editions, sale status, add-ons, modules, rate limits and seat prices (platform only)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
                             Module = "subscription",
                             PlatformOnly = true
                         },
@@ -2968,7 +2913,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "seats",
                             PlatformOnly = false
                         },
@@ -2982,7 +2926,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "addons",
                             PlatformOnly = false
                         },
@@ -2996,7 +2939,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tenant",
                             PlatformOnly = true
                         },
@@ -3010,7 +2952,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tenant",
                             PlatformOnly = true
                         },
@@ -3024,7 +2965,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "onboarding",
                             PlatformOnly = true
                         },
@@ -3039,7 +2979,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notes",
                             PlatformOnly = false
                         },
@@ -3054,7 +2993,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notes",
                             PlatformOnly = false
                         },
@@ -3069,7 +3007,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notes",
                             PlatformOnly = false
                         },
@@ -3084,7 +3021,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "notes",
                             PlatformOnly = false
                         },
@@ -3099,7 +3035,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "reminders",
                             PlatformOnly = false
                         },
@@ -3114,7 +3049,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "reminders",
                             PlatformOnly = false
                         },
@@ -3129,7 +3063,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3144,7 +3077,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3159,7 +3091,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3174,7 +3105,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3189,7 +3119,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3204,7 +3133,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3219,7 +3147,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "calendar",
                             PlatformOnly = false
                         },
@@ -3234,7 +3161,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "calendar",
                             PlatformOnly = false
                         },
@@ -3249,7 +3175,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "calendar",
                             PlatformOnly = false
                         },
@@ -3264,7 +3189,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "calendar",
                             PlatformOnly = false
                         },
@@ -3279,7 +3203,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "calendar",
                             PlatformOnly = false
                         },
@@ -3294,7 +3217,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "calendar",
                             PlatformOnly = false
                         },
@@ -3309,7 +3231,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "calendar",
                             PlatformOnly = false
                         },
@@ -3324,7 +3245,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3339,7 +3259,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3354,7 +3273,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3369,7 +3287,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3384,7 +3301,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3399,7 +3315,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3414,7 +3329,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3429,7 +3343,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3444,7 +3357,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3459,7 +3371,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3474,7 +3385,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = true,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = true
                         },
@@ -3489,7 +3399,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = true
                         },
@@ -3504,7 +3413,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = true,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3519,7 +3427,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3534,7 +3441,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3549,7 +3455,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3564,7 +3469,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "tasks",
                             PlatformOnly = false
                         },
@@ -3578,7 +3482,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "branding",
                             PlatformOnly = true
                         },
@@ -3592,7 +3495,6 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
-                            MinPlanTier = 0,
                             Module = "seats",
                             PlatformOnly = false
                         });
@@ -3937,6 +3839,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsSuspendedForBilling")
                         .HasColumnType("bit");
+
+                    b.Property<long?>("LastEntitlementsRevision")
+                        .HasColumnType("bigint");
 
                     b.Property<int>("MaxPendingInvitations")
                         .HasColumnType("int");

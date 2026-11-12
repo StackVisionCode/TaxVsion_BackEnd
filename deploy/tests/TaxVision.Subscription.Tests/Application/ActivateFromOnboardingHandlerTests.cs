@@ -316,6 +316,9 @@ public sealed class ActivateFromOnboardingHandlerTests
         public Task<IReadOnlyList<SubscriptionPlan>> GetPublishedAsync(CancellationToken ct = default) =>
             throw new NotSupportedException();
 
+        public Task<IReadOnlyList<SubscriptionPlan>> GetOnSaleAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

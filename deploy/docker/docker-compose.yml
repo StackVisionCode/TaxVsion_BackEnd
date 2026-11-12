@@ -577,7 +577,6 @@ services:
       ServiceAuth__Clients__9__Scopes__2: growth.codes.commit
       ServiceAuth__Clients__9__Scopes__3: growth.codes.cancel
       ServiceAuth__Clients__9__Scopes__4: growth.codes.compensate
-      ServiceAuth__Clients__9__Scopes__5: growth.referrals.qualify
       ServiceAuth__Clients__10__ClientId: ${PAYMENTCLIENT_GROWTH_CLIENT_ID:-payment-client-growth}
       ServiceAuth__Clients__10__Secret: ${PAYMENTCLIENT_GROWTH_CLIENT_SECRET:-}
       ServiceAuth__Clients__10__Audience: taxvision-growth
@@ -591,7 +590,6 @@ services:
       ServiceAuth__Clients__11__Audience: taxvision-growth
       ServiceAuth__Clients__11__Scopes__0: growth.referrals.reward.confirm
       ServiceAuth__Clients__11__Scopes__1: growth.grants.confirm
-      ServiceAuth__Clients__11__Scopes__2: growth.codes.reserve-benefit-gift
       # Billing → Documents (M2M): generar el PDF de facturas.
       ServiceAuth__Clients__12__ClientId: ${BILLING_DOCUMENTS_CLIENT_ID:-billing-documents}
       ServiceAuth__Clients__12__Secret: ${BILLING_DOCUMENTS_CLIENT_SECRET:-}
@@ -841,7 +839,7 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
-      Subscriptions__DefaultPlanCode: starter
+      Subscriptions__DefaultPlanCode: enterprise
       Subscriptions__TrialDays: "14"
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # M2M de Subscription (un solo acquirer, ServiceAuthClientOptions). Usa subscription-worker
@@ -859,6 +857,7 @@ services:
       # M2M a PaymentApp para el hosted-checkout de seats y de renovación self-service. Sin esto el
       # HttpClient cae al default de código (localhost:5430) dentro del contenedor y el checkout falla.
       Subscription__PaymentApp__BaseUrl: http://payment-app-api:8080
+      Subscription__CloudStorage__BaseUrl: http://cloudstorage-api:8080
       # SEC-M1.C — HMAC compartido con PaymentApp (y Wallet). MISMA secret en los 3 servicios.
       PurchaseIntentAmountSignature__Secret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_SECRET:-}
       PurchaseIntentAmountSignature__PreviousSecret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_PREVIOUS_SECRET:-}
@@ -2197,6 +2196,8 @@ services:
     expose:
       - "8080"
     environment:
+      # Enlace de la giftcard enviada por correo: alta del landing con el código precargado.
+      Giftcards__RedeemBaseUrl: https://${TAXVISION_BASE_DOMAIN:-taxoffix.io}
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${GROWTH_DB_CONNECTION:?Set GROWTH_DB_CONNECTION in .env}

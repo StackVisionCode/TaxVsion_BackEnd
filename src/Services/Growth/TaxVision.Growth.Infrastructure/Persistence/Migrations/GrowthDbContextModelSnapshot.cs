@@ -976,6 +976,10 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("AttributedAtUtc")
                         .HasColumnType("datetime2(7)");
 
+                    b.Property<string>("Channel")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2(7)");
 
@@ -1020,6 +1024,9 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<Guid?>("ReferrerUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("RejectedAtUtc")
                         .HasColumnType("datetime2(7)");
 
@@ -1032,6 +1039,9 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
+
+                    b.Property<Guid?>("ShareId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1114,6 +1124,9 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("PayloadFingerprint")
                         .IsRequired()
@@ -1360,7 +1373,7 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_ReferralPrograms_Period", "[EndsAtUtc] IS NULL OR [EndsAtUtc] > [StartsAtUtc]");
 
-                            t.HasCheckConstraint("CK_ReferralPrograms_PolicyLimits", "[AttributionWindowDays] > 0 AND [MinimumPaymentAmountCents] >= 0 AND [WaitingPeriodDays] >= 0 AND [MaximumRewardsPerReferrerPerCalendarYear] > 0");
+                            t.HasCheckConstraint("CK_ReferralPrograms_PolicyLimits", "[AttributionWindowDays] > 0 AND [MinimumPaymentAmountCents] >= 0 AND [WaitingPeriodDays] >= 0 AND [MaximumRewardsPerReferrerPerCalendarYear] > 0 AND [RewardBasisPoints] BETWEEN 0 AND 10000");
 
                             t.HasCheckConstraint("CK_ReferralPrograms_TenantScope", "([ScopeType] = N'Platform' AND [TenantScopeId] IS NULL) OR ([ScopeType] = N'Tenant' AND [TenantScopeId] IS NOT NULL)");
                         });
@@ -1587,11 +1600,26 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         .HasColumnType("char(64)")
                         .IsFixedLength();
 
+                    b.Property<long>("PricePaidCents")
+                        .HasColumnType("bigint");
+
                     b.Property<Guid>("ProgramId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("QualificationId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("RewardAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("RewardBasisPoints")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("RewardCapCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RewardCurrency")
+                        .HasColumnType("char(3)");
 
                     b.Property<string>("RewardDefinitionKey")
                         .IsRequired()
@@ -1649,6 +1677,95 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("UX_ReferralRewardCases_Qualification_Beneficiary_Reward");
 
                     b.ToTable("ReferralRewardCases", "referrals");
+                });
+
+            modelBuilder.Entity("TaxVision.Referrals.Domain.Rewards.ReferrerBenefit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AppliedBasisPoints")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("AttributionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreditedAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasColumnType("char(3)");
+
+                    b.Property<DateTime?>("ReversedAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("RewardCaseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SystemActorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("TotalBenefitWalletCents")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttributionId");
+
+                    b.HasIndex("RewardCaseId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ReferrerBenefits_RewardCaseId");
+
+                    b.HasIndex("TenantId", "CreditedAtUtc")
+                        .HasDatabaseName("IX_ReferrerBenefits_TenantId_CreditedAtUtc");
+
+                    b.ToTable("ReferrerBenefits", "referrals", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReferrerBenefits_Amounts", "[TotalBenefitWalletCents] > 0 AND [AppliedBasisPoints] BETWEEN 1 AND 10000");
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Referrals.Domain.Shares.ReferralCodeShare", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("RecipientHint")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("ReferralCodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SharedAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("SharedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReferralCodeId", "SharedAtUtc")
+                        .HasDatabaseName("IX_ReferralCodeShares_ReferralCodeId_SharedAtUtc");
+
+                    b.HasIndex("TenantId", "SharedAtUtc")
+                        .HasDatabaseName("IX_ReferralCodeShares_TenantId_SharedAtUtc");
+
+                    b.ToTable("ReferralCodeShares", "referrals");
                 });
 
             modelBuilder.Entity("TaxVision.Codes.Domain.Compensations.CodeCompensation", b =>
@@ -2360,26 +2477,17 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                                 .HasColumnType("nvarchar(40)")
                                 .HasColumnName("QualifyingEventRule");
 
-                            b1.Property<string>("RefereeBenefitCurrency")
-                                .HasColumnType("char(3)")
-                                .HasColumnName("RefereeBenefitCurrency");
-
-                            b1.Property<int>("RefereeBenefitExpirationDays")
+                            b1.Property<int>("RewardBasisPoints")
                                 .HasColumnType("int")
-                                .HasColumnName("RefereeBenefitExpirationDays");
+                                .HasColumnName("RewardBasisPoints");
 
-                            b1.Property<long?>("RefereeBenefitFixedAmountCents")
+                            b1.Property<long?>("RewardCapCents")
                                 .HasColumnType("bigint")
-                                .HasColumnName("RefereeBenefitFixedAmountCents");
+                                .HasColumnName("RewardCapCents");
 
-                            b1.Property<int?>("RefereeBenefitPercentageBasisPoints")
-                                .HasColumnType("int")
-                                .HasColumnName("RefereeBenefitPercentageBasisPoints");
-
-                            b1.Property<string>("RefereeBenefitType")
-                                .HasMaxLength(20)
-                                .HasColumnType("nvarchar(20)")
-                                .HasColumnName("RefereeBenefitType");
+                            b1.Property<string>("RewardCurrency")
+                                .HasColumnType("char(3)")
+                                .HasColumnName("RewardCurrency");
 
                             b1.Property<string>("RewardDefinitionKey")
                                 .IsRequired()
@@ -2450,6 +2558,30 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     b.HasOne("TaxVision.Referrals.Domain.Qualifications.ReferralQualification", null)
                         .WithMany()
                         .HasForeignKey("QualificationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Referrals.Domain.Rewards.ReferrerBenefit", b =>
+                {
+                    b.HasOne("TaxVision.Referrals.Domain.Attributions.ReferralAttribution", null)
+                        .WithMany()
+                        .HasForeignKey("AttributionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("TaxVision.Referrals.Domain.Rewards.ReferralRewardCase", null)
+                        .WithMany()
+                        .HasForeignKey("RewardCaseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Referrals.Domain.Shares.ReferralCodeShare", b =>
+                {
+                    b.HasOne("TaxVision.Referrals.Domain.Codes.ReferralCode", null)
+                        .WithMany()
+                        .HasForeignKey("ReferralCodeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Sessions;
 using TaxVision.Auth.Domain.Users;
@@ -22,10 +23,20 @@ public sealed class AuthSessionIssuer(
     ISecureTokenService tokens,
     IJwtTokenGenerator jwt,
     IRequestContext request,
-    IOptions<RefreshTokenOptions> options
+    IOptions<RefreshTokenOptions> options,
+    IMfaRepository mfa,
+    IOptions<MfaOptions> mfaOptions
 ) : IAuthSessionIssuer
 {
     private readonly RefreshTokenOptions _options = options.Value;
+
+    /// <summary>
+    /// Mientras falte configurar el MFA que la oficina exige, el espacio de trabajo solo recibe tokens para
+    /// configurarlo. Se evalúa en cada emisión y cada renovación: no depende de lo que haga el front.
+    /// </summary>
+    private async Task<bool> MfaEnrollmentOnlyAsync(User user, SessionSurface surface, CancellationToken ct) =>
+        surface == SessionSurface.Workspace
+        && (await MfaRequirement.DisposeAsync(user, mfa, ct, mfaOptions.Value.Enforced)).MustEnroll;
 
     public async Task<IssuedTokens> StartSessionAsync(
         User user,
@@ -80,7 +91,16 @@ public sealed class AuthSessionIssuer(
         currentToken.Rotate(replacement.Id);
         await sessions.AddTokenAsync(replacement, ct);
 
-        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, authMethods, currentToken.Surface);
+        var enrollmentOnly = await MfaEnrollmentOnlyAsync(user, currentToken.Surface, ct);
+        var accessToken = jwt.Generate(
+            user,
+            effectiveTimeZoneId,
+            session.Id,
+            roles,
+            authMethods,
+            currentToken.Surface,
+            mfaEnrollmentOnly: enrollmentOnly
+        );
 
         return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
     }
@@ -106,7 +126,16 @@ public sealed class AuthSessionIssuer(
         );
         await sessions.AddTokenAsync(refreshToken, ct);
 
-        var accessToken = jwt.Generate(user, effectiveTimeZoneId, session.Id, roles, authMethods, surface);
+        var enrollmentOnly = await MfaEnrollmentOnlyAsync(user, surface, ct);
+        var accessToken = jwt.Generate(
+            user,
+            effectiveTimeZoneId,
+            session.Id,
+            roles,
+            authMethods,
+            surface,
+            mfaEnrollmentOnly: enrollmentOnly
+        );
 
         return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
     }

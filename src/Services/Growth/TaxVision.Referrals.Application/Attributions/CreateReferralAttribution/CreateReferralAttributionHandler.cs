@@ -84,7 +84,9 @@ public static class CreateReferralAttributionHandler
                     command.IdempotencyKey,
                     fingerprint,
                     command.ActorUserId,
-                    nowUtc
+                    nowUtc,
+                    command.Channel,
+                    command.ShareId
                 );
                 if (created.IsFailure)
                     return Result.Failure<CreateReferralAttributionResult>(created.Error);
@@ -99,11 +101,9 @@ public static class CreateReferralAttributionHandler
                         created.Value.Id,
                         created.Value.Status,
                         WasReplay: false,
-                        program.Policy.RefereeBenefitType,
-                        program.Policy.RefereeBenefitPercentageBasisPoints,
-                        program.Policy.RefereeBenefitFixedAmountCents,
-                        program.Policy.RefereeBenefitCurrency,
-                        program.Policy.RefereeBenefitExpirationDays
+                        code.OwnerId,
+                        code.OwnerUserId,
+                        command.Channel?.ToString()
                     )
                 );
             },

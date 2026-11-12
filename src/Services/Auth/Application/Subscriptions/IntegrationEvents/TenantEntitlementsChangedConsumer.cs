@@ -62,15 +62,16 @@ public static class TenantEntitlementsChangedConsumer
     {
         var modulesJson = JsonSerializer.Serialize(ExtractEnabledModules(evt.EntitlementValues));
 
-        limits.Apply(
+        // Una revisión vieja que llega tarde no pisa límites más nuevos.
+        limits.ApplyRevision(
+            evt.RevisionNumber,
             evt.PlanCode,
             maxUsers: ResolveMaxStaffUsers(evt),
             maxPendingInvitations: GetInt(evt.EntitlementValues, "invitations.max_pending", fallback: 0),
             storageQuotaBytes: GetLong(evt.EntitlementValues, "storage.max_bytes", fallback: 0),
-            modulesJson
+            modulesJson,
+            evt.SubscriptionStatus == "Suspended"
         );
-
-        limits.SetSuspendedForBilling(evt.SubscriptionStatus == "Suspended");
     }
 
     private static string[] ExtractEnabledModules(IReadOnlyDictionary<string, string> entitlementValues)

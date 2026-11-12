@@ -10,6 +10,9 @@ namespace TaxVision.Wallet.Domain.Wallet;
 /// <item><see cref="Release"/>    ( 0, −a) — libera reserva no usada (NO es un refund).</item>
 /// <item><see cref="UsageRefund"/>(+a,  0) — devuelve un consumo ya cobrado.</item>
 /// <item><see cref="Adjustment"/> (±a,  0) — corrección económica autorizada, con motivo.</item>
+/// <item><see cref="Reward"/>     (+a,  0) — premio acreditado por un consumidor (p.ej. un referido): dinero sin pago
+/// que lo respalde, distinguible del TopUp en el ledger. El Wallet no conoce al consumidor: solo una referencia opaca.</item>
+/// <item><see cref="RewardReversal"/> (−a, 0) — reversión de un premio ya acreditado (clawback); exige saldo disponible.</item>
 /// </list>
 /// </summary>
 public enum MovementType
@@ -20,4 +23,6 @@ public enum MovementType
     Release = 4,
     UsageRefund = 5,
     Adjustment = 6,
+    Reward = 7,
+    RewardReversal = 8,
 }

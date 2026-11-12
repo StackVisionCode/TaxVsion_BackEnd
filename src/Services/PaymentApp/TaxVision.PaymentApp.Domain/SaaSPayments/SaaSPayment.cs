@@ -61,6 +61,10 @@ public sealed class SaaSPayment : AggregateRoot
     /// <summary>El PDF del recibo, una vez que Documents lo generó y CloudStorage lo guardó.</summary>
     public Guid? ReceiptFileId { get; private set; }
 
+    /// <summary>Tenant bajo el que CloudStorage guardó el recibo, si no es el del pago (el recibo de un alta lo
+    /// genera Auth bajo la plataforma). Null: el del pago.</summary>
+    public Guid? ReceiptOwnerTenantId { get; private set; }
+
     /// <summary>PayFlow (Fase 8) — id de la Checkout Session hosteada del provider (p.ej.
     /// <c>cs_...</c> de Stripe). Distinto de <see cref="ExternalChargeReference"/>, que guarda
     /// la referencia del PaymentIntent subyacente (lo que el webhook usa para resolver el pago).</summary>
@@ -77,6 +81,11 @@ public sealed class SaaSPayment : AggregateRoot
 
     // Opcional. Null para pagos legacy; el consumer de recibos cae al mapping por PaymentType cuando falta.
     public ChargeConcept? Concept { get; private set; }
+
+    private readonly List<SaaSPaymentLine> _lines = [];
+
+    /// <summary>Una línea por cosa cobrada, cuando el pago cobra varias. Vacío en los pagos de un solo concepto.</summary>
+    public IReadOnlyCollection<SaaSPaymentLine> Lines => _lines;
 
     // Revisión manual: éxito del proveedor que no se pudo aplicar. No cambia Status.
     public DateTime? ReviewRequiredAtUtc { get; private set; }
@@ -101,6 +110,23 @@ public sealed class SaaSPayment : AggregateRoot
     private SaaSPayment() { }
 
     /// <summary>Etiqueta del recibo. Se fija una sola vez, antes de cobrar.</summary>
+    /// <summary>Fija el detalle del cobro antes de cobrar. Tiene que sumar exactamente el importe.</summary>
+    public Result AttachLines(IReadOnlyList<SaaSPaymentLine> lines)
+    {
+        if (Status != PaymentStatus.Pending || _lines.Count > 0)
+            return Result.Failure(
+                new Error("SaaSPayment.LinesAlreadySet", "The lines can only be set once, before the charge.")
+            );
+
+        if (lines.Count == 0 || lines.Sum(line => line.AmountCents) != Amount.AmountCents)
+            return Result.Failure(
+                new Error("SaaSPayment.LinesMismatch", "The lines do not add up to the amount charged.")
+            );
+
+        _lines.AddRange(lines);
+        return Result.Success();
+    }
+
     public Result AttachConcept(ChargeConcept concept)
     {
         if (Status != PaymentStatus.Pending || Concept is not null)
@@ -234,19 +260,24 @@ public sealed class SaaSPayment : AggregateRoot
     /// <c>TenantId = Guid.Empty</c> porque el tenant todavía no existe, y hasta que esto corre es invisible
     /// para su dueño. Idempotente. Molde: <c>Billing.Invoice.RehomeToTenant</c>.
     /// </summary>
-    /// <summary>Cuelga el recibo ya generado. Idempotente: una redelivery no lo cambia.</summary>
-    public Result AttachReceipt(Guid receiptFileId, DateTime nowUtc)
+    /// <summary>Cuelga el recibo ya generado, con el tenant dueño del archivo si no es el del pago. Idempotente:
+    /// una redelivery no lo cambia; el mismo archivo con su dueño corrige un recibo colgado sin él.</summary>
+    public Result AttachReceipt(Guid receiptFileId, DateTime nowUtc, Guid? ownerTenantId = null)
     {
         if (receiptFileId == Guid.Empty)
             return Result.Failure(new Error("SaaSPayment.InvalidReceipt", "A receipt file id is required."));
 
-        if (ReceiptFileId == receiptFileId)
+        if (ReceiptFileId == receiptFileId && ReceiptOwnerTenantId == ownerTenantId)
             return Result.Success();
 
         ReceiptFileId = receiptFileId;
+        ReceiptOwnerTenantId = ownerTenantId;
         UpdatedAtUtc = nowUtc;
         return Result.Success();
     }
+
+    /// <summary>Tenant con el que se pide el recibo a CloudStorage.</summary>
+    public Guid ReceiptOwnerTenant() => ReceiptOwnerTenantId ?? TenantId;
 
     public Result RehomeToTenant(Guid realTenantId, DateTime nowUtc)
     {
@@ -742,6 +773,16 @@ public sealed class SaaSPayment : AggregateRoot
                 ? PaymentStatus.Refunded
                 : PaymentStatus.PartiallyRefunded;
         Touch(actorUserId, nowUtc);
+        // Aviso de integración (Growth revierte el premio de referido; otros consumidores pueden sumarse).
+        AddDomainEvent(
+            new SaaSPaymentRefunded(
+                Snapshot(),
+                refundAmount.AmountCents,
+                totalRefunded + refundAmount.AmountCents,
+                reason,
+                nowUtc
+            )
+        );
         return Result.Success();
     }
 
@@ -906,6 +947,7 @@ public sealed class SaaSPayment : AggregateRoot
         ChargedBackAtUtc = chargedBackAtUtc;
         FailureReason = reason;
         Touch(actorUserId, chargedBackAtUtc);
+        AddDomainEvent(new SaaSPaymentChargedBack(Snapshot(), reason, chargedBackAtUtc));
         return Result.Success();
     }
 
@@ -1050,7 +1092,17 @@ public sealed class SaaSPayment : AggregateRoot
             Breakdown?.Quantity,
             Breakdown?.UnitAmountCents,
             Concept?.Code,
-            Concept?.DisplayName
+            Concept?.DisplayName,
+            _lines.Count == 0
+                ? null
+                :
+                [
+                    .. _lines.Select(line => new SaaSPaymentLineSnapshot(
+                        line.Description,
+                        line.Quantity,
+                        line.UnitAmountCents
+                    )),
+                ]
         );
 
     private void Touch(Guid actorUserId, DateTime nowUtc)

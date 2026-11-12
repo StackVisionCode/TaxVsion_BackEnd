@@ -52,7 +52,11 @@ public static class ReserveRenewalCheckoutHandler
 
         var unattached = await intents.GetUnattachedByTenantAsync(command.TenantId, ct);
         if (unattached is not null)
+        {
+            // Guarda la edición agendada que pudo aplicarse al preparar el cobro.
+            await unitOfWork.SaveChangesAsync(ct);
             return Reserved(unattached);
+        }
 
         var intent = prepared.Value;
         await intents.AddAsync(intent, ct);
@@ -120,10 +124,14 @@ public static class ReserveRenewalCheckoutHandler
         if (plan is null)
             return Result.Failure<SubscriptionRenewalIntent>(new Error("Plan.NotFound", "Plan does not exist."));
 
-        var planVersion = plan.GetPublishedVersion();
+        // D11: si ya venció la edición agendada, se renueva con ella.
+        subscription.ApplyScheduledVersionChangeIfDue(DateTime.UtcNow);
+
+        // D5: se renueva al precio firmado, igual que la renovación automática.
+        var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
         if (planVersion is null)
             return Result.Failure<SubscriptionRenewalIntent>(
-                new Error("Plan.NoPublishedVersion", "Plan has no published version.")
+                new Error("Plan.ContractedVersionNotFound", "The contracted plan edition does not exist.")
             );
 
         var price = PlanPricing.ResolveBaseSubscriptionPrice(planVersion, subscription.BillingCycle);

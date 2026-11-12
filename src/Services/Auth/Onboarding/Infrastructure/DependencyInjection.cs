@@ -52,7 +52,14 @@ public static class DependencyInjection
         // Scoped: cada request toma la conexión del DbContext scoped de Auth. El lock es session-scoped
         // en SQL Server, se libera al Dispose. Fallback InMemory queda en tests via WAF override.
         services.AddScoped<IOnboardingReconcileSerializer, SqlOnboardingReconcileSerializer>();
-        services.AddSingleton<IOtpCodeGenerator, NumericOtpCodeGenerator>();
+        // OTP aleatorio, salvo el atajo SOLO-DEV Onboarding:DevFixedOtpCode (ver DevFixedOtpCodeGenerator: se niega
+        // a activarse con EnforceHostResolution=true). Falla al arrancar si queda mal configurado.
+        services.AddSingleton(
+            DevFixedOtpCodeGenerator.Resolve(
+                configuration[DevFixedOtpCodeGenerator.ConfigKey],
+                configuration.GetValue("TenantDomains:EnforceHostResolution", true)
+            )
+        );
 
         // Un breaker por cliente M2M, ver HttpResiliencePipeline (BuildingBlocks.Infrastructure).
         services.AddSingleton(sp =>

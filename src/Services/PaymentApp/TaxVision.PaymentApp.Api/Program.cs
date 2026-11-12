@@ -215,6 +215,9 @@ builder.Host.UseWolverine(options =>
     // liquidar beneficios de referidos en Growth, pero nunca tuvo ruta registrada -- Wolverine
     // lo descartaba silenciosamente y los descuentos de referidos nunca se liquidaban.
     options.PublishMessage<PaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Reembolso/chargeback del pago: Growth revierte el premio de referido del pago reembolsado.
+    options.PublishMessage<PaymentRefundedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PaymentChargebackChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Pide a Documents el recibo de cualquier cobro confirmado del tenant.
     options.PublishMessage<SaaSPaymentSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
 

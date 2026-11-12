@@ -23,7 +23,6 @@ No se implementan endpoints en esta fase.
 | POST `/internal/codes/reservations/{id}/commit` | `growth.codes.commit` |
 | POST `/internal/codes/reservations/{id}/cancel` | `growth.codes.cancel` |
 | POST `/internal/codes/redemptions/{id}/compensate` | `growth.codes.compensate` |
-| POST `/internal/referrals/qualifications` | `growth.referrals.qualify` |
 | POST `/internal/referrals/rewards/{id}/confirm` | `growth.referrals.reward.confirm` |
 
 ## Errores

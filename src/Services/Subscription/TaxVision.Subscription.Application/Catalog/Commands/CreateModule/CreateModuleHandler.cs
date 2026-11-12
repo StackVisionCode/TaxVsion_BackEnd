@@ -5,6 +5,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Catalog.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Audit;
 using TaxVision.Subscription.Domain.Catalog;
 using Wolverine;
 
@@ -17,6 +18,7 @@ public static class CreateModuleHandler
         IModuleRepository modules,
         IModuleEditSerializer serializer,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
         IMessageBus bus,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -45,6 +47,18 @@ public static class CreateModuleHandler
             return Result.Failure<Guid>(applied.Error);
 
         await modules.AddAsync(module, ct);
+        await CatalogAudit.RecordAsync(
+            audit,
+            CatalogAuditActor.ForUser(command.ActorUserId),
+            "module.created",
+            CatalogAuditViews.Target(module),
+            before: null,
+            CatalogAuditViews.Of(module),
+            reason: null,
+            correlation.CorrelationId,
+            DateTime.UtcNow,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new ModuleCategoryChangedIntegrationEvent

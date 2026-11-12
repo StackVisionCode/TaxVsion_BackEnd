@@ -26,4 +26,5 @@ public enum NotificationResourceType
     ComplianceSettings,
     Campaign,
     UserManagement,
+    Referral,
 }

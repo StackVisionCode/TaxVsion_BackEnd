@@ -4,14 +4,12 @@ using TaxVision.Referrals.Domain.Rewards;
 namespace TaxVision.Referrals.Domain.Programs;
 
 /// <summary>
-/// Snapshot versionable de las reglas comerciales. El default MVP califica únicamente
-/// el primer PaymentApp exitoso, espera 30 días, limita a 10 rewards por referrer y año
-/// calendario y solo solicita un beneficio no monetario a Subscription.
+/// Snapshot versionable de las reglas comerciales. El default califica únicamente el primer
+/// PaymentApp exitoso, espera 30 días, limita a 10 rewards por referrer y año calendario y
+/// premia al REFERIDOR con un porcentaje del plan pagado (<see cref="RewardBasisPoints"/>, con
+/// tope opcional) acreditado en su Wallet (<see cref="ReferralRewardType.WalletCredit"/>).
 ///
-/// El beneficio del referido (RefereeBenefit*) es opcional y aparte del reward del
-/// referrer: si <see cref="RefereeBenefitType"/> es null, el programa se comporta como
-/// antes (solo premia a quien refiere). Si está seteado, <c>CreateReferralAttributionHandler</c>
-/// emite un CodeDefinition de descuento propio para el referido al momento de atribuirse.
+/// Solo se beneficia el que refiere: el referido no recibe ningún descuento ni premio.
 /// </summary>
 public sealed class ReferralProgramPolicy
 {
@@ -19,7 +17,9 @@ public sealed class ReferralProgramPolicy
     public const int DefaultWaitingPeriodDays = 30;
     public const int DefaultMaximumRewardsPerCalendarYear = 10;
     public const string DefaultRewardDefinitionKey = "referrals.tenant-to-tenant.standard";
-    public const int DefaultRefereeBenefitExpirationDays = 30;
+    public const int DefaultRewardBasisPoints = 1_000;
+    public const long DefaultRewardCapCents = 5_000;
+    public const string DefaultRewardCurrency = "USD";
 
     public int AttributionWindowDays { get; private set; }
     public QualifyingPaymentSource PaymentSource { get; private set; }
@@ -30,11 +30,15 @@ public sealed class ReferralProgramPolicy
     public int MaximumRewardsPerReferrerPerCalendarYear { get; private set; }
     public ReferralRewardType RewardType { get; private set; }
     public string RewardDefinitionKey { get; private set; } = default!;
-    public ReferralRefereeBenefitType? RefereeBenefitType { get; private set; }
-    public int? RefereeBenefitPercentageBasisPoints { get; private set; }
-    public long? RefereeBenefitFixedAmountCents { get; private set; }
-    public string? RefereeBenefitCurrency { get; private set; }
-    public int RefereeBenefitExpirationDays { get; private set; }
+
+    /// <summary>Porcentaje (puntos básicos, 10000 = 100 %) del plan pagado que gana el referidor. 0 si el premio no es WalletCredit.</summary>
+    public int RewardBasisPoints { get; private set; }
+
+    /// <summary>Tope del premio por referido en centavos; null = sin tope.</summary>
+    public long? RewardCapCents { get; private set; }
+
+    /// <summary>Moneda del premio (USD: el Wallet es USD-only). Null si el premio no es WalletCredit.</summary>
+    public string? RewardCurrency { get; private set; }
 
     private ReferralProgramPolicy() { }
 
@@ -48,13 +52,11 @@ public sealed class ReferralProgramPolicy
             MinimumPaymentCurrency = null,
             WaitingPeriodDays = DefaultWaitingPeriodDays,
             MaximumRewardsPerReferrerPerCalendarYear = DefaultMaximumRewardsPerCalendarYear,
-            RewardType = ReferralRewardType.SubscriptionFeatureGrant,
+            RewardType = ReferralRewardType.WalletCredit,
             RewardDefinitionKey = DefaultRewardDefinitionKey,
-            RefereeBenefitType = null,
-            RefereeBenefitPercentageBasisPoints = null,
-            RefereeBenefitFixedAmountCents = null,
-            RefereeBenefitCurrency = null,
-            RefereeBenefitExpirationDays = DefaultRefereeBenefitExpirationDays,
+            RewardBasisPoints = DefaultRewardBasisPoints,
+            RewardCapCents = DefaultRewardCapCents,
+            RewardCurrency = DefaultRewardCurrency,
         };
 
     public static Result<ReferralProgramPolicy> CreateTenantToTenant(
@@ -65,11 +67,9 @@ public sealed class ReferralProgramPolicy
         int maximumRewardsPerReferrerPerCalendarYear,
         ReferralRewardType rewardType,
         string rewardDefinitionKey,
-        ReferralRefereeBenefitType? refereeBenefitType = null,
-        int? refereeBenefitPercentageBasisPoints = null,
-        long? refereeBenefitFixedAmountCents = null,
-        string? refereeBenefitCurrency = null,
-        int refereeBenefitExpirationDays = DefaultRefereeBenefitExpirationDays
+        int rewardBasisPoints = 0,
+        long? rewardCapCents = null,
+        string? rewardCurrency = null
     )
     {
         var validation = Validate(
@@ -80,11 +80,9 @@ public sealed class ReferralProgramPolicy
             maximumRewardsPerReferrerPerCalendarYear,
             rewardType,
             rewardDefinitionKey,
-            refereeBenefitType,
-            refereeBenefitPercentageBasisPoints,
-            refereeBenefitFixedAmountCents,
-            refereeBenefitCurrency,
-            refereeBenefitExpirationDays
+            rewardBasisPoints,
+            rewardCapCents,
+            rewardCurrency
         );
         if (validation.IsFailure)
             return Result.Failure<ReferralProgramPolicy>(validation.Error);
@@ -101,11 +99,9 @@ public sealed class ReferralProgramPolicy
                 MaximumRewardsPerReferrerPerCalendarYear = maximumRewardsPerReferrerPerCalendarYear,
                 RewardType = rewardType,
                 RewardDefinitionKey = rewardDefinitionKey.Trim(),
-                RefereeBenefitType = refereeBenefitType,
-                RefereeBenefitPercentageBasisPoints = refereeBenefitPercentageBasisPoints,
-                RefereeBenefitFixedAmountCents = refereeBenefitFixedAmountCents,
-                RefereeBenefitCurrency = NormalizeCurrency(refereeBenefitCurrency),
-                RefereeBenefitExpirationDays = refereeBenefitExpirationDays,
+                RewardBasisPoints = rewardBasisPoints,
+                RewardCapCents = rewardCapCents,
+                RewardCurrency = NormalizeCurrency(rewardCurrency),
             }
         );
     }
@@ -132,11 +128,9 @@ public sealed class ReferralProgramPolicy
             maximumRewardsPerReferrerPerCalendarYear,
             rewardType,
             rewardDefinitionKey,
-            refereeBenefitType: null,
-            refereeBenefitPercentageBasisPoints: null,
-            refereeBenefitFixedAmountCents: null,
-            refereeBenefitCurrency: null,
-            refereeBenefitExpirationDays: DefaultRefereeBenefitExpirationDays
+            rewardBasisPoints: 0,
+            rewardCapCents: null,
+            rewardCurrency: null
         );
         if (validation.IsFailure)
             return Result.Failure<ReferralProgramPolicy>(validation.Error);
@@ -153,11 +147,6 @@ public sealed class ReferralProgramPolicy
                 MaximumRewardsPerReferrerPerCalendarYear = maximumRewardsPerReferrerPerCalendarYear,
                 RewardType = rewardType,
                 RewardDefinitionKey = rewardDefinitionKey.Trim(),
-                RefereeBenefitType = null,
-                RefereeBenefitPercentageBasisPoints = null,
-                RefereeBenefitFixedAmountCents = null,
-                RefereeBenefitCurrency = null,
-                RefereeBenefitExpirationDays = DefaultRefereeBenefitExpirationDays,
             }
         );
     }
@@ -171,6 +160,20 @@ public sealed class ReferralProgramPolicy
             || string.Equals(MinimumPaymentCurrency, currency, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Premio del referidor para <see cref="ReferralRewardType.WalletCredit"/>:
+    /// <c>min(pagado × basisPoints / 10000, tope)</c>, redondeado hacia abajo al centavo. Cero para
+    /// los demás tipos (no monetarios). El monto se congela en el <c>ReferralRewardCase</c>.
+    /// </summary>
+    public long CalculateRewardCents(long pricePaidCents)
+    {
+        if (RewardType != ReferralRewardType.WalletCredit || pricePaidCents <= 0 || RewardBasisPoints <= 0)
+            return 0;
+
+        var reward = pricePaidCents * RewardBasisPoints / 10_000;
+        return RewardCapCents is { } cap && reward > cap ? cap : reward;
+    }
+
     private static Result Validate(
         int attributionWindowDays,
         long minimumPaymentAmountCents,
@@ -179,13 +182,53 @@ public sealed class ReferralProgramPolicy
         int maximumRewardsPerReferrerPerCalendarYear,
         ReferralRewardType rewardType,
         string rewardDefinitionKey,
-        ReferralRefereeBenefitType? refereeBenefitType,
-        int? refereeBenefitPercentageBasisPoints,
-        long? refereeBenefitFixedAmountCents,
-        string? refereeBenefitCurrency,
-        int refereeBenefitExpirationDays
+        int rewardBasisPoints,
+        long? rewardCapCents,
+        string? rewardCurrency
     )
     {
+        if (rewardType == ReferralRewardType.WalletCredit)
+        {
+            if (rewardBasisPoints is < 1 or > 10_000)
+            {
+                return Result.Failure(
+                    new Error(
+                        "ReferralPolicy.InvalidRewardPercentage",
+                        "RewardBasisPoints must be between 1 and 10000 when RewardType is WalletCredit."
+                    )
+                );
+            }
+
+            if (rewardCapCents is <= 0)
+            {
+                return Result.Failure(
+                    new Error(
+                        "ReferralPolicy.InvalidRewardCap",
+                        "RewardCapCents must be greater than zero when supplied."
+                    )
+                );
+            }
+
+            if (string.IsNullOrWhiteSpace(rewardCurrency) || rewardCurrency.Trim().Length != 3)
+            {
+                return Result.Failure(
+                    new Error(
+                        "ReferralPolicy.InvalidRewardCurrency",
+                        "RewardCurrency is required and must be a 3-letter ISO code when RewardType is WalletCredit."
+                    )
+                );
+            }
+        }
+        else if (rewardBasisPoints != 0 || rewardCapCents is not null || rewardCurrency is not null)
+        {
+            return Result.Failure(
+                new Error(
+                    "ReferralPolicy.RewardAmountNotApplicable",
+                    "RewardBasisPoints, RewardCapCents and RewardCurrency only apply when RewardType is WalletCredit."
+                )
+            );
+        }
+
         if (attributionWindowDays is < 1 or > 730)
         {
             return Result.Failure(
@@ -243,67 +286,6 @@ public sealed class ReferralProgramPolicy
                     "RewardDefinitionKey is required and must be 100 characters or fewer."
                 )
             );
-        }
-
-        if (refereeBenefitExpirationDays is < 1 or > 365)
-        {
-            return Result.Failure(
-                new Error(
-                    "ReferralPolicy.InvalidRefereeBenefitExpiration",
-                    "RefereeBenefitExpirationDays must be between 1 and 365."
-                )
-            );
-        }
-
-        if (refereeBenefitType is not null)
-        {
-            if (
-                refereeBenefitType
-                is not (ReferralRefereeBenefitType.Percentage or ReferralRefereeBenefitType.FixedAmount)
-            )
-            {
-                return Result.Failure(
-                    new Error(
-                        "ReferralPolicy.InvalidRefereeBenefitType",
-                        "RefereeBenefitType must be Percentage or FixedAmount."
-                    )
-                );
-            }
-
-            if (refereeBenefitType == ReferralRefereeBenefitType.Percentage)
-            {
-                if (refereeBenefitPercentageBasisPoints is not (>= 1 and <= 10_000))
-                {
-                    return Result.Failure(
-                        new Error(
-                            "ReferralPolicy.InvalidRefereeBenefitPercentage",
-                            "RefereeBenefitPercentageBasisPoints must be between 1 and 10000 when RefereeBenefitType is Percentage."
-                        )
-                    );
-                }
-            }
-            else
-            {
-                if (refereeBenefitFixedAmountCents is not (> 0))
-                {
-                    return Result.Failure(
-                        new Error(
-                            "ReferralPolicy.InvalidRefereeBenefitFixedAmount",
-                            "RefereeBenefitFixedAmountCents must be greater than zero when RefereeBenefitType is FixedAmount."
-                        )
-                    );
-                }
-
-                if (string.IsNullOrWhiteSpace(refereeBenefitCurrency) || refereeBenefitCurrency.Trim().Length != 3)
-                {
-                    return Result.Failure(
-                        new Error(
-                            "ReferralPolicy.InvalidRefereeBenefitCurrency",
-                            "RefereeBenefitCurrency is required and must be a 3-letter ISO code when RefereeBenefitType is FixedAmount."
-                        )
-                    );
-                }
-            }
         }
 
         return Result.Success();

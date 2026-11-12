@@ -121,8 +121,8 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
                 ),
                 new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(
                     new TenantSubscriptionRepository(db),
-                    new FakePlanRepo(null),
-                    new FakeModuleRepo(),
+                    new PlanRepository(db),
+                    new ModuleRepository(db),
                     new FakeAddOnDefinitionRepository(definition),
                     new SubscriptionTenantSettingsRepository(db),
                     new GatedTenantAddOnRepo(new TenantAddOnRepository(db), gate)
@@ -279,6 +279,11 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
             Guid tenantId,
             CancellationToken ct = default
         ) => inner.GetByTenantIdAsync(tenantId, ct);
+
+        public Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdForUpdateAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => inner.GetByTenantIdForUpdateAsync(tenantId, ct);
 
         public async Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default)
         {

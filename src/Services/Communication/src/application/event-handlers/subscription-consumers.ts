@@ -128,8 +128,18 @@ function extractLimitsSnapshot(env: IncomingEnvelope): TenantCommunicationLimits
     transcriptEnabled: bool('communication.transcript_enabled'),
     callsEnabled: bool('communication.calls_enabled'),
     maxCallMinutes: num('communication.max_call_minutes'),
+    revisionNumber: getNumber(env.payload, 'revisionNumber', 'RevisionNumber'),
     updatedAtUtc: new Date(),
   };
+}
+
+function getNumber(src: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    const value = src[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+  }
+  return null;
 }
 
 /**

@@ -301,6 +301,48 @@ public sealed class NotificationTemplateSeedSourceTests
         Assert.True(seed.ContentVersion >= 18);
     }
 
+    // ---------- D11 del plan único: aviso de cambio de condiciones del plan ----------
+
+    [Fact]
+    public void Plan_terms_change_template_says_what_changes_and_when_and_declares_its_variables()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            item => item.EventKey == "subscription.version_change_scheduled.v1"
+        );
+        Assert.Equal("subscription.version_change_scheduled", seed.TemplateKey);
+
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+        Assert.Empty(used.Except(declared));
+
+        var context = new TemplateContext();
+        foreach (
+            var (name, value) in new (string, object)[]
+            {
+                ("first_name", "Carlos"),
+                ("plan_name", "Pro"),
+                ("change_date", "December 15, 2026"),
+                ("change_summary", "price $129.00 → $99.00 per month"),
+                ("manage_url", "https://acme.taxoffix.io/account/manage-subscription"),
+                ("product_name", "TaxOffix"),
+            }
+        )
+            context.SetValue(name, value);
+
+        var subject = Parser.Parse(seed.Subject).Render(context);
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Contains("December 15, 2026", subject);
+        Assert.Contains("price $129.00 → $99.00 per month", html);
+        Assert.Contains("December 15, 2026", html);
+        Assert.Contains("https://acme.taxoffix.io/account/manage-subscription", html);
+        Assert.NotNull(NotificationTemplateSeedSource.VariablesWithPreheader(seed));
+    }
+
     private static NotificationTemplateSeed FailedChargeSeed() =>
         Assert.Single(
             NotificationTemplateSeedSource.All,

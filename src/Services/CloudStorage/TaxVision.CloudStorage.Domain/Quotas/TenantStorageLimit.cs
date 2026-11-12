@@ -9,7 +9,7 @@ public sealed class TenantStorageLimit : TenantEntity
 {
     private TenantStorageLimit() { }
 
-    public string PlanCode { get; private set; } = "starter";
+    public string PlanCode { get; private set; } = string.Empty;
     public long MaxBytes { get; private set; }
     public long UsedBytes { get; private set; }
     public long ReservedBytes { get; private set; }
@@ -18,7 +18,7 @@ public sealed class TenantStorageLimit : TenantEntity
     public long MaxFileSizeBytes { get; private set; }
 
     /// <summary>Grupos de tipos de archivo que vende el plan (<c>storage.file_type_groups</c>), separados por coma.</summary>
-    public string PlanFileTypeGroups { get; private set; } = PlanFileAllowanceDefaults.FileTypeGroups;
+    public string PlanFileTypeGroups { get; private set; } = PlatformFileAllowanceFallback.FileTypeGroups;
 
     /// <summary>La oficina restringe lo que suben sus clientes desde el portal: grupos (null = los del plan).</summary>
     public string? PortalFileTypeGroups { get; private set; }
@@ -75,7 +75,7 @@ public sealed class TenantStorageLimit : TenantEntity
             PlanCode = planCode,
             MaxBytes = maxBytes,
             MaxFileSizeBytes = maxFileSizeBytes,
-            PlanFileTypeGroups = fileTypeGroups ?? PlanFileAllowanceDefaults.FileTypeGroups,
+            PlanFileTypeGroups = fileTypeGroups ?? PlatformFileAllowanceFallback.FileTypeGroups,
             AllowPublicShareLinks = true,
             AllowLinkOnlyExternalShares = true,
             MaxShareLifetimeDays = 30,
@@ -131,7 +131,7 @@ public sealed class TenantStorageLimit : TenantEntity
         PlanCode = planCode;
         MaxBytes = maxBytes;
         MaxFileSizeBytes = maxFileSizeBytes;
-        PlanFileTypeGroups = fileTypeGroups ?? PlanFileAllowanceDefaults.FileTypeGroups;
+        PlanFileTypeGroups = fileTypeGroups ?? PlatformFileAllowanceFallback.FileTypeGroups;
         IsSuspended = false;
     }
 
@@ -154,11 +154,11 @@ public sealed class TenantStorageLimit : TenantEntity
     }
 
     public PlanFileAllowance PlanAllowance() =>
-        new(PlanFileAllowanceDefaults.ParseGroups(PlanFileTypeGroups), MaxFileSizeBytes);
+        new(PlatformFileAllowanceFallback.ParseGroups(PlanFileTypeGroups), MaxFileSizeBytes);
 
     public PortalUploadRestriction PortalRestriction() =>
         new(
-            PortalFileTypeGroups is null ? null : PlanFileAllowanceDefaults.ParseGroups(PortalFileTypeGroups),
+            PortalFileTypeGroups is null ? null : PlatformFileAllowanceFallback.ParseGroups(PortalFileTypeGroups),
             PortalMaxFileBytes
         );
 
@@ -177,7 +177,7 @@ public sealed class TenantStorageLimit : TenantEntity
         }
         else
         {
-            var planGroups = PlanFileAllowanceDefaults.ParseGroups(PlanFileTypeGroups);
+            var planGroups = PlatformFileAllowanceFallback.ParseGroups(PlanFileTypeGroups);
             var groups = fileTypeGroups.Select(group => group.Trim().ToLowerInvariant()).Distinct().ToList();
             if (groups.Count == 0 || groups.Any(group => !planGroups.Contains(group)))
                 return Result.Failure(QuotaErrors.InvalidPortalUploadRestriction);

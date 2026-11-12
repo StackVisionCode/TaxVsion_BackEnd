@@ -31,6 +31,11 @@ public sealed class TenantSubscription : AggregateRoot
     public DateTime CurrentPeriodEndUtc { get; private set; }
     public DateTime? NextRenewalAtUtc { get; private set; }
     public DateTime? TrialEndsAtUtc { get; private set; }
+
+    /// <summary>D11: edición a la que pasa en su primera renovación desde esta fecha (migración agendada).</summary>
+    public Guid? ScheduledVersionId { get; private set; }
+    public DateTime? ScheduledVersionAtUtc { get; private set; }
+    public Guid? ScheduledByMigrationId { get; private set; }
     public DateTime? CancelledAtUtc { get; private set; }
     public DateTime? SuspendedAtUtc { get; private set; }
     public DateTime? ExpiredAtUtc { get; private set; }
@@ -235,13 +240,230 @@ public sealed class TenantSubscription : AggregateRoot
         // Cambiar de plan implica que el usuario se queda: deshace una cancelación agendada antes.
         ClearScheduledCancellation();
 
+        var versionChanged = PlanId != newPlan.Id || PlanVersionId != newPlanVersion.Id;
         PlanId = newPlan.Id;
         PlanVersionId = newPlanVersion.Id;
+        // Un cambio de plan o edición pedido por la oficina deja sin efecto la migración agendada.
+        if (versionChanged)
+            ClearScheduledVersionChange();
         PlanCode = newPlan.Code.Value;
         if (newBillingCycle is not null)
             BillingCycle = newBillingCycle.Value;
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// R1: pasa la oficina a otra edición de su MISMO plan con los mismos términos comerciales. No cambia precio,
+    /// asientos, almacenamiento ni invitaciones; solo la ancla a una edición completa (módulos y claves vigentes).
+    /// Idempotente.
+    /// </summary>
+    public Result RebaselineVersion(
+        SubscriptionPlan plan,
+        Guid targetVersionId,
+        string reason,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        var target = plan.Id == PlanId ? plan.Versions.FirstOrDefault(v => v.Id == targetVersionId) : null;
+        if (target is null)
+            return Result.Failure(
+                new Error("Subscription.RebaselineVersionNotInPlan", "The edition does not belong to this plan.")
+            );
+
+        if (target.Id == PlanVersionId)
+            return Result.Success();
+
+        var current = plan.Versions.FirstOrDefault(v => v.Id == PlanVersionId);
+        if (current is null)
+            return Result.Failure(
+                new Error("Subscription.ContractedVersionNotFound", "The contracted plan edition does not exist.")
+            );
+
+        if (CommercialTerms.Of(current) != CommercialTerms.Of(target))
+            return Result.Failure(
+                new Error(
+                    "Subscription.RebaselineTermsDiffer",
+                    "The editions have different commercial terms; moving the office needs an explicit migration."
+                )
+            );
+
+        var from = PlanVersionId;
+        PlanVersionId = target.Id;
+        Touch(actorUserId, nowUtc);
+        AddDomainEvent(
+            new SubscriptionVersionRebaselinedDomainEvent(
+                TenantId,
+                Id,
+                PlanId,
+                from,
+                target.Id,
+                reason,
+                actorUserId,
+                nowUtc
+            )
+        );
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// D11: agenda el paso a otra edición del MISMO plan para la primera renovación desde <paramref name="effectiveAtUtc"/>.
+    /// No cambia nada hoy. Idempotente para la misma migración; otra migración no puede pisarla.
+    /// </summary>
+    public Result ScheduleVersionChange(
+        SubscriptionPlan plan,
+        Guid toVersionId,
+        DateTime effectiveAtUtc,
+        Guid migrationId,
+        string changeSummary,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        var target = VersionOfOwnPlan(plan, toVersionId);
+        if (target.IsFailure)
+            return target;
+
+        if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active, SubscriptionStatus.PastDue))
+            return Result.Failure(
+                new Error("Subscription.InvalidTransition", $"Cannot schedule an edition change from {Status}.")
+            );
+
+        if (ScheduledByMigrationId == migrationId && ScheduledVersionId == toVersionId)
+            return Result.Success();
+
+        if (ScheduledVersionId is not null)
+            return Result.Failure(
+                new Error("Subscription.VersionChangeAlreadyScheduled", "Another edition change is already scheduled.")
+            );
+
+        if (PlanVersionId == toVersionId)
+            return Result.Success();
+
+        if (HasPendingPlanChange())
+            return Result.Failure(
+                new Error("Subscription.HasPendingPlanChange", "The office has a plan change in progress.")
+            );
+
+        ScheduledVersionId = toVersionId;
+        ScheduledVersionAtUtc = effectiveAtUtc;
+        ScheduledByMigrationId = migrationId;
+        Touch(actorUserId, nowUtc);
+        AddDomainEvent(
+            new SubscriptionVersionChangeScheduledDomainEvent(
+                TenantId,
+                Id,
+                PlanId,
+                PlanCode,
+                PlanVersionId,
+                toVersionId,
+                effectiveAtUtc,
+                migrationId,
+                changeSummary,
+                Status,
+                actorUserId,
+                nowUtc
+            )
+        );
+        return Result.Success();
+    }
+
+    /// <summary>Si el cambio agendado ya venció, lo aplica. Lo llaman la renovación y el cobro de renovación.</summary>
+    public Result<bool> ApplyScheduledVersionChangeIfDue(DateTime nowUtc)
+    {
+        if (ScheduledVersionId is not { } toVersionId || ScheduledVersionAtUtc is not { } at || nowUtc < at)
+            return Result.Success(false);
+
+        var from = PlanVersionId;
+        var migrationId = ScheduledByMigrationId;
+        PlanVersionId = toVersionId;
+        ClearScheduledVersionChange();
+        Touch(Guid.Empty, nowUtc);
+        AddDomainEvent(
+            new SubscriptionVersionChangedDomainEvent(TenantId, Id, PlanId, from, toVersionId, migrationId, nowUtc)
+        );
+        return Result.Success(true);
+    }
+
+    /// <summary>D11: pasa ya a otra edición del mismo plan. Solo para migraciones que son pura mejora.</summary>
+    public Result ApplyVersionChangeNow(
+        SubscriptionPlan plan,
+        Guid toVersionId,
+        Guid migrationId,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        var target = VersionOfOwnPlan(plan, toVersionId);
+        if (target.IsFailure)
+            return target;
+
+        if (IsOneOf(Status, SubscriptionStatus.Cancelled, SubscriptionStatus.Expired))
+            return Result.Failure(
+                new Error("Subscription.InvalidTransition", $"Cannot change the edition from {Status}.")
+            );
+
+        if (PlanVersionId == toVersionId)
+            return Result.Success();
+
+        if (HasPendingPlanChange())
+            return Result.Failure(
+                new Error("Subscription.HasPendingPlanChange", "The office has a plan change in progress.")
+            );
+
+        var from = PlanVersionId;
+        PlanVersionId = toVersionId;
+        ClearScheduledVersionChange();
+        Touch(actorUserId, nowUtc);
+        AddDomainEvent(
+            new SubscriptionVersionChangedDomainEvent(TenantId, Id, PlanId, from, toVersionId, migrationId, nowUtc)
+        );
+        return Result.Success();
+    }
+
+    /// <summary>Deshace el cambio agendado por esa migración (si todavía no se aplicó).</summary>
+    public Result CancelScheduledVersionChange(Guid migrationId, Guid actorUserId, DateTime nowUtc)
+    {
+        if (ScheduledByMigrationId != migrationId)
+            return Result.Success();
+
+        ClearScheduledVersionChange();
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    private Result VersionOfOwnPlan(SubscriptionPlan plan, Guid versionId) =>
+        plan.Id == PlanId && plan.Versions.Any(version => version.Id == versionId)
+            ? Result.Success()
+            : Result.Failure(
+                new Error("Subscription.VersionNotInPlan", "The edition does not belong to the office's plan.")
+            );
+
+    /// <summary>
+    /// La renovación de un add-on o asiento espera: mientras un cambio espera su cobro (el pago lo cambia de ciclo), o
+    /// si hay un paso a otro ciclo agendado que llega antes que el fin del extra (la base lo aplica primero).
+    /// </summary>
+    public bool HoldsExtraRenewals(DateTime extraPeriodEndUtc) =>
+        _planChangeRequests.Any(request => request.Status == PlanChangeRequestStatus.AwaitingPayment)
+        || (
+            FindScheduledDowngrade() is { ToBillingCycle: { } cycle }
+            && cycle != BillingCycle
+            && extraPeriodEndUtc >= CurrentPeriodEndUtc
+        );
+
+    /// <summary>Hay un downgrade agendado o un upgrade esperando su cobro.</summary>
+    public bool HasPlanChangeInProgress => HasPendingPlanChange();
+
+    private bool HasPendingPlanChange() =>
+        _pendingDowngrades.Any(downgrade => downgrade.Status == PendingDowngradeStatus.Scheduled)
+        || _planChangeRequests.Any(request => request.Status == PlanChangeRequestStatus.AwaitingPayment);
+
+    private void ClearScheduledVersionChange()
+    {
+        ScheduledVersionId = null;
+        ScheduledVersionAtUtc = null;
+        ScheduledByMigrationId = null;
     }
 
     private void ClearScheduledCancellation()
@@ -274,7 +496,8 @@ public sealed class TenantSubscription : AggregateRoot
         string paymentIdempotencyKey,
         Guid actorUserId,
         DateTime nowUtc,
-        bool usesHostedCheckout = false
+        bool usesHostedCheckout = false,
+        IReadOnlyList<PlanChangeLine>? lines = null
     )
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
@@ -326,6 +549,13 @@ public sealed class TenantSubscription : AggregateRoot
         if (requestResult.IsFailure)
             return Result.Failure(requestResult.Error);
 
+        if (lines is not null)
+        {
+            var attached = requestResult.Value.AttachLines(lines);
+            if (attached.IsFailure)
+                return attached;
+        }
+
         requestResult.Value.RememberReplaced(
             replacedDowngradeId,
             replacedCancellationAtUtc,
@@ -352,6 +582,7 @@ public sealed class TenantSubscription : AggregateRoot
         if (request is null)
             return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
 
+        var previousCycle = BillingCycle;
         var switchResult = ChangePlan(toPlan, toPlanVersion, request.ToBillingCycle, actorUserId, nowUtc);
         if (switchResult.IsFailure)
             return switchResult;
@@ -360,6 +591,23 @@ public sealed class TenantSubscription : AggregateRoot
         CurrentPeriodStartUtc = nowUtc;
         CurrentPeriodEndUtc = effectiveCycle.CalculateNext(nowUtc);
         NextRenewalAtUtc = CurrentPeriodEndUtc;
+
+        if (effectiveCycle != previousCycle)
+            AddDomainEvent(
+                new SubscriptionBillingCycleChangedDomainEvent(
+                    TenantId,
+                    Id,
+                    PlanCode,
+                    effectiveCycle,
+                    request.ChargeAmountCents,
+                    request.ChargeCurrency,
+                    nowUtc,
+                    CurrentPeriodEndUtc,
+                    Status,
+                    actorUserId,
+                    nowUtc
+                )
+            );
 
         // Quien pagó su plan ya no está de prueba. Sin esto la suscripción seguía Trialing con
         // TrialEndsAtUtc puesta y el job de pruebas podía expirar una suscripción pagada.
@@ -528,6 +776,24 @@ public sealed class TenantSubscription : AggregateRoot
 
         _pendingDowngrades.Add(requestResult.Value);
         Touch(actorUserId, nowUtc);
+
+        if (cycleChanged)
+            AddDomainEvent(
+                new SubscriptionBillingCycleChangedDomainEvent(
+                    TenantId,
+                    Id,
+                    PlanCode,
+                    newBillingCycle!.Value,
+                    ChargedAmountCents: null,
+                    Currency: null,
+                    CurrentPeriodEndUtc,
+                    CurrentPeriodEndUtc,
+                    Status,
+                    actorUserId,
+                    nowUtc
+                )
+            );
+
         return Result.Success();
     }
 
@@ -691,8 +957,11 @@ public sealed class TenantSubscription : AggregateRoot
         return Result.Success();
     }
 
-    /// <summary>Solo una suscripción en prueba o activa compra add-ons o asientos.</summary>
-    public bool AcceptsPurchases => IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active);
+    /// <summary>Solo una suscripción en prueba o activa compra add-ons o asientos, y no mientras un cambio espera su
+    /// cobro: lo comprado entonces quedaría fuera de lo cobrado.</summary>
+    public bool AcceptsPurchases =>
+        IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active)
+        && !_planChangeRequests.Any(request => request.Status == PlanChangeRequestStatus.AwaitingPayment);
 
     /// <summary>Compra directa de add-ons o asientos: toca la fila para que su RowVersion serialice dos
     /// compras simultáneas del mismo tenant (la segunda choca al guardar).</summary>

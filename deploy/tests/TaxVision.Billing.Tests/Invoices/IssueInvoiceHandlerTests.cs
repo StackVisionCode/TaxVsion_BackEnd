@@ -121,12 +121,6 @@ public sealed class IssueInvoiceHandlerTests
             Guid? assignedToUserId = null
         ) => Task.FromResult<Invoice?>(invoice);
 
-        public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
-
-        public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
-            Task.FromResult<Invoice?>(null);
-
         public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
             Guid tenantId,
             int take,

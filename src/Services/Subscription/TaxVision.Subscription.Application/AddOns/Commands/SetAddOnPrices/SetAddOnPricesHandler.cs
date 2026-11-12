@@ -1,9 +1,12 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.AddOns;
+using TaxVision.Subscription.Application.Catalog.Audit;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Catalog;
 using Wolverine;
 
 namespace TaxVision.Subscription.Application.AddOns.Commands.SetAddOnPrices;
@@ -14,6 +17,8 @@ public static class SetAddOnPricesHandler
         SetAddOnPricesCommand command,
         IAddOnDefinitionRepository addOnDefinitions,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
+        ICorrelationContext correlation,
         IMessageBus bus,
         CancellationToken ct
     )
@@ -27,6 +32,7 @@ public static class SetAddOnPricesHandler
                 new Error("Module.ManagedByCatalog", "Module add-on prices are managed by the module catalog.")
             );
 
+        var before = CatalogAuditViews.Of(definition);
         var tiers = AddOnPriceTierFactory.Create(definition.Id, command.MonthlyUsd, command.YearlyUsd);
         if (tiers.IsFailure)
             return Result.Failure(tiers.Error);
@@ -35,6 +41,18 @@ public static class SetAddOnPricesHandler
         if (replaced.IsFailure)
             return replaced;
 
+        await CatalogAudit.RecordIfChangedAsync(
+            audit,
+            CatalogAuditActor.ForUser(command.ActorUserId),
+            "addon.prices",
+            CatalogAuditViews.Target(definition),
+            before,
+            CatalogAuditViews.Of(definition),
+            reason: null,
+            correlation.CorrelationId,
+            DateTime.UtcNow,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new CatalogChangedIntegrationEvent
@@ -42,7 +60,7 @@ public static class SetAddOnPricesHandler
                 ChangeKind = "addon.prices",
                 EntityId = definition.Id,
                 EntityCode = definition.Code.Value,
-                CorrelationId = string.Empty,
+                CorrelationId = correlation.CorrelationId,
             }
         );
         return Result.Success();

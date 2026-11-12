@@ -65,6 +65,34 @@ public sealed class Wallet : AggregateRoot
     public Result<LedgerEntry> Credit(WalletMoney amount, string opKey, Guid? referenceId = null) =>
         Apply(MovementType.TopUp, deltaPosted: amount.Micros, deltaHeld: 0, amount, opKey, referenceId);
 
+    /// <summary>
+    /// Reward (+a, 0): acredita un premio. Igual que <see cref="Credit"/> pero con movimiento propio para que el
+    /// ledger distinga el dinero que entra por un pago (TopUp) del que entra por un premio. Permitido aun en
+    /// <see cref="WalletStatus.Frozen"/>: acreditar nunca saca dinero.
+    /// </summary>
+    public Result<LedgerEntry> CreditReward(WalletMoney amount, string opKey, Guid? referenceId = null) =>
+        Apply(MovementType.Reward, deltaPosted: amount.Micros, deltaHeld: 0, amount, opKey, referenceId);
+
+    /// <summary>
+    /// RewardReversal (−a, 0): revierte un premio ya acreditado (reembolso/contracargo dentro de la ventana). Solo
+    /// procede si hay saldo DISPONIBLE (no retenido) que cubra el monto: el monedero nunca queda por debajo de lo
+    /// retenido ni en negativo; si no alcanza, el consumidor lo reintenta o lo manda a revisión.
+    /// </summary>
+    public Result<LedgerEntry> ReverseReward(WalletMoney amount, string opKey, Guid? referenceId = null)
+    {
+        if (amount.Currency == Currency && amount.Micros > AvailableMicros)
+            return Result.Failure<LedgerEntry>(WalletErrors.InsufficientFunds);
+
+        return Apply(
+            MovementType.RewardReversal,
+            deltaPosted: -amount.Micros,
+            deltaHeld: 0,
+            amount,
+            opKey,
+            referenceId
+        );
+    }
+
     /// <summary>Reserve (0, +a): aparta disponible. Requiere <see cref="AvailableMicros"/> ≥ a y wallet no congelada.</summary>
     public Result<LedgerEntry> Reserve(WalletMoney amount, string opKey, Guid? referenceId = null)
     {

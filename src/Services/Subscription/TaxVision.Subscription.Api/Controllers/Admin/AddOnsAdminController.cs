@@ -17,7 +17,7 @@ namespace TaxVision.Subscription.Api.Controllers.Admin;
 [ApiController]
 [Route("admin/subscription/addons")]
 [Authorize]
-[HasPermission(SubscriptionPermissions.AdminCrossTenant)]
+[HasPermission(SubscriptionPermissions.CatalogManage)]
 [AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class AddOnsAdminController(IMessageBus bus) : ControllerBase
 {

@@ -13,10 +13,10 @@ public static class GetPlansHandler
         CancellationToken ct
     )
     {
-        var published = await plans.GetPublishedAsync(ct);
+        var onSale = await plans.GetOnSaleAsync(ct);
 
-        var response = new List<PlanResponse>(published.Count);
-        foreach (var plan in published)
+        var response = new List<PlanResponse>(onSale.Count);
+        foreach (var plan in onSale)
         {
             var mapped = MapToResponse(plan);
             if (mapped is not null)
@@ -44,7 +44,9 @@ public static class GetPlansHandler
             PlanVersionEntitlements.GetInt(version, "seats.max", fallback: 0),
             PlanVersionEntitlements.GetInt(version, "invitations.max_pending", fallback: 0),
             PlanVersionEntitlements.GetLong(version, "storage.max_bytes", fallback: 0),
-            PlanVersionEntitlements.GetEnabledModules(version)
+            PlanVersionEntitlements.GetEnabledModules(version),
+            plan.SalesRank.Value,
+            plan.IsFeatured
         );
     }
 }
