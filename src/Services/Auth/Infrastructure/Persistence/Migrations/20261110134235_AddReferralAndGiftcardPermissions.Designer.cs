@@ -2879,7 +2879,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000220"),
+                            Id = new Guid("a1000000-0000-0000-0000-000000000227"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.program.read",
                             Description = "View the referral program terms",
@@ -2907,7 +2907,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000218"),
+                            Id = new Guid("a1000000-0000-0000-0000-000000000226"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.code.manage",
                             Description = "Generate and regenerate the office's referral code",

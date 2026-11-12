@@ -1798,7 +1798,7 @@ public static class PermissionCatalog
             false
         ),
         new(
-            new Guid("a1000000-0000-0000-0000-000000000220"),
+            new Guid("a1000000-0000-0000-0000-000000000227"),
             GrowthReferralsProgramRead,
             "referrals",
             "View the referral program terms",
@@ -1816,7 +1816,7 @@ public static class PermissionCatalog
         new(
             // Generar o regenerar el código propio. Por defecto solo Tenant Admin (el Employee no lo recibe en su
             // bundle explícito); al generar uno nuevo el anterior queda revocado. Lo exige POST codes/regenerate.
-            new Guid("a1000000-0000-0000-0000-000000000218"),
+            new Guid("a1000000-0000-0000-0000-000000000226"),
             GrowthReferralsCodeManage,
             "referrals",
             "Generate and regenerate the office's referral code",

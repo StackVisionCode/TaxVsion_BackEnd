@@ -15,6 +15,8 @@ public static class WalletCreditRequestEvents
         new()
         {
             TenantId = request.BeneficiaryTenantId,
+            // El caso de premio une la solicitud, el abono en el Wallet y su respuesta.
+            CorrelationId = request.RewardCaseId.ToString("N"),
             ReferenceType = WalletCreditRequest.ReferenceType,
             ReferenceId = request.RewardCaseId,
             AmountMicros = request.AmountCents * MicrosPerCent,

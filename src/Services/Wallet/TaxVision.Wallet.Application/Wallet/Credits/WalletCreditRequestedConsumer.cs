@@ -56,6 +56,7 @@ public static class WalletCreditRequestedConsumer
         {
             // El resultado viaja con el tenant beneficiario, igual que la solicitud.
             TenantId = evt.TenantId,
+            CorrelationId = evt.CorrelationId,
             ReferenceType = evt.ReferenceType,
             ReferenceId = evt.ReferenceId,
             Reverse = evt.Reverse,

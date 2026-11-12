@@ -1,8 +1,8 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
-using BuildingBlocks.Tenancy;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
@@ -99,7 +99,7 @@ public static class StartOnboardingCheckoutHandler
 
         // El código de referido NO es un descuento: solo identifica quién recomendó. Registra la atribución en Growth
         // (best-effort: un fallo no bloquea el alta; el referido paga igual el precio completo) y la engancha al alta.
-        await DeclareReferralAsync(onboarding, command, bus, ct);
+        await DeclareReferralAsync(onboarding, command, bus, correlation, ct);
 
         var codes = BuildCodeInputs(command);
         if (codes.Count > 0 && onboarding.CodeReservations.Count == 0)
@@ -265,6 +265,7 @@ public static class StartOnboardingCheckoutHandler
         TenantOnboarding onboarding,
         StartOnboardingCheckoutCommand command,
         IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -276,6 +277,10 @@ public static class StartOnboardingCheckoutHandler
             new OnboardingReferralDeclaredIntegrationEvent
             {
                 TenantId = PlatformTenant.Id,
+                // Sin correlación de la petición, el alta hace de traza (igual que el carril $0).
+                CorrelationId = string.IsNullOrWhiteSpace(correlation.CorrelationId)
+                    ? onboarding.Id.ToString("N")
+                    : correlation.CorrelationId,
                 OnboardingId = onboarding.Id,
                 ReferralCode = command.ReferralCode.Trim(),
                 Channel = string.IsNullOrWhiteSpace(command.ReferralChannel) ? null : command.ReferralChannel.Trim(),

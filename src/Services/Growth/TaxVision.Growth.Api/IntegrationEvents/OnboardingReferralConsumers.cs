@@ -50,7 +50,10 @@ public static class OnboardingReferralDeclaredConsumer
         CancellationToken ct
     )
     {
-        var program = await bus.InvokeAsync<Result<ReferralProgramTermsResult>>(new GetActiveReferralProgramQuery(), ct);
+        var program = await bus.InvokeAsync<Result<ReferralProgramTermsResult>>(
+            new GetActiveReferralProgramQuery(),
+            ct
+        );
         if (program.IsFailure)
         {
             logger.LogWarning(
@@ -99,6 +102,7 @@ public static class OnboardingReferralDeclaredConsumer
                 new ReferralAttributedIntegrationEvent
                 {
                     TenantId = attributed.Value.ReferrerTenantId,
+                    CorrelationId = message.CorrelationId,
                     AggregateId = attributed.Value.AttributionId,
                     AttributionId = attributed.Value.AttributionId,
                     ReferrerUserId = attributed.Value.ReferrerUserId,

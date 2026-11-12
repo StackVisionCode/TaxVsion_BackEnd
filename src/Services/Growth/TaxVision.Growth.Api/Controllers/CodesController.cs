@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Messaging.GrowthIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Identity;
@@ -7,13 +8,12 @@ using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Codes.Application.Definitions.ActivateCode;
+using TaxVision.Codes.Application.Definitions.Admin;
 using TaxVision.Codes.Application.Definitions.Common;
 using TaxVision.Codes.Application.Definitions.CreateCodeDefinition;
-using BuildingBlocks.Messaging.GrowthIntegrationEvents;
-using TaxVision.Codes.Application.Definitions.Admin;
-using TaxVision.Codes.Application.Definitions.SendGiftcard;
 using TaxVision.Codes.Application.Definitions.GetCodeDetails;
 using TaxVision.Codes.Application.Definitions.RevokeCode;
+using TaxVision.Codes.Application.Definitions.SendGiftcard;
 using TaxVision.Codes.Application.Reservations.LateCommitReviews;
 using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Growth.Api.Common;
@@ -40,7 +40,8 @@ namespace TaxVision.Growth.Api.Controllers;
 public sealed class CodesController(
     IMessageBus bus,
     BuildingBlocks.Web.ActorTypeAuthorization.IUserPermissionsSource permissionsSource,
-    IConfiguration configuration
+    IConfiguration configuration,
+    BuildingBlocks.Common.ICorrelationContext correlation
 ) : ControllerBase
 {
     public sealed record CreateCodeRequest(
@@ -186,6 +187,7 @@ public sealed class CodesController(
             new GiftcardShareRequestedIntegrationEvent
             {
                 TenantId = PlatformTenant.Id,
+                CorrelationId = correlation.CorrelationId,
                 AggregateId = codeDefinitionId,
                 RecipientEmail = value.RecipientEmail,
                 RecipientName = value.RecipientName,

@@ -50,13 +50,13 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "GatedModule", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "IsReserved", "MinPlanTier", "Module", "PlatformOnly" },
+                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "GatedModule", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "IsReserved", "Module", "PlatformOnly" },
                 values: new object[,]
                 {
-                    { new Guid("a1000000-0000-0000-0000-000000000218"), "TenantEmployee,TenantAdmin,PlatformAdmin", "referrals.code.manage", "Generate and regenerate the office's referral code", null, true, false, false, false, 0, "referrals", false },
-                    { new Guid("a1000000-0000-0000-0000-000000000220"), "TenantEmployee,TenantAdmin,PlatformAdmin", "referrals.program.read", "View the referral program terms", null, true, false, false, false, 0, "referrals", false },
-                    { new Guid("a1000000-0000-0000-0000-000000000221"), "TenantEmployee,TenantAdmin,PlatformAdmin", "referrals.reward.read", "View the office's referrals, share history and referral rewards", null, true, false, false, false, 0, "referrals", false },
-                    { new Guid("a1000000-0000-0000-0000-000000000222"), "PlatformAdmin", "referrals.program.manage", "Create, version, activate and suspend the referral program (platform only)", null, false, false, false, false, 0, "referrals", true }
+                    { new Guid("a1000000-0000-0000-0000-000000000226"), "TenantEmployee,TenantAdmin,PlatformAdmin", "referrals.code.manage", "Generate and regenerate the office's referral code", null, true, false, false, false, "referrals", false },
+                    { new Guid("a1000000-0000-0000-0000-000000000227"), "TenantEmployee,TenantAdmin,PlatformAdmin", "referrals.program.read", "View the referral program terms", null, true, false, false, false, "referrals", false },
+                    { new Guid("a1000000-0000-0000-0000-000000000221"), "TenantEmployee,TenantAdmin,PlatformAdmin", "referrals.reward.read", "View the office's referrals, share history and referral rewards", null, true, false, false, false, "referrals", false },
+                    { new Guid("a1000000-0000-0000-0000-000000000222"), "PlatformAdmin", "referrals.program.manage", "Create, version, activate and suspend the referral program (platform only)", null, false, false, false, false, "referrals", true }
                 });
         }
 
@@ -66,12 +66,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000218"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000226"));
 
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000220"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000227"));
 
             migrationBuilder.DeleteData(
                 table: "Permissions",

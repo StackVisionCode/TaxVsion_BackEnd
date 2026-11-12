@@ -13,8 +13,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "GatedModule", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "IsReserved", "MinPlanTier", "Module", "PlatformOnly" },
-                values: new object[] { new Guid("a1000000-0000-0000-0000-000000000223"), "PlatformAdmin", "codes.redemption.read", "View who redeemed a giftcard and the discount applied (platform only)", null, false, false, false, false, 0, "codes", true });
+                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "GatedModule", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "IsReserved", "Module", "PlatformOnly" },
+                values: new object[] { new Guid("a1000000-0000-0000-0000-000000000223"), "PlatformAdmin", "codes.redemption.read", "View who redeemed a giftcard and the discount applied (platform only)", null, false, false, false, false, "codes", true });
         }
 
         /// <inheritdoc />
