@@ -110,6 +110,37 @@ public sealed class BillingAlertConsumersTests
         Assert.Empty(harness.Publisher.Published);
     }
 
+    // D11 del plan único: la campana dice qué cambia y desde cuándo.
+    [Fact]
+    public async Task A_scheduled_plan_terms_change_shows_the_date_and_summary_in_the_bell()
+    {
+        var harness = new NotificationDispatcherHarness();
+
+        await SubscriptionLifecycleInAppConsumer.Handle(
+            new TenantSubscriptionEmailRequestedIntegrationEvent
+            {
+                TenantId = TenantId,
+                Email = "owner@example.com",
+                FirstName = "Owner",
+                Status = "Active",
+                Reason = "VersionChangeScheduled",
+                RenewUrl = "https://office.example.com",
+                VersionChangeEffectiveAtUtc = new DateTime(2026, 12, 15, 0, 0, 0, DateTimeKind.Utc),
+                VersionChangeSummary = "price $129.00 → $99.00 per month",
+                MigrationId = Guid.NewGuid(),
+            },
+            harness.Dispatcher,
+            new AudienceResolver(Guid.NewGuid()),
+            new TestCorrelationContext(),
+            CancellationToken.None
+        );
+
+        var evt = Assert.IsType<InAppNotificationRequestedIntegrationEvent>(Assert.Single(harness.Publisher.Published));
+        Assert.Equal("Your plan terms will change", evt.FallbackTitle);
+        Assert.Contains("December 15, 2026", evt.FallbackBody);
+        Assert.Contains("price $129.00 → $99.00 per month", evt.FallbackBody);
+    }
+
     [Theory]
     [InlineData(false, "Payment attempt failed", "We'll try again on October 23.")]
     [InlineData(true, "Payment failed — action required", "Complete the payment in Manage subscription")]

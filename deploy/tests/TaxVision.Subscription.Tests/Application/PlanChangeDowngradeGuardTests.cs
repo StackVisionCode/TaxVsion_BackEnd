@@ -357,6 +357,7 @@ public sealed class PlanChangeDowngradeGuardTests
         PlanTestData.EnsurePublishableFeature(version);
         plan.AddVersion(version, Guid.Empty, nowUtc);
         plan.PublishVersion(version.Id, nowUtc, Guid.Empty, nowUtc);
+        plan.PutOnSale(Guid.Empty, nowUtc);
         return plan;
     }
 
@@ -365,6 +366,9 @@ public sealed class PlanChangeDowngradeGuardTests
     {
         public Task<IReadOnlyList<SubscriptionPlan>> GetPublishedAsync(CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<SubscriptionPlan>>(plans);
+
+        public Task<IReadOnlyList<SubscriptionPlan>> GetOnSaleAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<SubscriptionPlan>>(plans.Where(plan => plan.IsOnSale).ToList());
 
         public Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default) =>
             Task.FromResult(plans.FirstOrDefault(plan => plan.Code.Value == code));

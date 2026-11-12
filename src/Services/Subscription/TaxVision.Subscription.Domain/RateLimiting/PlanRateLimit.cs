@@ -35,12 +35,10 @@ public sealed class PlanRateLimit : BaseEntity
         int? hardOverridePerMinute = null
     )
     {
-        if (multiplierOverride <= 0)
-        {
-            return Result.Failure<PlanRateLimit>(
-                new Error("PlanRateLimit.InvalidMultiplier", "Multiplier override must be greater than zero.")
-            );
-        }
+        // D12: nunca por debajo del cupo base.
+        var multiplier = RateLimitMultiplier.Create(multiplierOverride);
+        if (multiplier.IsFailure)
+            return Result.Failure<PlanRateLimit>(multiplier.Error);
 
         if (hardOverridePerMinute is <= 0)
         {
@@ -65,10 +63,9 @@ public sealed class PlanRateLimit : BaseEntity
     /// sembrada. No cambia PlanCode ni Category (son clave compuesta).</summary>
     public Result Revise(decimal multiplierOverride, int? hardOverridePerMinute)
     {
-        if (multiplierOverride <= 0)
-            return Result.Failure(
-                new Error("PlanRateLimit.InvalidMultiplier", "Multiplier override must be greater than zero.")
-            );
+        var multiplier = RateLimitMultiplier.Create(multiplierOverride);
+        if (multiplier.IsFailure)
+            return Result.Failure(multiplier.Error);
 
         if (hardOverridePerMinute is <= 0)
             return Result.Failure(

@@ -43,6 +43,9 @@ public static class ActivateSubscriptionHandler
                 new Error("Subscription.NotTrialing", "Only a trialing subscription can be activated early.")
             );
 
+        // D11: si ya venció la edición agendada, el primer cobro va con ella.
+        subscription.ApplyScheduledVersionChangeIfDue(DateTime.UtcNow);
+
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
         var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
         if (planVersion is null)

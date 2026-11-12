@@ -35,6 +35,8 @@ public sealed class SetSeatPricesHandlerTests
             new SetSeatPricesCommand("Standard", MonthlyUsd: 20m, YearlyUsd: 200m, ActorUserId: Guid.NewGuid()),
             new FakeSeatPricingRepository(pricing),
             unitOfWork,
+            new InMemoryCatalogAuditLog(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -53,6 +55,8 @@ public sealed class SetSeatPricesHandlerTests
             new SetSeatPricesCommand("Bogus", MonthlyUsd: 20m, YearlyUsd: 200m, ActorUserId: Guid.NewGuid()),
             new FakeSeatPricingRepository(CatalogWithStandard(12m, 120m)),
             unitOfWork,
+            new InMemoryCatalogAuditLog(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 
@@ -70,6 +74,8 @@ public sealed class SetSeatPricesHandlerTests
             new SetSeatPricesCommand("Standard", MonthlyUsd: 20m, YearlyUsd: 200m, ActorUserId: Guid.NewGuid()),
             new FakeSeatPricingRepository(pricing: null),
             unitOfWork,
+            new InMemoryCatalogAuditLog(),
+            new FakeCorrelationContext(),
             CancellationToken.None
         );
 

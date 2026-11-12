@@ -5,45 +5,30 @@ using TaxVision.Subscription.Domain.ValueObjects;
 namespace TaxVision.Subscription.Tests.Domain;
 
 /// <summary>
-/// Los límites de archivos y de firma pasan a ser del plan con los valores que hoy estaban fijos en
-/// CloudStorage y Signature: desplegar no cambia nada; desde ahí, se editan en la versión del plan.
+/// Claves de plataforma (comunicación, archivos y firma): un solo valor por defecto por clave. Solo rellenan lo
+/// que a una edición le falta; lo que ya tiene nunca se pisa.
 /// </summary>
-public sealed class PlanEntitlementCatalogsTests
+public sealed class EntitlementKeyCatalogTests
 {
-    [Theory]
-    [InlineData(PlanTier.Starter, 10L * 1024 * 1024, "documents,spreadsheets,images,data,media")]
-    [InlineData(PlanTier.Trial, 10L * 1024 * 1024, "documents,spreadsheets,images,data,media")]
-    [InlineData(
-        PlanTier.Pro,
-        25L * 1024 * 1024,
-        "documents,spreadsheets,images,data,media,presentations,rich_text,web_images,archives,xml"
-    )]
-    [InlineData(
-        PlanTier.Enterprise,
-        25L * 1024 * 1024,
-        "documents,spreadsheets,images,data,media,presentations,rich_text,web_images,archives,xml"
-    )]
-    public void File_limits_reproduce_the_per_plan_policies_that_lived_in_cloudstorage_appsettings(
-        PlanTier tier,
-        long expectedMaxFileBytes,
-        string expectedGroups
-    )
+    // Un solo valor por clave, el de Enterprise (25 MB y todos los grupos).
+    [Fact]
+    public void File_limits_default_to_the_enterprise_policy()
     {
-        var seeds = StorageEntitlementCatalog.SeedsFor(tier).ToDictionary(seed => seed.Key);
+        var seeds = StorageEntitlementCatalog.Defaults.ToDictionary(seed => seed.Key);
 
-        Assert.Equal(expectedMaxFileBytes.ToString(), seeds[StorageEntitlementCatalog.MaxFileBytes].DefaultValue);
+        Assert.Equal((25L * 1024 * 1024).ToString(), seeds[StorageEntitlementCatalog.MaxFileBytes].DefaultValue);
         Assert.Equal(EntitlementValueType.Long, seeds[StorageEntitlementCatalog.MaxFileBytes].ValueType);
-        Assert.Equal(expectedGroups, seeds[StorageEntitlementCatalog.FileTypeGroups].DefaultValue);
+        Assert.Equal(
+            "documents,spreadsheets,images,data,media,presentations,rich_text,web_images,archives,xml",
+            seeds[StorageEntitlementCatalog.FileTypeGroups].DefaultValue
+        );
     }
 
     [Fact]
-    public void Signature_limits_reproduce_todays_constants_for_every_plan()
+    public void Signature_limits_reproduce_todays_constants()
     {
-        foreach (var tier in Enum.GetValues<PlanTier>())
         {
-            var seeds = SignatureEntitlementCatalog
-                .SeedsFor(tier)
-                .ToDictionary(seed => seed.Key, seed => seed.DefaultValue);
+            var seeds = SignatureEntitlementCatalog.Defaults.ToDictionary(seed => seed.Key, seed => seed.DefaultValue);
 
             Assert.Equal("20", seeds[SignatureEntitlementCatalog.MaxDocumentsPerRequest]);
             Assert.Equal("50", seeds[SignatureEntitlementCatalog.MaxSignersPerRequest]);
@@ -59,7 +44,7 @@ public sealed class PlanEntitlementCatalogsTests
     [Fact]
     public void Every_catalog_key_is_valid_and_unique()
     {
-        var keys = PlanEntitlementCatalogs.SeedsFor(PlanTier.Pro).Select(seed => seed.Key).ToList();
+        var keys = EntitlementKeyCatalog.PlatformDefaults.Select(seed => seed.Key).ToList();
 
         Assert.All(keys, key => Assert.True(EntitlementKey.Create(key).IsSuccess, key));
         Assert.Equal(keys.Count, keys.Distinct(StringComparer.Ordinal).Count());
@@ -80,37 +65,29 @@ public sealed class PlanEntitlementCatalogsTests
         var v1 = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;
         PlanTestData.EnsurePublishableFeature(v1);
         PlanTestData.EnsurePublishablePrice(v1);
-        foreach (var seed in CommunicationEntitlementCatalog.SeedsFor(PlanTier.Pro))
+        foreach (var seed in CommunicationEntitlementCatalog.Defaults)
             v1.AddEntitlementDefinition(
                 PlanEntitlementDefinition
                     .Create(v1.Id, EntitlementKey.Create(seed.Key).Value, seed.ValueType, seed.DefaultValue, seed.Key)
                     .Value
             );
         plan.AddVersion(v1, Guid.Empty, DateTime.UtcNow);
-        plan.PublishVersion(v1.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+        PlanTestData.PublishAsBeforeF7(plan, v1);
 
         Assert.Equal(
             StorageEntitlementCatalog.Keys.Count + SignatureEntitlementCatalog.Keys.Count,
-            PlanEntitlementCatalogs.MissingFrom(v1, PlanTier.Pro).Count
+            EntitlementKeyCatalog.MissingFrom(v1).Count
         );
 
-        var added = plan.AddMissingEntitlements(
-            PlanEntitlementCatalogs.SeedsFor(PlanTier.Pro),
-            Guid.Empty,
-            DateTime.UtcNow
-        );
+        var added = plan.AddMissingEntitlements(EntitlementKeyCatalog.PlatformDefaults, Guid.Empty, DateTime.UtcNow);
 
         Assert.Equal(StorageEntitlementCatalog.Keys.Count + SignatureEntitlementCatalog.Keys.Count, added.Value);
         var published = plan.GetPublishedVersion()!;
         Assert.Equal(2, published.VersionNumber);
-        Assert.Empty(PlanEntitlementCatalogs.MissingFrom(published, PlanTier.Pro));
+        Assert.Empty(EntitlementKeyCatalog.MissingFrom(published));
         Assert.Equal(
             0,
-            plan.AddMissingEntitlements(
-                PlanEntitlementCatalogs.SeedsFor(PlanTier.Pro),
-                Guid.Empty,
-                DateTime.UtcNow
-            ).Value
+            plan.AddMissingEntitlements(EntitlementKeyCatalog.PlatformDefaults, Guid.Empty, DateTime.UtcNow).Value
         );
     }
 }

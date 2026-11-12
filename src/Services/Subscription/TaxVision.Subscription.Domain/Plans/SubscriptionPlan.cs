@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Linq;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Subscription.Domain.Plans.Events;
 using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Domain.Plans;
@@ -9,8 +11,9 @@ namespace TaxVision.Subscription.Domain.Plans;
 /// Catálogo de un plan comercial del SaaS. El plan en sí es estable; sus términos
 /// comerciales (precio, features, límites) viven versionados en <see cref="SubscriptionPlanVersion"/>.
 /// Solo una versión puede estar en <see cref="PlanVersionStatus.Published"/> a la vez.
+/// "A la venta" es aparte del estado: se retira y se vuelve a vender sin tocar a quien ya lo tiene.
 /// </summary>
-public sealed class SubscriptionPlan : BaseEntity
+public sealed class SubscriptionPlan : TenantlessAggregateRoot
 {
     private readonly List<SubscriptionPlanVersion> _versions = [];
 
@@ -19,6 +22,10 @@ public sealed class SubscriptionPlan : BaseEntity
     public string Description { get; private set; } = default!;
     public PlanTier Tier { get; private set; }
     public PlanStatus Status { get; private set; }
+    public bool IsOnSale { get; private set; }
+    public SalesRank SalesRank { get; private set; } = SalesRank.Default;
+    public bool IsFeatured { get; private set; }
+    public byte[] RowVersion { get; private set; } = [];
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -53,20 +60,20 @@ public sealed class SubscriptionPlan : BaseEntity
             );
         }
 
-        return Result.Success(
-            new SubscriptionPlan
-            {
-                Code = code,
-                Name = name,
-                Description = description,
-                Tier = tier,
-                Status = PlanStatus.Draft,
-                CreatedAtUtc = nowUtc,
-                UpdatedAtUtc = nowUtc,
-                CreatedBy = actorUserId,
-                UpdatedBy = actorUserId,
-            }
-        );
+        var plan = new SubscriptionPlan
+        {
+            Code = code,
+            Name = name,
+            Description = description,
+            Tier = tier,
+            Status = PlanStatus.Draft,
+            CreatedAtUtc = nowUtc,
+            UpdatedAtUtc = nowUtc,
+            CreatedBy = actorUserId,
+            UpdatedBy = actorUserId,
+        };
+        plan.AddDomainEvent(new PlanCreatedDomainEvent(plan.Id, code.Value, actorUserId, nowUtc));
+        return Result.Success(plan);
     }
 
     /// <summary>
@@ -88,6 +95,8 @@ public sealed class SubscriptionPlan : BaseEntity
             return created;
 
         created.Value.Id = id;
+        // El catálogo sembrado ya trae sus filas de rate limit (migración): no hay nada que aprovisionar.
+        created.Value.ClearDomainEvents();
         return created;
     }
 
@@ -107,17 +116,18 @@ public sealed class SubscriptionPlan : BaseEntity
         if (target is null)
             return Result.Failure(new Error("Plan.VersionNotFound", "Version does not exist on this plan."));
 
+        // Primero se valida y publica la nueva: si no se puede, la publicada sigue intacta (antes quedaba sin ninguna).
         var currentlyPublished = FindPublishedVersion();
-        if (currentlyPublished is not null)
+        var publishResult = target.Publish(effectiveFromUtc);
+        if (publishResult.IsFailure)
+            return publishResult;
+
+        if (currentlyPublished is not null && currentlyPublished.Id != target.Id)
         {
             var supersedeResult = currentlyPublished.Supersede(nowUtc);
             if (supersedeResult.IsFailure)
                 return supersedeResult;
         }
-
-        var publishResult = target.Publish(effectiveFromUtc);
-        if (publishResult.IsFailure)
-            return publishResult;
 
         if (Status == PlanStatus.Draft)
             Status = PlanStatus.Published;
@@ -131,8 +141,66 @@ public sealed class SubscriptionPlan : BaseEntity
         if (Status == PlanStatus.Archived)
             return Result.Failure(new Error("Plan.AlreadyArchived", "Plan is already archived."));
 
+        // Fin de vida: deja de venderse en el mismo paso.
+        WithdrawFromSale(actorUserId, nowUtc);
         Status = PlanStatus.Deprecated;
         Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Ofrece el plan en el listado público y en el alta. Exige una versión publicada. Idempotente.</summary>
+    public Result PutOnSale(Guid actorUserId, DateTime nowUtc)
+    {
+        if (Status is PlanStatus.Deprecated or PlanStatus.Archived)
+            return Result.Failure(new Error("Plan.NotSellable", "A deprecated or archived plan cannot be sold."));
+
+        if (FindPublishedVersion() is null)
+            return Result.Failure(new Error("Plan.NoPublishedVersion", "Plan has no published version to sell."));
+
+        if (IsOnSale)
+            return Result.Success();
+
+        IsOnSale = true;
+        Touch(actorUserId, nowUtc);
+        AddDomainEvent(new PlanPutOnSaleDomainEvent(Id, Code.Value, actorUserId, nowUtc));
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Deja de ofrecer el plan. Quien ya lo tiene lo conserva y renueva. Idempotente. Las reglas que miran otros
+    /// planes (último a la venta, plan del trial) están en <see cref="PlanSalesRules"/>.
+    /// </summary>
+    public Result WithdrawFromSale(Guid actorUserId, DateTime nowUtc)
+    {
+        if (!IsOnSale)
+            return Result.Success();
+
+        IsOnSale = false;
+        Touch(actorUserId, nowUtc);
+        AddDomainEvent(new PlanWithdrawnFromSaleDomainEvent(Id, Code.Value, actorUserId, nowUtc));
+        return Result.Success();
+    }
+
+    public Result SetSalesRank(SalesRank rank, Guid actorUserId, DateTime nowUtc)
+    {
+        if (SalesRank == rank)
+            return Result.Success();
+
+        var previous = SalesRank.Value;
+        SalesRank = rank;
+        Touch(actorUserId, nowUtc);
+        AddDomainEvent(new PlanSalesRankChangedDomainEvent(Id, Code.Value, previous, rank.Value, actorUserId, nowUtc));
+        return Result.Success();
+    }
+
+    public Result SetFeatured(bool isFeatured, Guid actorUserId, DateTime nowUtc)
+    {
+        if (IsFeatured == isFeatured)
+            return Result.Success();
+
+        IsFeatured = isFeatured;
+        Touch(actorUserId, nowUtc);
+        AddDomainEvent(new PlanFeaturedChangedDomainEvent(Id, Code.Value, isFeatured, actorUserId, nowUtc));
         return Result.Success();
     }
 
@@ -178,6 +246,77 @@ public sealed class SubscriptionPlan : BaseEntity
     /// superando la anterior. Una versión publicada es inmutable, por eso se versiona en vez de editar.
     /// Los límites, precios y features no-módulo se conservan.
     /// </summary>
+    /// <summary>
+    /// Abre la edición borrador N+1 como copia de la publicada (entitlements, features y precios), para cambiar solo
+    /// lo que haga falta. Sin edición publicada nace vacía. Ciclos vacíos = los de la publicada.
+    /// </summary>
+    public Result<SubscriptionPlanVersion> OpenDraft(
+        int trialDaysDefault,
+        IReadOnlyCollection<BillingCycle> cycles,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        var published = FindPublishedVersion();
+        var nextVersion = _versions.Count == 0 ? 1 : _versions.Max(version => version.VersionNumber) + 1;
+        var supported = cycles.Count > 0 ? cycles.ToArray() : published?.SupportedBillingCycles.ToArray() ?? [];
+        var draft = SubscriptionPlanVersion.Create(Id, nextVersion, trialDaysDefault, supported);
+        if (draft.IsFailure)
+            return draft;
+
+        var version = draft.Value;
+        if (published is not null)
+        {
+            foreach (var entitlement in published.Entitlements)
+            {
+                var clone = PlanEntitlementDefinition.Create(
+                    version.Id,
+                    entitlement.Key,
+                    entitlement.ValueType,
+                    entitlement.DefaultValue,
+                    entitlement.Description
+                );
+                if (clone.IsFailure)
+                    return Result.Failure<SubscriptionPlanVersion>(clone.Error);
+                version.AddEntitlementDefinition(clone.Value);
+            }
+
+            foreach (var feature in published.Features)
+            {
+                var clone = PlanFeature.Create(
+                    version.Id,
+                    feature.FeatureKey,
+                    feature.DefaultEnabled,
+                    feature.Description
+                );
+                if (clone.IsFailure)
+                    return Result.Failure<SubscriptionPlanVersion>(clone.Error);
+                version.AddFeature(clone.Value);
+            }
+
+            foreach (var tier in published.PriceTiers.Where(tier => supported.Contains(tier.BillingCycle)))
+            {
+                // UnitAmount es owned type: se clona el Money, no se reusa la instancia.
+                var amount = Money.Create(tier.UnitAmount.Amount, tier.UnitAmount.Currency);
+                if (amount.IsFailure)
+                    return Result.Failure<SubscriptionPlanVersion>(amount.Error);
+                var clone = PlanPriceTier.Create(
+                    version.Id,
+                    tier.BillingCycle,
+                    tier.MinQuantity,
+                    tier.MaxQuantity,
+                    amount.Value
+                );
+                if (clone.IsFailure)
+                    return Result.Failure<SubscriptionPlanVersion>(clone.Error);
+                version.AddPriceTier(clone.Value);
+            }
+        }
+
+        var added = AddVersion(version, actorUserId, nowUtc);
+        return added.IsFailure ? Result.Failure<SubscriptionPlanVersion>(added.Error) : Result.Success(version);
+    }
+
     public Result ReviseModules(IReadOnlyCollection<string> modules, Guid actorUserId, DateTime nowUtc)
     {
         var published = FindPublishedVersion();
@@ -421,6 +560,108 @@ public sealed class SubscriptionPlan : BaseEntity
             return Result.Failure<int>(publishResult.Error);
 
         return Result.Success(missing.Length);
+    }
+
+    /// <summary>
+    /// Publica una edición nueva con otros términos comerciales (precio por ciclo, asientos, almacenamiento,
+    /// invitaciones) y todo lo demás copiado de la publicada: módulos, claves de plataforma y días de trial (D10).
+    /// Idempotente: si la publicada ya tiene esos términos, no crea nada y devuelve <c>false</c>. Quien ya es
+    /// cliente sigue en su edición contratada (D4).
+    /// </summary>
+    public Result<bool> ReviseCommercialTerms(CommercialTerms target, Guid actorUserId, DateTime nowUtc)
+    {
+        var published = FindPublishedVersion();
+        if (published is null)
+            return Result.Failure<bool>(
+                new Error("Plan.NoPublishedVersion", "Plan has no published version to revise.")
+            );
+
+        if (CommercialTerms.Of(published) == target)
+            return Result.Success(false);
+
+        if (target.Prices.Count == 0)
+            return Result.Failure<bool>(
+                new Error("Plan.TermsWithoutPrice", "Commercial terms need at least one price.")
+            );
+
+        var draft = SubscriptionPlanVersion.Create(
+            Id,
+            published.VersionNumber + 1,
+            published.TrialDaysDefault,
+            target.Prices.Keys.Order().ToArray()
+        );
+        if (draft.IsFailure)
+            return Result.Failure<bool>(draft.Error);
+
+        var version = draft.Value;
+        var commercial = new Dictionary<string, string?>(StringComparer.Ordinal)
+        {
+            [CommercialTerms.SeatsMaxKey] = target.SeatsMax?.ToString(CultureInfo.InvariantCulture),
+            [CommercialTerms.StorageMaxBytesKey] = target.StorageMaxBytes?.ToString(CultureInfo.InvariantCulture),
+            [CommercialTerms.InvitationsMaxPendingKey] = target.InvitationsMaxPending?.ToString(
+                CultureInfo.InvariantCulture
+            ),
+        };
+
+        foreach (var entitlement in published.Entitlements)
+        {
+            var value =
+                commercial.TryGetValue(entitlement.Key.Value, out var revised) && revised is not null
+                    ? revised
+                    : entitlement.DefaultValue;
+            var clone = PlanEntitlementDefinition.Create(
+                version.Id,
+                entitlement.Key,
+                entitlement.ValueType,
+                value,
+                entitlement.Description
+            );
+            if (clone.IsFailure)
+                return Result.Failure<bool>(clone.Error);
+            version.AddEntitlementDefinition(clone.Value);
+        }
+
+        var present = published.Entitlements.Select(e => e.Key.Value).ToHashSet(StringComparer.Ordinal);
+        foreach (var (key, value) in commercial.Where(pair => pair.Value is not null && !present.Contains(pair.Key)))
+        {
+            var definition = PlanEntitlementDefinition.Create(
+                version.Id,
+                EntitlementKey.Create(key).Value,
+                CommercialTerms.TypeOf(key),
+                value!,
+                key
+            );
+            if (definition.IsFailure)
+                return Result.Failure<bool>(definition.Error);
+            version.AddEntitlementDefinition(definition.Value);
+        }
+
+        foreach (var feature in published.Features)
+        {
+            var clone = PlanFeature.Create(version.Id, feature.FeatureKey, feature.DefaultEnabled, feature.Description);
+            if (clone.IsFailure)
+                return Result.Failure<bool>(clone.Error);
+            version.AddFeature(clone.Value);
+        }
+
+        foreach (var (cycle, price) in target.Prices)
+        {
+            // Money es owned type: una instancia nueva por tramo.
+            var amount = Money.Create(price.Amount, price.Currency);
+            if (amount.IsFailure)
+                return Result.Failure<bool>(amount.Error);
+            var tier = PlanPriceTier.Create(version.Id, cycle, minQuantity: 1, maxQuantity: null, amount.Value);
+            if (tier.IsFailure)
+                return Result.Failure<bool>(tier.Error);
+            version.AddPriceTier(tier.Value);
+        }
+
+        var added = AddVersion(version, actorUserId, nowUtc);
+        if (added.IsFailure)
+            return Result.Failure<bool>(added.Error);
+
+        var publishResult = PublishVersion(version.Id, nowUtc, actorUserId, nowUtc);
+        return publishResult.IsFailure ? Result.Failure<bool>(publishResult.Error) : Result.Success(true);
     }
 
     // Un tramo por ciclo soportado (cantidad 1+): anual con su propio precio, mensual con el suyo.

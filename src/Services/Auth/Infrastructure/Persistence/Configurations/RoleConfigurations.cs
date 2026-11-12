@@ -17,7 +17,6 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
         builder.Property(permission => permission.Code).HasMaxLength(64).IsRequired();
         builder.Property(permission => permission.Module).HasMaxLength(32).IsRequired();
         builder.Property(permission => permission.Description).HasMaxLength(256).IsRequired();
-        builder.Property(permission => permission.MinPlanTier).IsRequired();
         builder.Property(permission => permission.IsAssignableByTenant).IsRequired();
         builder.Property(permission => permission.PlatformOnly).IsRequired();
         builder.Property(permission => permission.IsDangerous).IsRequired();
@@ -56,7 +55,6 @@ public sealed class PermissionConfiguration : IEntityTypeConfiguration<Permissio
                 definition.Module,
                 definition.Description,
                 definition.IsCustomerPortal,
-                definition.MinPlanTier,
                 definition.IsAssignableByTenant,
                 definition.PlatformOnly,
                 AllowedActorTypes = definition.AllowedActorTypes

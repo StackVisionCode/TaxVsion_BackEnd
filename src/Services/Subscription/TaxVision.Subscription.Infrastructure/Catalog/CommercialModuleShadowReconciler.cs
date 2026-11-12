@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Catalog;
 using TaxVision.Subscription.Application.Catalog.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Audit;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
@@ -13,6 +14,7 @@ namespace TaxVision.Subscription.Infrastructure.Catalog;
 public sealed class CommercialModuleShadowReconciler(
     SubscriptionDbContext db,
     IModuleEditSerializer serializer,
+    ICatalogAuditLog audit,
     ILogger<CommercialModuleShadowReconciler> logger
 ) : ICommercialModuleShadowReconciler
 {
@@ -58,13 +60,16 @@ public sealed class CommercialModuleShadowReconciler(
         var shadow = await FindShadowAsync(module.AddOnCode, ct);
         if (shadow is null)
         {
-            db.AddOnDefinitions.Add(SubscriptionAddOnCatalogSeeder.BuildModuleShadow(module, DateTime.UtcNow));
+            var created = SubscriptionAddOnCatalogSeeder.BuildModuleShadow(module, DateTime.UtcNow);
+            db.AddOnDefinitions.Add(created);
+            await AuditAsync("addon.created", created, before: null, ct);
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Created add-on shadow for module {ModuleCode}.", normalizedCode);
             return;
         }
 
         var nowUtc = DateTime.UtcNow;
+        var before = CatalogAuditViews.Of(shadow);
         var changed = false;
         if (shadow.Name != module.Name || shadow.Description != module.Description)
         {
@@ -93,6 +98,7 @@ public sealed class CommercialModuleShadowReconciler(
         if (!changed)
             return;
 
+        await AuditAsync("addon.shadow_synced", shadow, before, ct);
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Updated add-on shadow for module {ModuleCode}.", normalizedCode);
     }
@@ -110,10 +116,29 @@ public sealed class CommercialModuleShadowReconciler(
         if (shadow is null || shadow.Status != AddOnDefinitionStatus.Published)
             return;
 
+        var before = CatalogAuditViews.Of(shadow);
         EnsureSuccess(shadow.Deprecate(Guid.Empty, DateTime.UtcNow));
+        await AuditAsync("addon.deprecated", shadow, before, ct);
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Deprecated add-on shadow for module {ModuleCode}.", moduleCode);
     }
+
+    // Las sombras de los módulos vendibles las mantiene el sistema a partir del catálogo de módulos.
+    private Task AuditAsync(string action, AddOnDefinition shadow, object? before, CancellationToken ct) =>
+        CatalogAudit.RecordAsync(
+            audit,
+            ShadowActor,
+            action,
+            CatalogAuditViews.Target(shadow),
+            before,
+            CatalogAuditViews.Of(shadow),
+            reason: null,
+            ShadowActor.Label,
+            DateTime.UtcNow,
+            ct
+        );
+
+    private static readonly CatalogAuditActor ShadowActor = CatalogAuditActor.System("module-shadow");
 
     private Task<AddOnDefinition?> FindShadowAsync(string addOnCode, CancellationToken ct)
     {

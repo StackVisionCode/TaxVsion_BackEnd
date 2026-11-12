@@ -33,18 +33,18 @@ public static class SignatureEntitlementCatalog
         Channels,
     ];
 
-    public static IReadOnlyCollection<EntitlementSeed> SeedsFor(PlanTier tier) =>
-        [
-            Int(MaxDocumentsPerRequest, 20),
-            Int(MaxSignersPerRequest, 50),
-            new(MaxPdfBytes, EntitlementValueType.Long, (25L * 1024 * 1024).ToString(CultureInfo.InvariantCulture)),
-            Int(MaxPagesPerDocument, 100),
-            Int(MaxTokenHours, 720),
-            Int(MinRetentionYears, 7),
-            // "True"/"False": mismo formato que produce el recálculo para las features (bool.ToString()).
-            new(PurgeAllowed, EntitlementValueType.Bool, false.ToString()),
-            new(Channels, EntitlementValueType.String, "Email,Sms"),
-        ];
+    public static IReadOnlyCollection<EntitlementSeed> Defaults { get; } =
+    [
+        Int(MaxDocumentsPerRequest, 20),
+        Int(MaxSignersPerRequest, 50),
+        new(MaxPdfBytes, EntitlementValueType.Long, (25L * 1024 * 1024).ToString(CultureInfo.InvariantCulture)),
+        Int(MaxPagesPerDocument, 100),
+        Int(MaxTokenHours, 720),
+        Int(MinRetentionYears, 7),
+        // "True"/"False": mismo formato que produce el recálculo para las features (bool.ToString()).
+        new(PurgeAllowed, EntitlementValueType.Bool, false.ToString()),
+        new(Channels, EntitlementValueType.String, "Email,Sms"),
+    ];
 
     private static EntitlementSeed Int(string key, int value) =>
         new(key, EntitlementValueType.Int, value.ToString(CultureInfo.InvariantCulture));

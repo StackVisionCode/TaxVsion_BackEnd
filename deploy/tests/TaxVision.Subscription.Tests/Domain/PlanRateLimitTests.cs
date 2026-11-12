@@ -16,15 +16,17 @@ public sealed class PlanRateLimitTests
         Assert.Null(result.Value.HardOverridePerMinute);
     }
 
+    // D12: nunca por debajo del cupo base (antes solo se exigía > 0).
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    public void Seed_rejects_a_non_positive_multiplier(decimal multiplier)
+    [InlineData(0.5)]
+    public void Seed_rejects_a_multiplier_below_the_base(decimal multiplier)
     {
         var result = PlanRateLimit.Seed(Guid.NewGuid(), StarterCode(), RateLimitCategory.F, multiplier);
 
         Assert.True(result.IsFailure);
-        Assert.Equal("PlanRateLimit.InvalidMultiplier", result.Error.Code);
+        Assert.Equal("RateLimit.MultiplierBelowBase", result.Error.Code);
     }
 
     [Theory]

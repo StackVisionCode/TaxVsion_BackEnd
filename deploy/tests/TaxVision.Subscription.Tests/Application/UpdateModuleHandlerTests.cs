@@ -21,6 +21,7 @@ public sealed class UpdateModuleHandlerTests
             new FakeModuleRepo(module),
             new NoOpModuleEditSerializer(),
             unitOfWork,
+            new InMemoryCatalogAuditLog(),
             bus,
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -50,6 +51,7 @@ public sealed class UpdateModuleHandlerTests
             new FakeModuleRepo(module),
             new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
+            new InMemoryCatalogAuditLog(),
             bus,
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -73,6 +75,7 @@ public sealed class UpdateModuleHandlerTests
             new FakeModuleRepo(Module.Create("wallet", "Wallet", "Wallet module").Value),
             new NoOpModuleEditSerializer(),
             unitOfWork,
+            new InMemoryCatalogAuditLog(),
             bus,
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -95,6 +98,7 @@ public sealed class UpdateModuleHandlerTests
             new FakeModuleRepo(module),
             new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
+            new InMemoryCatalogAuditLog(),
             bus,
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -116,6 +120,7 @@ public sealed class UpdateModuleHandlerTests
             new FakeModuleRepo(Module.Create("wallet", "Wallet", "Wallet module").Value),
             new NoOpModuleEditSerializer(),
             unitOfWork,
+            new InMemoryCatalogAuditLog(),
             bus,
             new FakeCorrelationContext(),
             CancellationToken.None

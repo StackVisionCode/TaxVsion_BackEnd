@@ -43,6 +43,11 @@ public static class DependencyInjection
         services.AddScoped<ICommercialModuleShadowReconciler, CommercialModuleShadowReconciler>();
         services.AddScoped<IModuleRepository, ModuleRepository>();
         services.AddScoped<IPlanRepository, PlanRepository>();
+        services.AddScoped<IRateLimitDefaultProfileRepository, RateLimitDefaultProfileRepository>();
+        services.AddScoped<ISubscriberMigrationRepository, SubscriberMigrationRepository>();
+        services.AddScoped<ISubscriberMigrationReads, SubscriberMigrationReads>();
+        services.AddScoped<TaxVision.Subscription.Application.Catalog.Migrations.SubscriberMigrationPlanner>();
+        services.AddSubscriptionCatalogRevisions();
         services.AddScoped<ISubscriptionRepository, TenantSubscriptionRepository>();
         services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
         services.AddScoped<ISeatPricingRepository, SeatPricingRepository>();
@@ -94,6 +99,18 @@ public static class DependencyInjection
         );
         // Guard de downgrade — solo Auth sabe cuántos usuarios activos hay. Reusa el mismo acquirer y la
         // misma base URL de Auth que el token de servicio.
+        // D11: cuánto almacenamiento usa cada oficina (vista previa y job de migraciones).
+        services.Configure<CloudStorage.CloudStorageClientOptions>(
+            configuration.GetSection(CloudStorage.CloudStorageClientOptions.SectionName)
+        );
+        services.AddHttpClient<IStorageUsageClient, CloudStorage.CloudStorageUsageClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<CloudStorage.CloudStorageClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
         services.AddHttpClient<ITenantUserCountClient, Auth.AuthTenantUserCountClient>(
             (sp, http) =>
             {

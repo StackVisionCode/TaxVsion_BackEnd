@@ -11,6 +11,15 @@ namespace TaxVision.Subscription.Application.Common;
 /// </summary>
 public static class PlanPricing
 {
+    /// <summary>Precio llevado a un mes, para comparar ciclos distintos (anual / 12).</summary>
+    public static decimal MonthlyEquivalentCents(long cents, BillingCycle cycle) =>
+        cycle switch
+        {
+            BillingCycle.Quarterly => cents / 3m,
+            BillingCycle.Yearly => cents / 12m,
+            _ => cents,
+        };
+
     public static SubscriptionPlanVersion? FindVersion(SubscriptionPlan? plan, Guid planVersionId)
     {
         if (plan is null)

@@ -13,12 +13,12 @@ public sealed class EffectiveUploadPolicyCalculatorTests
     private const long Mb = 1024 * 1024;
 
     private static readonly PlanFileAllowance Starter = new(
-        PlanFileAllowanceDefaults.ParseGroups("documents,spreadsheets,images,data,media"),
+        PlatformFileAllowanceFallback.ParseGroups("documents,spreadsheets,images,data,media"),
         10 * Mb
     );
 
     private static readonly PlanFileAllowance Pro = new(
-        PlanFileAllowanceDefaults.ParseGroups(
+        PlatformFileAllowanceFallback.ParseGroups(
             "documents,spreadsheets,images,data,media,presentations,rich_text,web_images,archives,xml"
         ),
         25 * Mb
@@ -161,7 +161,7 @@ public sealed class EffectiveUploadPolicyCalculatorTests
     [Fact]
     public void The_office_can_narrow_what_its_clients_upload_from_the_portal()
     {
-        var portal = new PortalUploadRestriction(PlanFileAllowanceDefaults.ParseGroups("documents,images"), 2 * Mb);
+        var portal = new PortalUploadRestriction(PlatformFileAllowanceFallback.ParseGroups("documents,images"), 2 * Mb);
 
         var policy = Resolve(FolderType.Documents, Pro, portal: portal);
 

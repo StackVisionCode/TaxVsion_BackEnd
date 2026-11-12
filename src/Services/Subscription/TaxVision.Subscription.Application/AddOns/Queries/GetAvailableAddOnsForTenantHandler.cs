@@ -3,6 +3,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Catalog;
+using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.ValueObjects;
 
 namespace TaxVision.Subscription.Application.AddOns.Queries;
@@ -26,21 +27,21 @@ public static class GetAvailableAddOnsForTenantHandler
         if (plan is null)
             return Fail("Plan.NotFound", "Plan does not exist.");
 
-        var version =
-            plan.GetPublishedVersion()
-            ?? plan.Versions.FirstOrDefault(candidate => candidate.Id == subscription.PlanVersionId);
+        // Misma regla que la foto de derechos: edición contratada + módulos base.
+        var version = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
         if (version is null)
-            return Fail("Plan.NoPublishedVersion", "Plan has no published version.");
+            return Fail("Plan.ContractedVersionNotFound", "The contracted plan edition does not exist.");
 
-        var includedModules = PlanVersionEntitlements
-            .GetEnabledModules(version)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var catalog = await modules.GetAllAsync(ct);
+        var enabled = ContractedEntitlementPolicy.EnabledModules(version, catalog);
+        if (enabled.IsFailure)
+            return Fail(enabled.Error.Code, enabled.Error.Message);
+
+        var includedModules = enabled.Value.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var response = new List<AvailableAddOnResponse>();
 
         foreach (
-            var module in (await modules.GetAllAsync(ct)).Where(module =>
-                module.IsSellableAsAddon && !includedModules.Contains(module.Code)
-            )
+            var module in catalog.Where(module => module.IsSellableAsAddon && !includedModules.Contains(module.Code))
         )
         {
             response.Add(

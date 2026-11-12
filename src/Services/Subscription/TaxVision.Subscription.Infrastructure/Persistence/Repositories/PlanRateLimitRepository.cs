@@ -44,3 +44,18 @@ public sealed class PlanRateLimitRepository(SubscriptionDbContext db) : IPlanRat
         await db.PlanRateLimits.AddAsync(rateLimit, ct);
     }
 }
+
+/// <summary>El perfil por defecto (una sola fila de plataforma) con sus multiplicadores.</summary>
+public sealed class RateLimitDefaultProfileRepository(SubscriptionDbContext db) : IRateLimitDefaultProfileRepository
+{
+    public Task<RateLimitDefaultProfile?> GetAsync(CancellationToken ct = default) =>
+        db
+            .RateLimitDefaultProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(profile => profile.Id == RateLimitDefaultProfile.PlatformId, ct);
+
+    public Task<RateLimitDefaultProfile?> GetForUpdateAsync(CancellationToken ct = default) =>
+        db.RateLimitDefaultProfiles.FirstOrDefaultAsync(
+            profile => profile.Id == RateLimitDefaultProfile.PlatformId,
+            ct
+        );
+}

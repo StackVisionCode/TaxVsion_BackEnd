@@ -89,6 +89,9 @@ public sealed class TenantSubscriptionRenewalJob(
             ct
         );
 
+        // D11: la edición agendada por una migración entra en esta renovación y se cobra a su precio.
+        subscription.ApplyScheduledVersionChangeIfDue(nowUtc);
+
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
         var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
         var price = planVersion is null

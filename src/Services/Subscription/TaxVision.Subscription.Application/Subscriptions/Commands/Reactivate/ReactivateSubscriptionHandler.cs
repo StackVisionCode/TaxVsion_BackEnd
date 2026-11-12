@@ -35,9 +35,11 @@ public static class ReactivateSubscriptionHandler
         if (plan is null)
             return Result.Failure(new Error("Plan.NotFound", "Plan does not exist."));
 
-        var planVersion = plan.GetPublishedVersion();
+        var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
         if (planVersion is null)
-            return Result.Failure(new Error("Plan.NoPublishedVersion", "Plan has no published version."));
+            return Result.Failure(
+                new Error("Plan.ContractedVersionNotFound", "The contracted plan edition does not exist.")
+            );
 
         var nowUtc = DateTime.UtcNow;
         var periodEndUtc = subscription.BillingCycle.CalculateNext(nowUtc);

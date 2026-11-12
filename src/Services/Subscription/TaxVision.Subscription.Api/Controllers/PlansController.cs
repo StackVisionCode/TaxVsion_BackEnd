@@ -20,7 +20,8 @@ public sealed class PlansController(IMessageBus bus) : ControllerBase
     /// </summary>
     [HttpGet]
     [AllowAnonymous]
-    [ResponseCache(Duration = 300)]
+    // 60 s: un cambio del admin (precio, venta) se ve en la landing en un minuto como máximo.
+    [ResponseCache(Duration = 60)]
     [RateLimitExempt(
         "Public plan catalog for the landing page — no JWT, no pre-existing native limiter; adding new protection is out of scope for a migration phase."
     )]

@@ -113,10 +113,11 @@ public static class SetBillingPreferenceHandler
         if (plan is null)
             return Result.Failure<MandateTerms>(new Error("BillingPreference.PlanNotFound", "Plan does not exist."));
 
-        var version = plan.GetPublishedVersion();
+        // D5: el mandato se firma por lo que el cliente paga: su edición contratada.
+        var version = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
         if (version is null)
             return Result.Failure<MandateTerms>(
-                new Error("BillingPreference.NoPublishedVersion", "Plan has no published version.")
+                new Error("BillingPreference.ContractedVersionNotFound", "The contracted plan edition does not exist.")
             );
 
         var price = PlanPricing.ResolveBaseSubscriptionPrice(version, subscription.BillingCycle);

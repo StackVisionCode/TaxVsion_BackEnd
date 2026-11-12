@@ -188,12 +188,11 @@ public static class CreateRoleHandler
             return Result.Failure(new Error("Permission.NotFound", "One or more permissions do not exist."));
 
         var limits = await planLimits.GetAsync(tenantId, ct);
-        var tier = PlanTierResolver.FromPlanCode(limits?.PlanCode);
         var modules = limits is null ? [] : JsonSerializer.Deserialize<List<string>>(limits.EnabledModulesJson) ?? [];
         var enabledModules = modules.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var added = AddedPermissionIds(permissionIds, alreadyGrantedPermissionIds);
-        return PermissionCeiling.Validate(catalog, added, tier, enabledModules);
+        return PermissionCeiling.Validate(catalog, added, enabledModules);
     }
 
     /// <summary>Los ids pedidos que el rol todavía no tenía.</summary>

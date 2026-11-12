@@ -1,6 +1,7 @@
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
+using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Subscriptions;
 
 namespace TaxVision.Subscription.Application.Subscriptions.Queries;
@@ -11,6 +12,7 @@ public static class GetMySubscriptionHandler
         GetMySubscriptionQuery query,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
+        IModuleRepository modules,
         CancellationToken ct
     )
     {
@@ -25,11 +27,16 @@ public static class GetMySubscriptionHandler
         if (plan is null)
             return Result.Failure<MySubscriptionResponse>(new Error("Plan.NotFound", "Plan does not exist."));
 
-        var planVersion = plan.GetPublishedVersion();
+        // D5: precio, límites y módulos de la edición firmada, con la misma regla que la foto de derechos.
+        var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
         if (planVersion is null)
             return Result.Failure<MySubscriptionResponse>(
-                new Error("Plan.NoPublishedVersion", "Plan has no published version.")
+                new Error("Plan.ContractedVersionNotFound", "The contracted plan edition does not exist.")
             );
+
+        var enabledModules = ContractedEntitlementPolicy.EnabledModules(planVersion, await modules.GetAllAsync(ct));
+        if (enabledModules.IsFailure)
+            return Result.Failure<MySubscriptionResponse>(enabledModules.Error);
 
         var cyclePrice = PlanPricing.ResolveBaseSubscriptionPrice(planVersion, subscription.BillingCycle);
         var currentCyclePriceUsd = cyclePrice is null ? 0m : cyclePrice.Value.AmountCents / 100m;
@@ -72,7 +79,7 @@ public static class GetMySubscriptionHandler
                     ? PlanVersionEntitlements.GetInt(planVersion, "invitations.max_pending", fallback: 0)
                     : 0,
                 canViewBilling ? PlanVersionEntitlements.GetLong(planVersion, "storage.max_bytes", fallback: 0) : 0,
-                PlanVersionEntitlements.GetEnabledModules(planVersion),
+                enabledModules.Value,
                 subscription.TrialEndsAtUtc,
                 subscription.CurrentPeriodStartUtc,
                 subscription.CurrentPeriodEndUtc,
@@ -82,7 +89,8 @@ public static class GetMySubscriptionHandler
                 subscription.ExpiredAtUtc,
                 canViewBilling ? subscription.SuspensionReason : null,
                 canViewBilling ? lastPaymentFailure : null,
-                billingAccessBlocked
+                billingAccessBlocked,
+                canViewBilling ? plan.SalesRank.Value : 0
             )
         );
     }

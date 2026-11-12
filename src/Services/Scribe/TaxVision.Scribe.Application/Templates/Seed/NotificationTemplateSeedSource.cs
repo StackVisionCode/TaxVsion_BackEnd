@@ -116,6 +116,7 @@ public static class NotificationTemplateSeedSource
             SubscriptionSuspended,
             SubscriptionExpired,
             SubscriptionCancellationScheduled,
+            SubscriptionVersionChangeScheduled,
             SubscriptionAccessEnding,
             SubscriptionRenewalUpcoming,
             SubscriptionReactivated,
@@ -297,6 +298,7 @@ public static class NotificationTemplateSeedSource
         ["subscription.suspended"] = "Your subscription is on hold. Renew to restore your team's access.",
         ["subscription.expired"] = "Your subscription has expired. Renew whenever you're ready.",
         ["subscription.cancellation_scheduled"] = "Your subscription is set to end. You keep full access until then.",
+        ["subscription.version_change_scheduled"] = "Your plan terms change at your next renewal. Here's what changes.",
         ["subscription.renewal_upcoming"] = "Your subscription renews soon — nothing to do, just a heads up.",
         ["subscription.reactivated"] = "You're all set — your subscription is active again.",
         ["subscription.recurring_charge"] = "Payment received — your subscription continues.",
@@ -2067,6 +2069,57 @@ public static class NotificationTemplateSeedSource
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("access_ends_date", VariableType.String, true, null, "Fecha hasta la que llega el acceso pagado."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para deshacer la cancelación."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
+    // D11 del plan único: una migración agenda otra edición del plan para la oficina.
+    private static NotificationTemplateSeed SubscriptionVersionChangeScheduled { get; } =
+        new(
+            EventKey: "subscription.version_change_scheduled.v1",
+            TemplateKey: "subscription.version_change_scheduled",
+            Name: "Suscripción — Cambio de condiciones del plan",
+            Subject: "Your {{ product_name }} plan terms change on {{ change_date }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your plan terms will change</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we're updating the terms of your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan. Nothing changes today: the new terms start with your renewal on <strong style="color:#1E466B;">{{ change_date }}</strong>.</td></tr>
+              <tr><td style="padding:18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>What changes:</strong> {{ change_summary }}</td></tr></table></td></tr>
+              <tr>
+                <td align="left" style="padding:8px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ manage_url }}" style="height:44px;v-text-anchor:middle;width:230px;" arcsize="23%" stroke="f" fillcolor="#1E466B"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Review my subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">Review my subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ manage_url }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Until {{ change_date }} you keep your current terms. If you'd rather change plans or cancel before then, you can do it from Manage subscription.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("change_date", VariableType.String, true, null, "Fecha en que entran las condiciones nuevas."),
+                (
+                    "change_summary",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Qué cambia (precio, usuarios, almacenamiento, módulos)."
+                ),
+                ("manage_url", VariableType.Url, true, null, "Manage subscription de la oficina."),
                 (
                     "product_name",
                     VariableType.String,

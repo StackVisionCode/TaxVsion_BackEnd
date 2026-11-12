@@ -1,14 +1,14 @@
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Roles;
-using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Tests.Application;
 
 /// <summary>
-/// A4 (§27 del plan) — la matriz del techo de delegación: asignable × tier × módulo × actor, y la
+/// A4 (§27 del plan) — la matriz del techo de delegación: asignable × módulo × actor, y la
 /// separación entre la mitad dura (nunca concedible, se exige en todos los caminos) y la comercial
-/// (tier y módulo, solo al escribir configuración nueva de un rol).
+/// (módulo habilitado, solo al escribir configuración nueva de un rol). Plan único D8: el nombre o
+/// el tier del plan ya no deciden nada.
 /// </summary>
 public sealed class PermissionCeilingTests
 {
@@ -17,7 +17,6 @@ public sealed class PermissionCeilingTests
     private static Permission Operational(
         string code = "customers.view",
         string module = "customers",
-        int minPlanTier = 0,
         bool isAssignableByTenant = true,
         bool platformOnly = false,
         bool isDangerous = false,
@@ -30,7 +29,6 @@ public sealed class PermissionCeilingTests
             module,
             "desc",
             isCustomerPortal: isCustomerPortal,
-            minPlanTier: minPlanTier,
             isAssignableByTenant: isAssignableByTenant,
             platformOnly: platformOnly,
             isDangerous: isDangerous,
@@ -83,21 +81,30 @@ public sealed class PermissionCeilingTests
         Assert.True(PermissionCeiling.IsNeverGrantable(permission));
     }
 
+    // Lo que antes pedía "Pro" (meetings, campañas, wallet) ahora lo decide solo su módulo.
     [Fact]
-    public void The_plan_tier_ceiling_rejects_a_permission_above_the_contracted_tier()
+    public void A_meetings_permission_follows_its_module_and_not_the_plan()
     {
-        var proPermission = Operational(code: "campaigns.view", module: "campaigns", minPlanTier: (int)PlanTier.Pro);
+        var meetings = Operational(code: "communication.meeting.create", module: "communication");
+        IReadOnlySet<string> withMeetings = new HashSet<string>(
+            ["comms", "meetings"],
+            StringComparer.OrdinalIgnoreCase
+        );
+        IReadOnlySet<string> withoutMeetings = new HashSet<string>(["comms"], StringComparer.OrdinalIgnoreCase);
 
-        Assert.False(PermissionCeiling.IsWithinPlan(proPermission, PlanTier.Starter, NoModules));
-        Assert.True(PermissionCeiling.IsWithinPlan(proPermission, PlanTier.Pro, NoModules));
+        Assert.True(PermissionCeiling.IsWithinPlan(meetings, withMeetings));
+        Assert.False(PermissionCeiling.IsWithinPlan(meetings, withoutMeetings));
     }
 
+    // Decisión del dueño (F7): sin módulos conocidos se falla cerrado, como hacía el piso por tier.
     [Fact]
-    public void An_unknown_set_of_modules_does_not_block_anything()
+    public void With_unknown_modules_a_module_permission_is_not_within_the_plan_but_an_ungated_one_is()
     {
-        // Módulos vacíos = todavía no sabemos qué contrató el tenant. El enforcement real es el gate
-        // en runtime; bloquear acá dejaría a un tenant sin poder crear roles por falta de datos.
-        Assert.True(PermissionCeiling.IsWithinPlan(Operational(), PlanTier.Starter, NoModules));
+        Assert.False(
+            PermissionCeiling.IsWithinPlan(Operational(code: "campaigns.view", module: "campaigns"), NoModules)
+        );
+        Assert.False(PermissionCeiling.IsWithinPlan(Operational(), NoModules));
+        Assert.True(PermissionCeiling.IsWithinPlan(Operational(code: "roles.view", module: "roles"), NoModules));
     }
 
     [Fact]
@@ -106,7 +113,7 @@ public sealed class PermissionCeilingTests
         var campaigns = Operational(code: "campaigns.view", module: "campaigns");
         IReadOnlySet<string> onlyCustomers = new HashSet<string>(["customers"], StringComparer.OrdinalIgnoreCase);
 
-        Assert.False(PermissionCeiling.IsWithinPlan(campaigns, PlanTier.Enterprise, onlyCustomers));
+        Assert.False(PermissionCeiling.IsWithinPlan(campaigns, onlyCustomers));
     }
 
     [Fact]
@@ -115,15 +122,15 @@ public sealed class PermissionCeilingTests
         var portal = Operational(code: "portal.folders.view", module: "portal", isCustomerPortal: true);
 
         Assert.True(
-            PermissionCeiling.IsGrantable(portal, PlanTier.Starter, NoModules, UserActorType.CustomerPortal),
+            PermissionCeiling.IsGrantable(portal, NoModules, UserActorType.CustomerPortal),
             "un permiso de portal es concedible a un rol de portal"
         );
         Assert.False(
-            PermissionCeiling.IsGrantable(portal, PlanTier.Starter, NoModules, UserActorType.TenantEmployee),
+            PermissionCeiling.IsGrantable(portal, NoModules, UserActorType.TenantEmployee),
             "y no a un rol de staff"
         );
         Assert.True(
-            PermissionCeiling.IsGrantable(portal, PlanTier.Starter, NoModules, targetActorType: null),
+            PermissionCeiling.IsGrantable(portal, NoModules, targetActorType: null),
             "sin destino declarado la dimensión de actor no se aplica"
         );
     }
@@ -136,11 +143,12 @@ public sealed class PermissionCeilingTests
     [Fact]
     public void The_hard_ceiling_ignores_the_plan_so_a_dormant_permission_does_not_block_an_assignment()
     {
-        var proPermission = Operational(code: "campaigns.view", module: "campaigns", minPlanTier: (int)PlanTier.Pro);
+        var campaigns = Operational(code: "campaigns.view", module: "campaigns");
+        IReadOnlySet<string> onlyCustomers = new HashSet<string>(["customers"], StringComparer.OrdinalIgnoreCase);
 
-        Assert.True(PermissionCeiling.ValidateNeverGrantable([proPermission], [proPermission.Id]).IsSuccess);
+        Assert.True(PermissionCeiling.ValidateNeverGrantable([campaigns], [campaigns.Id]).IsSuccess);
         Assert.True(
-            PermissionCeiling.Validate([proPermission], [proPermission.Id], PlanTier.Starter, NoModules).IsFailure,
+            PermissionCeiling.Validate([campaigns], [campaigns.Id], onlyCustomers).IsFailure,
             "pero al escribir configuración nueva del rol sí se mide contra el plan"
         );
     }
@@ -166,7 +174,7 @@ public sealed class PermissionCeilingTests
     [Fact]
     public void An_unknown_permission_id_is_left_to_the_existence_check()
     {
-        var result = PermissionCeiling.Validate([Operational()], [Guid.NewGuid()], PlanTier.Starter, NoModules);
+        var result = PermissionCeiling.Validate([Operational()], [Guid.NewGuid()], NoModules);
 
         Assert.True(result.IsSuccess);
     }

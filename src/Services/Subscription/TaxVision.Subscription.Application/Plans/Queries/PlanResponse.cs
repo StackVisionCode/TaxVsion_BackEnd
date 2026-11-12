@@ -12,5 +12,7 @@ public sealed record PlanResponse(
     int MaxUsers,
     int MaxPendingInvitations,
     long StorageQuotaBytes,
-    IReadOnlyList<string> EnabledModules
+    IReadOnlyList<string> EnabledModules,
+    int Rank,
+    bool IsFeatured
 );

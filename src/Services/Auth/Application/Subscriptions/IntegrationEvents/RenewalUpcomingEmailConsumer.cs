@@ -57,7 +57,7 @@ public static class RenewalUpcomingEmailConsumer
                     FirstName = admin.Name,
                     Status = "Active",
                     Reason = nameof(SubscriptionChangeReason.RenewalUpcoming),
-                    PlanName = evt.PlanCode,
+                    PlanName = evt.PlanName ?? evt.PlanCode,
                     DaysUntilRenewal = evt.DaysUntilDue,
                     NextRenewalAtUtc = evt.DueAtUtc,
                     RenewUrl = renewUrl,

@@ -176,8 +176,7 @@ public sealed class ActorTypeRoleGuardTests
                     definition.Module,
                     definition.Description,
                     definition.IsCustomerPortal,
-                    definition.MinPlanTier,
-                    definition.IsAssignableByTenant,
+                    isAssignableByTenant: definition.IsAssignableByTenant,
                     definition.PlatformOnly,
                     definition.AllowedActorTypes
                 )

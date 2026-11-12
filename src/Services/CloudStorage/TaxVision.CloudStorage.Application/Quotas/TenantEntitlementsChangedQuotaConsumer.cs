@@ -35,13 +35,13 @@ public static class TenantEntitlementsChangedQuotaConsumer
         var maxFileBytes = GetLong(
             message.EntitlementValues,
             "storage.max_file_bytes",
-            PlanFileAllowanceDefaults.MaxFileBytes
+            PlatformFileAllowanceFallback.MaxFileBytes
         );
         var fileTypeGroups =
             message.EntitlementValues.TryGetValue("storage.file_type_groups", out var groups)
             && !string.IsNullOrWhiteSpace(groups)
                 ? groups
-                : PlanFileAllowanceDefaults.FileTypeGroups;
+                : PlatformFileAllowanceFallback.FileTypeGroups;
         var isSuspended = message.SubscriptionStatus == "Suspended";
 
         await ApplyAsync(

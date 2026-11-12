@@ -43,4 +43,17 @@ public sealed class InternalPlanPricingController(IMessageBus bus) : ControllerB
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    /// <summary>Id, código y nombre de un plan, esté o no a la venta (recibos y correos de Auth).</summary>
+    [HttpGet("{planId:guid}")]
+    [RateLimitExempt("M2M-only endpoint queried by Auth to name a plan in receipts — never exposed to the Gateway.")]
+    [ProducesResponseType<InternalPlanSummaryResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetSummary(Guid planId, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<InternalPlanSummaryResponse>>(
+            new GetInternalPlanSummaryQuery(planId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 }

@@ -35,6 +35,12 @@ public static class GetInternalPlanPricingHandler
                 new Error("Subscription.Plan.NotFound", "The plan is missing or unpublished.")
             );
 
+        // Solo se cobra un alta de un plan a la venta. La activación ya pagada no pasa por acá.
+        if (!plan.IsOnSale)
+            return Result.Failure<InternalPlanPricingResponse>(
+                new Error("Subscription.Plan.NotOnSale", "The plan is not on sale.")
+            );
+
         // Resuelve el precio base (quantity 1) del CICLO pedido (Monthly/Yearly/…), única fuente de verdad
         // del pricing. Comparte el helper con el job de renovación y la activación self-service.
         var price = PlanPricing.ResolveBaseSubscriptionPrice(version, query.BillingCycle);

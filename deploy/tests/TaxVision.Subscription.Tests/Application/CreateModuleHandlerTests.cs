@@ -19,6 +19,7 @@ public sealed class CreateModuleHandlerTests
             modules,
             new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
+            new InMemoryCatalogAuditLog(),
             bus,
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -42,6 +43,7 @@ public sealed class CreateModuleHandlerTests
             modules,
             new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
+            new InMemoryCatalogAuditLog(),
             new CapturingMessageBus(),
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -66,6 +68,7 @@ public sealed class CreateModuleHandlerTests
             new FakeModuleRepo(existing),
             new NoOpModuleEditSerializer(),
             unitOfWork,
+            new InMemoryCatalogAuditLog(),
             new CapturingMessageBus(),
             new FakeCorrelationContext(),
             CancellationToken.None
@@ -84,6 +87,7 @@ public sealed class CreateModuleHandlerTests
             new FakeModuleRepo(),
             new NoOpModuleEditSerializer(),
             new FakeUnitOfWork(),
+            new InMemoryCatalogAuditLog(),
             new CapturingMessageBus(),
             new FakeCorrelationContext(),
             CancellationToken.None

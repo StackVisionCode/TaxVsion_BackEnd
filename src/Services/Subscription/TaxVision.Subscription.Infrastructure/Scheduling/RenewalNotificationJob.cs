@@ -36,8 +36,14 @@ public sealed class RenewalNotificationJob(
         var nowUtc = DateTime.UtcNow;
         var windowEndUtc = nowUtc.AddDays(NotifyThresholdDays[0] + 1);
 
+        // El aviso lleva el nombre del plan, no su código.
+        var planNames = (await services.GetRequiredService<IPlanRepository>().GetAllAsync(ct)).ToDictionary(
+            plan => plan.Id,
+            plan => plan.Name
+        );
         var subscriptionNotices = await UpcomingSubscriptionRenewalsAsync(
             subscriptions,
+            planNames,
             correlationId,
             nowUtc,
             windowEndUtc,
@@ -74,6 +80,7 @@ public sealed class RenewalNotificationJob(
 
     private static async Task<List<object>> UpcomingSubscriptionRenewalsAsync(
         ISubscriptionRepository subscriptions,
+        IReadOnlyDictionary<Guid, string> planNames,
         string correlationId,
         DateTime nowUtc,
         DateTime windowEndUtc,
@@ -98,6 +105,7 @@ public sealed class RenewalNotificationJob(
                     DueAtUtc = subscription.NextRenewalAtUtc.Value,
                     DaysUntilDue = daysUntilDue,
                     PlanCode = subscription.PlanCode,
+                    PlanName = planNames.GetValueOrDefault(subscription.PlanId),
                 }
             );
         }

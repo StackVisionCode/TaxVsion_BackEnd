@@ -9,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Audit;
 using TaxVision.Subscription.Domain.Billing;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
+using TaxVision.Subscription.Domain.Migrations;
 using TaxVision.Subscription.Domain.Permissions;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.RateLimiting;
@@ -48,6 +50,10 @@ public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<PlanRateLimit> PlanRateLimits => Set<PlanRateLimit>();
+    public DbSet<RateLimitDefaultProfile> RateLimitDefaultProfiles => Set<RateLimitDefaultProfile>();
+    public DbSet<AppliedCatalogRevision> CatalogRevisions => Set<AppliedCatalogRevision>();
+    public DbSet<CatalogAuditEntry> CatalogAuditEntries => Set<CatalogAuditEntry>();
+    public DbSet<SubscriberMigration> SubscriberMigrations => Set<SubscriberMigration>();
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
     public DbSet<TenantBillingPreference> BillingPreferences => Set<TenantBillingPreference>();
 

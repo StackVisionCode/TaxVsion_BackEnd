@@ -8,5 +8,7 @@ public sealed record PlanRateLimitResponse(
     string PlanCode,
     string Category,
     decimal MultiplierOverride,
-    int? HardOverridePerMinute
+    int? HardOverridePerMinute,
+    // D12 (aditivo): true si el plan no tiene fila y el valor sale del perfil por defecto.
+    bool FromDefaultProfile = false
 );

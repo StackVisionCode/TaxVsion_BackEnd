@@ -7,6 +7,90 @@ namespace TaxVision.Subscription.Tests.Domain;
 
 public sealed class SubscriptionPlanTests
 {
+    // Análisis 2026-11-11: el borrador nacía vacío y había que reescribir toda la edición para cambiar un valor.
+    [Fact]
+    public void A_new_draft_starts_as_a_copy_of_the_published_edition()
+    {
+        var nowUtc = DateTime.UtcNow;
+        var plan = PlanTestData.PublishedPlan("gold-2027");
+        var published = PlanTestData.PublishNewEdition(plan, 69m, seatsMax: 2);
+
+        var draft = plan.OpenDraft(trialDaysDefault: 30, [], Guid.Empty, nowUtc);
+
+        Assert.True(draft.IsSuccess, draft.IsFailure ? draft.Error.Code : null);
+        var version = draft.Value;
+        Assert.Equal(PlanVersionStatus.Draft, version.Status);
+        Assert.Equal(published.VersionNumber + 1, version.VersionNumber);
+        Assert.Equal(30, version.TrialDaysDefault);
+        Assert.Equal(published.SupportedBillingCycles, version.SupportedBillingCycles);
+        Assert.Equal("2", version.Entitlements.Single(e => e.Key.Value == "seats.max").DefaultValue);
+        Assert.Equal(published.Entitlements.Count, version.Entitlements.Count);
+        Assert.Equal(published.Features.Count, version.Features.Count);
+        Assert.Equal(69m, version.PriceTiers.Single(t => t.BillingCycle == BillingCycle.Monthly).UnitAmount.Amount);
+        Assert.All(version.Entitlements, e => Assert.Equal(version.Id, e.PlanVersionId));
+    }
+
+    [Fact]
+    public void A_plan_without_a_published_edition_opens_an_empty_draft()
+    {
+        var plan = SubscriptionPlan
+            .Create(PlanCode.Create("new-plan").Value, "New", "New plan", PlanTier.Pro, Guid.Empty, DateTime.UtcNow)
+            .Value;
+
+        var draft = plan.OpenDraft(trialDaysDefault: 14, [BillingCycle.Monthly], Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(draft.IsSuccess);
+        Assert.Empty(draft.Value.Entitlements);
+        Assert.Equal(1, draft.Value.VersionNumber);
+    }
+
+    // Prueba en vivo E-10: publicar un borrador inválido retiraba la edición publicada y dejaba el plan sin ninguna.
+    [Fact]
+    public void Publishing_an_invalid_draft_keeps_the_published_edition()
+    {
+        var plan = PlanTestData.PublishedPlan("gold-2027");
+        var published = plan.GetPublishedVersion()!;
+        var empty = SubscriptionPlanVersion.Create(plan.Id, 2, 14, [BillingCycle.Monthly]).Value;
+        plan.AddVersion(empty, Guid.Empty, DateTime.UtcNow);
+
+        var result = plan.PublishVersion(empty.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("PlanVersion.NoFeatures", result.Error.Code);
+        Assert.Equal(published.Id, plan.GetPublishedVersion()?.Id);
+        Assert.Equal(PlanVersionStatus.Published, published.Status);
+        Assert.Equal(PlanVersionStatus.Draft, empty.Status);
+    }
+
+    // D8/F7: una edición publicada siempre trae todas las claves de plataforma (decisión: completar al publicar).
+    [Fact]
+    public void Publishing_completes_the_platform_keys_without_overwriting_the_ones_the_edition_sets()
+    {
+        var nowUtc = DateTime.UtcNow;
+        var plan = SubscriptionPlan
+            .Create(PlanCode.Create("gold-2027").Value, "Gold", "Gold plan", PlanTier.Pro, Guid.Empty, nowUtc)
+            .Value;
+        var version = SubscriptionPlanVersion.Create(plan.Id, 1, 14, [BillingCycle.Monthly]).Value;
+        var own = EntitlementKeyCatalog.PlatformDefaults.First(seed => seed.ValueType == EntitlementValueType.Int);
+        version.AddEntitlementDefinition(
+            PlanEntitlementDefinition
+                .Create(version.Id, EntitlementKey.Create(own.Key).Value, EntitlementValueType.Int, "12345", own.Key)
+                .Value
+        );
+        PlanTestData.EnsurePublishableFeature(version);
+        PlanTestData.EnsurePublishablePrice(version);
+        plan.AddVersion(version, Guid.Empty, nowUtc);
+
+        Assert.True(plan.PublishVersion(version.Id, nowUtc, Guid.Empty, nowUtc).IsSuccess);
+
+        Assert.Empty(EntitlementKeyCatalog.MissingFrom(version));
+        Assert.Equal("12345", version.Entitlements.Single(e => e.Key.Value == own.Key).DefaultValue);
+        Assert.Equal(
+            EntitlementKeyCatalog.PlatformDefaults.Count,
+            version.Entitlements.Count(e => EntitlementKeyCatalog.PlatformDefaults.Any(seed => seed.Key == e.Key.Value))
+        );
+    }
+
     [Fact]
     public void Create_starts_in_draft_status()
     {
@@ -129,7 +213,8 @@ public sealed class SubscriptionPlanTests
         Assert.Contains("module.documents", featureKeys);
         Assert.DoesNotContain("module.signatures", featureKeys);
         Assert.Contains("core.chat", featureKeys); // feature no-módulo conservada
-        Assert.Single(published.Entitlements); // límite conservado
+        // Límite conservado; el resto son las claves de plataforma que publicar completa.
+        Assert.Equal("5", published.Entitlements.Single(e => e.Key.Value == "seats.max").DefaultValue);
         Assert.Single(published.PriceTiers); // precio conservado
     }
 
@@ -178,7 +263,8 @@ public sealed class SubscriptionPlanTests
         Assert.Equal(59m, monthly.UnitAmount.Amount);
         Assert.Equal(590m, yearly.UnitAmount.Amount);
         Assert.Contains("module.signatures", published.Features.Select(f => f.FeatureKey.Value)); // módulo conservado
-        Assert.Single(published.Entitlements); // límite conservado
+        // Límite conservado; el resto son las claves de plataforma que publicar completa.
+        Assert.Equal("5", published.Entitlements.Single(e => e.Key.Value == "seats.max").DefaultValue);
     }
 
     [Fact]

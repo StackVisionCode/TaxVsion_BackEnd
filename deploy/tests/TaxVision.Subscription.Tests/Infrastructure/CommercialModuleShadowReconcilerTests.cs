@@ -110,7 +110,12 @@ public sealed class CommercialModuleShadowReconcilerTests
     }
 
     private static CommercialModuleShadowReconciler CreateReconciler(SubscriptionDbContext db) =>
-        new(db, new NoOpModuleEditSerializer(), NullLogger<CommercialModuleShadowReconciler>.Instance);
+        new(
+            db,
+            new NoOpModuleEditSerializer(),
+            new InMemoryCatalogAuditLog(),
+            NullLogger<CommercialModuleShadowReconciler>.Instance
+        );
 
     private static Module CommercialModule()
     {

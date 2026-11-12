@@ -2,6 +2,7 @@ using BuildingBlocks.Caching;
 using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.RateLimiting;
 
 namespace TaxVision.Subscription.Infrastructure.RateLimiting;
 
@@ -15,8 +16,12 @@ namespace TaxVision.Subscription.Infrastructure.RateLimiting;
 /// <c>HttpPlanRateLimitReader.FetchCatalogAsync</c>, pero leyendo <see cref="IPlanRateLimitRepository"/>
 /// directo en vez de HTTP.
 /// </summary>
-public sealed class DirectPlanRateLimitReader(IPlanRateLimitRepository repository, ICacheService cache)
-    : IPlanRateLimitReader
+public sealed class DirectPlanRateLimitReader(
+    IPlanRateLimitRepository repository,
+    IPlanRepository plans,
+    IRateLimitDefaultProfileRepository profiles,
+    ICacheService cache
+) : IPlanRateLimitReader
 {
     private static readonly TimeSpan CatalogTtl = TimeSpan.FromMinutes(5);
     private const string CatalogCacheKey = "ratelimit:subscription-plan-rate-limits-catalog";
@@ -35,15 +40,14 @@ public sealed class DirectPlanRateLimitReader(IPlanRateLimitRepository repositor
 
     private async Task<IReadOnlyDictionary<string, PlanRateLimitSnapshot>> FetchCatalogAsync(CancellationToken ct)
     {
-        var rows = await repository.GetAllAsync(ct);
+        // D12: el mismo catálogo completo que sirve internal/plan-rate-limits (perfil por defecto donde no hay fila).
+        var entries = await EffectivePlanRateLimits.BuildAsync(plans, repository, profiles, ct);
         var catalog = new Dictionary<string, PlanRateLimitSnapshot>();
-        foreach (var row in rows)
-        {
-            catalog[CatalogKey(row.PlanCode.Value, row.Category)] = new PlanRateLimitSnapshot(
-                row.MultiplierOverride,
-                row.HardOverridePerMinute
+        foreach (var entry in entries)
+            catalog[CatalogKey(entry.PlanCode, entry.Category)] = new PlanRateLimitSnapshot(
+                entry.Multiplier,
+                entry.HardOverridePerMinute
             );
-        }
         return catalog;
     }
 }

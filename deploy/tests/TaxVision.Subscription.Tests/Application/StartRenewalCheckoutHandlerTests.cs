@@ -124,6 +124,28 @@ public sealed class StartRenewalCheckoutHandlerTests
         Assert.Equal(2, unitOfWork.SaveChangesCallCount);
     }
 
+    // D5: se renueva al precio firmado, aunque después se haya publicado otro.
+    [Fact]
+    public async Task The_renewal_checkout_charges_the_contracted_price_not_the_published_one()
+    {
+        var (subscription, plan) = PastDueSubscription();
+        PlanTestData.PublishNewEdition(plan, monthlyUsd: 99m);
+        var client = OkClient();
+
+        var result = await Start(
+            Command(subscription.TenantId),
+            new FakeSubscriptionRepo(subscription),
+            new FakePlanRepo(plan),
+            new FakeRenewalCheckoutIntentRepository(),
+            client,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(4900, client.LastRequest!.AmountCents);
+    }
+
     // Guard del doble cobro, el mismo que ya tienen asientos, add-ons y el upgrade: mientras la sesión viva,
     // se devuelve esa misma URL en vez de abrir un segundo cobro.
     [Fact]
@@ -200,6 +222,52 @@ public sealed class StartRenewalCheckoutHandlerTests
 
         Assert.True(result.IsFailure);
         Assert.Equal("Subscription.RenewalCheckout.ProviderError", result.Error.Code);
+    }
+
+    // D11: si la edición agendada por una migración ya venció, la renovación se cobra con ella.
+    [Fact]
+    public async Task A_due_scheduled_edition_is_applied_and_charged_by_the_renewal_checkout()
+    {
+        var (subscription, plan) = PastDueSubscription();
+        var next = SubscriptionPlanVersion
+            .Create(plan.Id, versionNumber: 2, trialDaysDefault: 14, [BillingCycle.Monthly])
+            .Value;
+        next.AddPriceTier(
+            PlanPriceTier.Create(next.Id, BillingCycle.Monthly, 1, null, Money.Create(39m, "USD").Value).Value
+        );
+        PlanTestData.EnsurePublishableFeature(next);
+        plan.AddVersion(next, Guid.Empty, DateTime.UtcNow);
+        Assert.True(plan.PublishVersion(next.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow).IsSuccess);
+        var noticeAt = DateTime.UtcNow.AddDays(-40);
+        Assert.True(
+            subscription
+                .ScheduleVersionChange(
+                    plan,
+                    next.Id,
+                    DateTime.UtcNow.AddMinutes(-1),
+                    Guid.NewGuid(),
+                    "x",
+                    Guid.Empty,
+                    noticeAt
+                )
+                .IsSuccess
+        );
+        var client = OkClient();
+
+        var result = await Start(
+            Command(subscription.TenantId),
+            new FakeSubscriptionRepo(subscription),
+            new FakePlanRepo(plan),
+            new FakeRenewalCheckoutIntentRepository(),
+            client,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(3900, client.LastRequest!.AmountCents);
+        Assert.Equal(next.Id, subscription.PlanVersionId);
+        Assert.Null(subscription.ScheduledVersionId);
     }
 
     private static (TenantSubscription Subscription, SubscriptionPlan Plan) PastDueSubscription()

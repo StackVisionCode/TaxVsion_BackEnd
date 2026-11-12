@@ -213,6 +213,71 @@ public sealed class TenantSubscriptionEmailConsumerTests
         Assert.Empty(bus.Published);
     }
 
+    // D11 del plan único: el aviso de que cambian las condiciones del plan llega al admin con la fecha y el resumen.
+    [Theory]
+    [InlineData("Active")]
+    [InlineData("Trialing")]
+    [InlineData("PastDue")]
+    public async Task A_scheduled_plan_terms_change_notifies_the_admin_with_its_date_and_summary(string status)
+    {
+        var tenantId = Guid.NewGuid();
+        var migrationId = Guid.NewGuid();
+        var effectiveAt = new DateTime(2026, 12, 15, 0, 0, 0, DateTimeKind.Utc);
+        var bus = new FakeMessageBus();
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            StatusEvent(tenantId, status, nameof(SubscriptionChangeReason.VersionChangeScheduled)) with
+            {
+                VersionChangeEffectiveAtUtc = effectiveAt,
+                VersionChangeSummary = "price $129.00 → $99.00 per month",
+                MigrationId = migrationId,
+            },
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var request = Assert.IsType<TenantSubscriptionEmailRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(nameof(SubscriptionChangeReason.VersionChangeScheduled), request.Reason);
+        Assert.Equal(effectiveAt, request.VersionChangeEffectiveAtUtc);
+        Assert.Equal("price $129.00 → $99.00 per month", request.VersionChangeSummary);
+        Assert.Equal(migrationId, request.MigrationId);
+    }
+
+    // Análisis 2026-11-11: el aviso de renovación mostraba el código del plan ("enterprise") como nombre.
+    [Fact]
+    public async Task The_renewal_reminder_names_the_plan_and_not_its_code()
+    {
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await RenewalUpcomingEmailConsumer.Handle(
+            new SubscriptionRenewalUpcomingIntegrationEvent
+            {
+                TenantId = tenantId,
+                TenantSubscriptionId = Guid.NewGuid(),
+                DueAtUtc = DateTime.UtcNow.AddDays(7),
+                DaysUntilDue = 7,
+                PlanCode = "enterprise",
+                PlanName = "Enterprise",
+            },
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var request = Assert.IsType<TenantSubscriptionEmailRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal("Enterprise", request.PlanName);
+    }
+
     private static TenantSubscriptionStatusChangedIntegrationEvent StatusEvent(
         Guid tenantId,
         string status,

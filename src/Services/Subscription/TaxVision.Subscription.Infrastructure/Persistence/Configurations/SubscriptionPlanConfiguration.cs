@@ -24,6 +24,15 @@ public sealed class SubscriptionPlanConfiguration : IEntityTypeConfiguration<Sub
         builder.Property(plan => plan.Description).HasMaxLength(2000).IsRequired();
         builder.Property(plan => plan.Tier).HasConversion(new PlanTierConverter()).HasMaxLength(30).IsRequired();
         builder.Property(plan => plan.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(plan => plan.IsOnSale).IsRequired();
+        builder
+            .Property(plan => plan.SalesRank)
+            .HasConversion(rank => rank.Value, value => SalesRank.Create(value).Value)
+            .HasDefaultValue(SalesRank.Default)
+            .IsRequired();
+        builder.Property(plan => plan.IsFeatured).IsRequired();
+        builder.Property(plan => plan.RowVersion).IsRowVersion();
+        builder.Ignore(plan => plan.DomainEvents);
 
         builder
             .HasMany(plan => plan.Versions)

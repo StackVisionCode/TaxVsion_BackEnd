@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Subscriptions;
 
 namespace TaxVision.Subscription.Application.AddOns;
@@ -103,28 +104,31 @@ public sealed class AddOnPurchaseEligibility(
         }
 
         var enabledModules = await EnabledModulesAsync(subscription, ct);
-        if (AddOnEligibilityRules.IsIncludedInPlan(definition, enabledModules))
+        if (enabledModules.IsFailure)
+            return Fail(enabledModules.Error);
+        if (AddOnEligibilityRules.IsIncludedInPlan(definition, enabledModules.Value))
             return Fail("AddOn.AlreadyIncludedInPlan", "Your plan already includes this add-on.");
 
         return Result.Success((subscription, definition));
     }
 
     /// <summary>
-    /// Módulos de la versión PUBLICADA del plan — la misma que usa <c>EntitlementSnapshotBuilder</c>,
-    /// que es la que concede el acceso de verdad.
-    ///
-    /// Antes leía la versión contratada, y eso vendía módulos que el tenant ya tenía: al revisar un
-    /// plan, el recálculo le daba el módulo nuevo (el gate lo dejaba entrar) pero este guard seguía
-    /// mirando la versión vieja y no veía el módulo, así que el add-on aparecía comprable. El tenant
-    /// habría pagado por algo que ya estaba usando.
+    /// Módulos que el plan le da al cliente, con la misma regla que <c>EntitlementSnapshotBuilder</c> (la que
+    /// concede el acceso): edición contratada + módulos base. Así nunca se vende algo que ya tiene.
     /// </summary>
-    private async Task<IReadOnlyList<string>> EnabledModulesAsync(TenantSubscription subscription, CancellationToken ct)
+    private async Task<Result<IReadOnlyList<string>>> EnabledModulesAsync(
+        TenantSubscription subscription,
+        CancellationToken ct
+    )
     {
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
-        var version =
-            plan?.GetPublishedVersion()
-            ?? plan?.Versions.FirstOrDefault(candidate => candidate.Id == subscription.PlanVersionId);
-        return version is null ? [] : PlanVersionEntitlements.GetEnabledModules(version);
+        var version = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
+        if (version is null)
+            return Result.Failure<IReadOnlyList<string>>(
+                new Error("Plan.ContractedVersionNotFound", "The contracted plan edition does not exist.")
+            );
+
+        return ContractedEntitlementPolicy.EnabledModules(version, await modules.GetAllAsync(ct));
     }
 
     private static Result<(TenantSubscription, AddOnDefinition)> Fail(string code, string message) =>

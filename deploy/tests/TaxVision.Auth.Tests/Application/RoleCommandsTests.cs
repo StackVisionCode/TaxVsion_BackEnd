@@ -216,8 +216,18 @@ public sealed class RoleCommandsTests
 
     private sealed class FakeTenantPlanLimitsStore : ITenantPlanLimitsStore
     {
+        // Oficina con todos los módulos menos campañas y wallet: el techo por módulo tiene datos.
         public Task<TenantPlanLimits?> GetAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult<TenantPlanLimits?>(null);
+            Task.FromResult<TenantPlanLimits?>(
+                TenantPlanLimits.Create(
+                    tenantId,
+                    "office-plan",
+                    5,
+                    5,
+                    0,
+                    """["customers","signatures","documents","planner","email","comms","meetings"]"""
+                )
+            );
 
         public Task AddAsync(TenantPlanLimits limits, CancellationToken ct = default) => Task.CompletedTask;
     }
@@ -272,10 +282,9 @@ public sealed class RoleCommandsTests
     private static Permission StaffPermission() =>
         Permission.Seed(Guid.NewGuid(), "customers.view", "customers", "desc", isCustomerPortal: false);
 
-    /// <summary>Un permiso que el plan Starter del tenant de estos tests no incluye — el fake de
-    /// límites devuelve null, que resuelve a Starter.</summary>
-    private static Permission ProTierPermission() =>
-        Permission.Seed(Guid.NewGuid(), "campaigns.view", "campaigns", "desc", minPlanTier: (int)PlanTier.Pro);
+    /// <summary>Un permiso de un módulo (campañas) que la oficina de estos tests no tiene.</summary>
+    private static Permission OutsidePlanPermission() =>
+        Permission.Seed(Guid.NewGuid(), "campaigns.view", "campaigns", "desc");
 
     private static User Holder(Guid tenantId, UserActorType actorType)
     {
@@ -526,7 +535,7 @@ public sealed class RoleCommandsTests
     [Fact]
     public async Task SetRolePermissionsHandler_lets_a_role_with_a_dormant_permission_be_edited()
     {
-        var dormant = ProTierPermission();
+        var dormant = OutsidePlanPermission();
         var staff = StaffPermission();
         var roles = new FakeRoleRepository { Catalog = [dormant, staff] };
         var tenantId = Guid.NewGuid();
@@ -549,7 +558,7 @@ public sealed class RoleCommandsTests
     [Fact]
     public async Task SetRolePermissionsHandler_still_rejects_a_permission_outside_the_plan_when_it_is_new()
     {
-        var outsidePlan = ProTierPermission();
+        var outsidePlan = OutsidePlanPermission();
         var roles = new FakeRoleRepository { Catalog = [outsidePlan] };
         var tenantId = Guid.NewGuid();
         var role = Role.Create(tenantId, "Rol sin permisos", null).Value;

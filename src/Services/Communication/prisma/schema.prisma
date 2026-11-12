@@ -124,6 +124,8 @@ model TenantCommunicationLimits {
   TranscriptEnabled            Boolean?
   CallsEnabled                 Boolean?
   MaxCallMinutes               Int?
+  // Última revisión de entitlements aplicada: una menor llega tarde y se ignora.
+  LastEntitlementsRevision     BigInt?
   UpdatedAtUtc                 DateTime @default(now()) @updatedAt @db.DateTime2
 }
 

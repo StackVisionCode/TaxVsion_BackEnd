@@ -149,6 +149,14 @@ public static class TenantCreatedConsumer
             );
         }
 
+        // La oficina ya existe: el trial se crea igual, pero el catálogo quedó mal configurado.
+        if (!plan.IsOnSale)
+            logger.LogCritical(
+                "Default plan '{PlanCode}' is not on sale; tenant {TenantId} still gets its trial on it.",
+                defaultPlanCode,
+                tenantId
+            );
+
         return (plan, version);
     }
 

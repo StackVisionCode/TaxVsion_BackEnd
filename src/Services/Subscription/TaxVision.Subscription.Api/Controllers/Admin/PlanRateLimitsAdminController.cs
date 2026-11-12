@@ -7,6 +7,7 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Subscription.Application.RateLimiting;
 using TaxVision.Subscription.Application.RateLimiting.Commands.UpsertPlanRateLimit;
 using TaxVision.Subscription.Application.RateLimiting.Queries;
 using Wolverine;
@@ -20,7 +21,7 @@ namespace TaxVision.Subscription.Api.Controllers.Admin;
 [ApiController]
 [Route("admin/subscription/plans/{planCode}/rate-limits")]
 [Authorize]
-[HasPermission(SubscriptionPermissions.AdminCrossTenant)]
+[HasPermission(SubscriptionPermissions.CatalogManage)]
 [AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class PlanRateLimitsAdminController(IMessageBus bus) : ControllerBase
 {
@@ -37,8 +38,32 @@ public sealed class PlanRateLimitsAdminController(IMessageBus bus) : ControllerB
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Upsert — actualiza la fila si existe, la crea si no. Útil para añadir multiplicadores
-    /// a un plan recién creado o cambiar los ya sembrados.</summary>
+    /// <summary>D12/D13 — vista previa de un cambio de la fila: actual (la fila o el perfil por defecto), propuesto, si
+    /// es una baja y cuántas oficinas del plan la sentirían. No cambia nada.</summary>
+    [HttpPost("categories/{category}/preview")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType<RateLimitChangePreview>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Preview(
+        string planCode,
+        string category,
+        [FromBody] UpsertPlanRateLimitRequest request,
+        CancellationToken ct
+    )
+    {
+        var result = await bus.InvokeAsync<Result<RateLimitChangePreview>>(
+            new PreviewPlanRateLimitChangeQuery(
+                planCode,
+                category,
+                request.MultiplierOverride,
+                request.HardOverridePerMinute
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : CatalogErrors.ToResponse(this, result.Error);
+    }
+
+    /// <summary>Upsert — actualiza la fila si existe, la crea si no. Nunca por debajo de 1.0; bajar el cupo (o fijar,
+    /// bajar o quitar un cupo fijo) exige el token de la vista previa y un motivo.</summary>
     [HttpPut("categories/{category}")]
     [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -58,12 +83,19 @@ public sealed class PlanRateLimitsAdminController(IMessageBus bus) : ControllerB
                 category,
                 request.MultiplierOverride,
                 request.HardOverridePerMinute,
-                userId
+                userId,
+                request.ConfirmationToken,
+                request.Reason
             ),
             ct
         );
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.IsSuccess ? NoContent() : CatalogErrors.ToResponse(this, result.Error);
     }
 }
 
-public sealed record UpsertPlanRateLimitRequest(decimal MultiplierOverride, int? HardOverridePerMinute);
+public sealed record UpsertPlanRateLimitRequest(
+    decimal MultiplierOverride,
+    int? HardOverridePerMinute,
+    string? ConfirmationToken = null,
+    string? Reason = null
+);

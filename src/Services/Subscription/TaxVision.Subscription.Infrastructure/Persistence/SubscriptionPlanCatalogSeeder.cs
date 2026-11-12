@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Subscription.Application.Catalog.Revisions;
 using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
@@ -34,13 +35,18 @@ public static class SubscriptionPlanCatalogSeeder
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>La descripción que siembra una base nueva: la misma que deja R3 en una base existente.</summary>
+    public static string SeedDescriptionFor(string planCode) => R3PlanDescriptionsRevision.DescriptionFor(planCode);
+
     private static SubscriptionPlan BuildStarterPlan(IReadOnlyCollection<string> coreModules, DateTime nowUtc) =>
         BuildPlan(
             planId: PlanCatalog.StarterId,
             versionId: PlanCatalog.StarterV1Id,
             code: PlanCatalog.Starter,
+            salesRank: 1,
+            isFeatured: false,
             name: "Starter",
-            description: "Para oficinas que estan empezando: 3 usuarios, clientes, firmas y documentos.",
+            description: SeedDescriptionFor(PlanCatalog.Starter),
             tier: PlanTier.Starter,
             monthlyPriceUsd: 49m,
             seatsMax: 3,
@@ -55,8 +61,10 @@ public static class SubscriptionPlanCatalogSeeder
             planId: PlanCatalog.ProId,
             versionId: PlanCatalog.ProV1Id,
             code: PlanCatalog.Pro,
+            salesRank: 2,
+            isFeatured: true,
             name: "Pro",
-            description: "Para oficinas en crecimiento: 10 usuarios, correo, comunicacion y campanas.",
+            description: SeedDescriptionFor(PlanCatalog.Pro),
             tier: PlanTier.Pro,
             monthlyPriceUsd: 129m,
             seatsMax: 10,
@@ -71,8 +79,10 @@ public static class SubscriptionPlanCatalogSeeder
             planId: PlanCatalog.EnterpriseId,
             versionId: PlanCatalog.EnterpriseV1Id,
             code: PlanCatalog.Enterprise,
+            salesRank: 3,
+            isFeatured: false,
             name: "Enterprise",
-            description: "Para multiservices con equipos grandes: 25 usuarios, 200 GB y todos los modulos.",
+            description: SeedDescriptionFor(PlanCatalog.Enterprise),
             tier: PlanTier.Enterprise,
             monthlyPriceUsd: 299m,
             seatsMax: 25,
@@ -86,6 +96,8 @@ public static class SubscriptionPlanCatalogSeeder
         Guid planId,
         Guid versionId,
         string code,
+        int salesRank,
+        bool isFeatured,
         string name,
         string description,
         PlanTier tier,
@@ -113,7 +125,7 @@ public static class SubscriptionPlanCatalogSeeder
         AddEntitlement(version, "invitations.max_pending", EntitlementValueType.Int, maxPendingInvitations.ToString());
         AddEntitlement(version, "storage.max_bytes", EntitlementValueType.Long, storageQuotaBytes.ToString());
 
-        foreach (var seed in PlanEntitlementCatalogs.SeedsFor(tier))
+        foreach (var seed in EntitlementKeyCatalog.PlatformDefaults)
             AddEntitlement(version, seed.Key, seed.ValueType, seed.DefaultValue);
 
         foreach (var module in modules)
@@ -145,6 +157,11 @@ public static class SubscriptionPlanCatalogSeeder
 
         plan.AddVersion(version, actorUserId: Guid.Empty, nowUtc);
         plan.PublishVersion(version.Id, nowUtc, actorUserId: Guid.Empty, nowUtc);
+        plan.PutOnSale(actorUserId: Guid.Empty, nowUtc);
+        plan.SetSalesRank(SalesRank.Create(salesRank).Value, actorUserId: Guid.Empty, nowUtc);
+        plan.SetFeatured(isFeatured, actorUserId: Guid.Empty, nowUtc);
+        // Base vacía: nadie escucha todavía el aviso del catálogo.
+        plan.ClearDomainEvents();
 
         return plan;
     }

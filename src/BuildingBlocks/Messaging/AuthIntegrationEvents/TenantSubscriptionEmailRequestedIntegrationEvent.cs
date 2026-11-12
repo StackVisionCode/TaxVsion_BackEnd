@@ -81,4 +81,15 @@ public sealed record TenantSubscriptionEmailRequestedIntegrationEvent : Integrat
 
     /// <summary>Qué se suspendió tras el último intento (ver <c>RenewalChargeConsequences</c>).</summary>
     public string? Consequence { get; init; }
+
+    // D11 (aditivo): cambio de edición agendado (motivo VersionChangeScheduled).
+
+    /// <summary>Desde cuándo rige la edición nueva.</summary>
+    public DateTime? VersionChangeEffectiveAtUtc { get; init; }
+
+    /// <summary>Qué cambia, en inglés y listo para el correo.</summary>
+    public string? VersionChangeSummary { get; init; }
+
+    /// <summary>La migración que lo agendó (idempotencia del aviso).</summary>
+    public Guid? MigrationId { get; init; }
 }

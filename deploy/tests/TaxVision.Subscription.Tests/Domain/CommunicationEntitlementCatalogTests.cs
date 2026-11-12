@@ -11,14 +11,12 @@ namespace TaxVision.Subscription.Tests.Domain;
 /// </summary>
 public sealed class CommunicationEntitlementCatalogTests
 {
-    [Theory]
-    [InlineData(PlanTier.Starter, "30")]
-    [InlineData(PlanTier.Trial, "30")]
-    [InlineData(PlanTier.Pro, "60")]
-    [InlineData(PlanTier.Enterprise, "60")]
-    public void Only_meeting_recording_minutes_vary_by_tier(PlanTier tier, string expectedMeetingRecordingMinutes)
+    // Un solo valor por clave, el de Enterprise: solo rellena lo que falta y nunca perjudica al cliente.
+    [Fact]
+    public void One_default_per_key_with_the_enterprise_values()
     {
-        var seeds = CommunicationEntitlementCatalog.SeedsFor(tier).ToDictionary(seed => seed.Key);
+        const string expectedMeetingRecordingMinutes = "60";
+        var seeds = CommunicationEntitlementCatalog.Defaults.ToDictionary(seed => seed.Key);
 
         Assert.Equal(
             CommunicationEntitlementCatalog.Keys.Order(StringComparer.Ordinal),
@@ -40,7 +38,7 @@ public sealed class CommunicationEntitlementCatalogTests
     [Fact]
     public void Bool_seeds_use_the_same_format_the_recalculation_produces_for_features()
     {
-        var seeds = CommunicationEntitlementCatalog.SeedsFor(PlanTier.Starter).ToDictionary(seed => seed.Key);
+        var seeds = CommunicationEntitlementCatalog.Defaults.ToDictionary(seed => seed.Key);
         string[] flags =
         [
             CommunicationEntitlementCatalog.CallsEnabled,
@@ -89,10 +87,10 @@ public sealed class CommunicationEntitlementCatalogTests
             PlanPriceTier.Create(v1.Id, BillingCycle.Yearly, 1, null, Money.Create(490m, "USD").Value).Value
         );
         plan.AddVersion(v1, Guid.Empty, DateTime.UtcNow);
-        plan.PublishVersion(v1.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+        PlanTestData.PublishAsBeforeF7(plan, v1);
 
         var result = plan.AddMissingEntitlements(
-            CommunicationEntitlementCatalog.SeedsFor(plan.Tier),
+            CommunicationEntitlementCatalog.Defaults,
             Guid.NewGuid(),
             DateTime.UtcNow
         );
@@ -108,9 +106,10 @@ public sealed class CommunicationEntitlementCatalogTests
         Assert.Equal([BillingCycle.Monthly, BillingCycle.Yearly], published.SupportedBillingCycles);
 
         var entitlements = published.Entitlements.ToDictionary(e => e.Key.Value);
-        Assert.Equal(CommunicationEntitlementCatalog.Keys.Count + 1, entitlements.Count);
+        // Publicar la edición nueva completa además el resto de las claves de plataforma (F7).
+        Assert.Equal(EntitlementKeyCatalog.PlatformDefaults.Count + 1, entitlements.Count);
         Assert.Equal("3", entitlements["seats.max"].DefaultValue);
-        Assert.Equal("30", entitlements[CommunicationEntitlementCatalog.MaxRecordingMinutesMeeting].DefaultValue);
+        Assert.Equal("60", entitlements[CommunicationEntitlementCatalog.MaxRecordingMinutesMeeting].DefaultValue);
         Assert.Equal("10", entitlements[CommunicationEntitlementCatalog.MaxParticipantsPerMeeting].DefaultValue);
         Assert.All(published.Entitlements, e => Assert.Equal(published.Id, e.PlanVersionId));
 
@@ -144,13 +143,9 @@ public sealed class CommunicationEntitlementCatalogTests
                 .Value
         );
         plan.AddVersion(v1, Guid.Empty, DateTime.UtcNow);
-        plan.PublishVersion(v1.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
+        PlanTestData.PublishAsBeforeF7(plan, v1);
 
-        var result = plan.AddMissingEntitlements(
-            CommunicationEntitlementCatalog.SeedsFor(plan.Tier),
-            Guid.Empty,
-            DateTime.UtcNow
-        );
+        var result = plan.AddMissingEntitlements(CommunicationEntitlementCatalog.Defaults, Guid.Empty, DateTime.UtcNow);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(CommunicationEntitlementCatalog.Keys.Count - 1, result.Value);
@@ -178,8 +173,8 @@ public sealed class CommunicationEntitlementCatalogTests
         var plan = CreatePlan(PlanTier.Enterprise);
         var v1 = CreateSellableVersion(plan.Id, 1);
         plan.AddVersion(v1, Guid.Empty, DateTime.UtcNow);
-        plan.PublishVersion(v1.Id, DateTime.UtcNow, Guid.Empty, DateTime.UtcNow);
-        var seeds = CommunicationEntitlementCatalog.SeedsFor(plan.Tier);
+        PlanTestData.PublishAsBeforeF7(plan, v1);
+        var seeds = CommunicationEntitlementCatalog.Defaults;
         Assert.True(plan.AddMissingEntitlements(seeds, Guid.Empty, DateTime.UtcNow).IsSuccess);
         var publishedAfterFirstCall = plan.GetPublishedVersion()!;
 
@@ -189,7 +184,7 @@ public sealed class CommunicationEntitlementCatalogTests
         Assert.Equal(0, second.Value);
         Assert.Equal(2, plan.Versions.Count);
         Assert.Same(publishedAfterFirstCall, plan.GetPublishedVersion());
-        Assert.Empty(CommunicationEntitlementCatalog.MissingFrom(publishedAfterFirstCall, plan.Tier));
+        Assert.Empty(CommunicationEntitlementCatalog.MissingFrom(publishedAfterFirstCall));
     }
 
     [Fact]
@@ -197,11 +192,7 @@ public sealed class CommunicationEntitlementCatalogTests
     {
         var plan = CreatePlan(PlanTier.Starter);
 
-        var result = plan.AddMissingEntitlements(
-            CommunicationEntitlementCatalog.SeedsFor(plan.Tier),
-            Guid.Empty,
-            DateTime.UtcNow
-        );
+        var result = plan.AddMissingEntitlements(CommunicationEntitlementCatalog.Defaults, Guid.Empty, DateTime.UtcNow);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Plan.NoPublishedVersion", result.Error.Code);
