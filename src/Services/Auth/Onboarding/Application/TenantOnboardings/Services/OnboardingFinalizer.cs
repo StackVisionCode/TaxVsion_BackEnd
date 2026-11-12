@@ -57,28 +57,7 @@ public sealed class OnboardingFinalizer(
                 return commit;
         }
 
-        // 2) Qualify del referido: solo con ingreso real (net > 0) y atribución presente. No bloquea la factura.
-        if (cmd.NetAmountCents > 0 && cmd.PaymentId is { } pid && cmd.ReferralAttributionId is { } attributionId)
-        {
-            var qualify = await growth.QualifyReferralAsync(
-                new GrowthQualifyRequest(
-                    attributionId,
-                    sourceEventId,
-                    pid,
-                    cmd.NetAmountCents,
-                    cmd.Currency,
-                    IsFirstSuccessfulPayment: true,
-                    DateTime.UtcNow
-                ),
-                ct
-            );
-            if (qualify.IsFailure)
-                logger.LogWarning(
-                    "Referral qualify failed for onboarding {OnboardingId}: {Code} (invoice not blocked).",
-                    cmd.OnboardingId,
-                    qualify.Error.Code
-                );
-        }
+        // 2) El referido se califica en Growth al llegar el evento del pago del alta (sin llamada M2M de Auth).
 
         // 3) Billing asienta la factura (fuente de verdad financiera). Documents la renderiza.
         var adjustments = cmd

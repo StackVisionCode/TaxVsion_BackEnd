@@ -322,9 +322,12 @@ public sealed class PermissionCatalogTests
             .All.Where(definition => definition.Module is "growth" or "codes" or "referrals")
             .ToArray();
 
-        // CAT-F0 — Fase 0 removió los permisos IsReserved del módulo growth/codes/referrals.
-        // Quedan los 6 que un endpoint real exige.
-        Assert.Equal(6, growth.Length);
+        // CAT-F0 — Fase 0 removió los permisos IsReserved del módulo growth/codes/referrals y dejó los 6
+        // que un endpoint real exigía. Referidos→Wallet y Giftcards (Ola 5) suman los que ya tienen
+        // endpoint: referrals.program.read y referrals.program.manage. El resto (reward.read,
+        // admin.code.manage, codes.* de plataforma, antifraude…) se siembra cuando aterriza su endpoint:
+        // la regla del catálogo es que un permiso declarado lo exija un endpoint (no se reserva).
+        Assert.Equal(13, growth.Length);
         Assert.Equal(growth.Length, growth.Select(definition => definition.Code).Distinct().Count());
         Assert.Equal(growth.Length, growth.Select(definition => definition.Id).Distinct().Count());
     }

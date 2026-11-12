@@ -23,6 +23,11 @@ public sealed class ReferralRewardCaseConfiguration : IEntityTypeConfiguration<R
         builder.Property(reward => reward.BeneficiaryId).IsRequired();
         builder.Property(reward => reward.RewardType).HasConversion<string>().HasMaxLength(40).IsRequired();
         builder.Property(reward => reward.RewardDefinitionKey).HasMaxLength(100).IsRequired();
+        builder.Property(reward => reward.PricePaidCents).IsRequired();
+        builder.Property(reward => reward.RewardBasisPoints).IsRequired();
+        builder.Property(reward => reward.RewardCapCents);
+        builder.Property(reward => reward.RewardAmountCents).IsRequired();
+        builder.Property(reward => reward.RewardCurrency).HasColumnType("char(3)");
         builder.Property(reward => reward.GrantId).IsRequired();
         builder.Property(reward => reward.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(reward => reward.EligibleAtUtc).HasColumnType("datetime2(7)").IsRequired();

@@ -118,8 +118,5 @@ public sealed class OnboardingFinalizerTests
             string idempotencyKey,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
-
-        public Task<Result> QualifyReferralAsync(GrowthQualifyRequest request, CancellationToken ct = default) =>
-            throw new NotSupportedException();
     }
 }

@@ -137,6 +137,10 @@ builder.Host.UseWolverine(options =>
     options
         .PublishMessage<BuildingBlocks.Messaging.WalletIntegrationEvents.WalletBalanceChangedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
+    // Respuesta a una solicitud genérica de crédito/reversa de otro servicio (sin M2M): misma referencia opaca.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.WalletIntegrationEvents.WalletCreditAppliedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
 
     // RBAC — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine crea
     // para cada handler (bus.InvokeAsync local o consumer de integration event).

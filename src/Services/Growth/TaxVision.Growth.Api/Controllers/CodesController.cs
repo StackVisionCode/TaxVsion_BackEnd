@@ -9,6 +9,9 @@ using Microsoft.AspNetCore.Mvc;
 using TaxVision.Codes.Application.Definitions.ActivateCode;
 using TaxVision.Codes.Application.Definitions.Common;
 using TaxVision.Codes.Application.Definitions.CreateCodeDefinition;
+using BuildingBlocks.Messaging.GrowthIntegrationEvents;
+using TaxVision.Codes.Application.Definitions.Admin;
+using TaxVision.Codes.Application.Definitions.SendGiftcard;
 using TaxVision.Codes.Application.Definitions.GetCodeDetails;
 using TaxVision.Codes.Application.Definitions.RevokeCode;
 using TaxVision.Codes.Application.Reservations.LateCommitReviews;
@@ -26,17 +29,18 @@ using HasPermissionAttribute = BuildingBlocks.Web.ActorTypeAuthorization.HasPerm
 namespace TaxVision.Growth.Api.Controllers;
 
 /// <summary>
-/// Gestión de códigos de descuento por el propio tenant (staff). AdminCrossTenant (creación de
-/// código de plataforma cross-tenant) es un chequeo adicional en código, no un actor type distinto
-/// — sigue siendo un staff member (PlatformAdmin) el que llama.
+/// Administración de giftcards y códigos promocionales. REGLA DE PRODUCTO: solo la compañía (PlatformAdmin) las
+/// crea y administra —afectan suscripciones y planes—; las oficinas (tenants) solo las canjean escribiendo el código
+/// en el alta. AdminCrossTenant (código de plataforma acotado a un tenant) es un chequeo adicional en código.
 /// </summary>
 [ApiController]
 [Route("growth/codes")]
 [Authorize]
-[AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+[AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class CodesController(
     IMessageBus bus,
-    BuildingBlocks.Web.ActorTypeAuthorization.IUserPermissionsSource permissionsSource
+    BuildingBlocks.Web.ActorTypeAuthorization.IUserPermissionsSource permissionsSource,
+    IConfiguration configuration
 ) : ControllerBase
 {
     public sealed record CreateCodeRequest(
@@ -109,6 +113,111 @@ public sealed class CodesController(
             ct
         );
 
+        return ToActionResult(result);
+    }
+
+    /// <summary>Giftcards de plataforma (más recientes primero), con su beneficio, vigencia, topes y canjes.</summary>
+    [HttpGet]
+    [RateLimit("growth.f.codes_read")]
+    [HasPermission(GrowthPermissions.CodesRead)]
+    [ProducesResponseType<BuildingBlocks.Common.PagedResult<CodeDefinitionDetailsResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> List(
+        CancellationToken ct,
+        [FromQuery] int page = 1,
+        [FromQuery] int size = 20,
+        [FromQuery] string? status = null
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _) || tenantId != PlatformTenant.Id)
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result<BuildingBlocks.Common.PagedResult<CodeDefinitionDetailsResponse>>>(
+            new ListPlatformCodesQuery(page, size, status),
+            ct
+        );
+        return ToActionResult(result);
+    }
+
+    /// <summary>Quién canjeó la giftcard, cuándo y cuánto se descontó.</summary>
+    public sealed record SendGiftcardRequest(
+        string Code,
+        string RecipientEmail,
+        string? RecipientName,
+        string? PersonalMessage
+    )
+    {
+        public override string ToString() =>
+            $"{nameof(SendGiftcardRequest)} {{ Code = <redacted>, RecipientEmail = <redacted> }}";
+    }
+
+    public sealed record SendGiftcardResponse(string Status);
+
+    /// <summary>
+    /// Envía la giftcard por correo desde la plataforma. El backend solo guarda el hash del código: el administrador
+    /// lo reenvía y se verifica contra esta giftcard. El correo lo arma Notification a partir de un evento de
+    /// integración (sin llamadas M2M); aquí solo se valida y se publica.
+    /// </summary>
+    [HttpPost("{codeDefinitionId:guid}/send")]
+    [RateLimit("growth.g.codes_create")]
+    [HasPermission(GrowthPermissions.CodesManage)]
+    [ProducesResponseType<SendGiftcardResponse>(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> Send(Guid codeDefinitionId, SendGiftcardRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId) || tenantId != PlatformTenant.Id)
+            return Forbid();
+
+        var receipt = await bus.InvokeAsync<Result<SendGiftcardReceipt>>(
+            new SendGiftcardCommand(
+                codeDefinitionId,
+                request.Code,
+                request.RecipientEmail,
+                request.RecipientName,
+                request.PersonalMessage,
+                actorId
+            ),
+            ct
+        );
+        if (receipt.IsFailure)
+            return StatusCode(receipt.Error.ToHttpStatusCode(), receipt.Error);
+
+        var landing = (configuration["Giftcards:RedeemBaseUrl"] ?? "http://localhost:4201").TrimEnd('/');
+        var value = receipt.Value;
+        await bus.PublishAsync(
+            new GiftcardShareRequestedIntegrationEvent
+            {
+                TenantId = PlatformTenant.Id,
+                AggregateId = codeDefinitionId,
+                RecipientEmail = value.RecipientEmail,
+                RecipientName = value.RecipientName,
+                ValueLabel = value.ValueLabel,
+                Code = value.Code,
+                ExpiresAtUtc = value.ExpiresAtUtc,
+                PersonalMessage = value.PersonalMessage,
+                RedeemUrl = $"{landing}/register?gift={Uri.EscapeDataString(value.Code)}",
+            }
+        );
+
+        return Accepted(new SendGiftcardResponse("Queued"));
+    }
+
+    [HttpGet("{codeDefinitionId:guid}/redemptions")]
+    [RateLimit("growth.f.codes_read")]
+    [HasPermission(GrowthPermissions.CodesRedemptionRead)]
+    [ProducesResponseType<BuildingBlocks.Common.PagedResult<CodeRedemptionRow>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListRedemptions(
+        Guid codeDefinitionId,
+        CancellationToken ct,
+        [FromQuery] int page = 1,
+        [FromQuery] int size = 20
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _) || tenantId != PlatformTenant.Id)
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result<BuildingBlocks.Common.PagedResult<CodeRedemptionRow>>>(
+            new ListCodeRedemptionsQuery(codeDefinitionId, page, size),
+            ct
+        );
         return ToActionResult(result);
     }
 

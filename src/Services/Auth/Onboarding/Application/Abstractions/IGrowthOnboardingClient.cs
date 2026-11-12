@@ -72,9 +72,6 @@ public interface IGrowthOnboardingClient
         string idempotencyKey,
         CancellationToken ct = default
     );
-
-    /// <summary>Califica al referido tras el primer pago exitoso (solo net &gt; 0). Idempotente.</summary>
-    Task<Result> QualifyReferralAsync(GrowthQualifyRequest request, CancellationToken ct = default);
 }
 
 /// <summary>Cotización de un código contra el bruto residual. La oferta = el plan de suscripción.</summary>
@@ -103,14 +100,4 @@ public sealed record GrowthReserveResult(
     long DiscountAmountCents,
     long NetAmountCents,
     DateTime ExpiresAtUtc
-);
-
-public sealed record GrowthQualifyRequest(
-    Guid AttributionId,
-    Guid QualifyingEventId,
-    Guid PaymentId,
-    long PaymentAmountCents,
-    string PaymentCurrency,
-    bool IsFirstSuccessfulPayment,
-    DateTime PaymentSucceededAtUtc
 );

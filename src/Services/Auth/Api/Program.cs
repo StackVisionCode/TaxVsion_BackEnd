@@ -560,6 +560,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantResolutionFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingOtpRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingRegistrationReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // El comprador declaró un código de referido: Growth registra la atribución por evento (sin M2M de Auth).
+    options.PublishMessage<OnboardingReferralDeclaredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options
         .PublishMessage<OnboardingPaymentFailedNotificationRequestedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");

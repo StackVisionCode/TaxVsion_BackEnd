@@ -31,6 +31,37 @@ public sealed class ReferralCodeRepository(GrowthDbContext dbContext, ITenantCon
                     ct
                 );
 
+    public Task<ReferralCode?> GetOwnedByIdAsync(Guid ownerTenantId, Guid codeId, CancellationToken ct = default) =>
+        codeId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
+            ? Task.FromResult<ReferralCode?>(null)
+            : dbContext
+                .ReferralCodes.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(code => code.Id == codeId && code.TenantId == ownerTenantId, ct);
+
+    public Task<bool> ExistsUsableByHashAsync(
+        Guid programId,
+        string codeHash,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    )
+    {
+        if (programId == Guid.Empty || !IsSha256Hex(codeHash))
+            return Task.FromResult(false);
+
+        var normalizedHash = codeHash.Trim().ToLowerInvariant();
+        return dbContext
+            .ReferralCodes.IgnoreQueryFilters()
+            .AsNoTracking()
+            .AnyAsync(
+                code =>
+                    code.ProgramId == programId
+                    && code.CodeHash == normalizedHash
+                    && code.Status == ReferralCodeStatus.Active
+                    && code.ExpiresAtUtc > nowUtc,
+                ct
+            );
+    }
+
     public Task<ReferralCode?> ResolveByHashAsync(Guid programId, string codeHash, CancellationToken ct = default)
     {
         if (

@@ -48,6 +48,7 @@ builder.Services.AddGrowthInfrastructure(builder.Configuration);
 // Red de seguridad: barre reservas de código vencidas (checkout abandonado) → Expired + libera el hold,
 // para que un código de un solo uso no quede quemado si nadie llamó Cancel.
 builder.Services.AddHostedService<TaxVision.Growth.Infrastructure.Scheduling.ReservationExpirySweeper>();
+builder.Services.AddHostedService<TaxVision.Growth.Infrastructure.Scheduling.ReferralRewardGrantWorker>();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
@@ -148,6 +149,12 @@ builder.Host.UseWolverine(options =>
 
     // Primer evento que Growth publica. Hoy no tiene consumidor.
     options.PublishMessage<CodeReservationCommittedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Solicitud de crédito/reversa del premio al Wallet (el Wallet responde con wallet.credit.applied.v1): sin M2M.
+    options.PublishMessage<BuildingBlocks.Messaging.WalletIntegrationEvents.WalletCreditRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Aviso al referidor cuando alguien se registra con su código (Notification lo consume).
+    options.PublishMessage<BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralAttributedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Envío de una giftcard por correo: Notification lo consume y despacha el email.
+    options.PublishMessage<BuildingBlocks.Messaging.GrowthIntegrationEvents.GiftcardShareRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     options
         .ListenToRabbitQueue(
@@ -176,7 +183,10 @@ var app = builder.Build();
 // IP real del cliente detras de Cloudflare/Caddy/Gateway (compartido) — primer middleware.
 app.UseTaxVisionClientIp();
 
-// Gift/Referral — siembra los códigos de plataforma usables en el onboarding (idempotente por hash).
+// Giftcards de DEMO (WELCOME100, GIFTCARD5…): solo en desarrollo/demo. En producción las giftcards las crea la
+// compañía (PlatformAdmin) desde la administración; sembrar códigos de regalo públicos con montos reales sería un
+// agujero. Se activa con Growth:Seeding:OnboardingDemoCodes=true (lo pone el overlay local de docker).
+if (builder.Configuration.GetValue("Growth:Seeding:OnboardingDemoCodes", false))
 await using (var seedScope = app.Services.CreateAsyncScope())
 {
     var sp = seedScope.ServiceProvider;
@@ -184,6 +194,21 @@ await using (var seedScope = app.Services.CreateAsyncScope())
         sp.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeDefinitionRepository>(),
         sp.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeTokenHasher>(),
         sp.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(),
+        sp.GetRequiredService<ILogger<Program>>(),
+        CancellationToken.None
+    );
+}
+
+// Referidos — siembra el programa de plataforma por defecto (idempotente por ProgramCode; nunca pisa lo
+// que el PlatformAdmin ajustó). Scope propio: fija el tenant de plataforma sin contaminar requests.
+await using (var programSeedScope = app.Services.CreateAsyncScope())
+{
+    var sp = programSeedScope.ServiceProvider;
+    await TaxVision.Referrals.Application.Programs.Seeding.DefaultReferralProgramSeeder.SeedAsync(
+        sp.GetRequiredService<TaxVision.Referrals.Application.Abstractions.IReferralProgramRepository>(),
+        sp.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(),
+        sp.GetRequiredService<BuildingBlocks.Tenancy.ITenantContext>(),
+        sp.GetRequiredService<TimeProvider>(),
         sp.GetRequiredService<ILogger<Program>>(),
         CancellationToken.None
     );

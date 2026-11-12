@@ -35,6 +35,75 @@ public sealed class ReferralRewardCaseRepository(GrowthDbContext dbContext, ITen
             .SingleOrDefaultAsync(rewardCase => rewardCase.Id == rewardCaseId, ct);
     }
 
+    public Task<ReferralRewardCase?> GetByPaymentAsync(Guid paymentId, CancellationToken ct = default)
+    {
+        if (!tenantContext.HasTenant || tenantContext.TenantId == Guid.Empty || paymentId == Guid.Empty)
+            return Task.FromResult<ReferralRewardCase?>(null);
+
+        // El premio es del referidor pero el pago es del referido: único cruce de tenants permitido aquí, por el Id
+        // exacto del pago autoritativo (el caller ya fue autorizado en el borde del mensaje).
+        return (
+            from rewardCase in dbContext.ReferralRewardCases.IgnoreQueryFilters()
+            join qualification in dbContext.ReferralQualifications.IgnoreQueryFilters()
+                on rewardCase.QualificationId equals qualification.Id
+            where qualification.PaymentId == paymentId
+            select rewardCase
+        ).FirstOrDefaultAsync(ct);
+    }
+
+    // Escaneo de sistema (cruza tenants) SOLO para el worker de premios; cada caso se procesa después con su propio
+    // tenant en contexto. Devuelve referencias mínimas, nunca entidades de otros tenants.
+    public async Task<IReadOnlyList<GrantableRewardCaseRef>> GetGrantableWalletCreditCasesAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    )
+    {
+        // Una solicitud al Wallet sin respuesta pasado este tiempo se vuelve a pedir (el Wallet deduplica por referencia).
+        var staleBefore = nowUtc - WalletResponseGrace;
+        return await dbContext
+            .ReferralRewardCases.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(rewardCase =>
+                rewardCase.RewardType == ReferralRewardType.WalletCredit
+                && rewardCase.EligibleAtUtc <= nowUtc
+                && (
+                    rewardCase.Status == ReferralRewardCaseStatus.Requested
+                    || (
+                        rewardCase.Status == ReferralRewardCaseStatus.PendingGrant
+                        && rewardCase.UpdatedAtUtc <= staleBefore
+                    )
+                )
+            )
+            .OrderBy(rewardCase => rewardCase.EligibleAtUtc)
+            .Take(batchSize)
+            .Select(rewardCase => new GrantableRewardCaseRef(rewardCase.TenantId, rewardCase.Id))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<GrantableRewardCaseRef>> GetStaleClawbackPendingCasesAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    )
+    {
+        var staleBefore = nowUtc - WalletResponseGrace;
+        return await dbContext
+            .ReferralRewardCases.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(rewardCase =>
+                rewardCase.RewardType == ReferralRewardType.WalletCredit
+                && rewardCase.Status == ReferralRewardCaseStatus.ClawbackPending
+                && rewardCase.UpdatedAtUtc <= staleBefore
+            )
+            .OrderBy(rewardCase => rewardCase.UpdatedAtUtc)
+            .Take(batchSize)
+            .Select(rewardCase => new GrantableRewardCaseRef(rewardCase.TenantId, rewardCase.Id))
+            .ToListAsync(ct);
+    }
+
+    private static readonly TimeSpan WalletResponseGrace = TimeSpan.FromMinutes(5);
+
     public async Task AddAsync(ReferralRewardCase rewardCase, CancellationToken ct = default)
     {
         if (!TenantRepositoryGuard.Matches(tenantContext, rewardCase.TenantId))

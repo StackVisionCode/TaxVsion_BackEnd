@@ -19,6 +19,24 @@ public sealed class ReferralRewardAttemptRepository(GrowthDbContext dbContext, I
                 .ReferralRewardAttempts.IgnoreQueryFilters()
                 .FirstOrDefaultAsync(attempt => attempt.Id == attemptId && attempt.TenantId == ownerTenantId, ct);
 
+    public Task<ReferralRewardAttempt?> GetOpenGrantAttemptAsync(
+        Guid rewardCaseId,
+        Guid ownerTenantId,
+        CancellationToken ct = default
+    ) =>
+        rewardCaseId == Guid.Empty || !TenantRepositoryGuard.Matches(tenantContext, ownerTenantId)
+            ? Task.FromResult<ReferralRewardAttempt?>(null)
+            : dbContext
+                .ReferralRewardAttempts.IgnoreQueryFilters()
+                .Where(attempt =>
+                    attempt.RewardCaseId == rewardCaseId
+                    && attempt.TenantId == ownerTenantId
+                    && attempt.Operation == ReferralRewardOperation.Grant
+                    && attempt.Status == ReferralRewardAttemptStatus.Pending
+                )
+                .OrderByDescending(attempt => attempt.CreatedAtUtc)
+                .FirstOrDefaultAsync(ct);
+
     public async Task AddAsync(ReferralRewardAttempt attempt, CancellationToken ct = default)
     {
         if (!TenantRepositoryGuard.Matches(tenantContext, attempt.TenantId))

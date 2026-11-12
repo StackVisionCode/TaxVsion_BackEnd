@@ -2807,65 +2807,163 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000123"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "codes.code.read",
-                            Description = "View the office's codes",
-                            IsAssignableByTenant = true,
+                            Description = "View giftcards and promotional codes (platform only)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
                             MinPlanTier = 0,
                             Module = "codes",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000124"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "codes.code.manage",
-                            Description = "Manage the office's codes",
-                            IsAssignableByTenant = true,
+                            Description = "Create and edit giftcards and promotional codes (platform only)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
                             MinPlanTier = 0,
                             Module = "codes",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000126"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "codes.code.activate",
-                            Description = "Activate codes",
-                            IsAssignableByTenant = true,
+                            Description = "Activate giftcards and promotional codes (platform only)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
                             MinPlanTier = 0,
                             Module = "codes",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000127"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "codes.code.revoke",
-                            Description = "Revoke codes",
-                            IsAssignableByTenant = true,
+                            Description = "Revoke giftcards and promotional codes (platform only)",
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
                             MinPlanTier = 0,
                             Module = "codes",
-                            PlatformOnly = false
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000223"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "codes.redemption.read",
+                            Description = "View who redeemed a giftcard and the discount applied (platform only)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "codes",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000224"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "referrals.admin.code.manage",
+                            Description = "List, generate and revoke any office's referral code (platform only)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000225"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "referrals.reward.manage",
+                            Description = "Review referral rewards: hold, release or reject (platform only)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = true
                         },
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000131"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "referrals.own.read",
-                            Description = "View your own referrals",
+                            Description = "View, copy and share your office's referral code",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000220"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "referrals.program.read",
+                            Description = "View the referral program terms",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000222"),
+                            AllowedActorTypes = "PlatformAdmin",
+                            Code = "referrals.program.manage",
+                            Description = "Create, version, activate and suspend the referral program (platform only)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = true
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000218"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "referrals.code.manage",
+                            Description = "Generate and regenerate the office's referral code",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            MinPlanTier = 0,
+                            Module = "referrals",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000221"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "referrals.reward.read",
+                            Description = "View the office's referrals, share history and referral rewards",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,

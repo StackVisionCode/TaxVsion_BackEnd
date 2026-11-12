@@ -114,6 +114,22 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'BuildingBlocks.Messaging.EmailIntegrationEvents.EmailSendRequestedIntegrationEvent',
   // Growth — Códigos y referidos: Billing y Subscription.
   'growth.codes.reservation_committed',
+  // Pagos — reembolso y chargeback de un pago: los consume Growth (revierte el premio de referido).
+  'payments.payment_refunded',
+  'payments.chargeback_changed',
+  'BuildingBlocks.Messaging.PaymentIntegrationEvents.PaymentRefundedIntegrationEvent',
+  'BuildingBlocks.Messaging.PaymentIntegrationEvents.PaymentChargebackChangedIntegrationEvent',
+  // Wallet — solicitud y respuesta de crédito/reversa por referencia opaca: Growth (premios de referidos) y Wallet.
+  'wallet.credit.requested.v1',
+  'wallet.credit.applied.v1',
+  // Giftcards por correo y aviso de referido: los consume Notification; Communication no hace nada con ellos.
+  'growth.giftcards.share_requested',
+  'growth.giftcards.share_requested.v1',
+  'growth.referrals.attributed',
+  'growth.referrals.attributed.v1',
+  // Referido declarado en el alta: lo consume Growth (atribución); Communication no hace nada con él.
+  'auth.onboarding.referral_declared',
+  'auth.onboarding.referral_declared.v1',
   // Notes — Notas: Customer y CloudStorage.
   'BuildingBlocks.Messaging.NotesIntegrationEvents.NoteAttachmentDetachedIntegrationEvent',
   'BuildingBlocks.Messaging.NotesIntegrationEvents.NoteCreatedIntegrationEvent',

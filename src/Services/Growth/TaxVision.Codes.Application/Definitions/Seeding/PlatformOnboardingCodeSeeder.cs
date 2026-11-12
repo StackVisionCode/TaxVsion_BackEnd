@@ -33,8 +33,9 @@ public static class PlatformOnboardingCodeSeeder
             new Seed("WELCOME100", "Onboarding — bienvenida 100%", () => Percentage(10_000)),
             // 20% — descuento parcial (carril con cobro del neto).
             new Seed("WELCOME20", "Onboarding — bienvenida 20%", () => Percentage(2_000)),
-            // Gift fijo de US$25 (se clampa al bruto residual si es menor).
-            new Seed("GIFT25", "Onboarding — gift US$25", () => Fixed(2_500, "USD")),
+            // Gift fijo de US$25 (se clampa al bruto residual si es menor). El token DEBE tener 8+ caracteres
+            // (CodeDisplay.FromToken): el GIFT25 original se omitía por eso al arrancar.
+            new Seed("GIFTCARD25", "Onboarding — gift US$25", () => Fixed(2_500, "USD")),
             // Gift del 5% para probar el carril con cobro (net>0) directo, sin referido. El token DEBE
             // tener 8+ caracteres (CodeDisplay.FromToken), por eso GIFTCARD5 y no SAVE5.
             new Seed("GIFTCARD5", "Onboarding — gift 5%", () => Percentage(500)),

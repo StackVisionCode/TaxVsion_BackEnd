@@ -772,6 +772,16 @@ public static class NotificationCatalog
             NotificationAction.Open
         ),
         Entry(
+            NotificationKinds.ReferralAttributed,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.TenantOwner,
+            InApp,
+            false,
+            "referral",
+            NotificationAction.Open
+        ),
+        Entry(
             NotificationKinds.PaymentClientPayoutFailed,
             NotificationCatalogCategory.Billing,
             NotificationPriority.Urgent,

@@ -107,6 +107,7 @@ public static class NotificationTemplateSeedSource
             SignatureDeclined,
             SignatureVerificationChallenge,
             OnboardingOtpRequested,
+            GiftcardShare,
             OnboardingRegistrationReady,
             OnboardingReceiptReady,
             OnboardingPaymentFailed,
@@ -1704,6 +1705,49 @@ public static class NotificationTemplateSeedSource
                     "Nombre del comprador (con fallback ya resuelto por el consumer)."
                 ),
                 ("expires_in_minutes", VariableType.Number, true, null, "Minutos hasta la expiración del código."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
+    // Giftcards — el PlatformAdmin envía una tarjeta por correo desde la administración (Growth publica el evento).
+    private static NotificationTemplateSeed GiftcardShare { get; } =
+        new(
+            EventKey: "giftcards.share_requested.v1",
+            TemplateKey: "giftcards.share",
+            Name: "Giftcards — Tarjeta de regalo",
+            Subject: "You received a {{ product_name }} gift card: {{ value_label }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Gift card</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You received a gift card</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ recipient_name }}</strong>, here is a gift for {{ product_name }}. It applies to any plan.</td></tr>
+              {% if personal_message != '' %}<tr><td style="padding:6px 0 10px 0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;font-style:italic;color:#496174;mso-line-height-rule:exactly;">&ldquo;{{ personal_message }}&rdquo;</td></tr>{% endif %}
+              <tr><td style="padding:14px 0 6px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0B3A5B" style="background-color:#0B3A5B;border-radius:18px;"><tr><td style="padding:26px 24px;font-family:Arial,Helvetica,sans-serif;color:#FFFFFF;">
+                <div style="font-size:12px;letter-spacing:1.2px;text-transform:uppercase;color:#BBD7EE;">{{ product_name }} gift card</div>
+                <div style="padding:10px 0 2px 0;font-size:40px;line-height:46px;font-weight:bold;color:#FFFFFF;">{{ value_label }}</div>
+                <div style="font-size:13px;color:#BBD7EE;">on any plan</div>
+                <div style="padding-top:18px;"><span style="display:inline-block;background-color:#1D5280;border-radius:999px;padding:8px 16px;font-family:'Courier New',monospace;font-size:16px;font-weight:bold;letter-spacing:2px;color:#FFFFFF;">{{ code }}</span></div>
+                <div style="padding-top:12px;font-size:12px;color:#BBD7EE;">{{ expires_text }}</div>
+              </td></tr></table></td></tr>
+              <tr><td style="padding:18px 0 6px 0;"><a href="{{ redeem_url }}" style="display:inline-block;background-color:#E3FF00;border-radius:999px;padding:12px 26px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#0B3A5B;text-decoration:none;">Redeem your gift card</a></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Enter the code at sign-up, or use the button above. The discount is applied when you choose a plan.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("recipient_name", VariableType.String, true, null, "Nombre del destinatario (con fallback ya resuelto)."),
+                ("value_label", VariableType.String, true, null, "Beneficio tal como se ve en la tarjeta (20% OFF, $25 OFF)."),
+                ("code", VariableType.String, true, null, "Código de la giftcard."),
+                ("expires_text", VariableType.String, true, null, "Vigencia legible: 'Valid until …' o 'No expiry'."),
+                ("redeem_url", VariableType.String, true, null, "Enlace al alta con el código precargado."),
+                ("personal_message", VariableType.String, false, "", "Mensaje personal opcional del remitente."),
                 (
                     "product_name",
                     VariableType.String,

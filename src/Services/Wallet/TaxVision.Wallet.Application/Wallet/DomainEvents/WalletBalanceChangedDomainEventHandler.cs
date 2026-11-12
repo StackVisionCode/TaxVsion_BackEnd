@@ -32,6 +32,8 @@ public static class WalletBalanceChangedDomainEventHandler
             MovementType.Release => "release",
             MovementType.UsageRefund => "refund",
             MovementType.Adjustment => "adjust",
+            MovementType.Reward => "reward",
+            MovementType.RewardReversal => "reward_reversal",
             _ => movement.ToString().ToLowerInvariant(),
         };
 }

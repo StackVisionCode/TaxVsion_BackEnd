@@ -106,7 +106,8 @@ public static class IssueTenantReferralCodeHandler
                     command.IdempotencyKey,
                     fingerprint,
                     command.ActorUserId,
-                    nowUtc
+                    nowUtc,
+                    command.OwnerUserId
                 );
                 if (created.IsFailure)
                     return Result.Failure<IssueTenantReferralCodeResult>(created.Error);

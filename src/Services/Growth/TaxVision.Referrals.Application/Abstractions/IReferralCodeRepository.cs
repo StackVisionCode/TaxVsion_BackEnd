@@ -24,5 +24,14 @@ public interface IReferralCodeRepository
     /// </summary>
     Task<ReferralCode?> ResolveByHashAsync(Guid programId, string codeHash, CancellationToken ct = default);
 
+    /// <summary>
+    /// ¿Existe un código USABLE (activo y vigente) para ese programa y hash? Lookup exacto y elevado que devuelve solo un
+    /// booleano —nunca el código, su dueño ni sus datos— para la validación pública previa al alta.
+    /// </summary>
+    Task<bool> ExistsUsableByHashAsync(Guid programId, string codeHash, DateTime nowUtc, CancellationToken ct = default);
+
+    /// <summary>Código por Id, restringido al tenant dueño (el tenant activo debe coincidir). Para registrar envíos del propio código.</summary>
+    Task<ReferralCode?> GetOwnedByIdAsync(Guid ownerTenantId, Guid codeId, CancellationToken ct = default);
+
     Task AddAsync(ReferralCode referralCode, CancellationToken ct = default);
 }

@@ -51,6 +51,26 @@ internal sealed class InMemoryReferralProgramRepository(params ReferralProgram[]
     public Task<ReferralProgram?> GetForEvaluationAsync(Guid programId, CancellationToken ct = default) =>
         Task.FromResult(_items.FirstOrDefault(program => program.Id == programId));
 
+    public Task<ReferralProgram?> GetActivePlatformProgramAsync(CancellationToken ct = default) =>
+        Task.FromResult(
+            _items
+                .Where(program =>
+                    program.ScopeType == ReferralProgramScope.Platform
+                    && program.FlowType == ReferralFlowType.TenantToTenant
+                    && program.Status == ReferralProgramStatus.Active
+                )
+                .OrderByDescending(program => program.CreatedAtUtc)
+                .FirstOrDefault()
+        );
+
+    public Task<ReferralProgram?> GetPlatformProgramByCodeAsync(string programCode, CancellationToken ct = default) =>
+        Task.FromResult(
+            _items.FirstOrDefault(program =>
+                program.ScopeType == ReferralProgramScope.Platform
+                && string.Equals(program.ProgramCode, programCode.Trim(), StringComparison.OrdinalIgnoreCase)
+            )
+        );
+
     public Task AddAsync(ReferralProgram program, CancellationToken ct = default)
     {
         _items.Add(program);
@@ -88,6 +108,23 @@ internal sealed class InMemoryReferralCodeRepository(params ReferralCode[] seed)
                 && code.OwnerType == ownerType
                 && code.OwnerId == ownerId
                 && code.Status == ReferralCodeStatus.Active
+            )
+        );
+
+    public Task<ReferralCode?> GetOwnedByIdAsync(Guid ownerTenantId, Guid codeId, CancellationToken ct = default) =>
+        Task.FromResult(_items.FirstOrDefault(code => code.Id == codeId && code.TenantId == ownerTenantId));
+
+    public Task<bool> ExistsUsableByHashAsync(
+        Guid programId,
+        string codeHash,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            _items.Any(code =>
+                code.ProgramId == programId
+                && string.Equals(code.CodeHash, codeHash, StringComparison.Ordinal)
+                && code.EnsureUsable(nowUtc).IsSuccess
             )
         );
 
@@ -130,6 +167,15 @@ internal sealed class InMemoryReferralAttributionRepository(params ReferralAttri
             _items.FirstOrDefault(attribution =>
                 attribution.Id == attributionId && attribution.TenantId == ownerTenantId
             )
+        );
+
+    public Task<ReferralAttribution?> GetByRefereeAsync(
+        Guid ownerTenantId,
+        Guid refereeId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            _items.FirstOrDefault(attribution => attribution.RefereeId == refereeId && attribution.TenantId == ownerTenantId)
         );
 
     public Task AddAsync(ReferralAttribution attribution, CancellationToken ct = default)
@@ -192,8 +238,38 @@ internal sealed class InMemoryReferralRewardCaseRepository(params ReferralReward
     ) =>
         Task.FromResult(_items.FirstOrDefault(reward => reward.GrantId == grantId && reward.TenantId == ownerTenantId));
 
+    /// <summary>Premio por pago del referido (en producción se resuelve por la calificación).</summary>
+    public Dictionary<Guid, ReferralRewardCase> ByPayment { get; } = [];
+
+    public Task<ReferralRewardCase?> GetByPaymentAsync(Guid paymentId, CancellationToken ct = default) =>
+        Task.FromResult(ByPayment.GetValueOrDefault(paymentId));
+
     public Task<ReferralRewardCase?> GetForCompensationAsync(Guid rewardCaseId, CancellationToken ct = default) =>
         Task.FromResult(_items.FirstOrDefault(reward => reward.Id == rewardCaseId));
+
+    public Task<IReadOnlyList<GrantableRewardCaseRef>> GetStaleClawbackPendingCasesAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<GrantableRewardCaseRef>>([]);
+
+    public Task<IReadOnlyList<GrantableRewardCaseRef>> GetGrantableWalletCreditCasesAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<GrantableRewardCaseRef>>(
+            _items
+                .Where(reward =>
+                    reward.RewardType == ReferralRewardType.WalletCredit
+                    && reward.Status is ReferralRewardCaseStatus.Requested or ReferralRewardCaseStatus.PendingGrant
+                    && reward.EligibleAtUtc <= nowUtc
+                )
+                .OrderBy(reward => reward.EligibleAtUtc)
+                .Take(batchSize)
+                .Select(reward => new GrantableRewardCaseRef(reward.TenantId, reward.Id))
+                .ToList()
+        );
 
     public Task AddAsync(ReferralRewardCase rewardCase, CancellationToken ct = default)
     {

@@ -742,6 +742,16 @@ public sealed class SaaSPayment : AggregateRoot
                 ? PaymentStatus.Refunded
                 : PaymentStatus.PartiallyRefunded;
         Touch(actorUserId, nowUtc);
+        // Aviso de integración (Growth revierte el premio de referido; otros consumidores pueden sumarse).
+        AddDomainEvent(
+            new SaaSPaymentRefunded(
+                Snapshot(),
+                refundAmount.AmountCents,
+                totalRefunded + refundAmount.AmountCents,
+                reason,
+                nowUtc
+            )
+        );
         return Result.Success();
     }
 
@@ -906,6 +916,7 @@ public sealed class SaaSPayment : AggregateRoot
         ChargedBackAtUtc = chargedBackAtUtc;
         FailureReason = reason;
         Touch(actorUserId, chargedBackAtUtc);
+        AddDomainEvent(new SaaSPaymentChargedBack(Snapshot(), reason, chargedBackAtUtc));
         return Result.Success();
     }
 

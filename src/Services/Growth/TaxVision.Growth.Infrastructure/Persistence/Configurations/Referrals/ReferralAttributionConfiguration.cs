@@ -27,6 +27,9 @@ public sealed class ReferralAttributionConfiguration : IEntityTypeConfiguration<
         builder.Property(attribution => attribution.TenantScopeId);
         builder.Property(attribution => attribution.ReferrerType).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(attribution => attribution.ReferrerId).IsRequired();
+        builder.Property(attribution => attribution.ReferrerUserId);
+        builder.Property(attribution => attribution.Channel).HasConversion<string>().HasMaxLength(20);
+        builder.Property(attribution => attribution.ShareId);
         builder.Property(attribution => attribution.RefereeType).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(attribution => attribution.RefereeId).IsRequired();
         builder.Property(attribution => attribution.Status).HasConversion<string>().HasMaxLength(20).IsRequired();

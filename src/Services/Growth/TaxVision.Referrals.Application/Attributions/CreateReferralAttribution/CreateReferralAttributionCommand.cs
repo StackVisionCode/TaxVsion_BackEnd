@@ -1,4 +1,5 @@
 using TaxVision.Referrals.Domain.Participants;
+using TaxVision.Referrals.Domain.Shares;
 
 namespace TaxVision.Referrals.Application.Attributions.CreateReferralAttribution;
 
@@ -9,7 +10,9 @@ public sealed record CreateReferralAttributionCommand(
     ReferralParticipantType RefereeType,
     Guid RefereeId,
     string IdempotencyKey,
-    Guid ActorUserId
+    Guid ActorUserId,
+    ReferralShareChannel? Channel = null,
+    Guid? ShareId = null
 )
 {
     public override string ToString() =>

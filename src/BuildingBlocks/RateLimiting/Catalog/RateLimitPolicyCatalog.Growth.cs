@@ -71,6 +71,43 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 600
     );
 
+    // Administración del programa de referidos (PlatformAdmin): crear, versionar la política,
+    // activar y suspender. Poca frecuencia por naturaleza; mismo criterio que codes_create/activate.
+    public static readonly RateLimitPolicyDefinition GrowthReferralProgramAdmin = Define(
+        "growth.g.referral_program_admin",
+        RateLimitCategory.G,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
+    );
+
+    // Lecturas de referidos de la oficina (términos del programa, código propio, invitaciones, premios,
+    // historial de envíos). Misma forma que growth.f.codes_read.
+    public static readonly RateLimitPolicyDefinition GrowthReferralRead = Define(
+        "growth.f.referral_read",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 300,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 3000
+    );
+
+    // Validación pública del código de referido (landing, sin sesión): partición por IP; responde un booleano.
+    public static readonly RateLimitPolicyDefinition GrowthReferralValidateByIp = Define(
+        "growth.a.referral_validate_by_ip",
+        RateLimitCategory.A,
+        RateLimitPartitionDimension.Ip,
+        [],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.FixedWindow
+    );
+
     // Auditoría independiente post-Fase 9: reemplaza el [RateLimitExempt] de
     // InternalCodesController.Quote/ReserveBenefitGift (y la policy nativa "growth-code-quote"
     // asociada, ahora eliminada de Program.cs). El JWT de servicio SÍ trae TenantId

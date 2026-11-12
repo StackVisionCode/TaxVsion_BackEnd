@@ -5,5 +5,6 @@ public sealed record IssueTenantReferralCodeCommand(
     Guid ProgramId,
     DateTime ExpiresAtUtc,
     Guid ActorUserId,
-    string IdempotencyKey
+    string IdempotencyKey,
+    Guid? OwnerUserId = null
 );

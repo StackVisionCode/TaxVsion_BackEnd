@@ -4,6 +4,7 @@ using TaxVision.Referrals.Application.Abstractions;
 using TaxVision.Referrals.Application.Common;
 using TaxVision.Referrals.Application.Programs.Common;
 using TaxVision.Referrals.Domain.Programs;
+using TaxVision.Referrals.Domain.Rewards;
 
 namespace TaxVision.Referrals.Application.Programs.CreateTenantReferralProgram;
 
@@ -46,11 +47,9 @@ public static class CreateTenantReferralProgramHandler
             policy.Value.MaximumRewardsPerReferrerPerCalendarYear,
             policy.Value.RewardType,
             policy.Value.RewardDefinitionKey,
-            policy.Value.RefereeBenefitType,
-            policy.Value.RefereeBenefitPercentageBasisPoints,
-            policy.Value.RefereeBenefitFixedAmountCents,
-            policy.Value.RefereeBenefitCurrency,
-            policy.Value.RefereeBenefitExpirationDays,
+            policy.Value.RewardBasisPoints,
+            policy.Value.RewardCapCents,
+            policy.Value.RewardCurrency,
             command.ActorUserId
         );
 
@@ -86,24 +85,8 @@ public static class CreateTenantReferralProgramHandler
         );
     }
 
-    private static Result<ReferralProgramPolicy> ResolvePolicy(TenantReferralProgramPolicyInput? input)
-    {
-        var defaults = ReferralProgramPolicy.TenantToTenantDefaults();
-        return ReferralProgramPolicy.CreateTenantToTenant(
-            input?.AttributionWindowDays ?? defaults.AttributionWindowDays,
-            input?.MinimumPaymentAmountCents ?? defaults.MinimumPaymentAmountCents,
-            input?.MinimumPaymentCurrency ?? defaults.MinimumPaymentCurrency,
-            input?.WaitingPeriodDays ?? defaults.WaitingPeriodDays,
-            input?.MaximumRewardsPerReferrerPerCalendarYear ?? defaults.MaximumRewardsPerReferrerPerCalendarYear,
-            input?.RewardType ?? defaults.RewardType,
-            input?.RewardDefinitionKey ?? defaults.RewardDefinitionKey,
-            input?.RefereeBenefitType ?? defaults.RefereeBenefitType,
-            input?.RefereeBenefitPercentageBasisPoints ?? defaults.RefereeBenefitPercentageBasisPoints,
-            input?.RefereeBenefitFixedAmountCents ?? defaults.RefereeBenefitFixedAmountCents,
-            input?.RefereeBenefitCurrency ?? defaults.RefereeBenefitCurrency,
-            input?.RefereeBenefitExpirationDays ?? defaults.RefereeBenefitExpirationDays
-        );
-    }
+    private static Result<ReferralProgramPolicy> ResolvePolicy(TenantReferralProgramPolicyInput? input) =>
+        ReferralProgramPolicyResolver.Resolve(input, ReferralProgramPolicy.TenantToTenantDefaults());
 
     private static bool IsUtc(DateTime value) => value.Kind == DateTimeKind.Utc;
 

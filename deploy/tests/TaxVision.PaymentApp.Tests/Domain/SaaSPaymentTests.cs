@@ -593,6 +593,49 @@ public sealed class SaaSPaymentTests
     }
 
     [Fact]
+    public void A_refund_raises_SaaSPaymentRefunded_with_the_delta_and_the_cumulative_total()
+    {
+        var payment = CreateSucceededPayment();
+        payment.ClearDomainEvents();
+        var nowUtc = DateTime.UtcNow;
+
+        Assert.True(payment.RefundPartial(Money.Create(999, "USD").Value, "customer request", Guid.Empty, nowUtc).IsSuccess);
+        Assert.True(payment.RefundPartial(Money.Create(1000, "USD").Value, "customer request", Guid.Empty, nowUtc).IsSuccess);
+
+        var events = payment.DomainEvents.OfType<SaaSPaymentRefunded>().ToList();
+        Assert.Equal(2, events.Count);
+        Assert.Equal(999, events[0].RefundDeltaCents);
+        Assert.Equal(999, events[0].CumulativeRefundedCents);
+        Assert.Equal(1000, events[1].RefundDeltaCents);
+        Assert.Equal(1999, events[1].CumulativeRefundedCents);
+        Assert.Equal(payment.Id, events[1].Payment.SaaSPaymentId);
+    }
+
+    [Fact]
+    public void A_rejected_refund_raises_nothing()
+    {
+        var payment = CreatePendingPayment();
+
+        Assert.True(payment.RefundPartial(Money.Create(100, "USD").Value, "x", Guid.Empty, DateTime.UtcNow).IsFailure);
+
+        Assert.Empty(payment.DomainEvents);
+    }
+
+    [Fact]
+    public void A_chargeback_raises_SaaSPaymentChargedBack()
+    {
+        var payment = CreateSucceededPayment();
+        payment.ClearDomainEvents();
+        var nowUtc = DateTime.UtcNow;
+
+        Assert.True(payment.MarkChargedBack(nowUtc, "issuer dispute", Guid.Empty).IsSuccess);
+
+        var raised = Assert.IsType<SaaSPaymentChargedBack>(Assert.Single(payment.DomainEvents));
+        Assert.Equal(payment.Id, raised.Payment.SaaSPaymentId);
+        Assert.Equal(nowUtc, raised.ChargedBackAtUtc);
+    }
+
+    [Fact]
     public void MarkFailed_raises_SaaSPaymentFailed_with_its_retry_and_attempt()
     {
         var payment = CreatePendingPayment();

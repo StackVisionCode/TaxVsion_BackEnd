@@ -183,6 +183,19 @@ public sealed class TenantOnboarding : BaseEntity
         return Result.Success();
     }
 
+    /// <summary>
+    /// Engancha la atribución de referido creada en Growth para este alta (el código de referido solo identifica
+    /// quién recomendó; NO cambia el precio). Idempotente: si ya hay una atribución, conserva la primera.
+    /// </summary>
+    public Result AttachReferralAttribution(Guid referralAttributionId)
+    {
+        if (referralAttributionId == Guid.Empty)
+            return Result.Failure(new Error("Onboarding.InvalidReferralAttribution", "ReferralAttributionId is required."));
+
+        ReferralAttributionId ??= referralAttributionId;
+        return Result.Success();
+    }
+
     /// <summary>Gift/Referral: congela el desglose comercial (bruto/descuento/neto) y las reservas de
     /// código apiladas ANTES del checkout. Válido solo en PendingPayment. Idempotente: si ya se aplicó
     /// (hay reservas), es no-op — un reintento del checkout no re-reserva. <c>FullyCovered = neto 0</c>.</summary>

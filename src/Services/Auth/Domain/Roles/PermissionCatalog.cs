@@ -363,6 +363,8 @@ public static class PermissionCatalog
     public const string GrowthCodesRedemptionRead = GrowthPermissions.CodesRedemptionRead;
     public const string GrowthCodesCompensationManage = GrowthPermissions.CodesCompensationManage;
     public const string GrowthReferralsOwnRead = GrowthPermissions.ReferralsOwnRead;
+    public const string GrowthReferralsCodeManage = GrowthPermissions.ReferralsCodeManage;
+    public const string GrowthReferralsAdminCodeManage = GrowthPermissions.ReferralsAdminCodeManage;
     public const string GrowthReferralsProgramRead = GrowthPermissions.ReferralsProgramRead;
     public const string GrowthReferralsProgramManage = GrowthPermissions.ReferralsProgramManage;
     public const string GrowthReferralsAttributionRead = GrowthPermissions.ReferralsAttributionRead;
@@ -1743,27 +1745,118 @@ public static class PermissionCatalog
             "Manage the office's logo and branding",
             false
         ),
+        // --- Giftcards (Codes) — SOLO la compañía (PlatformAdmin) las crea y administra: afectan
+        // suscripciones y planes. Ningún rol de tenant recibe codes.* (antes Tenant Admin tenía
+        // read/manage/activate/revoke por defecto). Canjear una giftcard es escribir el código en el
+        // alta (público, rate-limited), no un permiso. Mismo criterio PlatformOnly que
+        // growth.admin.cross_tenant: el PlatformAdmin pasa siempre HasPermission por su actor type.
         new(
             new Guid("a1000000-0000-0000-0000-000000000123"),
             GrowthCodesRead,
             "codes",
-            "View the office's codes",
-            false
+            "View giftcards and promotional codes (platform only)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000124"),
             GrowthCodesManage,
             "codes",
-            "Manage the office's codes",
-            false
+            "Create and edit giftcards and promotional codes (platform only)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
-        new(new Guid("a1000000-0000-0000-0000-000000000126"), GrowthCodesActivate, "codes", "Activate codes", false),
-        new(new Guid("a1000000-0000-0000-0000-000000000127"), GrowthCodesRevoke, "codes", "Revoke codes", false),
         new(
+            new Guid("a1000000-0000-0000-0000-000000000126"),
+            GrowthCodesActivate,
+            "codes",
+            "Activate giftcards and promotional codes (platform only)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000127"),
+            GrowthCodesRevoke,
+            "codes",
+            "Revoke giftcards and promotional codes (platform only)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000223"),
+            GrowthCodesRedemptionRead,
+            "codes",
+            "View who redeemed a giftcard and the discount applied (platform only)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            // Soporte de la plataforma sobre los códigos de referido de las oficinas: listar, generar y revocar.
+            new Guid("a1000000-0000-0000-0000-000000000224"),
+            GrowthReferralsAdminCodeManage,
+            "referrals",
+            "List, generate and revoke any office's referral code (platform only)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            // Revisión de premios: ver la cola, retener, dar el visto bueno o rechazar un premio de referido.
+            new Guid("a1000000-0000-0000-0000-000000000225"),
+            GrowthReferralsRewardManage,
+            "referrals",
+            "Review referral rewards: hold, release or reject (platform only)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        // --- Referidos: el referido no recibe nada; el REFERIDOR gana un % del plan en su Wallet. ---
+        new(
+            // Ver el código propio, copiarlo y compartirlo (el envío registra su canal). No lo modifica:
+            // generar/regenerar es referrals.code.manage. Entra al bundle del Employee (solo ve/copia).
             new Guid("a1000000-0000-0000-0000-000000000131"),
             GrowthReferralsOwnRead,
             "referrals",
-            "View your own referrals",
+            "View, copy and share your office's referral code",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000220"),
+            GrowthReferralsProgramRead,
+            "referrals",
+            "View the referral program terms",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000222"),
+            GrowthReferralsProgramManage,
+            "referrals",
+            "Create, version, activate and suspend the referral program (platform only)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
+            // Generar o regenerar el código propio. Por defecto solo Tenant Admin (el Employee no lo recibe en su
+            // bundle explícito); al generar uno nuevo el anterior queda revocado. Lo exige POST codes/regenerate.
+            new Guid("a1000000-0000-0000-0000-000000000218"),
+            GrowthReferralsCodeManage,
+            "referrals",
+            "Generate and regenerate the office's referral code",
+            false
+        ),
+        new(
+            // Ver mis referidos (invitaciones, historial de envíos) y el premio ganado/pendiente. Solo lectura;
+            // lo exigen GET referrals/invites, /shares y /rewards. No depende del plan (el saldo vive en Wallet).
+            new Guid("a1000000-0000-0000-0000-000000000221"),
+            GrowthReferralsRewardRead,
+            "referrals",
+            "View the office's referrals, share history and referral rewards",
             false
         ),
         new(
@@ -2351,6 +2444,11 @@ public static class PermissionCatalog
                 // servicio le quedaba inservible. Fuera queda notes.view_all, que es gobernanza.
                 NotesRead,
                 NotesManage,
+                // Referidos: el empleado ve el código de su oficina y lo copia/comparte (el envío
+                // registra su canal). Generar/regenerar queda para el owner (referrals.code.manage,
+                // solo Tenant Admin por defecto): el empleado no modifica el código.
+                GrowthReferralsOwnRead,
+                GrowthReferralsRewardRead,
             ],
             Role.SystemCustomerPortal =>
             [

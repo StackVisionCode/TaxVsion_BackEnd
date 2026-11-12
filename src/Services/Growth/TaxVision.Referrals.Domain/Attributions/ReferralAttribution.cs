@@ -2,6 +2,7 @@ using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Referrals.Domain.Codes;
 using TaxVision.Referrals.Domain.Common;
+using TaxVision.Referrals.Domain.Shares;
 using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Programs;
 
@@ -14,6 +15,16 @@ public sealed class ReferralAttribution : TenantEntity
     public Guid? TenantScopeId { get; private set; }
     public ReferralParticipantType ReferrerType { get; private set; }
     public Guid ReferrerId { get; private set; }
+
+    /// <summary>Usuario de la oficina referidora que generó el código usado (IdUserRefer). Copiado del código.</summary>
+    [UserReference(UserReferenceKind.Provenance)]
+    public Guid? ReferrerUserId { get; private set; }
+
+    /// <summary>Canal por el que llegó el referido (copy/email/sms/whatsapp/social/other), tomado del enlace compartido.</summary>
+    public ReferralShareChannel? Channel { get; private set; }
+
+    /// <summary>Envío (<c>ReferralCodeShare</c>) concreto que produjo este registro, si el enlace lo traía.</summary>
+    public Guid? ShareId { get; private set; }
     public ReferralParticipantType RefereeType { get; private set; }
     public Guid RefereeId { get; private set; }
     public ReferralAttributionStatus Status { get; private set; }
@@ -45,12 +56,19 @@ public sealed class ReferralAttribution : TenantEntity
         string idempotencyKey,
         string payloadFingerprint,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        ReferralShareChannel? channel = null,
+        Guid? shareId = null
     )
     {
         var accepting = program.EnsureAcceptingAttributions(nowUtc);
         if (accepting.IsFailure)
             return Result.Failure<ReferralAttribution>(accepting.Error);
+
+        if (channel is { } declared && !Enum.IsDefined(declared))
+            return Result.Failure<ReferralAttribution>(
+                new Error("ReferralAttribution.InvalidChannel", "Channel is not supported.")
+            );
 
         var actor = DomainGuards.EnsureActor(actorUserId);
         if (actor.IsFailure)
@@ -101,6 +119,9 @@ public sealed class ReferralAttribution : TenantEntity
             TenantScopeId = program.TenantScopeId,
             ReferrerType = code.OwnerType,
             ReferrerId = code.OwnerId,
+            ReferrerUserId = code.OwnerUserId,
+            Channel = channel,
+            ShareId = shareId == Guid.Empty ? null : shareId,
             RefereeType = refereeType,
             RefereeId = refereeId,
             Status = ReferralAttributionStatus.Pending,

@@ -31,7 +31,8 @@ public sealed class ReferralProgramConfiguration : IEntityTypeConfiguration<Refe
                     "CK_ReferralPrograms_PolicyLimits",
                     "[AttributionWindowDays] > 0 AND [MinimumPaymentAmountCents] >= 0 "
                         + "AND [WaitingPeriodDays] >= 0 "
-                        + "AND [MaximumRewardsPerReferrerPerCalendarYear] > 0"
+                        + "AND [MaximumRewardsPerReferrerPerCalendarYear] > 0 "
+                        + "AND [RewardBasisPoints] BETWEEN 0 AND 10000"
                 );
             }
         );
@@ -99,25 +100,12 @@ public sealed class ReferralProgramConfiguration : IEntityTypeConfiguration<Refe
                     .HasColumnName("RewardDefinitionKey")
                     .HasMaxLength(100)
                     .IsRequired();
+                policy.Property(value => value.RewardBasisPoints).HasColumnName("RewardBasisPoints").IsRequired();
+                policy.Property(value => value.RewardCapCents).HasColumnName("RewardCapCents");
                 policy
-                    .Property(value => value.RefereeBenefitType)
-                    .HasColumnName("RefereeBenefitType")
-                    .HasConversion<string>()
-                    .HasMaxLength(20);
-                policy
-                    .Property(value => value.RefereeBenefitPercentageBasisPoints)
-                    .HasColumnName("RefereeBenefitPercentageBasisPoints");
-                policy
-                    .Property(value => value.RefereeBenefitFixedAmountCents)
-                    .HasColumnName("RefereeBenefitFixedAmountCents");
-                policy
-                    .Property(value => value.RefereeBenefitCurrency)
-                    .HasColumnName("RefereeBenefitCurrency")
+                    .Property(value => value.RewardCurrency)
+                    .HasColumnName("RewardCurrency")
                     .HasColumnType("char(3)");
-                policy
-                    .Property(value => value.RefereeBenefitExpirationDays)
-                    .HasColumnName("RefereeBenefitExpirationDays")
-                    .IsRequired();
             }
         );
         builder.Navigation(program => program.Policy).IsRequired();

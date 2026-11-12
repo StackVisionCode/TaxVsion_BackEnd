@@ -102,14 +102,6 @@ public static class DependencyInjection
                 http.Timeout = TimeSpan.FromSeconds(15);
             }
         );
-        services.AddHttpClient<IReferralBenefitReserver, GrowthRefereeBenefitClient>(
-            (sp, http) =>
-            {
-                var opt = sp.GetRequiredService<IOptions<GrowthClientOptions>>().Value;
-                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
-                http.Timeout = TimeSpan.FromSeconds(30);
-            }
-        );
 
         // SEC-M1.C — signer HMAC compartido con PaymentApp. Secret vive en env var
         // PurchaseIntentAmountSignature__Secret (misma en Subscription y PaymentApp).

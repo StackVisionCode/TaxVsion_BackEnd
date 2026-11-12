@@ -83,6 +83,9 @@ public static class NotificationKinds
     public const string SubscriptionRenewalUpcoming = "subscription.renewal_upcoming";
     public const string PaymentAppPaymentMethodExpiringSoon = "payment_app.payment_method_expiring_soon";
     public const string PaymentClientTenantPaymentSucceeded = "payment_client.tenant_payment_succeeded";
+
+    /// <summary>Alguien se registró con el código de referido de la oficina (aviso al owner).</summary>
+    public const string ReferralAttributed = "growth.referral_attributed";
     public const string PaymentClientPayoutFailed = "payment_client.payout_failed";
     public const string PaymentClientConnectAccountRestricted = "payment_client.connect_account_restricted";
     public const string PaymentClientConnectAccountOnboardingRequired =

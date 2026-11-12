@@ -49,6 +49,33 @@ public sealed class ReferralProgramRepository(GrowthDbContext dbContext, ITenant
             );
     }
 
+    public Task<ReferralProgram?> GetActivePlatformProgramAsync(CancellationToken ct = default) =>
+        dbContext
+            .ReferralPrograms.IgnoreQueryFilters()
+            .Where(program =>
+                program.TenantId == PlatformTenant.Id
+                && program.ScopeType == ReferralProgramScope.Platform
+                && program.TenantScopeId == null
+                && program.FlowType == ReferralFlowType.TenantToTenant
+                && program.Status == ReferralProgramStatus.Active
+            )
+            .OrderByDescending(program => program.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+    public Task<ReferralProgram?> GetPlatformProgramByCodeAsync(string programCode, CancellationToken ct = default)
+    {
+        var normalized = programCode.Trim().ToUpperInvariant();
+        return dbContext
+            .ReferralPrograms.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(
+                program =>
+                    program.TenantId == PlatformTenant.Id
+                    && program.ScopeType == ReferralProgramScope.Platform
+                    && program.ProgramCode == normalized,
+                ct
+            );
+    }
+
     public async Task AddAsync(ReferralProgram program, CancellationToken ct = default)
     {
         TenantRepositoryGuard.EnsureMatches(tenantContext, program.TenantId);

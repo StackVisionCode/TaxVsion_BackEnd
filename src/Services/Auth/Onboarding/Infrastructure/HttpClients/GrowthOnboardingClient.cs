@@ -204,37 +204,6 @@ public sealed class GrowthOnboardingClient(
             : Result.Failure(await MapErrorAsync(message, "Growth.Cancel", ct));
     }
 
-    public async Task<Result> QualifyReferralAsync(GrowthQualifyRequest request, CancellationToken ct = default)
-    {
-        var body = new
-        {
-            attributionId = request.AttributionId,
-            qualifyingEventId = request.QualifyingEventId,
-            paymentId = request.PaymentId,
-            paymentSource = "PaymentApp",
-            paymentAmountCents = request.PaymentAmountCents,
-            paymentCurrency = request.PaymentCurrency,
-            isFirstSuccessfulPayment = request.IsFirstSuccessfulPayment,
-            paymentSucceededAtUtc = request.PaymentSucceededAtUtc,
-        };
-
-        var response = await SendAsync(
-            GrowthServiceScopes.ReferralsQualify,
-            HttpMethod.Post,
-            "internal/referrals/qualifications",
-            body,
-            idempotencyKey: $"onb-qualify:{request.AttributionId:N}:{request.PaymentId:N}",
-            correlationScope: request.AttributionId,
-            ct
-        );
-        if (response.IsFailure)
-            return Result.Failure(response.Error);
-
-        using var message = response.Value;
-        return message.IsSuccessStatusCode
-            ? Result.Success()
-            : Result.Failure(await MapErrorAsync(message, "Growth.Qualify", ct));
-    }
 
     private async Task<Result<HttpResponseMessage>> SendAsync(
         string scope,
@@ -243,11 +212,12 @@ public sealed class GrowthOnboardingClient(
         object body,
         string idempotencyKey,
         Guid correlationScope,
-        CancellationToken ct
+        CancellationToken ct,
+        Guid? tokenTenantId = null
     )
     {
         var token = await tokenCache.GetOrCreateAsync(
-            PlatformTenant.Id,
+            tokenTenantId ?? PlatformTenant.Id,
             ClientId,
             permissions: [],
             scopes: [scope],
@@ -315,6 +285,8 @@ public sealed class GrowthOnboardingClient(
         long NetAmountCents,
         DateTime ExpiresAtUtc
     );
+
+    private sealed record AttributionDto(Guid AttributionId, string? Status);
 
     private sealed record ErrorDto(string? Code, string? Message);
 }

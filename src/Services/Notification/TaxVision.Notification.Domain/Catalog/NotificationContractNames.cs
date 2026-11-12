@@ -38,6 +38,7 @@ public static class NotificationContractNames
         [NotificationResourceType.ComplianceSettings] = "compliance_settings",
         [NotificationResourceType.Campaign] = "campaign",
         [NotificationResourceType.UserManagement] = "user_management",
+        [NotificationResourceType.Referral] = "referral",
     }.ToFrozenDictionary();
 
     public static string For(NotificationResourceType resourceType) => ResourceTypes[resourceType];

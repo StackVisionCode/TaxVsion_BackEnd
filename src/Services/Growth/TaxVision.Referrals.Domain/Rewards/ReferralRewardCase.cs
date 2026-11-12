@@ -18,6 +18,14 @@ public sealed class ReferralRewardCase : TenantEntity
     public Guid BeneficiaryId { get; private set; }
     public ReferralRewardType RewardType { get; private set; }
     public string RewardDefinitionKey { get; private set; } = default!;
+
+    // Snapshot del cálculo del premio (WalletCredit): se congela al solicitarlo para que un cambio
+    // posterior de la policy no altere un premio ya ganado. Cero/null para los tipos no monetarios.
+    public long PricePaidCents { get; private set; }
+    public int RewardBasisPoints { get; private set; }
+    public long? RewardCapCents { get; private set; }
+    public long RewardAmountCents { get; private set; }
+    public string? RewardCurrency { get; private set; }
     public Guid GrantId { get; private set; }
     public ReferralRewardCaseStatus Status { get; private set; }
     public DateTime EligibleAtUtc { get; private set; }
@@ -89,8 +97,42 @@ public sealed class ReferralRewardCase : TenantEntity
             );
         }
 
+        var isWalletCredit = program.Policy.RewardType == ReferralRewardType.WalletCredit;
+        long rewardAmountCents = 0;
+        if (isWalletCredit)
+        {
+            if (
+                !string.Equals(
+                    qualification.PaymentCurrency.Trim(),
+                    program.Policy.RewardCurrency,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                return Result.Failure<ReferralRewardCase>(
+                    new Error(
+                        "ReferralReward.CurrencyMismatch",
+                        "The qualifying payment currency does not match the program reward currency."
+                    )
+                );
+            }
+
+            rewardAmountCents = program.Policy.CalculateRewardCents(qualification.PaymentAmountCents);
+            if (rewardAmountCents <= 0)
+            {
+                return Result.Failure<ReferralRewardCase>(
+                    new Error("ReferralReward.NoRewardDue", "The qualifying payment yields no reward amount.")
+                );
+            }
+        }
+
         var rewardCase = new ReferralRewardCase
         {
+            PricePaidCents = isWalletCredit ? qualification.PaymentAmountCents : 0,
+            RewardBasisPoints = isWalletCredit ? program.Policy.RewardBasisPoints : 0,
+            RewardCapCents = isWalletCredit ? program.Policy.RewardCapCents : null,
+            RewardAmountCents = rewardAmountCents,
+            RewardCurrency = isWalletCredit ? program.Policy.RewardCurrency : null,
             ProgramId = program.Id,
             AttributionId = attribution.Id,
             QualificationId = qualification.Id,
@@ -130,6 +172,25 @@ public sealed class ReferralRewardCase : TenantEntity
             );
 
         Status = ReferralRewardCaseStatus.PendingGrant;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Se volvió a pedir al Wallet la operación pendiente (crédito o reversa). Solo registra cuándo, para que el
+    /// worker no reintente en cada ciclo mientras espera la respuesta del Wallet.
+    /// </summary>
+    public Result NoteWalletRetry(Guid actorUserId, DateTime nowUtc)
+    {
+        var actor = DomainGuards.EnsureActor(actorUserId);
+        if (actor.IsFailure)
+            return actor;
+
+        if (Status is not (ReferralRewardCaseStatus.PendingGrant or ReferralRewardCaseStatus.ClawbackPending))
+            return Result.Failure(
+                new Error("ReferralReward.InvalidTransition", $"Nothing is pending with the wallet in {Status}.")
+            );
+
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -273,6 +334,58 @@ public sealed class ReferralRewardCase : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>
+    /// El PlatformAdmin retiene un premio aún NO acreditado (sospecha de abuso) hasta revisarlo. Solo desde
+    /// <c>Requested</c>: con un crédito en curso (<c>PendingGrant</c>) o ya hecho el camino correcto es el clawback.
+    /// </summary>
+    public Result FlagForReview(string reason, Guid actorUserId, DateTime nowUtc)
+    {
+        var actor = DomainGuards.EnsureActor(actorUserId);
+        if (actor.IsFailure)
+            return actor;
+
+        if (Status == ReferralRewardCaseStatus.ManualReview)
+            return Result.Success();
+
+        if (Status != ReferralRewardCaseStatus.Requested)
+            return Result.Failure(
+                new Error("ReferralReward.InvalidTransition", $"Cannot flag for review from {Status}.")
+            );
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Failure(new Error("ReferralReward.InvalidReason", "A review reason is required."));
+
+        Status = ReferralRewardCaseStatus.ManualReview;
+        StateReason = TrimReason(reason);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// La revisión dio el visto bueno: el premio vuelve a <c>Requested</c> y el worker lo acredita cuando venza su
+    /// espera. Solo si nada se acreditó (sin referencia materializada): un caso que llegó a revisión desde un clawback
+    /// no se libera por aquí.
+    /// </summary>
+    public Result ReleaseFromReview(string reason, Guid actorUserId, DateTime nowUtc)
+    {
+        var actor = DomainGuards.EnsureActor(actorUserId);
+        if (actor.IsFailure)
+            return actor;
+
+        if (Status != ReferralRewardCaseStatus.ManualReview || MaterializedBenefitReference is not null)
+            return Result.Failure(
+                new Error("ReferralReward.InvalidTransition", $"Cannot release from {Status}.")
+            );
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return Result.Failure(new Error("ReferralReward.InvalidReason", "A release reason is required."));
+
+        Status = ReferralRewardCaseStatus.Requested;
+        StateReason = TrimReason(reason);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result Cancel(string reason, Guid actorUserId, DateTime nowUtc)
     {
         var actor = DomainGuards.EnsureActor(actorUserId);
@@ -282,7 +395,11 @@ public sealed class ReferralRewardCase : TenantEntity
         if (Status == ReferralRewardCaseStatus.Cancelled)
             return Result.Success();
 
-        if (Status != ReferralRewardCaseStatus.Requested)
+        // Un caso en revisión que ya tiene crédito materializado (llegó desde un clawback) se revierte, no se cancela.
+        if (
+            Status is not (ReferralRewardCaseStatus.Requested or ReferralRewardCaseStatus.ManualReview)
+            || Status == ReferralRewardCaseStatus.ManualReview && MaterializedBenefitReference is not null
+        )
             return Result.Failure(new Error("ReferralReward.InvalidTransition", $"Cannot cancel from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))

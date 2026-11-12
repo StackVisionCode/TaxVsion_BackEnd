@@ -17,6 +17,7 @@ public sealed class ReferralCodeConfiguration : IEntityTypeConfiguration<Referra
         builder.Property(code => code.TenantScopeId);
         builder.Property(code => code.OwnerType).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(code => code.OwnerId).IsRequired();
+        builder.Property(code => code.OwnerUserId);
         builder.Property(code => code.CodeHash).HasColumnType("char(64)").IsFixedLength().IsRequired();
         builder.Property(code => code.DisplayPrefix).HasMaxLength(12).IsRequired();
         builder.Property(code => code.LastFour).HasColumnType("char(4)").IsRequired();

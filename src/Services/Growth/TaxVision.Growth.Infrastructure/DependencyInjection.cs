@@ -69,6 +69,11 @@ public static class DependencyInjection
         services.AddScoped<IReferralQualificationRepository, ReferralQualificationRepository>();
         services.AddScoped<IReferralRewardCaseRepository, ReferralRewardCaseRepository>();
         services.AddScoped<IReferralRewardAttemptRepository, ReferralRewardAttemptRepository>();
+        services.AddScoped<IReferrerBenefitRepository, ReferrerBenefitRepository>();
+        services.AddScoped<IReferralReadModel, ReferralReadModel>();
+        services.AddScoped<ICodeAdminReadModel, CodeAdminReadModel>();
+        services.AddScoped<IReferralAdminReadModel, ReferralAdminReadModel>();
+        services.AddScoped<IReferralCodeShareRepository, ReferralCodeShareRepository>();
         services.AddScoped<IReferralRewardQuota, SqlReferralRewardQuota>();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<GrowthMetrics>();

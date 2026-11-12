@@ -27,6 +27,14 @@ public sealed class WalletRepository(WalletDbContext db) : IWalletRepository
     public async Task AddLedgerEntryAsync(LedgerEntry entry, CancellationToken ct = default) =>
         await db.LedgerEntries.AddAsync(entry, ct);
 
+    public Task<LedgerEntry?> GetLedgerEntryByOperationKeyAsync(
+        Guid tenantId,
+        string operationKey,
+        CancellationToken ct = default
+    ) =>
+        db.LedgerEntries.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(e => e.TenantId == tenantId && e.OperationKey == operationKey, ct);
+
     public async Task<PagedResult<LedgerEntry>> ListLedgerAsync(
         Guid tenantId,
         int page,
