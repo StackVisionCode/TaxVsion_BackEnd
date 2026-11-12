@@ -22,7 +22,8 @@ public interface IJwtTokenGenerator
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> authMethods,
         SessionSurface surface = SessionSurface.Workspace,
-        DateTime? reauthenticatedAtUtc = null
+        DateTime? reauthenticatedAtUtc = null,
+        bool mfaEnrollmentOnly = false
     );
 
     /// <summary>

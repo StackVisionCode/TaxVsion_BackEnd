@@ -23,6 +23,9 @@ public sealed class JwtOptions
     public string AccountAudience { get; set; } = "TaxVision.Account";
     public int AccessMinutes { get; set; } = 15;
 
+    /// <summary>Vida del token solo-MFA (minutos): corta, alcanza para configurar el segundo factor.</summary>
+    public int MfaEnrollmentAccessMinutes { get; set; } = 10;
+
     /// <summary>Clave privada RSA en PEM (activa RS256). Preferir PrivateKeyPath con un secret montado.</summary>
     public string? PrivateKeyPem { get; set; }
 
@@ -41,7 +44,8 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> authMethods,
         SessionSurface surface = SessionSurface.Workspace,
-        DateTime? reauthenticatedAtUtc = null
+        DateTime? reauthenticatedAtUtc = null,
+        bool mfaEnrollmentOnly = false
     )
     {
         var now = DateTime.UtcNow;
@@ -69,6 +73,10 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         if (surface == SessionSurface.Account)
             claims.Add(new Claim(ClaimNames.Surface, AccessSurface.Account));
 
+        // Solo para configurar el MFA exigido: audiencia propia, marca y vida corta (ver MfaEnrollmentToken).
+        if (mfaEnrollmentOnly)
+            claims.Add(new Claim(MfaEnrollmentToken.ClaimType, MfaEnrollmentToken.Pending));
+
         if (reauthenticatedAtUtc is { } reauthAt)
         {
             claims.Add(
@@ -82,16 +90,23 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
             );
         }
 
+        var minutes = mfaEnrollmentOnly
+            ? Math.Min(_options.AccessMinutes, _options.MfaEnrollmentAccessMinutes)
+            : _options.AccessMinutes;
+        var audience =
+            mfaEnrollmentOnly ? MfaEnrollmentToken.Audience
+            : surface == SessionSurface.Account ? _options.AccountAudience
+            : _options.Audience;
         var token = new JwtSecurityToken(
             issuer: _options.Issuer,
-            audience: surface == SessionSurface.Account ? _options.AccountAudience : _options.Audience,
+            audience: audience,
             claims: claims,
             notBefore: now,
-            expires: now.AddMinutes(_options.AccessMinutes),
+            expires: now.AddMinutes(minutes),
             signingCredentials: signingKeys.GetSigningCredentials()
         );
 
-        return new AccessToken(new JwtSecurityTokenHandler().WriteToken(token), _options.AccessMinutes * 60);
+        return new AccessToken(new JwtSecurityTokenHandler().WriteToken(token), minutes * 60);
     }
 
     public AccessToken GenerateServiceToken(

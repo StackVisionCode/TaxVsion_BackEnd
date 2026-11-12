@@ -637,6 +637,9 @@ app.UseMiddleware<TenantHostResolutionMiddleware>();
 
 app.UseAuthentication();
 
+// Token solo-MFA: solo puede configurar el segundo factor; todo lo demás da 403 (deniega por defecto).
+app.UseMiddleware<MfaEnrollmentGateMiddleware>();
+
 // RBAC Fase 5 — setea BuildingBlocks.Web.Tenancy.TenantContext desde el JWT, para que el
 // HasQueryFilter global de AuthDbContext tenga tenant listo. Distinto de
 // TenantHostResolutionMiddleware (arriba, pre-auth, resuelve por Host). Va ANTES de

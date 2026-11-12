@@ -360,7 +360,8 @@ internal sealed class CapturingJwtTokenGenerator : IJwtTokenGenerator
         Guid SessionId,
         SessionSurface Surface,
         DateTime? ReauthenticatedAtUtc,
-        string[] AuthMethods
+        string[] AuthMethods,
+        bool MfaEnrollmentOnly
     )> Issued { get; } = [];
 
     public AccessToken Generate(
@@ -370,10 +371,11 @@ internal sealed class CapturingJwtTokenGenerator : IJwtTokenGenerator
         IReadOnlyCollection<string> roles,
         IReadOnlyCollection<string> authMethods,
         SessionSurface surface = SessionSurface.Workspace,
-        DateTime? reauthenticatedAtUtc = null
+        DateTime? reauthenticatedAtUtc = null,
+        bool mfaEnrollmentOnly = false
     )
     {
-        Issued.Add((sessionId, surface, reauthenticatedAtUtc, [.. authMethods]));
+        Issued.Add((sessionId, surface, reauthenticatedAtUtc, [.. authMethods], mfaEnrollmentOnly));
         return new AccessToken($"access-{surface}-{Issued.Count}", 900);
     }
 
@@ -465,6 +467,11 @@ internal sealed class AccountSessionFixture
             Request,
             Microsoft.Extensions.Options.Options.Create(
                 new TaxVision.Auth.Infrastructure.Security.RefreshTokenOptions()
+            ),
+            new NoMfaRepository(),
+            // Estas pruebas cubren sesiones y handoffs, no el MFA exigido (MfaEnrollmentSessionTests).
+            Microsoft.Extensions.Options.Options.Create(
+                new TaxVision.Auth.Application.Common.MfaOptions { Enforced = false }
             )
         );
     }

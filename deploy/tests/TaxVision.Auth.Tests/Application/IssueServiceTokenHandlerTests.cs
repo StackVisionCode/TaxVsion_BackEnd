@@ -58,7 +58,8 @@ public sealed class IssueServiceTokenHandlerTests
             IReadOnlyCollection<string> authMethods,
             TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface =
                 TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Workspace,
-            DateTime? reauthenticatedAtUtc = null
+            DateTime? reauthenticatedAtUtc = null,
+            bool mfaEnrollmentOnly = false
         ) => throw new NotSupportedException();
 
         public AccessToken GenerateServiceToken(

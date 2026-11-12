@@ -92,7 +92,8 @@ public sealed class GrowthOnboardingClientTests
             IReadOnlyCollection<string> roles,
             IReadOnlyCollection<string> authMethods,
             SessionSurface surface = SessionSurface.Workspace,
-            DateTime? reauthenticatedAtUtc = null
+            DateTime? reauthenticatedAtUtc = null,
+            bool mfaEnrollmentOnly = false
         ) => throw new NotSupportedException();
 
         public AccessToken GenerateTenantRegistrationTicket(string slug, string email, DateTime expiresAtUtc) =>

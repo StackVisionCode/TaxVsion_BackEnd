@@ -36,7 +36,8 @@ public sealed class ReserveSubdomainHandlerTests
             IReadOnlyCollection<string> authMethods,
             TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface =
                 TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Workspace,
-            DateTime? reauthenticatedAtUtc = null
+            DateTime? reauthenticatedAtUtc = null,
+            bool mfaEnrollmentOnly = false
         ) => new("fake-access-token", 900);
 
         public AccessToken GenerateServiceToken(
