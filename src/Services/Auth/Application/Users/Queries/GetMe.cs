@@ -6,7 +6,7 @@ using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Users.Queries;
 
-public sealed record MeTenantResponse(Guid Id, string Name, string SubDomain);
+public sealed record MeTenantResponse(Guid Id, string Name, string SubDomain, string DefaultTimeZoneId);
 
 public sealed record MePlanResponse(
     string Code,
@@ -90,7 +90,7 @@ public static class GetMeHandler
                 user.Email,
                 user.ActorType.ToString(),
                 user.CustomerId,
-                new MeTenantResponse(tenant.Id, tenant.Name, tenant.SubDomain),
+                new MeTenantResponse(tenant.Id, tenant.Name, tenant.SubDomain, tenant.DefaultTimeZoneId),
                 roleNames,
                 permissions,
                 UserAccessResolver.EffectiveTimeZone(user, tenant),
