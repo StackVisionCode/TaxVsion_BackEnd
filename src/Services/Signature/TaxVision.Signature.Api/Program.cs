@@ -5,6 +5,7 @@ using System.Threading.RateLimiting;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
@@ -187,11 +188,9 @@ builder.Services.AddRateLimiter(options =>
 // nativo "public-signature" de arriba (que se deja intacto, protege el unico endpoint
 // genuinamente anonimo del servicio). Mismo [RateLimit]/IRateCounter tiered que ya corre en
 // el resto del monorepo desde Fase 3/4.2.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 

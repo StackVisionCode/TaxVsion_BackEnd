@@ -1,4 +1,5 @@
 using BuildingBlocks.Caching;
+using BuildingBlocks.Infrastructure.Redis;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -10,7 +11,10 @@ public static class CachingRegistration
     {
         services.AddStackExchangeRedisCache(o =>
         {
-            o.Configuration = config.GetConnectionString("Redis") ?? "localhost:6379";
+            // Mismas opciones que AddTaxVisionRedis: Redis caído no bloquea y los comandos fallan al instante.
+            o.ConfigurationOptions = RedisConnectionRegistration.CreateOptions(
+                config.GetConnectionString("Redis") ?? "localhost:6379"
+            );
             o.InstanceName = "taxvision:";
         });
         // BB-07 — Singleton, no Scoped: el coalescing de GetOrCreateAsync vive en la instancia, y

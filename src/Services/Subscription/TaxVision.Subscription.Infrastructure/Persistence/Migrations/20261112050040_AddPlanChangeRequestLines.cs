@@ -22,7 +22,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     Description = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     Quantity = table.Column<int>(type: "int", nullable: false),
                     UnitAmountCents = table.Column<long>(type: "bigint", nullable: false),
-                    PlanChangeRequestId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    PlanChangeRequestId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -32,20 +32,22 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.PlanChangeRequestId,
                         principalTable: "PlanChangeRequests",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_PlanChangeRequestLines_PlanChangeRequestId",
                 table: "PlanChangeRequestLines",
-                column: "PlanChangeRequestId");
+                column: "PlanChangeRequestId"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "PlanChangeRequestLines");
+            migrationBuilder.DropTable(name: "PlanChangeRequestLines");
         }
     }
 }

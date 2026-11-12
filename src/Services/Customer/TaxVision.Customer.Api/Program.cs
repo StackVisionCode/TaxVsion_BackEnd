@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
@@ -97,11 +98,9 @@ builder
 // ahora con [RateLimit("customer.n.fiscal_reveal")]) y agrega piloto para Create/GetById.
 // Requiere IRateCounter (F26) registrado por este mismo servicio — la conexión Redis a usar es
 // decisión de cada microservicio.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 

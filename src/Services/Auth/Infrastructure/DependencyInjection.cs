@@ -2,6 +2,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Persistence;
@@ -176,7 +177,7 @@ public static class DependencyInjection
         // Auth ya asume Redis disponible sin fallback (ver AddRedisCache/AddSessionDenylist más arriba):
         // IConnectionMultiplexer crudo, necesario para el GETDEL atómico de RedisTokenReferenceStore.
         var redisConnectionString = configuration.GetConnectionString("Redis") ?? "localhost:6379";
-        services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+        services.AddTaxVisionRedis(redisConnectionString);
         services.AddScoped<ITokenReferenceStore, RedisTokenReferenceStore>();
         // Login central (Opción A): el vale de handoff cross-dominio y la sesión de descubrimiento,
         // misma dependencia de Redis crudo.

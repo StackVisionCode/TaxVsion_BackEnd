@@ -1,4 +1,5 @@
 ﻿using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -245,7 +246,7 @@ public static class DependencyInjection
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrWhiteSpace(redisConnectionString))
         {
-            services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+            services.AddTaxVisionRedis(redisConnectionString);
             services.AddSingleton<IRateCounter, RedisRateCounter>();
             services.AddSingleton<IEmailProviderRateLimiter, RedisEmailProviderRateLimiter>();
         }

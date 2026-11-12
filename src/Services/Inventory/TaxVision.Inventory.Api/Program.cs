@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -53,11 +54,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // AddTieredRateLimiting auto-registra el contador Redis desde IConnectionMultiplexer, que hay que
 // registrar explícito (AddRedisCache solo aporta IDistributedCache). La escala por plan (tier-aware,
 // TenantPlanCodeProjection) llega en la Fase 2; hoy hace fail-open a la cuota base.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 
 // RateLimit Fase 2 — escala por plan. Flag OFF por default (fail-open a la cuota base sin escalar,

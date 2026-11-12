@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -84,11 +85,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // preservar (los 7 endpoints son todos staff-only autenticados, sin M2M/publico/webhook).
 // Mismo [RateLimit]/IRateCounter tiered que ya corre en el resto del monorepo desde Fase
 // 3/4.2, mismo patron de wiring que Correspondence Fase 4.9/Subscription Fase 4.10.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 

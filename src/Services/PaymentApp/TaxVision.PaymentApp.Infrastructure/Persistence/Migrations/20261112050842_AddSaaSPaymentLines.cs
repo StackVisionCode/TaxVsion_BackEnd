@@ -19,7 +19,7 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     Description = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
                     Quantity = table.Column<int>(type: "int", nullable: false),
                     UnitAmountCents = table.Column<long>(type: "bigint", nullable: false),
-                    SaaSPaymentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    SaaSPaymentId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -29,20 +29,22 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                         column: x => x.SaaSPaymentId,
                         principalTable: "SaaSPayments",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_SaaSPaymentLines_SaaSPaymentId",
                 table: "SaaSPaymentLines",
-                column: "SaaSPaymentId");
+                column: "SaaSPaymentId"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "SaaSPaymentLines");
+            migrationBuilder.DropTable(name: "SaaSPaymentLines");
         }
     }
 }

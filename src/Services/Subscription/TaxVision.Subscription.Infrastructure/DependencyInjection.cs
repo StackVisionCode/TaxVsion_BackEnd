@@ -1,4 +1,5 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.PurchaseIntentAmount;
@@ -63,9 +64,7 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionAuditLogRepository, SubscriptionAuditLogRepository>();
         services.AddScoped<ITenantBillingPreferenceRepository, TenantBillingPreferenceRepository>();
 
-        services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
-        );
+        services.AddTaxVisionRedis(configuration.GetConnectionString("Redis") ?? "localhost:6379");
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
 
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- Subscription solo recibe la proyeccion de
