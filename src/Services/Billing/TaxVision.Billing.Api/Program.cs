@@ -46,15 +46,6 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
 builder.Services.AddBillingInfrastructure(builder.Configuration);
 
-// Emisor de las facturas de onboarding (pre-tenant) = la plataforma. Config Billing:PlatformIssuer.
-builder
-    .Services.AddOptions<TaxVision.Billing.Application.Invoices.IntegrationEvents.PlatformIssuerOptions>()
-    .Bind(
-        builder.Configuration.GetSection(
-            TaxVision.Billing.Application.Invoices.IntegrationEvents.PlatformIssuerOptions.SectionName
-        )
-    );
-
 // RateLimit Fase 2 — CachedTenantPlanCodeReader (5 min TTL) y HttpPlanRateLimitReader (catálogo
 // de Subscription, cacheado 5 min) dependen de ICacheService. Billing ya requiere
 // ConnectionStrings:Redis para IRateCounter (línea abajo); AddRedisCache reutiliza esa misma
@@ -195,18 +186,6 @@ builder.Host.UseWolverine(options =>
     // BIL-3b — enlace de cobro y sync de stock: reintentos largos y guardados (5 s … 1 h) antes de la cola
     // de errores. Es por cadena, así que los demás mensajes siguen con la política estándar.
     options.Policies.Add(TaxVision.Billing.Infrastructure.Messaging.LongRetryHandlerPolicy.ForSyncCommands());
-
-    // BIL-11 — la secuencia de onboarding es una sola fila: más intentos y espera al azar, solo para ese mensaje.
-    options.Policies.Add(
-        new TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryPolicy(
-            builder
-                .Configuration.GetSection(
-                    TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions.SectionName
-                )
-                .Get<TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions>()
-                ?? new TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions()
-        )
-    );
 
     options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();

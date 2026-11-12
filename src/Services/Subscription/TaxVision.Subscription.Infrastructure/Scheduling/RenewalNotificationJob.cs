@@ -2,7 +2,10 @@ using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Common;
+using TaxVision.Subscription.Application.Subscriptions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
+using TaxVision.Subscription.Domain.Plans;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
@@ -36,17 +39,18 @@ public sealed class RenewalNotificationJob(
         var nowUtc = DateTime.UtcNow;
         var windowEndUtc = nowUtc.AddDays(NotifyThresholdDays[0] + 1);
 
-        // El aviso lleva el nombre del plan, no su código.
-        var planNames = (await services.GetRequiredService<IPlanRepository>().GetAllAsync(ct)).ToDictionary(
-            plan => plan.Id,
-            plan => plan.Name
+        // El aviso lleva el nombre del plan (no su código) y el total de la renovación.
+        var plans = (await services.GetRequiredService<IPlanRepository>().GetAllAsync(ct)).ToDictionary(plan =>
+            plan.Id
         );
         var subscriptionNotices = await UpcomingSubscriptionRenewalsAsync(
             subscriptions,
-            planNames,
+            services.GetRequiredService<ITenantAddOnRepository>(),
+            seats,
+            plans,
             correlationId,
             nowUtc,
-            windowEndUtc,
+            nowUtc.AddDays(RenewalNotice.WindowDays),
             ct
         );
         var seatNotices = await UpcomingSeatRenewalsAsync(seats, correlationId, nowUtc, windowEndUtc, ct);
@@ -80,7 +84,9 @@ public sealed class RenewalNotificationJob(
 
     private static async Task<List<object>> UpcomingSubscriptionRenewalsAsync(
         ISubscriptionRepository subscriptions,
-        IReadOnlyDictionary<Guid, string> planNames,
+        ITenantAddOnRepository addOns,
+        ISubscriptionSeatRepository seats,
+        IReadOnlyDictionary<Guid, SubscriptionPlan> plans,
         string correlationId,
         DateTime nowUtc,
         DateTime windowEndUtc,
@@ -93,8 +99,22 @@ public sealed class RenewalNotificationJob(
         foreach (var subscription in candidates)
         {
             var daysUntilDue = DaysUntilDue(subscription.NextRenewalAtUtc!.Value, nowUtc);
-            if (Array.IndexOf(NotifyThresholdDays, daysUntilDue) < 0)
+            // Anual: 30, 7 y 1 días; mensual: 7 y 1.
+            if (!RenewalNotice.ShouldNotify(subscription.BillingCycle, daysUntilDue))
                 continue;
+
+            var plan = plans.GetValueOrDefault(subscription.PlanId);
+            var version = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
+            var planPrice = version is null
+                ? null
+                : PlanPricing.ResolveBaseSubscriptionPrice(version, subscription.BillingCycle);
+            long? totalCents = planPrice is { } price
+                ? RenewalNotice.TotalCents(
+                    price.AmountCents,
+                    await addOns.GetByTenantIdAsync(subscription.TenantId, ct),
+                    await seats.GetByTenantIdAsync(subscription.TenantId, ct)
+                )
+                : null;
 
             notices.Add(
                 new SubscriptionRenewalUpcomingIntegrationEvent
@@ -105,7 +125,10 @@ public sealed class RenewalNotificationJob(
                     DueAtUtc = subscription.NextRenewalAtUtc.Value,
                     DaysUntilDue = daysUntilDue,
                     PlanCode = subscription.PlanCode,
-                    PlanName = planNames.GetValueOrDefault(subscription.PlanId),
+                    PlanName = plan?.Name,
+                    AmountCents = totalCents,
+                    Currency = planPrice?.Currency,
+                    BillingCycle = subscription.BillingCycle.ToString(),
                 }
             );
         }

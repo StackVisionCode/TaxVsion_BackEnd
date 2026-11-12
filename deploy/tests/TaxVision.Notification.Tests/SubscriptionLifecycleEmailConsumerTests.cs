@@ -200,6 +200,32 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
         Assert.Equal(gateway.Queued[0].IdempotencyKey, gateway.Queued[1].IdempotencyKey);
     }
 
+    // Cambio de ciclo: su propia plantilla, y un reenvío del mismo cambio no repite el correo.
+    [Fact]
+    public async Task A_billing_cycle_change_sends_its_template_once_with_amount_and_dates()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribe = new CapturingScribeRenderClient();
+        var evt = Event("Active", "BillingCycleChanged") with
+        {
+            Amount = "1589.00",
+            Cadence = "year",
+            DateCharged = "November 12, 2026",
+            NextChargeDate = "November 12, 2027",
+        };
+
+        await HandleAsync(evt, gateway, scribe);
+        await HandleAsync(evt with { EventId = Guid.NewGuid() }, gateway, scribe);
+
+        Assert.Equal("subscription.billing_cycle_changed", gateway.Queued[0].TemplateKey);
+        Assert.Equal("subscription.billing_cycle_changed.v1", scribe.LastEventKey);
+        Assert.Equal("1589.00", scribe.LastVariables!["amount"]);
+        Assert.Equal("year", scribe.LastVariables["cadence"]);
+        Assert.Equal("November 12, 2027", scribe.LastVariables["next_charge_date"]);
+        Assert.Equal(gateway.Queued[0].IdempotencyKey, gateway.Queued[1].IdempotencyKey);
+        Assert.NotNull(gateway.Queued[0].IdempotencyKey);
+    }
+
     private static TenantSubscriptionEmailRequestedIntegrationEvent Event(
         string status,
         string reason,

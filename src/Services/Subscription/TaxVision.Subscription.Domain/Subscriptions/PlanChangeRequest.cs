@@ -69,7 +69,25 @@ public sealed class PlanChangeRequest : BaseEntity
     public DateTime? ReplacedCancellationAtUtc { get; private set; }
     public string? ReplacedCancellationReason { get; private set; }
 
+    private readonly List<PlanChangeLine> _lines = [];
+
+    /// <summary>Desglose de lo cobrado (plan y extras). Vacío en las solicitudes de antes del cambio de ciclo.</summary>
+    public IReadOnlyCollection<PlanChangeLine> Lines => _lines;
+
     private PlanChangeRequest() { }
+
+    /// <summary>Fija el desglose del cobro: tiene que sumar exactamente lo que se cobra.</summary>
+    internal Result AttachLines(IReadOnlyList<PlanChangeLine> lines)
+    {
+        if (lines.Count == 0 || lines.Sum(line => line.AmountCents) != ChargeAmountCents)
+            return Result.Failure(
+                new Error("PlanChangeRequest.LinesMismatch", "The charge breakdown does not add up to the charge.")
+            );
+
+        _lines.Clear();
+        _lines.AddRange(lines);
+        return Result.Success();
+    }
 
     public static Result<PlanChangeRequest> Create(
         Guid tenantSubscriptionId,

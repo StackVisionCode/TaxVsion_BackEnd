@@ -1,11 +1,14 @@
 using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.AddOns;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
 using TaxVision.Subscription.Infrastructure.Persistence;
@@ -194,6 +197,7 @@ public sealed class TenantSubscriptionRenewalJob(
             return false;
         }
 
+        var previousCycle = subscription.BillingCycle;
         var applyResult = subscription.ApplyPendingDowngrade(
             pendingDowngrade.Id,
             toPlan,
@@ -212,6 +216,9 @@ public sealed class TenantSubscriptionRenewalJob(
             return false;
         }
 
+        if (subscription.BillingCycle != previousCycle)
+            await RepriceExtrasForNewCycleAsync(unit, subscription, logger, nowUtc, ct);
+
         // Absorción: si el plan destino ya cubre el módulo del add-on, cancelarlo (sin doble cobro).
         await AddOnAbsorptionService.AbsorbCoveredByPlanAsync(
             subscription.TenantId,
@@ -229,5 +236,58 @@ public sealed class TenantSubscriptionRenewalJob(
 
         await unit.PublishAsync(new RecalculateEntitlementsCommand(subscription.TenantId));
         return true;
+    }
+
+    /// <summary>
+    /// C2 al fin del período: los add-ons y asientos siguen el ciclo nuevo de la base, al precio vigente de ese ciclo,
+    /// desde su próxima renovación. Uno que no pueda (sin precio, renovación en curso) se avisa y sigue como estaba.
+    /// </summary>
+    private static async Task RepriceExtrasForNewCycleAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
+        TenantSubscription subscription,
+        ILogger logger,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        var cycle = subscription.BillingCycle;
+        var addOns = await unit
+            .Services.GetRequiredService<ITenantAddOnRepository>()
+            .GetByTenantIdForUpdateAsync(subscription.TenantId, ct);
+        var definitions = unit.Services.GetRequiredService<IAddOnDefinitionRepository>();
+        foreach (var addOn in addOns.Where(a => a.Status is AddOnStatus.Active or AddOnStatus.PastDue))
+        {
+            var definition = await definitions.GetByIdAsync(addOn.AddOnDefinitionId, ct);
+            var price = definition?.ResolveUnitPrice(cycle, addOn.Quantity);
+            var repriced = price is { IsSuccess: true }
+                ? addOn.RepriceForNextRenewal(cycle, price.Value, Guid.Empty, nowUtc)
+                : Result.Failure(BillingCycleSwitch.PriceMissing);
+            if (repriced.IsFailure)
+                logger.LogWarning(
+                    "Add-on {TenantAddOnId} keeps its billing cycle after the switch to {Cycle}: {Code}.",
+                    addOn.Id,
+                    cycle,
+                    repriced.Error.Code
+                );
+        }
+
+        var seats = await unit
+            .Services.GetRequiredService<ISubscriptionSeatRepository>()
+            .GetByTenantIdForUpdateAsync(subscription.TenantId, ct);
+        var pricing = await unit.Services.GetRequiredService<ISeatPricingRepository>().GetAsync(ct);
+        foreach (var seat in seats.Where(s => s.Status is SeatStatus.Active or SeatStatus.PastDue))
+        {
+            var price = pricing?.ResolveUnitPrice(seat.Type, cycle);
+            var repriced = price is { IsSuccess: true }
+                ? seat.RepriceForNextRenewal(cycle, price.Value, Guid.Empty, nowUtc)
+                : Result.Failure(BillingCycleSwitch.PriceMissing);
+            if (repriced.IsFailure)
+                logger.LogWarning(
+                    "Seat {SeatId} keeps its billing cycle after the switch to {Cycle}: {Code}.",
+                    seat.Id,
+                    cycle,
+                    repriced.Error.Code
+                );
+        }
     }
 }

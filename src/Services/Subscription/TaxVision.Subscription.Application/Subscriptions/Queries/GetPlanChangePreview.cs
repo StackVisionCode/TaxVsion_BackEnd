@@ -22,7 +22,19 @@ public sealed record PlanChangePreviewResponse(
     int SeatsAfterChange,
     int? OccupiedSeats,
     bool Blocked,
-    string? BlockedReason
+    string? BlockedReason,
+    // Desglose de lo que se cobra ahora (plan y, si cambia el ciclo, cada extra) y el ahorro frente a mensual.
+    IReadOnlyList<PlanChangePreviewLine>? Lines = null,
+    long SavingsCents = 0,
+    string? BlockedMessage = null
+);
+
+public sealed record PlanChangePreviewLine(
+    string Kind,
+    string Description,
+    int Quantity,
+    long UnitAmountCents,
+    long AmountCents
 );
 
 public static class GetPlanChangePreviewHandler
@@ -33,6 +45,9 @@ public static class GetPlanChangePreviewHandler
         IPlanRepository plans,
         ISubscriptionSeatRepository seats,
         ITenantUserCountClient userCounts,
+        ITenantAddOnRepository addOns,
+        IAddOnDefinitionRepository addOnDefinitions,
+        ISeatPricingRepository seatPricing,
         CancellationToken ct
     )
     {
@@ -63,7 +78,17 @@ public static class GetPlanChangePreviewHandler
         );
 
         // Solo el downgrade puede no entrar: al subir de plan el cupo nunca baja.
-        var blocked = isDowngrade && !capacity.Fits;
+        var capacityBlocked = isDowngrade && !capacity.Fits;
+        var quote = await PlanChangeQuote.BuildAsync(
+            subscription,
+            change,
+            addOns,
+            addOnDefinitions,
+            seats,
+            seatPricing,
+            ct
+        );
+        var blocked = capacityBlocked || quote.Blocked is not null;
 
         return Result.Success(
             new PlanChangePreviewResponse(
@@ -71,7 +96,7 @@ public static class GetPlanChangePreviewHandler
                 change.Plan.Code.Value,
                 change.Plan.Name,
                 change.EffectiveCycle.ToString(),
-                change.TargetAmountCents,
+                quote.Lines.Count > 0 ? quote.TotalCents : change.TargetAmountCents,
                 change.Currency,
                 change.CurrentAmountCents,
                 ChargedNow: change.Direction == PlanChangeDirection.Upgrade,
@@ -79,7 +104,18 @@ public static class GetPlanChangePreviewHandler
                 capacity.SeatsAfterChange,
                 capacity.Occupied,
                 blocked,
-                blocked ? DowngradeFit.ExceedsSeatsCode : null
+                capacityBlocked ? DowngradeFit.ExceedsSeatsCode : quote.Blocked?.Code,
+                [
+                    .. quote.Lines.Select(line => new PlanChangePreviewLine(
+                        line.Kind.ToString(),
+                        line.Description,
+                        line.Quantity,
+                        line.UnitAmountCents,
+                        line.AmountCents
+                    )),
+                ],
+                quote.SavingsCents,
+                quote.Blocked?.Message
             )
         );
     }

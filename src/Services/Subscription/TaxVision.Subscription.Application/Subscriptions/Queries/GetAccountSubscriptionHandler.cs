@@ -73,7 +73,12 @@ public static class GetAccountSubscriptionHandler
             subscription.Status
                 is SubscriptionStatus.Suspended
                     or SubscriptionStatus.Expired,
-            plan.SalesRank.Value
+            plan.SalesRank.Value,
+            // Misma regla que PlanChangeResolver: sin precio en la edición firmada no se pasa a ese ciclo.
+            Enum.GetValues<BillingCycle>()
+                .Where(cycle => PlanPricing.ResolveBaseSubscriptionPrice(version, cycle) is not null)
+                .Select(cycle => cycle.ToString())
+                .ToList()
         );
 
         var period = new AccountPeriodView(

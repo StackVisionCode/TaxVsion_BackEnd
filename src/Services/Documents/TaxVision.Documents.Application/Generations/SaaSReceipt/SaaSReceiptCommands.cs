@@ -23,7 +23,10 @@ public sealed record SaaSReceiptPayload(
     /// estos campos, sigue deserializando y el recibo muestra solo <see cref="OfficeName"/>.</summary>
     string? BilledToLegalName = null,
     string? BilledToEin = null,
-    string? BilledToAddress = null
+    string? BilledToAddress = null,
+    /// <summary>Una fila por cosa cobrada cuando el cobro tiene varias (p. ej. pasar a anual). Opcional al final por
+    /// la misma razón que "Billed to"; sin líneas, el recibo muestra la fila única de siempre.</summary>
+    IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null
 );
 
 /// <summary>Registra la generación del recibo de una compra SaaS. Responde 202: el PDF se produce después.</summary>

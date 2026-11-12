@@ -92,6 +92,14 @@ internal sealed class FakeEmailVerificationChallengeRepository : IEmailVerificat
 internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingRepository
 {
     public TenantOnboarding? Existing { get; set; }
+    public IReadOnlyList<OnboardingPaymentLink> PaymentLinks { get; set; } = [];
+
+    public Task<IReadOnlyList<OnboardingPaymentLink>> ListPaymentLinksAsync(
+        int skip,
+        int take,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<OnboardingPaymentLink>>([.. PaymentLinks.Skip(skip).Take(take)]);
+
     public TenantOnboarding? Added { get; private set; }
 
     public Task<TenantOnboarding?> GetByIdAsync(Guid id, CancellationToken ct = default) => Task.FromResult(Existing);

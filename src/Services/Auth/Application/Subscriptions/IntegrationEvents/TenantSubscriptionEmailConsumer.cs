@@ -35,6 +35,7 @@ public static class TenantSubscriptionEmailConsumer
         nameof(SubscriptionChangeReason.BillingModeChanged),
         nameof(SubscriptionChangeReason.MandateCreated),
         nameof(SubscriptionChangeReason.VersionChangeScheduled),
+        nameof(SubscriptionChangeReason.BillingCycleChanged),
     };
 
     public static async Task Handle(

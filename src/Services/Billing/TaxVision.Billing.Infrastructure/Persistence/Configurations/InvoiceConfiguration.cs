@@ -44,17 +44,9 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         // facturas por cliente para la visibilidad por-asignación (P2).
         b.Property(i => i.CustomerId).IsRequired();
 
-        // Onboarding pago-primero: factura pre-tenant keyed por OnboardingId (re-hospedada al activar).
-        b.Property(i => i.OnboardingId);
-        b.Property(i => i.PlanId);
-        b.Property(i => i.PaymentId);
-        b.Property(i => i.SettlementType).HasConversion<string>().HasMaxLength(32);
-
         b.HasIndex(i => new { i.TenantId, i.InvoiceNumber }).IsUnique().HasFilter("[InvoiceNumber] IS NOT NULL");
         b.HasIndex(i => new { i.TenantId, i.Status });
         b.HasIndex(i => new { i.TenantId, i.CustomerId });
-        // Una factura por onboarding (idempotencia del alta pre-tenant).
-        b.HasIndex(i => i.OnboardingId).IsUnique().HasFilter("[OnboardingId] IS NOT NULL");
 
         // Totales Money como escalar "cents|CUR".
         var money = new MoneyToStringConverter();
@@ -96,22 +88,6 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
                 lb.Property(l => l.LineTotal).HasConversion(new MoneyToStringConverter()).HasMaxLength(32);
                 // Referencia débil al ítem del catálogo (sin FK cross-service). Nullable.
                 lb.Property(l => l.CatalogItemId);
-            }
-        );
-
-        // Líneas de ajuste (descuentos de onboarding) en tabla propia; magnitud del descuento como Money.
-        b.OwnsMany(
-            i => i.Adjustments,
-            ab =>
-            {
-                ab.ToTable("InvoiceAdjustmentLines");
-                ab.WithOwner().HasForeignKey(a => a.InvoiceId);
-                ab.HasKey(a => a.Id);
-                ab.Property(a => a.Id).ValueGeneratedNever();
-                ab.Property(a => a.Type).HasConversion<string>().HasMaxLength(32).IsRequired();
-                ab.Property(a => a.Code).HasMaxLength(64);
-                ab.Property(a => a.GrowthReservationId);
-                ab.Property(a => a.Amount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32).IsRequired();
             }
         );
 
@@ -169,7 +145,7 @@ public sealed class InvoiceStatusChangeConfiguration : IEntityTypeConfiguration<
         // Id lo asigna el dominio (BaseEntity, client-side). Sin ValueGeneratedNever, EF trata un Guid PK
         // como ValueGeneratedOnAdd → al anexar una fila nueva a una factura YA rastreada (Issue/ApplyPayment/
         // Void/ChangeStatus/Reissue) la marca Modified en vez de Added → emite UPDATE (0 filas) → conflicto
-        // de concurrencia falso. Igual que InvoiceAdjustmentLine.
+        // de concurrencia falso.
         b.Property(s => s.Id).ValueGeneratedNever();
         b.Property(s => s.InvoiceId).IsRequired();
         b.Property(s => s.FromStatus).HasConversion<string>().HasMaxLength(32);

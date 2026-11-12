@@ -20,6 +20,11 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
             .Where(seat => seat.TenantId == tenantId)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdForUpdateAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => await WithChildren(db.Seats).IgnoreQueryFilters().Where(seat => seat.TenantId == tenantId).ToListAsync(ct);
+
     public async Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default) =>
         await db.Seats.AddAsync(seat, ct);
 

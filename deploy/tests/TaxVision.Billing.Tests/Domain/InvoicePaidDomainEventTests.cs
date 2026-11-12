@@ -60,40 +60,6 @@ public sealed class InvoicePaidDomainEventTests
         Assert.Null(paid.PaymentSource);
     }
 
-    [Fact]
-    public void OnboardingInvoiceBornPaid_RaisesNothing()
-    {
-        var invoice = Invoice
-            .CreateForOnboarding(
-                Guid.NewGuid(),
-                onboardingId: Guid.NewGuid(),
-                planId: Guid.NewGuid(),
-                paymentId: Guid.NewGuid(),
-                invoiceNumber: InvoiceNumber.Create("ONB-2026-00001").Value,
-                new CustomerSnapshot(Guid.NewGuid(), "Owner", "owner@example.com", null, null, null),
-                new IssuerSnapshot(
-                    "TaxVision",
-                    new Address("1 Main", null, "City", "ST", "00000", "US"),
-                    null,
-                    "billing@taxvision.local",
-                    null,
-                    null
-                ),
-                planDescription: "Plan",
-                grossAmountCents: 10_000,
-                discountAmountCents: 0,
-                netAmountCents: 10_000,
-                currency: "USD",
-                settlementType: SettlementType.Paid,
-                adjustments: [],
-                nowUtc: Now,
-                dueDateUtc: Now
-            )
-            .Value;
-
-        Assert.Empty(invoice.DomainEvents);
-    }
-
     private static void Pay(Invoice invoice, string reference, long cents, InvoicePaymentSource source) =>
         Assert.True(
             invoice

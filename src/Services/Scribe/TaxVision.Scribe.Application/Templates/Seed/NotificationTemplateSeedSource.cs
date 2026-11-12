@@ -42,6 +42,8 @@ public sealed record NotificationTemplateSeed(
     // v25 (por plantilla): auth.user_offboarding_incomplete.v1 nueva — retiro sin todos los acuses en plazo.
     // v26 (por plantilla): calendar.appointment_attendee_added.v1 nueva — a quien suman a una cita ya agendada.
     // v27 (por plantilla): botones Accept / Maybe / Decline (RSVP) en las 3 de cita y en la invitación de sala.
+    // v28 (por plantilla): subscription.billing_cycle_changed.v1 nueva — cambio de ciclo (a anual cobrado, a mensual agendado).
+    // v29 (por plantilla): subscription.renewal_upcoming muestra el total (plan + extras) y el ciclo; aviso de 30 días al anual.
     int ContentVersion = 1,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
@@ -118,6 +120,7 @@ public static class NotificationTemplateSeedSource
             SubscriptionExpired,
             SubscriptionCancellationScheduled,
             SubscriptionVersionChangeScheduled,
+            SubscriptionBillingCycleChanged,
             SubscriptionAccessEnding,
             SubscriptionRenewalUpcoming,
             SubscriptionReactivated,
@@ -2186,6 +2189,75 @@ public static class NotificationTemplateSeedSource
             ]
         );
 
+    private static NotificationTemplateSeed SubscriptionBillingCycleChanged { get; } =
+        new(
+            EventKey: "subscription.billing_cycle_changed.v1",
+            TemplateKey: "subscription.billing_cycle_changed",
+            Name: "Suscripción — Cambio de ciclo de facturación",
+            Subject: "Your {{ product_name }} subscription is now billed every {{ cadence }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
+              {% if date_charged != "" %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">You're now on {{ cadence }}ly billing</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan, add-ons and extra seats are now billed every {{ cadence }}. We charged <strong style="color:#1E466B;">${{ amount }}</strong> on {{ date_charged }}; your receipt lists each item.</td></tr>
+              <tr><td style="padding:18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>Next renewal:</strong> {{ next_charge_date }}</td></tr></table></td></tr>
+              {% else %}
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your billing will change to every {{ cadence }}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, nothing changes today. Starting <strong style="color:#1E466B;">{{ next_charge_date }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan, add-ons and extra seats will be billed every {{ cadence }} at the current prices.</td></tr>
+              {% endif %}
+              <tr>
+                <td align="left" style="padding:8px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ manage_url }}" style="height:44px;v-text-anchor:middle;width:230px;" arcsize="23%" stroke="f" fillcolor="#1E466B"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Review my subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">Review my subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ manage_url }}</span></td></tr></table></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("cadence", VariableType.String, true, "month", "Ciclo nuevo: month o year."),
+                (
+                    "amount",
+                    VariableType.String,
+                    false,
+                    "",
+                    "Total cobrado al pasar a anual (vacío al pasar a mensual)."
+                ),
+                (
+                    "date_charged",
+                    VariableType.String,
+                    false,
+                    "",
+                    "Fecha del cobro (vacía si el cambio solo se agendó)."
+                ),
+                (
+                    "next_charge_date",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Próxima renovación, o desde cuándo rige el ciclo nuevo."
+                ),
+                ("manage_url", VariableType.Url, true, null, "Manage subscription de la oficina."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ],
+            ContentVersion: 28
+        );
+
     private static NotificationTemplateSeed SubscriptionExpired { get; } =
         new(
             EventKey: "subscription.expired.v1",
@@ -2239,6 +2311,9 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your subscription renews soon</td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, just a heads up — your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan renews on <strong style="color:#1E466B;">{{ renewal_date }}</strong> ({{ days_until_renewal }} day(s) from now). Nothing to do: we'll charge your card on file automatically.</td></tr>
+              {% if amount != "" %}
+              <tr><td style="padding:18px 0 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>Amount:</strong> ${{ amount }} every {{ cadence }}, including your add-ons and extra seats.</td></tr></table></td></tr>
+              {% endif %}
               <tr>
                 <td align="left" style="padding:26px 0 18px 0;">
                   <!--[if mso]>
@@ -2259,6 +2334,8 @@ public static class NotificationTemplateSeedSource
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("days_until_renewal", VariableType.String, true, null, "Días que faltan para la renovación."),
                 ("renewal_date", VariableType.String, true, null, "Fecha de la próxima renovación."),
+                ("amount", VariableType.String, false, "", "Total de la renovación: plan más add-ons y asientos (E4)."),
+                ("cadence", VariableType.String, false, "month", "Ciclo: month o year."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para gestionar la suscripción."),
                 (
                     "product_name",
@@ -2267,7 +2344,8 @@ public static class NotificationTemplateSeedSource
                     "TaxOffix",
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
-            ]
+            ],
+            ContentVersion: 29
         );
 
     private static NotificationTemplateSeed SubscriptionReactivated { get; } =

@@ -94,6 +94,9 @@ public static class SubscriptionLifecycleEmailConsumer
                             $"{evt.TenantId:N}:renewal-upcoming:{evt.NextRenewalAtUtc:yyyyMMdd}:{evt.DaysUntilRenewal}",
                         // Un correo por intento: un reenvío del mismo aviso no lo repite.
                         // Un aviso por migración: un reenvío del evento no lo repite.
+                        // Un aviso por cambio: el mismo ciclo y la misma próxima fecha no se repiten.
+                        "subscription.billing_cycle_changed" =>
+                            $"{evt.TenantId:N}:cycle-change:{evt.Cadence}:{evt.NextChargeDate}",
                         "subscription.version_change_scheduled" when evt.MigrationId is { } migrationId =>
                             $"{evt.TenantId:N}:version-change:{migrationId:N}",
                         "subscription.recurring_charge_failed" when evt.SaaSPaymentId is { } paymentId =>
@@ -120,6 +123,10 @@ public static class SubscriptionLifecycleEmailConsumer
         // Cambian las condiciones del plan (migración de edición): no es una transición de estado.
         if (string.Equals(reason, "VersionChangeScheduled", StringComparison.OrdinalIgnoreCase))
             return ("subscription.version_change_scheduled.v1", "subscription.version_change_scheduled");
+
+        // Cambio de ciclo (a anual al pagarse, a mensual al agendarse): no es una transición de estado.
+        if (string.Equals(reason, "BillingCycleChanged", StringComparison.OrdinalIgnoreCase))
+            return ("subscription.billing_cycle_changed.v1", "subscription.billing_cycle_changed");
 
         // Recordatorio de que se acerca el fin: lo publica un job, no una transición.
         if (

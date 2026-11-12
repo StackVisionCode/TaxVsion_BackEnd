@@ -2707,6 +2707,50 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantSubscriptionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.OwnsMany("TaxVision.Subscription.Domain.Subscriptions.PlanChangeLine", "Lines", b1 =>
+                        {
+                            b1.Property<Guid>("Id")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Code")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("nvarchar(64)");
+
+                            b1.Property<string>("Description")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)");
+
+                            b1.Property<string>("Kind")
+                                .IsRequired()
+                                .HasMaxLength(20)
+                                .HasColumnType("nvarchar(20)");
+
+                            b1.Property<Guid>("PlanChangeRequestId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("Quantity")
+                                .HasColumnType("int");
+
+                            b1.Property<Guid?>("ReferenceId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<long>("UnitAmountCents")
+                                .HasColumnType("bigint");
+
+                            b1.HasKey("Id");
+
+                            b1.HasIndex("PlanChangeRequestId");
+
+                            b1.ToTable("PlanChangeRequestLines", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("PlanChangeRequestId");
+                        });
+
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.TenantSubscription", b =>

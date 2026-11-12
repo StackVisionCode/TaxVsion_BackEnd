@@ -27,4 +27,10 @@ public sealed record SubscriptionPlanChangeDueIntegrationEvent : IntegrationEven
     /// A diferencia de SubscriptionRenewalDue/SeatRenewalDue/AddOnRenewalDue (disparados por un
     /// job de facturación, sin usuario), un upgrade siempre lo inicia un usuario interactivo.</summary>
     public required Guid RequestedByUserId { get; init; }
+
+    /// <summary>Detalle del cobro (plan y, si cambia el ciclo, cada extra). Opcional: sin él, una sola línea.</summary>
+    public IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines { get; init; }
+
+    /// <summary>Cómo se ve el cobro en el historial y el recibo, p. ej. "Switch to yearly billing".</summary>
+    public string? ConceptDisplayName { get; init; }
 }

@@ -12,7 +12,10 @@ public sealed record PlanChangeCheckoutClientRequest(
     string CancelUrl,
     string IdempotencyKey,
     string Provider,
-    string Method
+    string Method,
+    // Detalle del cobro y cómo se ve en el historial; opcionales.
+    IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null,
+    string? ConceptDisplayName = null
 );
 
 public sealed record PlanChangeCheckoutClientResult(

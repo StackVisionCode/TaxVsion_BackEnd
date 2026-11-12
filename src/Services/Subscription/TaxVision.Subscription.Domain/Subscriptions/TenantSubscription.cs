@@ -440,6 +440,18 @@ public sealed class TenantSubscription : AggregateRoot
                 new Error("Subscription.VersionNotInPlan", "The edition does not belong to the office's plan.")
             );
 
+    /// <summary>
+    /// La renovación de un add-on o asiento espera: mientras un cambio espera su cobro (el pago lo cambia de ciclo), o
+    /// si hay un paso a otro ciclo agendado que llega antes que el fin del extra (la base lo aplica primero).
+    /// </summary>
+    public bool HoldsExtraRenewals(DateTime extraPeriodEndUtc) =>
+        _planChangeRequests.Any(request => request.Status == PlanChangeRequestStatus.AwaitingPayment)
+        || (
+            FindScheduledDowngrade() is { ToBillingCycle: { } cycle }
+            && cycle != BillingCycle
+            && extraPeriodEndUtc >= CurrentPeriodEndUtc
+        );
+
     /// <summary>Hay un downgrade agendado o un upgrade esperando su cobro.</summary>
     public bool HasPlanChangeInProgress => HasPendingPlanChange();
 
@@ -484,7 +496,8 @@ public sealed class TenantSubscription : AggregateRoot
         string paymentIdempotencyKey,
         Guid actorUserId,
         DateTime nowUtc,
-        bool usesHostedCheckout = false
+        bool usesHostedCheckout = false,
+        IReadOnlyList<PlanChangeLine>? lines = null
     )
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
@@ -536,6 +549,13 @@ public sealed class TenantSubscription : AggregateRoot
         if (requestResult.IsFailure)
             return Result.Failure(requestResult.Error);
 
+        if (lines is not null)
+        {
+            var attached = requestResult.Value.AttachLines(lines);
+            if (attached.IsFailure)
+                return attached;
+        }
+
         requestResult.Value.RememberReplaced(
             replacedDowngradeId,
             replacedCancellationAtUtc,
@@ -562,6 +582,7 @@ public sealed class TenantSubscription : AggregateRoot
         if (request is null)
             return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
 
+        var previousCycle = BillingCycle;
         var switchResult = ChangePlan(toPlan, toPlanVersion, request.ToBillingCycle, actorUserId, nowUtc);
         if (switchResult.IsFailure)
             return switchResult;
@@ -570,6 +591,23 @@ public sealed class TenantSubscription : AggregateRoot
         CurrentPeriodStartUtc = nowUtc;
         CurrentPeriodEndUtc = effectiveCycle.CalculateNext(nowUtc);
         NextRenewalAtUtc = CurrentPeriodEndUtc;
+
+        if (effectiveCycle != previousCycle)
+            AddDomainEvent(
+                new SubscriptionBillingCycleChangedDomainEvent(
+                    TenantId,
+                    Id,
+                    PlanCode,
+                    effectiveCycle,
+                    request.ChargeAmountCents,
+                    request.ChargeCurrency,
+                    nowUtc,
+                    CurrentPeriodEndUtc,
+                    Status,
+                    actorUserId,
+                    nowUtc
+                )
+            );
 
         // Quien pagó su plan ya no está de prueba. Sin esto la suscripción seguía Trialing con
         // TrialEndsAtUtc puesta y el job de pruebas podía expirar una suscripción pagada.
@@ -738,6 +776,24 @@ public sealed class TenantSubscription : AggregateRoot
 
         _pendingDowngrades.Add(requestResult.Value);
         Touch(actorUserId, nowUtc);
+
+        if (cycleChanged)
+            AddDomainEvent(
+                new SubscriptionBillingCycleChangedDomainEvent(
+                    TenantId,
+                    Id,
+                    PlanCode,
+                    newBillingCycle!.Value,
+                    ChargedAmountCents: null,
+                    Currency: null,
+                    CurrentPeriodEndUtc,
+                    CurrentPeriodEndUtc,
+                    Status,
+                    actorUserId,
+                    nowUtc
+                )
+            );
+
         return Result.Success();
     }
 
@@ -901,8 +957,11 @@ public sealed class TenantSubscription : AggregateRoot
         return Result.Success();
     }
 
-    /// <summary>Solo una suscripción en prueba o activa compra add-ons o asientos.</summary>
-    public bool AcceptsPurchases => IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active);
+    /// <summary>Solo una suscripción en prueba o activa compra add-ons o asientos, y no mientras un cambio espera su
+    /// cobro: lo comprado entonces quedaría fuera de lo cobrado.</summary>
+    public bool AcceptsPurchases =>
+        IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active)
+        && !_planChangeRequests.Any(request => request.Status == PlanChangeRequestStatus.AwaitingPayment);
 
     /// <summary>Compra directa de add-ons o asientos: toca la fila para que su RowVersion serialice dos
     /// compras simultáneas del mismo tenant (la segunda choca al guardar).</summary>

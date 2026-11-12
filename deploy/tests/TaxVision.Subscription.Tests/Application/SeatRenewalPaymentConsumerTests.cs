@@ -166,6 +166,11 @@ public sealed class SeatRenewalPaymentConsumerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdForUpdateAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => GetByTenantIdAsync(tenantId, ct);
+
         public Task AddAsync(SubscriptionSeat value, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

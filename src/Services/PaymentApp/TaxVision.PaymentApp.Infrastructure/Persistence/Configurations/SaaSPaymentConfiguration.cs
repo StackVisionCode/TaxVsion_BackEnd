@@ -100,6 +100,24 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
         // inicial por onboarding); reusa el patrón idempotente vía IdempotencyKey para replays.
         builder.Property(payment => payment.OnboardingId);
         builder.Property(payment => payment.ReceiptFileId);
+
+        // Detalle del cobro cuando cobra varias cosas (pasar a anual: plan, add-ons, asientos).
+        builder.OwnsMany(
+            payment => payment.Lines,
+            line =>
+            {
+                line.ToTable("SaaSPaymentLines");
+                line.WithOwner().HasForeignKey("SaaSPaymentId");
+                line.HasKey(l => l.Id);
+                line.Property(l => l.Id).ValueGeneratedNever();
+                line.Property(l => l.Description).HasMaxLength(SaaSPaymentLine.DescriptionMaxLength).IsRequired();
+                line.Property(l => l.Quantity).IsRequired();
+                line.Property(l => l.UnitAmountCents).IsRequired();
+                line.Ignore(l => l.AmountCents);
+            }
+        );
+        builder.Navigation(payment => payment.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.Property(payment => payment.ReceiptOwnerTenantId);
         builder
             .HasIndex(payment => payment.OnboardingId)
             .IsUnique()

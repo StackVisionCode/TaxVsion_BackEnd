@@ -60,7 +60,8 @@ public static class SaaSPaymentSucceededReceiptConsumer
                         SecondaryDescriptionOf(evt.PaymentType, evt.Quantity ?? 0),
                         evt.BilledTo?.LegalName,
                         evt.BilledTo?.Ein,
-                        evt.BilledTo?.Address
+                        evt.BilledTo?.Address,
+                        evt.Lines
                     )
                 ),
                 ct

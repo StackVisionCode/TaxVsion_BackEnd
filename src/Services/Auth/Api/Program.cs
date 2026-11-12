@@ -565,11 +565,9 @@ builder.Host.UseWolverine(options =>
     options
         .PublishMessage<OnboardingPaymentFailedNotificationRequestedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
-    // Gift/Referral — FINALIZE pide a Billing asentar la factura (fuente de verdad financiera).
-    options
-        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.OnboardingInvoiceRequestedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingReceiptReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Mantenimiento: completa en PaymentApp los pagos de alta viejos (oficina + recibo).
+    options.PublishMessage<OnboardingPaymentLinkReplayedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingProvisioningStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingProvisioningStepFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantOnboardingCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");

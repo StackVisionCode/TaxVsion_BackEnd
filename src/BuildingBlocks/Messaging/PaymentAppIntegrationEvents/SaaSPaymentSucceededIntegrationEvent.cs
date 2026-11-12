@@ -46,6 +46,9 @@ public sealed record SaaSPaymentSucceededIntegrationEvent : IntegrationEvent
     // "Add-on". Opcional (null para pagos legacy o para los callers que aún no lo setean).
     public string? ConceptCode { get; init; }
     public string? ConceptDisplayName { get; init; }
+
+    /// <summary>Una línea por cosa cobrada cuando el cobro tiene varias; el recibo las detalla. Null en el resto.</summary>
+    public IReadOnlyList<SaaSChargeLine>? Lines { get; init; }
 }
 
 /// <summary>"Billed to" del recibo: nombre legal, EIN y dirección postal en una línea. Todo opcional.</summary>

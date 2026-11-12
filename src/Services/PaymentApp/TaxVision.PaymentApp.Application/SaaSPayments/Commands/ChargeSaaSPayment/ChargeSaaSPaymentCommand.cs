@@ -22,6 +22,9 @@ public sealed record ChargeSaaSPaymentCommand(
     /// cobros que tienen algo que contar, y PaymentApp los descarta si no cuadran con el importe.</summary>
     int? Quantity = null,
     long? UnitAmountCents = null,
+    // Detalle cuando el cobro tiene varias cosas y cómo se ve en el historial; opcionales.
+    IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null,
+    string? ConceptDisplayName = null,
     Guid? CodeReservationId = null,
     Guid? CodeReservationPaymentId = null,
     long? DiscountAmountCents = null,

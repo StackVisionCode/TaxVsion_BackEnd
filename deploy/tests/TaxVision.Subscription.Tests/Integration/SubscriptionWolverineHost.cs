@@ -74,6 +74,7 @@ internal static class SubscriptionWolverineHost
         services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
         services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
         services.AddScoped<IAddOnDefinitionRepository, AddOnDefinitionRepository>();
+        services.AddScoped<ISeatPricingRepository, SeatPricingRepository>();
         services.AddScoped<ITenantEntitlementSnapshotRepository, TenantEntitlementSnapshotRepository>();
         services.AddScoped<ISubscriptionTenantSettingsRepository, SubscriptionTenantSettingsRepository>();
         services.AddSingleton<ICacheService, NoOpCacheService>();

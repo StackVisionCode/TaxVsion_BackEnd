@@ -132,6 +132,9 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   // Referido declarado en el alta: lo consume Growth (atribución); Communication no hace nada con él.
   'auth.onboarding.referral_declared',
   'auth.onboarding.referral_declared.v1',
+  // Vínculo de un alta reenviado por Auth: lo consume PaymentApp; Communication no hace nada con él.
+  'auth.onboarding.payment_link_replayed',
+  'auth.onboarding.payment_link_replayed.v1',
   // Notes — Notas: Customer y CloudStorage.
   'BuildingBlocks.Messaging.NotesIntegrationEvents.NoteAttachmentDetachedIntegrationEvent',
   'BuildingBlocks.Messaging.NotesIntegrationEvents.NoteCreatedIntegrationEvent',

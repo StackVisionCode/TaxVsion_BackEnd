@@ -69,6 +69,9 @@ public enum SubscriptionChangeReason
     /// <summary>D11: se agendó el paso a otra edición del plan en su próxima renovación. No es una transición:
     /// viaja por este canal para avisarle al cliente con la fecha y lo que cambia.</summary>
     VersionChangeScheduled,
+
+    // Cambio de ciclo: a anual al pagarse, a mensual al agendarse.
+    BillingCycleChanged,
 }
 
 /// <summary>
