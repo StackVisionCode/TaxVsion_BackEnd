@@ -12,14 +12,14 @@ namespace TaxVision.Subscription.Tests.Api;
 public sealed class ModulesAdminControllerTests
 {
     [Fact]
-    public void Controller_is_restricted_to_platform_admin_with_cross_tenant_permission()
+    public void Controller_is_restricted_to_platform_admin_with_the_catalog_permission()
     {
         var controller = typeof(ModulesAdminController);
 
         Assert.Equal("admin/subscription/modules", controller.GetCustomAttribute<RouteAttribute>()!.Template);
         Assert.Contains(ActorType.PlatformAdmin, controller.GetCustomAttribute<AllowActorTypesAttribute>()!.ActorTypes);
         Assert.Equal(
-            HasPermissionAttribute.PolicyPrefix + SubscriptionPermissions.AdminCrossTenant,
+            HasPermissionAttribute.PolicyPrefix + SubscriptionPermissions.CatalogManage,
             controller.GetCustomAttribute<HasPermissionAttribute>()!.Policy
         );
     }

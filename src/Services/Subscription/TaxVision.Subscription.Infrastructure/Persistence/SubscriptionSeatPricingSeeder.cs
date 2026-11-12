@@ -18,9 +18,7 @@ public static class SubscriptionSeatPricingSeeder
     public static readonly Guid SeatPricingId = new("e1000000-0000-0000-0000-000000000001");
 
     // Precio mensual USD por tipo de asiento. Standard = staff extra (precio real); resto = 0 placeholder.
-    // Standard $15/mo ($150/yr con ×10): por encima del per-seat implícito del plan más alto (Enterprise
-    // $299/25 = ~$12) para que comprar asientos sueltos nunca canibalice el upgrade de plan; ancla estándar
-    // de la industria (~$15/usuario/mes). Editable en vivo por PlatformAdmin (SetSeatPrices).
+    // Precio de arranque: lo edita PlatformAdmin en vivo (SetSeatPrices).
     private static readonly (SeatType Type, decimal MonthlyUsd)[] SeatPrices =
     [
         (SeatType.Standard, 15m),

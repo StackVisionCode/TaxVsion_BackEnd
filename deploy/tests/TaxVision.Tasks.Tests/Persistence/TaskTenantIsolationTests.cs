@@ -86,7 +86,13 @@ public sealed class TaskTenantIsolationTests
         var mine = world.Mine;
 
         var board = await repository.ListForBoardAsync(mine, new TaskQueryFilter(OnlyOpen: true), 500);
-        var calendar = await repository.ListForCalendarAsync(mine, Now.AddDays(-30), Now.AddDays(30), null, 500);
+        var calendar = await repository.ListForCalendarAsync(
+            mine,
+            Now.AddDays(-30),
+            Now.AddDays(30),
+            new TaskQueryFilter(),
+            500
+        );
         var search = await repository.SearchAsync(mine, new TaskQueryFilter(SharedTitle), 1, 50);
 
         Assert.All(board, t => Assert.Equal(mine, t.TenantId));

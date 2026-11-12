@@ -293,6 +293,9 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         [FromQuery] DateTime fromUtc,
         [FromQuery] DateTime toUtc,
         [FromQuery] Guid? assigneeUserId,
+        [FromQuery] Guid? customerId,
+        [FromQuery] int? taxYear,
+        [FromQuery] bool openOnly,
         CancellationToken ct
     )
     {
@@ -300,11 +303,18 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
             return Unauthorized();
 
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
-        var result = await bus.InvokeAsync<IReadOnlyList<TaskCalendarEntry>>(
-            new GetTaskCalendarQuery(tenantId, fromUtc, toUtc, assigneeUserId, CalendarTake, userId, canViewAll),
+        var filter = new TaskQueryFilter(null, null, assigneeUserId, customerId, taxYear, openOnly);
+        var result = await bus.InvokeAsync<Result<TaskCalendarResult>>(
+            new GetTaskCalendarQuery(tenantId, fromUtc, toUtc, filter, CalendarTake, userId, canViewAll),
             ct
         );
-        return Ok(result);
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+        // La respuesta sigue siendo la lista; el corte va en una cabecera para no romper a los clientes actuales.
+        if (result.Value.Truncated)
+            Response.Headers["X-Result-Truncated"] = "true";
+        return Ok(result.Value.Entries);
     }
 
     [HttpPut("{id:guid}")]

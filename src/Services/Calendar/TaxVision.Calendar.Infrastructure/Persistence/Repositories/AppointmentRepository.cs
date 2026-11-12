@@ -62,6 +62,20 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
             .Where(a => a.Recurrence != null || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc))
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Appointment>> ListOrganizerTypeForRangeAsync(
+        Guid tenantId,
+        Guid organizerUserId,
+        Guid appointmentTypeId,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc,
+        CancellationToken ct = default
+    ) =>
+        await Scoped(tenantId)
+            .Include(a => a.Exceptions)
+            .Where(a => a.OrganizerUserId == organizerUserId && a.AppointmentTypeId == appointmentTypeId)
+            .Where(a => a.Recurrence != null || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc))
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
         Guid tenantId,
         DateTime rangeStartUtc,
@@ -164,7 +178,8 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
                 """
             )
             .IgnoreQueryFilters()
-            .Where(a => a.Status != AppointmentStatus.Cancelled)
+            // Una solicitud sin aprobar no recibe recordatorios ni "starting soon".
+            .Where(a => a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.Requested)
             .Where(a => a.Recurrence != null || (a.Timing.StartUtc >= fromUtc && a.Timing.StartUtc < toUtc));
     }
 

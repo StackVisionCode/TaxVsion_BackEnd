@@ -6,6 +6,11 @@ public static class AppointmentErrors
 {
     public static readonly Error NotFound = new("Calendar.Appointment.NotFound", "The appointment was not found.");
 
+    public static readonly Error RangeInvalid = new(
+        "Calendar.Appointment.RangeInvalid",
+        "The range must start before it ends and span at most 62 days."
+    );
+
     public static readonly Error TitleEmpty = new("Calendar.Appointment.TitleEmpty", "The title is required.");
 
     public static readonly Error TitleTooLong = new(
@@ -74,6 +79,41 @@ public static class AppointmentErrors
         "That attendee is not on this appointment."
     );
 
+    public static readonly Error InvalidResponse = new(
+        "Calendar.Appointment.InvalidResponse",
+        "The response must be accepted, declined or tentative."
+    );
+
+    public static readonly Error AssigneeUnavailable = new(
+        "Calendar.Appointment.AssigneeUnavailable",
+        "That team member can't take appointments right now."
+    );
+
+    public static readonly Error NotARequest = new(
+        "Calendar.Appointment.NotARequest",
+        "This appointment isn't waiting for approval."
+    );
+
+    public static readonly Error NotTheCustomer = new(
+        "Calendar.Appointment.NotTheCustomer",
+        "Only the appointment's client can change it from the portal."
+    );
+
+    public static readonly Error SeriesChangedByOffice = new(
+        "Calendar.Appointment.SeriesChangedByOffice",
+        "A recurring appointment is changed by the office."
+    );
+
+    public static readonly Error DescriptionTooLong = new(
+        "Calendar.Appointment.DescriptionTooLong",
+        $"The description cannot be longer than {Appointment.MaxDescriptionLength} characters."
+    );
+
+    public static readonly Error RsvpClosed = new(
+        "Calendar.Appointment.RsvpClosed",
+        "This appointment already took place."
+    );
+
     public static readonly Error AttendeeAlreadyAdded = new(
         "Calendar.Appointment.AttendeeAlreadyAdded",
         "That attendee is already on this appointment."
@@ -85,6 +125,19 @@ public static class AppointmentErrors
     );
 
     /// <summary>Solapamiento que el tipo declara como error, no como aviso. La capa web lo mapea a 409.</summary>
+    /// <summary>El tipo tiene tope diario y el organizador ya lo alcanzó ese día (su día local).</summary>
+    public static readonly Error DailyCapReached = new(
+        "Calendar.Appointment.DailyCapReached",
+        "The daily limit for this appointment type is already reached that day."
+    );
+
+    /// <summary>Un invitado del equipo ya tiene otra cita a esa hora y el tipo no admite solapes.</summary>
+    public static Error AttendeeConflict(string name) =>
+        new(
+            "Calendar.Appointment.AttendeeConflict",
+            $"{name} already has an appointment at that time and this type does not allow overlaps."
+        );
+
     public static readonly Error Conflict = new(
         "Calendar.Appointment.Conflict",
         "The appointment overlaps another one and this type does not allow it."

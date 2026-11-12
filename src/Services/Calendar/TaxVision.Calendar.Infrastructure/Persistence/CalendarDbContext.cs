@@ -11,7 +11,9 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Availability;
 using TaxVision.Calendar.Domain.Backfill;
+using TaxVision.Calendar.Domain.Booking;
 using TaxVision.Calendar.Domain.Feeds;
+using TaxVision.Calendar.Domain.Office;
 using TaxVision.Calendar.Domain.Permissions;
 using TaxVision.Calendar.Domain.Projections;
 using TaxVision.Calendar.Domain.RateLimiting;
@@ -56,6 +58,14 @@ public sealed class CalendarDbContext(DbContextOptions<CalendarDbContext> option
 
     /// <summary>La mantiene el consumer con lo que publica Subscription.</summary>
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
+
+    /// <summary>Horario, cierres y zona de la oficina (proyección de Tenant).</summary>
+    public DbSet<OfficeScheduleProjection> OfficeSchedules => Set<OfficeScheduleProjection>();
+
+    /// <summary>Política de reserva del portal, una por oficina.</summary>
+    public DbSet<BookingPolicy> BookingPolicies => Set<BookingPolicy>();
+
+    public DbSet<BookingRequest> BookingRequests => Set<BookingRequest>();
 
     // P2 — proyección compartida de asignaciones cliente↔staff (kit BuildingBlocks.CustomerVisibility),
     // mantenida por el snapshot CustomerAssignmentsChanged de Customer. Filtra la visibilidad por asignación.

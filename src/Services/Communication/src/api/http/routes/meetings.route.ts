@@ -30,6 +30,8 @@ import { resolveDisplayName } from '../../socket/handlers/resolve-display-name.j
 import { requirePermission } from '../plugins/require-permission.js';
 import { RecordingScope } from '../../../domain/recording/recording-session-state.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
+import { canSeeMeeting, toMeetingListItem } from '../schemas/meeting-list-item.js';
+import { parseMeetingRange } from '../schemas/meeting-range.js';
 
 const CreateMeetingBody = z.object({
   title: z.string().min(1).max(200),
@@ -81,7 +83,16 @@ const HistoryQuery = z.object({
   // usuario del portal está invitado. Solo staff, y con la misma visibilidad por asignación que el
   // historial de llamadas.
   customerId: z.string().uuid().optional(),
+  // Vista calendario: rango opcional (ISO), los dos extremos juntos y como máximo 62 días.
+  from: z.string().datetime({ offset: true }).optional(),
+  to: z.string().datetime({ offset: true }).optional(),
 });
+const MEETING_NOT_FOUND = { code: 'Meeting.NotFound', message: 'Meeting not found.' };
+
+const MEETING_RANGE_INVALID = {
+  code: 'Meeting.RangeInvalid',
+  message: 'Send both from and to; the range must start before it ends and span at most 62 days.',
+} as const;
 
 const CUSTOMER_MEETINGS_STAFF_ONLY = {
   code: 'Auth.Forbidden',
@@ -139,6 +150,8 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     async (request, reply) => {
       const principal = request.principal!;
       const query = HistoryQuery.parse(request.query);
+      const range = parseMeetingRange(query.from, query.to);
+      if (!range.ok) return reply.code(400).send(MEETING_RANGE_INVALID);
 
       let counterpartUserId: string | undefined;
       if (query.customerId) {
@@ -169,6 +182,7 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
         userId: principal.userId,
         ...(query.customerId !== undefined ? { customerId: query.customerId } : {}),
         ...(counterpartUserId !== undefined ? { counterpartUserId } : {}),
+        ...(range.range !== undefined ? { scheduledBetween: range.range } : {}),
       };
       const pageInput = { ...listInput, take: query.size, skip: (query.page - 1) * query.size };
       const [items, totalCount] =
@@ -186,38 +200,34 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
         ? new Map<string, string>()
         : await container.recordingSessions.listStatesByScopeIds(principal.tenantId, RecordingScope.Meeting, items.map((m) => m.id));
       return reply.send({
-        items: items.map((snapshot) => ({
-          id: snapshot.id,
-          title: snapshot.title,
-          status: snapshot.status,
-          shortCode: snapshot.shortCode,
-          strategy: snapshot.strategy,
-          hostUserId: snapshot.hostUserId,
-          scheduledForUtc: snapshot.scheduledForUtc?.toISOString() ?? null,
-          startedAtUtc: snapshot.startedAtUtc?.toISOString() ?? null,
-          endedAtUtc: snapshot.endedAtUtc?.toISOString() ?? null,
-          // F3 (T-40): duración programada (informativa), tope, corte y motivo del fin.
-          scheduledDurationMinutes: snapshot.scheduledDurationMinutes,
-          maxDurationMinutes: snapshot.maxDurationMinutes,
-          endsAtUtc: snapshot.endsAtUtc?.toISOString() ?? null,
-          endReason: snapshot.endReason,
-          durationSeconds: snapshot.durationSeconds,
-          continuationOfMeetingId: snapshot.continuationOfMeetingId,
-          // En vivo: quienes están ahora; terminada: quienes llegaron a entrar (todos quedan en Left).
-          joinedParticipantsCount: snapshot.participants.filter((p) =>
-            snapshot.status === 'Live' ? p.status === 'Joined' : p.joinedAtUtc !== null,
-          ).length,
-          // Fase Frontend 9 — el historial necesita saber si hay transcript
-          // disponible sin abrir cada meeting; el campo ya vivia en el
-          // aggregate/Prisma (Fase Transcript 5/6), solo faltaba exponerlo aca.
-          transcriptFileId: snapshot.transcriptFileId,
-          transcriptLanguage: snapshot.transcriptLanguage,
-          recordingState: recordingStates.get(snapshot.id) ?? null,
-        })),
+        items: items.map((snapshot) => toMeetingListItem(snapshot, recordingStates.get(snapshot.id) ?? null)),
         page: query.page,
         size: query.size,
         totalCount,
       });
+    },
+  );
+
+  // Una reunión por id con la forma del listado: el deep link la pide si no está en las páginas
+  // cargadas. 404 si no existe o el usuario no la ve en su listado.
+  app.get(
+    '/communication/meetings/:id',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.MeetingJoin)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const { id } = request.params as { id: string };
+      if (!/^[0-9a-fA-F-]{36}$/.test(id)) return reply.code(404).send(MEETING_NOT_FOUND);
+      const meeting = await container.meetings.findById(principal.tenantId, id);
+      if (!meeting) return reply.code(404).send(MEETING_NOT_FOUND);
+      const snapshot = meeting.toSnapshot();
+      const invitations = (await container.meetings.listInvitationsByMeeting(principal.tenantId, snapshot.id)).map((i) =>
+        i.toSnapshot(),
+      );
+      if (!canSeeMeeting(snapshot, principal.userId, invitations)) return reply.code(404).send(MEETING_NOT_FOUND);
+      const recording = await container.recordingSessions.listStatesByScopeIds(principal.tenantId, RecordingScope.Meeting, [snapshot.id]);
+      return reply.send(toMeetingListItem(snapshot, recording.get(snapshot.id) ?? null));
     },
   );
 
@@ -420,7 +430,8 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
         { ...container, emitter: container.emitter },
       );
       if (!result.isSuccess) {
-        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+        const status = result.error.code === 'Meeting.ManagedByAppointment' ? 409 : 400;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
       }
       return reply.code(204).send();
     },
@@ -449,7 +460,8 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
         { ...container, emitter: container.emitter },
       );
       if (!result.isSuccess) {
-        return reply.code(400).send({ code: result.error.code, message: result.error.message });
+        const status = result.error.code === 'Meeting.ManagedByAppointment' ? 409 : 400;
+        return reply.code(status).send({ code: result.error.code, message: result.error.message });
       }
       return reply.code(204).send();
     },

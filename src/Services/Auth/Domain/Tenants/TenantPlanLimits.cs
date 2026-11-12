@@ -18,6 +18,9 @@ public sealed class TenantPlanLimits : BaseEntity
     public bool IsSuspendedForBilling { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Última revisión de entitlements aplicada; una menor llega tarde y se ignora.</summary>
+    public long? LastEntitlementsRevision { get; private set; }
+
     public static TenantPlanLimits Create(
         Guid tenantId,
         string planCode,
@@ -36,6 +39,30 @@ public sealed class TenantPlanLimits : BaseEntity
             EnabledModulesJson = enabledModulesJson,
             UpdatedAtUtc = DateTime.UtcNow,
         };
+
+    /// <summary>
+    /// Aplica los límites de una revisión de entitlements. Una revisión menor que la ya aplicada llega tarde y se
+    /// ignora (devuelve false): sin esto, un evento viejo bajaba usuarios o almacenamiento a un valor anterior.
+    /// La misma revisión se vuelve a aplicar (idempotente).
+    /// </summary>
+    public bool ApplyRevision(
+        long revision,
+        string planCode,
+        int maxUsers,
+        int maxPendingInvitations,
+        long storageQuotaBytes,
+        string enabledModulesJson,
+        bool suspendedForBilling
+    )
+    {
+        if (LastEntitlementsRevision is { } applied && revision < applied)
+            return false;
+
+        Apply(planCode, maxUsers, maxPendingInvitations, storageQuotaBytes, enabledModulesJson);
+        SetSuspendedForBilling(suspendedForBilling);
+        LastEntitlementsRevision = revision;
+        return true;
+    }
 
     public void Apply(
         string planCode,

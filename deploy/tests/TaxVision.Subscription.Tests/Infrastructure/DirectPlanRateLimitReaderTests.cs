@@ -4,6 +4,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Domain.RateLimiting;
 using TaxVision.Subscription.Domain.ValueObjects;
 using TaxVision.Subscription.Infrastructure.RateLimiting;
+using TaxVision.Subscription.Tests.TestDoubles;
 using Xunit;
 
 namespace TaxVision.Subscription.Tests.Infrastructure;
@@ -23,7 +24,7 @@ public sealed class DirectPlanRateLimitReaderTests
     public async Task GetAsync_returns_the_snapshot_for_a_known_plan_and_category()
     {
         var repository = new FakeRepository([BuildRow("pro", RateLimitCategory.G, 3m)]);
-        var reader = new DirectPlanRateLimitReader(repository, new PassThroughCache());
+        var reader = Reader(repository);
 
         var snapshot = await reader.GetAsync("pro", RateLimitCategory.G);
 
@@ -33,20 +34,40 @@ public sealed class DirectPlanRateLimitReaderTests
     }
 
     [Fact]
-    public async Task GetAsync_returns_null_when_the_plan_or_category_has_no_row()
+    public async Task GetAsync_returns_null_for_a_plan_that_does_not_exist()
     {
         var repository = new FakeRepository([BuildRow("pro", RateLimitCategory.G, 3m)]);
-        var reader = new DirectPlanRateLimitReader(repository, new PassThroughCache());
+        var reader = Reader(repository);
 
         Assert.Null(await reader.GetAsync("starter", RateLimitCategory.G));
-        Assert.Null(await reader.GetAsync("pro", RateLimitCategory.H));
     }
+
+    // D12: una categoría sin fila de un plan que existe usa el perfil por defecto, nunca el cupo base.
+    [Fact]
+    public async Task GetAsync_completes_a_missing_category_with_the_default_profile()
+    {
+        var repository = new FakeRepository([BuildRow("pro", RateLimitCategory.G, 3m)]);
+        var reader = Reader(repository);
+
+        var snapshot = await reader.GetAsync("pro", RateLimitCategory.H);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(10m, snapshot!.MultiplierOverride);
+    }
+
+    private static DirectPlanRateLimitReader Reader(FakeRepository repository) =>
+        new(
+            repository,
+            new InMemoryPlanRepo(PlanTestData.PublishedPlan("pro")),
+            new InMemoryRateLimitProfileRepo(RateLimitDefaultProfile.Seed(DateTime.UtcNow)),
+            new PassThroughCache()
+        );
 
     [Fact]
     public async Task GetAsync_only_queries_the_repository_once_across_multiple_calls()
     {
         var repository = new FakeRepository([BuildRow("pro", RateLimitCategory.G, 3m)]);
-        var reader = new DirectPlanRateLimitReader(repository, new PassThroughCache());
+        var reader = Reader(repository);
 
         await reader.GetAsync("pro", RateLimitCategory.G);
         await reader.GetAsync("pro", RateLimitCategory.G);

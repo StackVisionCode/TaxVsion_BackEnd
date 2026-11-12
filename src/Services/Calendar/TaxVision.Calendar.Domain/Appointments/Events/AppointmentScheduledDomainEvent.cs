@@ -9,5 +9,8 @@ public sealed record AppointmentScheduledDomainEvent(
     Guid OrganizerUserId,
     Guid AppointmentTypeId,
     bool IsVirtual,
-    DateTime ScheduledAtUtc
+    DateTime ScheduledAtUtc,
+    AttendeeRsvpToken[]? RsvpTokens = null,
+    string? BookedByCustomerName = null,
+    bool ApprovedRequest = false
 ) : IDomainEvent;

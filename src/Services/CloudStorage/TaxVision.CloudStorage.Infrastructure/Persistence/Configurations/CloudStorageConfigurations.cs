@@ -125,7 +125,7 @@ public sealed class TenantStorageLimitConfiguration : IEntityTypeConfiguration<T
         builder
             .Property(limit => limit.PlanFileTypeGroups)
             .HasMaxLength(400)
-            .HasDefaultValue(TaxVision.CloudStorage.Domain.FileTypes.PlanFileAllowanceDefaults.FileTypeGroups)
+            .HasDefaultValue(TaxVision.CloudStorage.Domain.FileTypes.PlatformFileAllowanceFallback.FileTypeGroups)
             .IsRequired();
         builder.Property(limit => limit.PortalFileTypeGroups).HasMaxLength(400);
         builder.Property(limit => limit.RowVersion).IsRowVersion();

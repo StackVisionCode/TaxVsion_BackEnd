@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Catalog;
+using TaxVision.Subscription.Application.Catalog.Audit;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForPlan;
 using TaxVision.Subscription.Application.Plans.Commands.SetPlanModules;
@@ -77,7 +78,7 @@ public sealed class SubscriptionCatalogReconciler(
                 continue;
 
             var result = await bus.InvokeAsync<BuildingBlocks.Results.Result>(
-                new SetPlanModulesCommand(plan.Id, selectedCommercial, Guid.Empty),
+                new SetPlanModulesCommand(plan.Id, selectedCommercial, Guid.Empty, SystemActor: ReconcilerActorName),
                 ct
             );
             if (result.IsFailure)
@@ -106,13 +107,8 @@ public sealed class SubscriptionCatalogReconciler(
     public static bool NeedsRevision(IReadOnlySet<string> current, IEnumerable<string> desired) =>
         !current.SetEquals(desired);
 
-    // Solo los tres planes comerciales: un testlive* u otro plan ad hoc no recibe claves que no eligió.
-    private static readonly string[] CatalogReconciledPlanCodes =
-    [
-        PlanCatalog.Starter,
-        PlanCatalog.Pro,
-        PlanCatalog.Enterprise,
-    ];
+    // D8: todo plan no archivado recibe las claves de plataforma; el código del plan no decide nada.
+    public static bool ReceivesCatalogEntitlements(SubscriptionPlan plan) => plan.Status != PlanStatus.Archived;
 
     // Idempotente: solo versiona el plan cuya versión publicada no trae todas las claves de catálogo
     // (communication.*, storage.* de archivos, signature.*), en UNA versión nueva con todas las que falten; el
@@ -128,7 +124,7 @@ public sealed class SubscriptionCatalogReconciler(
 
         foreach (var snapshot in await plans.GetAllAsync(ct))
         {
-            if (!CatalogReconciledPlanCodes.Contains(snapshot.Code.Value, StringComparer.Ordinal))
+            if (!ReceivesCatalogEntitlements(snapshot))
                 continue;
 
             var published = snapshot.GetPublishedVersion();
@@ -141,7 +137,7 @@ public sealed class SubscriptionCatalogReconciler(
                 continue;
             }
 
-            if (PlanEntitlementCatalogs.MissingFrom(published, snapshot.Tier).Count == 0)
+            if (EntitlementKeyCatalog.MissingFrom(published).Count == 0)
                 continue;
 
             // BB-3: la versión nueva del plan y su recálculo por plan se confirman juntos.
@@ -155,8 +151,9 @@ public sealed class SubscriptionCatalogReconciler(
                     if (plan is null)
                         return false;
 
+                    var before = CatalogAuditViews.Of(plan);
                     var result = plan.AddMissingEntitlements(
-                        PlanEntitlementCatalogs.SeedsFor(plan.Tier),
+                        EntitlementKeyCatalog.PlatformDefaults,
                         Guid.Empty,
                         DateTime.UtcNow
                     );
@@ -172,6 +169,19 @@ public sealed class SubscriptionCatalogReconciler(
 
                     if (result.Value == 0)
                         return false;
+
+                    await CatalogAudit.RecordAsync(
+                        unit.Services.GetRequiredService<ICatalogAuditLog>(),
+                        Reconciler,
+                        "plan.entitlements_added",
+                        CatalogAuditViews.Target(plan),
+                        before,
+                        new { Added = result.Value, Plan = CatalogAuditViews.Of(plan) },
+                        reason: null,
+                        Reconciler.Label,
+                        DateTime.UtcNow,
+                        token
+                    );
 
                     await unit.PublishAsync(new RecalculateEntitlementsForPlanCommand(plan.Id));
                     log.LogInformation(
@@ -191,6 +201,7 @@ public sealed class SubscriptionCatalogReconciler(
     {
         var db = services.GetRequiredService<SubscriptionDbContext>();
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
+        var audit = services.GetRequiredService<ICatalogAuditLog>();
         var changed = new List<string>();
 
         foreach (var quota in QuotaAddOnCatalog.All.Where(addOn => addOn.Offered))
@@ -198,7 +209,9 @@ public sealed class SubscriptionCatalogReconciler(
             var existing = await db.AddOnDefinitions.FirstOrDefaultAsync(candidate => candidate.Id == quota.Id, ct);
             if (existing is null)
             {
-                db.AddOnDefinitions.Add(SubscriptionAddOnCatalogSeeder.BuildQuotaDefinition(quota, DateTime.UtcNow));
+                var created = SubscriptionAddOnCatalogSeeder.BuildQuotaDefinition(quota, DateTime.UtcNow);
+                db.AddOnDefinitions.Add(created);
+                await AuditAddOnAsync(audit, "addon.created", created, before: null, ct);
                 changed.Add(quota.Code);
                 continue;
             }
@@ -208,7 +221,9 @@ public sealed class SubscriptionCatalogReconciler(
             // catálogo seedeado antes del cambio. El MutexGroup sigue impidiendo mezclar tiers.
             if (!existing.AllowMultipleInstances)
             {
+                var before = CatalogAuditViews.Of(existing);
                 existing.SetAllowMultipleInstances(true);
+                await AuditAddOnAsync(audit, "addon.allow_multiple", existing, before, ct);
                 changed.Add($"{quota.Code}:allow-multi");
             }
         }
@@ -219,4 +234,28 @@ public sealed class SubscriptionCatalogReconciler(
         await unitOfWork.SaveChangesAsync(ct);
         log.LogInformation("Catalog reconciler synchronized quota add-ons: {Codes}.", string.Join(", ", changed));
     }
+
+    private const string ReconcilerActorName = "reconciler";
+
+    private static readonly CatalogAuditActor Reconciler = CatalogAuditActor.System(ReconcilerActorName);
+
+    private static Task AuditAddOnAsync(
+        ICatalogAuditLog audit,
+        string action,
+        AddOnDefinition addOn,
+        object? before,
+        CancellationToken ct
+    ) =>
+        CatalogAudit.RecordAsync(
+            audit,
+            Reconciler,
+            action,
+            CatalogAuditViews.Target(addOn),
+            before,
+            CatalogAuditViews.Of(addOn),
+            reason: null,
+            Reconciler.Label,
+            DateTime.UtcNow,
+            ct
+        );
 }

@@ -7,9 +7,11 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Subscription.Application.Catalog.Confirmation;
 using TaxVision.Subscription.Application.Plans.Commands.CreateDraftVersion;
 using TaxVision.Subscription.Application.Plans.Commands.CreatePlan;
 using TaxVision.Subscription.Application.Plans.Commands.DeprecatePlan;
+using TaxVision.Subscription.Application.Plans.Commands.PlanSales;
 using TaxVision.Subscription.Application.Plans.Commands.PublishDraftVersion;
 using TaxVision.Subscription.Application.Plans.Commands.ReplaceDraftVersion;
 using TaxVision.Subscription.Application.Plans.Commands.SetPlanModules;
@@ -24,7 +26,7 @@ namespace TaxVision.Subscription.Api.Controllers.Admin;
 [ApiController]
 [Route("admin/subscription/plans")]
 [Authorize]
-[HasPermission(SubscriptionPermissions.AdminCrossTenant)]
+[HasPermission(SubscriptionPermissions.CatalogManage)]
 [AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class PlansAdminController(IMessageBus bus) : ControllerBase
 {
@@ -88,8 +90,8 @@ public sealed class PlansAdminController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Fija los módulos (module.*) del plan: publica una versión nueva (supersede la anterior)
-    /// y encola el recálculo masivo de sus tenants.</summary>
+    /// <summary>Fija los módulos (module.*) del plan: publica una edición nueva para quien contrate desde ahora.
+    /// Las oficinas existentes conservan su edición (D4); para moverlas está la migración de suscriptores.</summary>
     [HttpPut("{planId:guid}/modules")]
     [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
@@ -169,8 +171,9 @@ public sealed class PlansAdminController(IMessageBus bus) : ControllerBase
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>CAT-F2.5 — publica una versión Draft; supersede la publicada anterior y encola el
-    /// recálculo masivo de entitlements para los tenants del plan.</summary>
+    /// <summary>CAT-F2.5 — publica una versión Draft para quien contrate desde ahora y supersede la anterior.
+    /// Las oficinas existentes conservan su edición (D4); el recálculo solo refleja cambios del catálogo de
+    /// módulos. Para moverlas está la migración de suscriptores.</summary>
     [HttpPost("{planId:guid}/versions/{versionId:guid}/publish")]
     [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
@@ -183,31 +186,101 @@ public sealed class PlansAdminController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Accepted() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>CAT-F2.5 — marca el plan como Deprecated (no se ofrece en nuevas contrataciones;
-    /// tenants activos siguen).</summary>
+    /// <summary>D13 — vista previa de deprecar (fin de vida, de una sola vía): oficinas, bloqueos y token. No cambia nada.</summary>
+    [HttpPost("{planId:guid}/deprecate/preview")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType<PlanOperationPreview>(StatusCodes.Status200OK)]
+    public Task<IActionResult> PreviewDeprecate(Guid planId, CancellationToken ct) =>
+        PreviewAsync(planId, PlanOperation.Deprecate, ct);
+
+    /// <summary>D13 — deprecar con el token de la vista previa y un motivo. También lo retira de la venta.</summary>
     [HttpPost("{planId:guid}/deprecate")]
     [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Deprecate(Guid planId, CancellationToken ct)
-    {
-        if (!this.TryGetTenantAndUser(out _, out var userId))
-            return Unauthorized();
+    public Task<IActionResult> Deprecate(
+        Guid planId,
+        [FromBody] ConfirmPlanOperationRequest request,
+        CancellationToken ct
+    ) => SendAsync(userId => new DeprecatePlanCommand(planId, userId, request.ConfirmationToken, request.Reason), ct);
 
-        var result = await bus.InvokeAsync<Result>(new DeprecatePlanCommand(planId, userId), ct);
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
-    }
+    /// <summary>D13 — vista previa de archivar: solo un plan deprecado y sin oficinas.</summary>
+    [HttpPost("{planId:guid}/archive/preview")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType<PlanOperationPreview>(StatusCodes.Status200OK)]
+    public Task<IActionResult> PreviewArchive(Guid planId, CancellationToken ct) =>
+        PreviewAsync(planId, PlanOperation.Archive, ct);
 
-    /// <summary>CAT-F2.5 — archiva un plan previamente deprecated.</summary>
+    /// <summary>D13 — archivar con el token de la vista previa y un motivo.</summary>
     [HttpPost("{planId:guid}/archive")]
     [RateLimit("subscription.g.admin_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> Archive(Guid planId, CancellationToken ct)
+    public Task<IActionResult> Archive(
+        Guid planId,
+        [FromBody] ConfirmPlanOperationRequest request,
+        CancellationToken ct
+    ) => SendAsync(userId => new ArchivePlanCommand(planId, userId, request.ConfirmationToken, request.Reason), ct);
+
+    /// <summary>Ofrece el plan en el listado público y en el alta.</summary>
+    [HttpPost("{planId:guid}/on-sale")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public Task<IActionResult> PutOnSale(Guid planId, CancellationToken ct) =>
+        SendAsync(userId => new PutPlanOnSaleCommand(planId, userId), ct);
+
+    /// <summary>D13 — vista previa de retirar de la venta: oficinas en el plan, bloqueos y token. No cambia nada.</summary>
+    [HttpPost("{planId:guid}/off-sale/preview")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType<PlanOperationPreview>(StatusCodes.Status200OK)]
+    public Task<IActionResult> PreviewWithdrawFromSale(Guid planId, CancellationToken ct) =>
+        PreviewAsync(planId, PlanOperation.WithdrawFromSale, ct);
+
+    /// <summary>D13 — retirar de la venta con el token de la vista previa y un motivo.</summary>
+    [HttpPost("{planId:guid}/off-sale")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public Task<IActionResult> WithdrawFromSale(
+        Guid planId,
+        [FromBody] ConfirmPlanOperationRequest request,
+        CancellationToken ct
+    ) =>
+        SendAsync(
+            userId => new WithdrawPlanFromSaleCommand(planId, userId, request.ConfirmationToken, request.Reason),
+            ct
+        );
+
+    /// <summary>Posición del plan en la vitrina (1 sale primero).</summary>
+    [HttpPut("{planId:guid}/rank")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public Task<IActionResult> SetRank(Guid planId, [FromBody] SetPlanRankRequest request, CancellationToken ct) =>
+        SendAsync(userId => new SetPlanSalesRankCommand(planId, request.Rank, userId), ct);
+
+    /// <summary>Destaca (o no) el plan en la vitrina.</summary>
+    [HttpPut("{planId:guid}/featured")]
+    [RateLimit("subscription.g.admin_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public Task<IActionResult> SetFeatured(
+        Guid planId,
+        [FromBody] SetPlanFeaturedRequest request,
+        CancellationToken ct
+    ) => SendAsync(userId => new SetPlanFeaturedCommand(planId, request.IsFeatured, userId), ct);
+
+    private async Task<IActionResult> SendAsync(Func<Guid, object> command, CancellationToken ct)
     {
         if (!this.TryGetTenantAndUser(out _, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new ArchivePlanCommand(planId, userId), ct);
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        var result = await bus.InvokeAsync<Result>(command(userId), ct);
+        return result.IsSuccess ? NoContent() : CatalogErrors.ToResponse(this, result.Error);
+    }
+
+    private async Task<IActionResult> PreviewAsync(Guid planId, PlanOperation operation, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<PlanOperationPreview>>(
+            new PreviewPlanOperationQuery(planId, operation),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : CatalogErrors.ToResponse(this, result.Error);
     }
 
     /// <summary>Revisa el precio mensual/anual del plan (publica una versión nueva que supersede la anterior).
@@ -235,6 +308,13 @@ public sealed class PlansAdminController(IMessageBus bus) : ControllerBase
 public sealed record SetPlanModulesRequest(IReadOnlyList<string> Modules);
 
 public sealed record SetPlanPricesRequest(decimal MonthlyUsd, decimal YearlyUsd);
+
+public sealed record SetPlanRankRequest(int Rank);
+
+/// <summary>Confirmación de una operación peligrosa: el token de su vista previa y el motivo (obligatorio).</summary>
+public sealed record ConfirmPlanOperationRequest(string? ConfirmationToken, string? Reason);
+
+public sealed record SetPlanFeaturedRequest(bool IsFeatured);
 
 public sealed record CreatePlanRequest(
     string Code,

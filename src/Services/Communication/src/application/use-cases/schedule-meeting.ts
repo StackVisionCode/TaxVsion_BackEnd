@@ -28,6 +28,8 @@ export interface ScheduleMeetingCommand {
   readonly guestsAllowed?: boolean;
   /** "Start a new meeting" (D-34): reunión de la que ésta es continuación. */
   readonly continuationOfMeetingId?: string | null;
+  /** Sala de una cita de Calendar. */
+  readonly appointmentId?: string | null;
 }
 
 export interface ScheduleMeetingResult {
@@ -87,6 +89,7 @@ export async function scheduleMeeting(
     mediaPolicy,
     durationPolicy,
     continuationOfMeetingId: command.continuationOfMeetingId ?? null,
+    appointmentId: command.appointmentId ?? null,
   });
   if (!scheduleResult.isSuccess) return Result.fail(scheduleResult.error);
 

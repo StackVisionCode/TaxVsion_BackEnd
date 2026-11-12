@@ -1,9 +1,12 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Audit;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForPlan;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Plans;
 using Wolverine;
 
@@ -15,6 +18,8 @@ public static class PublishDraftVersionHandler
         PublishDraftVersionCommand command,
         IPlanRepository plans,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
+        ICorrelationContext correlation,
         IMessageBus bus,
         ILogger<SubscriptionPlan> logger,
         CancellationToken ct
@@ -24,11 +29,25 @@ public static class PublishDraftVersionHandler
         if (plan is null)
             return Result.Failure(new Error("Plan.NotFound", "Plan not found."));
 
+        var before = CatalogAuditViews.Of(plan);
+
         var nowUtc = DateTime.UtcNow;
         var publishResult = plan.PublishVersion(command.VersionId, nowUtc, command.ActorUserId, nowUtc);
         if (publishResult.IsFailure)
             return publishResult;
 
+        await CatalogAudit.RecordIfChangedAsync(
+            audit,
+            CatalogAuditActor.ForUser(command.ActorUserId),
+            "plan.version_published",
+            CatalogAuditViews.Target(plan),
+            before,
+            CatalogAuditViews.Of(plan),
+            reason: null,
+            correlation.CorrelationId,
+            DateTime.UtcNow,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(new RecalculateEntitlementsForPlanCommand(command.PlanId));
         await bus.PublishAsync(

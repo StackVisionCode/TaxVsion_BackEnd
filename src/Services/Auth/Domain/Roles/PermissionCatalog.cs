@@ -1,5 +1,4 @@
 ﻿using BuildingBlocks.Authorization;
-using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Domain.Roles;
@@ -249,6 +248,8 @@ public static class PermissionCatalog
     public const string CalendarManageAll = CalendarPermissions.ManageAll;
     public const string CalendarTypesManage = CalendarPermissions.TypesManage;
     public const string CalendarAvailabilityManage = CalendarPermissions.AvailabilityManage;
+    public const string CalendarPortalRead = CalendarPermissions.PortalRead;
+    public const string CalendarPortalBook = CalendarPermissions.PortalBook;
 
     // Portal del cliente final
     public const string PortalCallsUse = PortalPermissions.CallsUse;
@@ -258,8 +259,8 @@ public static class PermissionCatalog
     // Communication — chat, llamadas, meetings (bounded context propio, ver microservicio
     // Communication). Los 18 GUID/Code de abajo YA existen como filas reales en la tabla
     // Permissions (sembradas por SQL directo en la migración AddCommunicationPermissions) —
-    // se reconcilian aquí con los MISMOS GUID exactos; la migración que agrega
-    // MinPlanTier/IsAssignableByTenant debe usar UpdateData (no InsertData) para estas 18 filas.
+    // se reconcilian aquí con los MISMOS GUID exactos; una migración que cambie sus metadatos
+    // debe usar UpdateData (no InsertData) para estas 18 filas.
     public const string CommunicationChatStart = CommunicationPermissions.ChatStart;
     public const string CommunicationChatReply = CommunicationPermissions.ChatReply;
     public const string CommunicationChatModerate = CommunicationPermissions.ChatModerate;
@@ -335,6 +336,10 @@ public static class PermissionCatalog
     public const string SubscriptionReactivate = SubscriptionPermissions.Reactivate;
     public const string SubscriptionRenew = SubscriptionPermissions.Renew;
     public const string SubscriptionAdminCrossTenant = SubscriptionPermissions.AdminCrossTenant;
+
+    // D13 (plan único Enterprise): el catálogo comercial lo toca solo la plataforma; PlatformOnly lo deja fuera de
+    // todo bundle de oficina y del portal.
+    public const string SubscriptionCatalogManage = SubscriptionPermissions.CatalogManage;
     public const string SeatsManage = SubscriptionPermissions.SeatsManage;
     public const string SeatSlotGatingManage = SubscriptionPermissions.SeatSlotGatingManage;
     public const string AddOnsManage = SubscriptionPermissions.AddOnsManage;
@@ -381,7 +386,6 @@ public static class PermissionCatalog
         string Module,
         string Description,
         bool IsCustomerPortal,
-        int MinPlanTier = (int)PlanTier.Starter,
         bool IsAssignableByTenant = true,
         bool PlatformOnly = false,
         // Explícito solo cuando la inferencia por defecto (ver Permission.InferAllowedActorTypes)
@@ -442,7 +446,6 @@ public static class PermissionCatalog
             "users",
             "Manage roles and permissions",
             false,
-            MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
             IsDangerous: true
         ),
@@ -466,7 +469,6 @@ public static class PermissionCatalog
             "billing",
             "View billing and subscription",
             false,
-            MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
             IsDangerous: true
         ),
@@ -477,7 +479,6 @@ public static class PermissionCatalog
             "billing",
             "Manage payment methods and billing",
             false,
-            MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
             IsDangerous: true
         ),
@@ -490,7 +491,6 @@ public static class PermissionCatalog
             "billing",
             "Change plan and manage the subscription",
             false,
-            MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
             IsDangerous: true
         ),
@@ -547,8 +547,7 @@ public static class PermissionCatalog
             CampaignsManage,
             "campaigns",
             "Create and edit campaigns, contacts and lists",
-            false,
-            MinPlanTier: (int)PlanTier.Pro
+            false
         ),
         new(
             // El emisor legal (razón social, RNC/EIN, dirección fiscal) sale de invoicing.manage:
@@ -565,8 +564,7 @@ public static class PermissionCatalog
             CampaignsView,
             "campaigns",
             "View campaigns, contacts, lists, schedules and runs",
-            false,
-            MinPlanTier: (int)PlanTier.Pro
+            false
         ),
         new(
             // Disparar o programar un envío masivo es la acción irreversible del servicio: sale de
@@ -575,8 +573,7 @@ public static class PermissionCatalog
             CampaignsSend,
             "campaigns",
             "Send or schedule a campaign",
-            false,
-            MinPlanTier: (int)PlanTier.Pro
+            false
         ),
         new(
             // De quién sale el correo de la oficina es identidad, no contenido: queda administrativo
@@ -585,8 +582,7 @@ public static class PermissionCatalog
             CampaignsSendersManage,
             "campaigns",
             "Manage campaign sender profiles",
-            false,
-            MinPlanTier: (int)PlanTier.Pro
+            false
         ),
         new(
             // Monedero prepago (00_Plan wallet-ledger). view = saldo/ledger/tarifas; manage = recargar.
@@ -595,16 +591,14 @@ public static class PermissionCatalog
             WalletView,
             "wallet",
             "View wallet balance, ledger and rates",
-            false,
-            MinPlanTier: (int)PlanTier.Pro
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000188"),
             WalletManage,
             "wallet",
             "Top up the wallet balance",
-            false,
-            MinPlanTier: (int)PlanTier.Pro
+            false
         ),
         new(
             // Lo exigen las rutas de llamada de Communication solo para el actor CustomerPortal
@@ -1220,7 +1214,6 @@ public static class PermissionCatalog
             "domains",
             "Manage the office's own domains (custom hostnames)",
             false,
-            MinPlanTier: (int)PlanTier.Starter,
             IsAssignableByTenant: false,
             IsDangerous: true
         ),
@@ -1239,7 +1232,6 @@ public static class PermissionCatalog
             "communication",
             "Start chat conversations",
             true,
-            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1255,7 +1247,6 @@ public static class PermissionCatalog
             "communication",
             "Reply in chat conversations",
             true,
-            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1269,15 +1260,11 @@ public static class PermissionCatalog
             CommunicationChatModerate,
             "communication",
             "Moderate messages in the office's conversations",
-            false,
-            MinPlanTier: (int)PlanTier.Starter
+            false
         ),
         new(
-            // MinPlanTier Starter (no Pro) desde que `comms` entró en Starter: el techo de plan
-            // (§27) decide qué puede OTORGAR un tenant a un rol propio, así que dejarlo en Pro
-            // habría dado un Starter con chat incluido en el plan pero sin poder delegarlo. Los
-            // cuatro de `communication.meeting.*` sí se quedan en Pro — las reuniones se venden
-            // aparte (módulo `meetings`).
+            // El techo (§27) decide por módulo: este va con `comms`. Los cuatro de
+            // `communication.meeting.*` piden `meetings`, que se vende aparte.
             // Explícito (no inferido): a diferencia de ChatStart/ChatReply arriba, este tiene
             // IsCustomerPortal=false (infiere staff-only), pero SystemRoleDefaults
             // (SystemCustomerPortal) también lo otorga — el cliente abre su propio chat de
@@ -1288,7 +1275,6 @@ public static class PermissionCatalog
             "communication",
             "Open a support chat with the platform",
             false,
-            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1302,8 +1288,7 @@ public static class PermissionCatalog
             CommunicationSupportAgent,
             "communication",
             "Handle support chats as an agent (platform only)",
-            false,
-            MinPlanTier: (int)PlanTier.Starter
+            false
         ),
         new(
             // Dual-use (staff Y cliente): el cliente ahora puede LLAMAR a su preparador desde el
@@ -1315,7 +1300,6 @@ public static class PermissionCatalog
             "communication",
             "Start one-to-one audio calls",
             false,
-            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1331,7 +1315,6 @@ public static class PermissionCatalog
             "communication",
             "Start one-to-one video calls",
             false,
-            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1345,16 +1328,14 @@ public static class PermissionCatalog
             CommunicationCallRecord,
             "communication",
             "Record one-to-one calls (with a disclosure banner)",
-            false,
-            MinPlanTier: (int)PlanTier.Starter
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000053"),
             CommunicationMeetingCreate,
             "communication",
             "Create multi-party meetings",
-            false,
-            MinPlanTier: (int)PlanTier.Pro
+            false
         ),
         new(
             // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
@@ -1363,7 +1344,6 @@ public static class PermissionCatalog
             "communication",
             "Join meetings with a valid invitation",
             true,
-            MinPlanTier: (int)PlanTier.Pro,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1377,16 +1357,14 @@ public static class PermissionCatalog
             CommunicationMeetingHost,
             "communication",
             "Host meetings (waiting room, mute all, transfer)",
-            false,
-            MinPlanTier: (int)PlanTier.Pro
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000056"),
             CommunicationMeetingRecord,
             "communication",
             "Record meetings (with a disclosure banner)",
-            false,
-            MinPlanTier: (int)PlanTier.Pro
+            false
         ),
         new(
             // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
@@ -1395,7 +1373,6 @@ public static class PermissionCatalog
             "communication",
             "Attach screenshots, voice notes and video in chat",
             true,
-            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1409,16 +1386,14 @@ public static class PermissionCatalog
             CommunicationGroupCreate,
             "communication",
             "Create internal groups",
-            false,
-            MinPlanTier: (int)PlanTier.Starter
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000059"),
             CommunicationGroupManageMembers,
             "communication",
             "Manage internal group members",
-            false,
-            MinPlanTier: (int)PlanTier.Starter
+            false
         ),
         new(
             // Ver nota de CommunicationChatStart — mismo caso (staff Y cliente lo tienen hoy).
@@ -1427,7 +1402,6 @@ public static class PermissionCatalog
             "communication",
             "View your own in-app notifications",
             true,
-            MinPlanTier: (int)PlanTier.Starter,
             AllowedActorTypes:
             [
                 UserActorType.TenantEmployee,
@@ -1441,16 +1415,14 @@ public static class PermissionCatalog
             CommunicationSettingsManage,
             "communication",
             "Manage the office's communication settings",
-            false,
-            MinPlanTier: (int)PlanTier.Starter
+            false
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000062"),
             CommunicationAnalyticsRead,
             "communication",
             "View the office's communication analytics",
-            false,
-            MinPlanTier: (int)PlanTier.Starter
+            false
         ),
         // Capa de plataforma de Communication: PlatformOnly: true — sin caso de uso tenant-propio,
         // nunca entran al rol de sistema "Tenant Admin" (mismo criterio que signature.constraints.manage).
@@ -1914,6 +1886,15 @@ public static class PermissionCatalog
             PlatformOnly: true
         ),
         new(
+            new Guid("a1000000-0000-0000-0000-000000000220"),
+            SubscriptionCatalogManage,
+            "subscription",
+            "Edit the plan catalog: plans, editions, sale status, add-ons, modules, rate limits and seat prices (platform only)",
+            false,
+            IsAssignableByTenant: false,
+            PlatformOnly: true
+        ),
+        new(
             new Guid("a1000000-0000-0000-0000-000000000148"),
             SeatsManage,
             "seats",
@@ -2072,6 +2053,30 @@ public static class PermissionCatalog
             "calendar",
             "Define the firm's appointment types",
             false
+        ),
+        // Restituido (Calendar B4): el horario y los bloqueos propios van con calendar.write; este es
+        // para los de otra persona y la política de reserva del portal. Mismo id que antes.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000178"),
+            CalendarAvailabilityManage,
+            "calendar",
+            "Manage the team's availability and the client booking policy",
+            false
+        ),
+        // Calendar en el portal (D-CAL-H): del cliente, nunca del equipo.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000218"),
+            CalendarPortalRead,
+            "calendar",
+            "The client sees their appointments in the portal",
+            true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000219"),
+            CalendarPortalBook,
+            "calendar",
+            "The client books, cancels and reschedules their own appointments",
+            true
         ),
         // El unico de este modulo cuyo destinatario esta fuera de la firma: el cliente ve su lista
         // de pedidos, no la tarea interna de la que salieron.
@@ -2454,6 +2459,8 @@ public static class PermissionCatalog
             [
                 PortalFoldersView,
                 TasksPortalClientRequests,
+                CalendarPortalRead,
+                CalendarPortalBook,
                 PortalForms,
                 // El cliente lee las notas que su preparador marcó ClientVisible (PortalNotesController,
                 // GET /notes/portal). Faltaba en el bundle del rol → el Portal recibía 403 aunque no
@@ -2468,7 +2475,7 @@ public static class PermissionCatalog
                 CommunicationChatReply,
                 CommunicationSupportOpen,
                 // El cliente puede INICIAR llamada/videollamada 1:1 a su preparador desde el chat del
-                // portal (antes solo podía recibir). Gated por MinPlanTier=Pro como el staff.
+                // portal (antes solo podía recibir).
                 CommunicationCallStart,
                 CommunicationVideoCallStart,
                 // portal.calls.use es la palanca que el administrador ve en el cajón de accesos del

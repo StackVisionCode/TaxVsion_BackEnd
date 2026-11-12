@@ -23,7 +23,15 @@ public static class AppointmentScheduledDomainEventHandler
             return messages;
 
         var correlationId = envelope.CorrelationId ?? string.Empty;
-        messages.Add(AppointmentEvents.Scheduled(found.Value, correlationId));
+        messages.Add(
+            AppointmentEvents.Scheduled(
+                found.Value,
+                correlationId,
+                scheduled.RsvpTokens,
+                scheduled.BookedByCustomerName,
+                scheduled.ApprovedRequest
+            )
+        );
 
         // El aviso se pide en el acto; el job de 12 h queda como red de seguridad.
         messages.AddRange(AppointmentReminderRequests.For(found.Value, scheduled.ScheduledAtUtc, correlationId));

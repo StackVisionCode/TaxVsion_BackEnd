@@ -610,6 +610,91 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.ToTable("TenantPaymentMandates", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Catalog.AppliedCatalogRevision", b =>
+                {
+                    b.Property<string>("RevisionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("AppliedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FollowUpPublishedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.HasKey("RevisionId");
+
+                    b.ToTable("CatalogRevisions", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Catalog.CatalogAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ActorKind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("ActorLabel")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("EntityCode")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OccurredAtUtc");
+
+                    b.HasIndex("EntityType", "EntityId", "OccurredAtUtc");
+
+                    b.ToTable("CatalogAuditEntries", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Catalog.Module", b =>
                 {
                     b.Property<Guid>("Id")
@@ -689,6 +774,111 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.HasKey("TenantId");
 
                     b.ToTable("TenantEntitlementSnapshots", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Migrations.SubscriberMigration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("NoticeDays")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("RequestedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid>("ToVersionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ToVersionNumber")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "CreatedAtUtc");
+
+                    b.ToTable("SubscriberMigrations", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Migrations.SubscriberMigrationOffice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("EffectiveAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("MigrationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("ProcessedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MigrationId", "TenantId")
+                        .IsUnique();
+
+                    b.ToTable("SubscriberMigrationOffices", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Permissions.RolePermissionsProjection", b =>
@@ -879,10 +1069,27 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<bool>("IsFeatured")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsOnSale")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SalesRank")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(100);
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1190,6 +1397,37 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                             Category = "O",
                             MultiplierOverride = 10.0m,
                             PlanCode = "enterprise"
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.RateLimiting.RateLimitDefaultProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("RateLimitDefaultProfiles", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("c4000000-0000-0000-0000-000000000001"),
+                            UpdatedAtUtc = new DateTime(2026, 11, 11, 0, 0, 0, 0, DateTimeKind.Utc),
+                            UpdatedBy = new Guid("00000000-0000-0000-0000-000000000000")
                         });
                 });
 
@@ -1929,6 +2167,15 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<Guid?>("ScheduledByMigrationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ScheduledVersionAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ScheduledVersionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -2179,6 +2426,15 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Migrations.SubscriberMigrationOffice", b =>
+                {
+                    b.HasOne("TaxVision.Subscription.Domain.Migrations.SubscriberMigration", null)
+                        .WithMany("Offices")
+                        .HasForeignKey("MigrationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Plans.PlanEntitlementDefinition", b =>
                 {
                     b.HasOne("TaxVision.Subscription.Domain.Plans.SubscriptionPlanVersion", null)
@@ -2240,6 +2496,94 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasForeignKey("PlanId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.RateLimiting.RateLimitDefaultProfile", b =>
+                {
+                    b.OwnsMany("TaxVision.Subscription.Domain.RateLimiting.RateLimitProfileEntry", "Entries", b1 =>
+                        {
+                            b1.Property<Guid>("ProfileId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Category")
+                                .HasMaxLength(5)
+                                .HasColumnType("nvarchar(5)");
+
+                            b1.Property<decimal>("Multiplier")
+                                .HasPrecision(9, 4)
+                                .HasColumnType("decimal(9,4)");
+
+                            b1.HasKey("ProfileId", "Category");
+
+                            b1.ToTable("RateLimitDefaultProfileEntries", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("ProfileId");
+
+                            b1.HasData(
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "F",
+                                    Multiplier = 10m
+                                },
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "G",
+                                    Multiplier = 10m
+                                },
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "H",
+                                    Multiplier = 10m
+                                },
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "I",
+                                    Multiplier = 10m
+                                },
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "J",
+                                    Multiplier = 10m
+                                },
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "K",
+                                    Multiplier = 20m
+                                },
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "L",
+                                    Multiplier = 10m
+                                },
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "M",
+                                    Multiplier = 1m
+                                },
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "N",
+                                    Multiplier = 1m
+                                },
+                                new
+                                {
+                                    ProfileId = new Guid("c4000000-0000-0000-0000-000000000001"),
+                                    Category = "O",
+                                    Multiplier = 10m
+                                });
+                        });
+
+                    b.Navigation("Entries");
                 });
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Seats.SeatPriceTier", b =>
@@ -2406,6 +2750,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Subscription.Domain.Billing.TenantBillingPreference", b =>
                 {
                     b.Navigation("Mandates");
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Migrations.SubscriberMigration", b =>
+                {
+                    b.Navigation("Offices");
                 });
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Plans.SubscriptionPlan", b =>

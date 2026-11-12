@@ -2171,13 +2171,341 @@
           "response": []
         },
         {
-          "name": "DeprecatePlan (PlatformAdmin) — CAT-F2.5",
+          "name": "PreviewWithdrawFromSale (PlatformAdmin) — D13",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/off-sale/preview",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "off-sale",
+                "preview"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Vista previa de retirar el plan de la venta: oficinas en el plan, bloqueos (Plan.LastOnSale, Plan.IsTrialPlan) y confirmationToken. No cambia nada. Guarda el token en {{confirmationToken}}."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guarda el token de la vista previa para la confirmación.",
+                  "const body = pm.response.json();",
+                  "if (body && body.confirmationToken) pm.collectionVariables.set('confirmationToken', body.confirmationToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "WithdrawFromSale (PlatformAdmin) — D13",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/off-sale",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "off-sale"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Retira el plan de la venta; quien ya lo tiene lo conserva. Exige el token de la vista previa y un motivo: sin motivo o sin token 400; token viejo (algo cambió) 409 Catalog.ConfirmationStale. Queda auditado. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmationToken\": \"{{confirmationToken}}\",\n  \"reason\": \"Explain why (required, max 500 characters)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PutOnSale (PlatformAdmin) — D13",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/on-sale",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "on-sale"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Ofrece el plan en el listado público y en el alta. Exige edición publicada. Queda auditado. 204."
+          },
+          "response": []
+        },
+        {
+          "name": "SetRank (PlatformAdmin) — D13",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/rank",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "rank"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Posición en la vitrina (1 sale primero, 1..1000). También decide si un cambio de plan es upgrade. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rank\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "SetFeatured (PlatformAdmin) — D13",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/featured",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "featured"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Destaca (o no) el plan en la vitrina. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isFeatured\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PreviewDeprecate (PlatformAdmin) — D13",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/deprecate/preview",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "deprecate",
+                "preview"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Vista previa de deprecar (fin de vida, de una sola vía; también lo retira de la venta). Guarda el token en {{confirmationToken}}."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guarda el token de la vista previa para la confirmación.",
+                  "const body = pm.response.json();",
+                  "if (body && body.confirmationToken) pm.collectionVariables.set('confirmationToken', body.confirmationToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PreviewArchive (PlatformAdmin) — D13",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/archive/preview",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "archive",
+                "preview"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Vista previa de archivar: solo un plan deprecado y sin oficinas (bloqueos Plan.NotDeprecated, Catalog.PlanHasSubscribers). Guarda el token en {{confirmationToken}}."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guarda el token de la vista previa para la confirmación.",
+                  "const body = pm.response.json();",
+                  "if (body && body.confirmationToken) pm.collectionVariables.set('confirmationToken', body.confirmationToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CatalogAudit (PlatformAdmin) — D13",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/catalog/audit?entityType=Plan&entityId={{planId}}&take=50",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "catalog",
+                "audit"
+              ],
+              "query": [
+                {
+                  "key": "entityType",
+                  "value": "Plan",
+                  "disabled": true
+                },
+                {
+                  "key": "entityId",
+                  "value": "{{planId}}",
+                  "disabled": true
+                },
+                {
+                  "key": "take",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Auditoría de plataforma del catálogo, más nuevas primero: quién (admin, deploy:{id} o system:...), qué, antes/después (JSON), motivo y correlación. Filtros opcionales entityType, entityId y beforeUtc; take 1..200."
+          },
+          "response": []
+        },
+        {
+          "name": "DeprecatePlan (PlatformAdmin) — D13",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
                 "type": "text"
               }
             ],
@@ -2194,18 +2522,32 @@
                 "deprecate"
               ]
             },
-            "description": "CAT-F2.5 — Marca el plan como Deprecated: no se ofrece en nuevas contrataciones pero los tenants activos conservan el plan y aceptan renovaciones. Rechaza con Plan.AlreadyArchived si ya esta archivado. 204."
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Deprecar con el token de PreviewDeprecate y un motivo. No se ofrece en nuevas contrataciones; las oficinas actuales conservan el plan. Sin motivo/token 400; token viejo 409. Queda auditado. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmationToken\": \"{{confirmationToken}}\",\n  \"reason\": \"Explain why (required, max 500 characters)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "response": []
         },
         {
-          "name": "ArchivePlan (PlatformAdmin) — CAT-F2.5",
+          "name": "ArchivePlan (PlatformAdmin) — D13",
           "request": {
             "method": "POST",
             "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
                 "type": "text"
               }
             ],
@@ -2222,7 +2564,16 @@
                 "archive"
               ]
             },
-            "description": "CAT-F2.5 — Archiva un plan previamente deprecated (ningun tenant activo lo tendria ya). Si el plan no esta en Deprecated devuelve Plan.NotDeprecated. 204."
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Archivar con el token de PreviewArchive y un motivo. Solo un plan deprecado y sin oficinas. Sin motivo/token 400; token viejo 409. Queda auditado. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirmationToken\": \"{{confirmationToken}}\",\n  \"reason\": \"Explain why (required, max 500 characters)\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "response": []
         },
@@ -2255,13 +2606,18 @@
           "response": []
         },
         {
-          "name": "UpsertPlanRateLimit (PlatformAdmin) — CAT-F2.6",
+          "name": "UpsertPlanRateLimit (PlatformAdmin) — CAT-F2.6 / D12",
           "request": {
             "method": "PUT",
             "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
                 "type": "text"
               }
             ],
@@ -2280,10 +2636,195 @@
                 "{{category}}"
               ]
             },
-            "description": "CAT-F2.6 — Upsert del multiplicador: actualiza la fila si existe, la crea si no. Util para completar un plan recien creado con F2.3 que todavia no tiene multiplicadores sembrados. category parsea del enum RateLimitCategory. 204.",
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Crea o cambia la fila del plan. Nunca por debajo de 1.0. Bajar el cupo (o fijar, bajar o quitar un cupo fijo) exige el token de PreviewPlanRateLimitChange y un motivo; subir es directo. Queda auditado. 204.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"multiplierOverride\": 1.5,\n  \"hardOverridePerMinute\": null\n}",
+              "raw": "{\n  \"multiplierOverride\": 5.0,\n  \"hardOverridePerMinute\": null,\n  \"confirmationToken\": \"{{confirmationToken}}\",\n  \"reason\": \"Only needed when lowering the quota\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "PreviewPlanRateLimitChange (PlatformAdmin) — D12",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planCode}}/rate-limits/categories/{{category}}/preview",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planCode}}",
+                "rate-limits",
+                "categories",
+                "{{category}}",
+                "preview"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Vista previa de cambiar la fila del plan: actual (la fila o el perfil por defecto), propuesto, si es una baja (multiplicador menor, o cupo fijo nuevo, menor o quitado) y cuántas oficinas del plan la sentirían. No cambia nada. Guarda el token en {{confirmationToken}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"multiplierOverride\": 5.0,\n  \"hardOverridePerMinute\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guarda el token de la vista previa para la confirmación.",
+                  "const body = pm.response.json();",
+                  "if (body && body.confirmationToken) pm.collectionVariables.set('confirmationToken', body.confirmationToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetDefaultRateLimitProfile (PlatformAdmin) — D12",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/rate-limits/default-profile",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "rate-limits",
+                "default-profile"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Multiplicadores del perfil por defecto (F–O): lo que rige para un plan sin fila y lo que copia un plan nuevo. Sembrado con los de Enterprise."
+          },
+          "response": []
+        },
+        {
+          "name": "PreviewDefaultRateLimitChange (PlatformAdmin) — D12",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/rate-limits/default-profile/categories/{{category}}/preview",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "rate-limits",
+                "default-profile",
+                "categories",
+                "{{category}}",
+                "preview"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Vista previa: actual, propuesto, si es una baja y cuántas oficinas dependen del perfil para esa categoría (las de planes sin fila propia). Guarda el token en {{confirmationToken}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"multiplier\": 10.0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guarda el token de la vista previa para la confirmación.",
+                  "const body = pm.response.json();",
+                  "if (body && body.confirmationToken) pm.collectionVariables.set('confirmationToken', body.confirmationToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ReviseDefaultRateLimit (PlatformAdmin) — D12",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/rate-limits/default-profile/categories/{{category}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "rate-limits",
+                "default-profile",
+                "categories",
+                "{{category}}"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Subir es directo. Bajar exige el token de la vista previa y un motivo (400 sin ellos, 409 si algo cambió). Nunca por debajo de 1.0 (el cupo base). Queda auditado. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"multiplier\": 10.0,\n  \"confirmationToken\": \"{{confirmationToken}}\",\n  \"reason\": \"Explain why\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2350,6 +2891,190 @@
               ]
             },
             "description": "Extiende sin cobro el período de un add-on. Solo PlatformAdmin (subscription.renew)."
+          },
+          "response": []
+        },
+        {
+          "name": "PreviewSubscriberMigration (PlatformAdmin) — D11",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/migrations/preview",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "migrations",
+                "preview"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Mover a las oficinas del plan a otra edición. Muestra qué cambia (precio, usuarios, almacenamiento, módulos), si es pura mejora y, por oficina, si entraría o por qué queda bloqueada (usuarios o almacenamiento por encima de la edición nueva, ciclo no disponible, otro cambio en curso). Mode: Immediate (solo si ninguna oficina pierde nada) o AtNextRenewal (aviso de 30 a 365 días; aplica en la primera renovación tras el aviso). Guarda el token en {{previewToken}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toVersionId\": \"{{toVersionId}}\",\n  \"mode\": \"AtNextRenewal\",\n  \"noticeDays\": 30\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guarda el token de la vista previa para iniciar.",
+                  "const body = pm.response.json();",
+                  "if (body && body.previewToken) pm.collectionVariables.set('previewToken', body.previewToken);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "StartSubscriberMigration (PlatformAdmin) — D11",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/migrations",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "migrations"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Inicia la migración con el token de la vista previa y un motivo (400 sin ellos, 409 si algo cambió desde la vista previa o si Immediate no es pura mejora). La ejecuta un job, una oficina por transacción; con AtNextRenewal cada oficina recibe correo y aviso en la campana. Queda auditado. 201 con el id en {{migrationId}}.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toVersionId\": \"{{toVersionId}}\",\n  \"mode\": \"AtNextRenewal\",\n  \"noticeDays\": 30,\n  \"reason\": \"Explain why\",\n  \"previewToken\": \"{{previewToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Guarda el id para consultarla o cancelarla.",
+                  "const body = pm.response.json();",
+                  "if (body && body.id) pm.collectionVariables.set('migrationId', body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetSubscriberMigration (PlatformAdmin) — D11",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/migrations/{{migrationId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "migrations",
+                "{{migrationId}}"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Estado de la migración, conteo por resultado y detalle por oficina (Pending, Applied, Scheduled con su fecha, Blocked o Skipped con el motivo, Unscheduled)."
+          },
+          "response": []
+        },
+        {
+          "name": "CancelSubscriberMigration (PlatformAdmin) — D11",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/plans/{{planId}}/migrations/{{migrationId}}/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "plans",
+                "{{planId}}",
+                "migrations",
+                "{{migrationId}}",
+                "cancel"
+              ]
+            },
+            "description": "Solo PlatformAdmin con subscription.catalog.manage (D13). Solo AtNextRenewal: las oficinas que todavía no cambiaron vuelven a su edición (el job las desagenda). Exige motivo. Queda auditado. 204.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Explain why\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
           },
           "response": []
         }
@@ -2688,6 +3413,20 @@
         }
       ],
       "description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
+    }
+  ],
+  "variable": [
+    {
+      "key": "confirmationToken",
+      "value": ""
+    },
+    {
+      "key": "previewToken",
+      "value": ""
+    },
+    {
+      "key": "migrationId",
+      "value": ""
     }
   ]
 }

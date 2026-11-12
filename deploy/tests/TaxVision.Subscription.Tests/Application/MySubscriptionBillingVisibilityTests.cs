@@ -1,4 +1,5 @@
 using TaxVision.Subscription.Application.Subscriptions.Queries;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -116,6 +117,51 @@ public sealed class MySubscriptionBillingVisibilityTests
 
     // ---------------------------------------------------------------------
 
+    // D5: precio, asientos y módulos de la edición firmada, aunque después se publique otra.
+    [Fact]
+    public async Task Price_seats_and_modules_come_from_the_contracted_edition()
+    {
+        var plan = ProPlan();
+        var subscription = ActiveSubscription(plan);
+        PlanTestData.PublishNewEdition(plan, monthlyUsd: 99m, seatsMax: 1);
+
+        var result = await GetMySubscriptionHandler.Handle(
+            new GetMySubscriptionQuery(TenantId, CanViewBilling: true),
+            new FakeSubscriptionRepo(subscription),
+            new FakePlanRepo(plan),
+            new FakeModuleRepo(Documents()),
+            CancellationToken.None
+        );
+
+        Assert.Equal(49m, result.Value.CurrentCyclePriceUsd);
+        Assert.Equal(5, result.Value.MaxUsers);
+        Assert.Equal(["documents"], result.Value.EnabledModules);
+    }
+
+    // F8: el CRM compara el rango del plan contratado con los que están a la venta (banner y /plans).
+    [Fact]
+    public async Task The_contracted_plan_carries_its_sales_rank_only_with_billing_view()
+    {
+        var plan = ProPlan();
+        Assert.True(plan.SetSalesRank(SalesRank.Create(2).Value, Guid.Empty, DateTime.UtcNow).IsSuccess);
+
+        async Task<MySubscriptionResponse> Handle(bool canViewBilling) =>
+            (
+                await GetMySubscriptionHandler.Handle(
+                    new GetMySubscriptionQuery(TenantId, canViewBilling),
+                    new FakeSubscriptionRepo(ActiveSubscription(plan)),
+                    new FakePlanRepo(plan),
+                    new FakeModuleRepo(Documents()),
+                    CancellationToken.None
+                )
+            ).Value;
+
+        Assert.Equal(2, (await Handle(canViewBilling: true)).PlanRank);
+        Assert.Equal(0, (await Handle(canViewBilling: false)).PlanRank);
+    }
+
+    private static Module Documents() => Module.Create("documents", "Documents", "Documents").Value;
+
     private static async Task<MySubscriptionResponse> HandleAsync(bool canViewBilling)
     {
         var plan = ProPlan();
@@ -123,6 +169,7 @@ public sealed class MySubscriptionBillingVisibilityTests
             new GetMySubscriptionQuery(TenantId, canViewBilling),
             new FakeSubscriptionRepo(ActiveSubscription(plan)),
             new FakePlanRepo(plan),
+            new FakeModuleRepo(Documents()),
             CancellationToken.None
         );
 

@@ -43,31 +43,31 @@ public static class CommunicationEntitlementCatalog
         MaxRecordingMinutesVideoCall,
     ];
 
-    /// <summary>Semillas completas del tier. Solo la grabación de reuniones varía por plan (Starter 30 min).</summary>
-    public static IReadOnlyCollection<EntitlementSeed> SeedsFor(PlanTier tier) =>
-        [
-            Int(MaxParticipantsPerMeeting, 10),
-            Int(MaxMeetingMinutes, 60),
-            Int(MaxConcurrentCalls, 2),
-            Int(MaxMonthlyMinutes, 600),
-            Bool(CallsEnabled, true),
-            Int(MaxCallMinutes, 60),
-            Bool(SupportChatEnabled, true),
-            Bool(RecordingEnabled, true),
-            Bool(RecordingVideoEnabled, true),
-            Bool(TranscriptEnabled, true),
-            Int(MaxRecordingMinutesMeeting, tier is PlanTier.Pro or PlanTier.Enterprise ? 60 : 30),
-            Int(MaxRecordingMinutesAudioCall, 60),
-            Int(MaxRecordingMinutesVideoCall, 60),
-        ];
+    /// <summary>Un solo valor por clave, el de Enterprise (grabación de reuniones 60 min).</summary>
+    public static IReadOnlyCollection<EntitlementSeed> Defaults { get; } =
+    [
+        Int(MaxParticipantsPerMeeting, 10),
+        Int(MaxMeetingMinutes, 60),
+        Int(MaxConcurrentCalls, 2),
+        Int(MaxMonthlyMinutes, 600),
+        Bool(CallsEnabled, true),
+        Int(MaxCallMinutes, 60),
+        Bool(SupportChatEnabled, true),
+        Bool(RecordingEnabled, true),
+        Bool(RecordingVideoEnabled, true),
+        Bool(TranscriptEnabled, true),
+        Int(MaxRecordingMinutesMeeting, 60),
+        Int(MaxRecordingMinutesAudioCall, 60),
+        Int(MaxRecordingMinutesVideoCall, 60),
+    ];
 
-    /// <summary>Semillas del tier que la versión todavía no define (las existentes nunca se tocan).</summary>
-    public static IReadOnlyCollection<EntitlementSeed> MissingFrom(SubscriptionPlanVersion version, PlanTier tier)
+    /// <summary>Claves que la versión todavía no define (las existentes nunca se tocan).</summary>
+    public static IReadOnlyCollection<EntitlementSeed> MissingFrom(SubscriptionPlanVersion version)
     {
         var present = version
             .Entitlements.Select(entitlement => entitlement.Key.Value)
             .ToHashSet(StringComparer.Ordinal);
-        return SeedsFor(tier).Where(seed => !present.Contains(seed.Key)).ToArray();
+        return Defaults.Where(seed => !present.Contains(seed.Key)).ToArray();
     }
 
     private static EntitlementSeed Int(string key, int value) =>

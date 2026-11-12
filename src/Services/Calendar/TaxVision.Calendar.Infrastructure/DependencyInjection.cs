@@ -13,12 +13,16 @@ using Microsoft.Extensions.Options;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Availability.Abstractions;
 using TaxVision.Calendar.Application.Backfill.Abstractions;
+using TaxVision.Calendar.Application.Booking.Abstractions;
 using TaxVision.Calendar.Application.Customers.Abstractions;
 using TaxVision.Calendar.Application.Feeds.Abstractions;
 using TaxVision.Calendar.Application.Observability;
+using TaxVision.Calendar.Application.Office.Abstractions;
 using TaxVision.Calendar.Application.Permissions.Abstractions;
+using TaxVision.Calendar.Application.Portal.Abstractions;
 using TaxVision.Calendar.Application.Projections.Abstractions;
 using TaxVision.Calendar.Application.RateLimiting.Abstractions;
+using TaxVision.Calendar.Application.Staff.Abstractions;
 using TaxVision.Calendar.Application.Types.Abstractions;
 using TaxVision.Calendar.Infrastructure.Customers;
 using TaxVision.Calendar.Infrastructure.Feeds;
@@ -28,6 +32,7 @@ using TaxVision.Calendar.Infrastructure.Permissions;
 using TaxVision.Calendar.Infrastructure.Persistence;
 using TaxVision.Calendar.Infrastructure.Persistence.Repositories;
 using TaxVision.Calendar.Infrastructure.RateLimiting;
+using TaxVision.Calendar.Infrastructure.Staff;
 
 namespace TaxVision.Calendar.Infrastructure;
 
@@ -74,9 +79,14 @@ public static class DependencyInjection
             .AddOptions<CalendarVisibilityOptions>()
             .Bind(configuration.GetSection(CalendarVisibilityOptions.SectionName));
         services.AddScoped<ICalendarFeedTokenRepository, CalendarFeedTokenRepository>();
+        services.AddScoped<IAppointmentRsvpLookup, AppointmentRsvpLookup>();
         services.AddScoped<ICalendarFeedCache, CalendarFeedCache>();
         services.AddScoped<IAppointmentTypeRepository, AppointmentTypeRepository>();
         services.AddScoped<IAvailabilityRepository, AvailabilityRepository>();
+        services.AddScoped<IOfficeScheduleRepository, OfficeScheduleRepository>();
+        services.AddScoped<IBookingPolicyRepository, BookingPolicyRepository>();
+        services.AddScoped<IPortalCalendarStore, PortalCalendarStore>();
+        services.AddScoped<TaxVision.Calendar.Application.Appointments.Search.IAppointmentSearch, AppointmentSearch>();
         // La misma instancia sirve las dos interfaces: el repositorio para los consumers y el lector
         // para ProjectionPermissionsSource, que es quien autoriza sin llamar a Auth.
         services.AddScoped<UserPermissionsProjectionRepository>();
@@ -145,12 +155,35 @@ public static class DependencyInjection
     private static void AddPermissionsPullRecovery(IServiceCollection services)
     {
         services.AddScoped<IUserPermissionsProjectionWriter, PermissionsProjectionWriter>();
+        AddStaffContacts(services);
         services.AddHttpClient<IPermissionsSnapshotClient, PermissionsSnapshotClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+    }
+
+    /// <summary>Nombre y correo del preparador para el portal (Auth M2M, en caché).</summary>
+    private static void AddStaffContacts(IServiceCollection services)
+    {
+        services.AddMemoryCache();
+        services.AddHttpClient<IStaffContactClient, StaffContactClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(10);
+            }
+        );
+        services.AddHttpClient<ITenantHostResolver, TenantHostResolver>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(10);
             }
         );
     }

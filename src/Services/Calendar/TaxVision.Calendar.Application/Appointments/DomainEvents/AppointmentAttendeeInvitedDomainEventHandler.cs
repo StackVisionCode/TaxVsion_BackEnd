@@ -20,6 +20,7 @@ public static class AppointmentAttendeeInvitedDomainEventHandler
             return null;
 
         var appointment = found.Value;
+        var attendee = appointment.Attendees.FirstOrDefault(a => a.Id == invited.AttendeeId);
         return new AppointmentAttendeeAddedIntegrationEvent
         {
             TenantId = invited.TenantId,
@@ -29,6 +30,8 @@ public static class AppointmentAttendeeInvitedDomainEventHandler
             UserId = invited.UserId,
             CustomerId = invited.CustomerId,
             Email = invited.Email,
+            DisplayName = attendee?.Snapshot.DisplayName,
+            RsvpToken = invited.RsvpToken,
             Title = appointment.Title.Value,
             StartUtc = AppointmentEvents.FirstStartOf(appointment),
             TimeZoneId = appointment.Timing.TimeZone.Id,

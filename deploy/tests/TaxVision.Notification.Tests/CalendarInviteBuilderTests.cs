@@ -23,7 +23,11 @@ public sealed class CalendarInviteBuilderTests
         Assert.StartsWith("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n", ics);
         Assert.EndsWith("END:VEVENT\r\nEND:VCALENDAR\r\n", ics);
         Assert.Contains("PRODID:-//TaxOffix//Meetings//EN\r\n", ics);
-        Assert.Contains("METHOD:REQUEST\r\n", ics);
+        // PUBLISH: lo agrega al calendario sin pedir respuesta. Con REQUEST, Gmail y Proton mandaban
+        // el "Sí" al no-reply del organizador y no llegaba a ningún lado.
+        Assert.Contains("METHOD:PUBLISH\r\n", ics);
+        Assert.DoesNotContain("RSVP=TRUE", ics);
+        Assert.DoesNotContain("ATTENDEE", ics);
         Assert.Contains($"UID:meeting:{MeetingId:D}@taxoffix.io\r\n", ics);
         Assert.Contains("DTSTAMP:20261030T123000Z\r\n", ics);
         Assert.Contains("SEQUENCE:0\r\n", ics);

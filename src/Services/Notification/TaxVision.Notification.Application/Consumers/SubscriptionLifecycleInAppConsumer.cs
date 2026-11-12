@@ -67,6 +67,8 @@ public static class SubscriptionLifecycleInAppConsumer
     {
         if (string.Equals(reason, "CancellationScheduled", StringComparison.OrdinalIgnoreCase))
             return "Subscription cancellation scheduled";
+        if (string.Equals(reason, "VersionChangeScheduled", StringComparison.OrdinalIgnoreCase))
+            return "Your plan terms will change";
         if (string.Equals(reason, "AccessEnding", StringComparison.OrdinalIgnoreCase))
             return "Subscription access ending soon";
         if (string.Equals(reason, "RecurringChargeFailed", StringComparison.OrdinalIgnoreCase))
@@ -90,6 +92,12 @@ public static class SubscriptionLifecycleInAppConsumer
             return evt.IsFinalAttempt || evt.NextAttemptAtUtc is null
                 ? $"{what} Complete the payment in Manage subscription to restore access."
                 : $"{what} We'll try again on {evt.NextAttemptAtUtc.Value.ToString("MMMM d", new CultureInfo("en-US"))}.";
+        }
+
+        if (string.Equals(evt.Reason, "VersionChangeScheduled", StringComparison.OrdinalIgnoreCase))
+        {
+            var when = evt.VersionChangeEffectiveAtUtc?.ToString("MMMM d, yyyy", new CultureInfo("en-US"));
+            return $"Starting {when ?? "your next renewal"}: {evt.VersionChangeSummary}.";
         }
 
         return evt.DaysUntilRenewal is { } days

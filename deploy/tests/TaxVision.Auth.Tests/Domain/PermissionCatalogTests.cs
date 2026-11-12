@@ -1,12 +1,11 @@
 using BuildingBlocks.Authorization;
 using TaxVision.Auth.Domain.Roles;
-using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Tests.Domain;
 
 /// <summary>
-/// Fase A0 — cubre los metadatos nuevos del catálogo (MinPlanTier/IsAssignableByTenant) y la
+/// Fase A0 — cubre los metadatos del catálogo (IsAssignableByTenant, módulo) y la
 /// reconciliación de los 18 permisos de Communication que antes solo existían en BD.
 /// </summary>
 public sealed class PermissionCatalogTests
@@ -61,21 +60,32 @@ public sealed class PermissionCatalogTests
     [InlineData(PermissionCatalog.CustomersView)]
     [InlineData(PermissionCatalog.CloudStorageFileUpload)]
     [InlineData(PermissionCatalog.SignatureRequestCreate)]
-    public void Baseline_permissions_are_assignable_from_the_starter_plan(string code)
+    public void Baseline_permissions_are_assignable_by_the_tenant(string code)
     {
         var definition = PermissionCatalog.All.Single(d => d.Code == code);
 
         Assert.True(definition.IsAssignableByTenant);
-        Assert.Equal((int)PlanTier.Starter, definition.MinPlanTier);
     }
 
+    /// <summary>
+    /// D8 del plan único: lo que antes pedía el tier "Pro" (campañas, wallet y reuniones) lo decide su
+    /// módulo. Si alguno quedara sin módulo, se concedería en cualquier oficina.
+    /// </summary>
     [Theory]
-    [InlineData(PermissionCatalog.CampaignsManage)]
-    public void Pro_only_modules_require_at_least_the_pro_tier(string code)
+    [InlineData(PermissionCatalog.CampaignsView, "campaigns")]
+    [InlineData(PermissionCatalog.CampaignsManage, "campaigns")]
+    [InlineData(PermissionCatalog.CampaignsSend, "campaigns")]
+    [InlineData(PermissionCatalog.CampaignsSendersManage, "campaigns")]
+    [InlineData(PermissionCatalog.WalletView, "wallet")]
+    [InlineData(PermissionCatalog.WalletManage, "wallet")]
+    [InlineData(PermissionCatalog.CommunicationMeetingCreate, "meetings")]
+    [InlineData(PermissionCatalog.CommunicationMeetingJoin, "meetings")]
+    [InlineData(PermissionCatalog.CommunicationMeetingHost, "meetings")]
+    [InlineData(PermissionCatalog.CommunicationMeetingRecord, "meetings")]
+    public void Permissions_sold_apart_are_gated_by_their_module(string code, string module)
     {
-        var definition = PermissionCatalog.All.Single(d => d.Code == code);
-
-        Assert.Equal((int)PlanTier.Pro, definition.MinPlanTier);
+        Assert.Contains(PermissionCatalog.All, d => d.Code == code);
+        Assert.Equal(module, PermissionModuleMap.ModuleFor(code));
     }
 
     [Fact]
@@ -97,18 +107,16 @@ public sealed class PermissionCatalogTests
     }
 
     /// <summary>
-    /// El techo de plan (§27) decide qué puede OTORGAR un tenant a un rol propio. Desde que `comms`
-    /// (chat, llamadas y vídeo) entró en Starter, dejar esos permisos en Pro daba un Starter con chat
-    /// incluido en el plan y sin poder delegarlo a nadie. Las reuniones se venden aparte, así que sus
-    /// cuatro permisos sí siguen en Pro.
+    /// El techo (§27) decide qué puede OTORGAR un tenant a un rol propio, por módulo. Las reuniones se
+    /// venden aparte (`meetings`); el resto de Communication va con `comms` o no se gatea.
     /// </summary>
     [Fact]
-    public void Only_the_meeting_permissions_still_require_the_pro_tier()
+    public void Only_the_meeting_permissions_need_the_meetings_module()
     {
         var communication = PermissionCatalog.All.Where(definition => definition.Module == "communication").ToList();
 
-        var proOnly = communication
-            .Where(definition => definition.MinPlanTier == (int)PlanTier.Pro)
+        var meetings = communication
+            .Where(definition => PermissionModuleMap.ModuleFor(definition.Code) == "meetings")
             .Select(definition => definition.Code)
             .Order(StringComparer.Ordinal)
             .ToList();
@@ -120,13 +128,12 @@ public sealed class PermissionCatalogTests
                 PermissionCatalog.CommunicationMeetingJoin,
                 PermissionCatalog.CommunicationMeetingRecord,
             ],
-            proOnly
+            meetings
         );
 
-        // El resto, alcanzable desde Starter.
         Assert.All(
-            communication.Where(definition => !proOnly.Contains(definition.Code)),
-            definition => Assert.Equal((int)PlanTier.Starter, definition.MinPlanTier)
+            communication.Where(definition => !meetings.Contains(definition.Code)),
+            definition => Assert.NotEqual("meetings", PermissionModuleMap.ModuleFor(definition.Code))
         );
     }
 
@@ -236,7 +243,6 @@ public sealed class PermissionCatalogTests
 
         Assert.False(definition.IsDangerous);
         Assert.True(definition.IsAssignableByTenant);
-        Assert.Equal((int)PlanTier.Starter, definition.MinPlanTier);
         Assert.Contains(code, employeeDefaults);
         Assert.Contains(code, tenantAdminDefaults);
     }
@@ -250,6 +256,25 @@ public sealed class PermissionCatalogTests
         Assert.DoesNotContain(PermissionCatalog.CommunicationChatModerate, defaults);
         Assert.DoesNotContain(PermissionCatalog.CommunicationMeetingHost, defaults);
         Assert.DoesNotContain(PermissionCatalog.CommunicationSettingsManage, defaults);
+    }
+
+    /// <summary>
+    /// Calendar en el portal (D-CAL-H): el cliente ve sus citas y reserva. Son del cliente, no del
+    /// equipo: nunca en el bundle del empleado ni del admin.
+    /// </summary>
+    [Fact]
+    public void Calendar_portal_permissions_are_for_the_client_only()
+    {
+        var portal = PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal);
+        var employee = PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee);
+        foreach (var code in new[] { "calendar.portal.read", "calendar.portal.book" })
+        {
+            var definition = PermissionCatalog.All.Single(d => d.Code == code);
+            Assert.True(definition.IsCustomerPortal);
+            Assert.Equal("calendar", definition.Module);
+            Assert.Contains(code, portal);
+            Assert.DoesNotContain(code, employee);
+        }
     }
 
     [Fact]
@@ -330,20 +355,6 @@ public sealed class PermissionCatalogTests
         Assert.Equal(13, growth.Length);
         Assert.Equal(growth.Length, growth.Select(definition => definition.Code).Distinct().Count());
         Assert.Equal(growth.Length, growth.Select(definition => definition.Id).Distinct().Count());
-    }
-
-    [Theory]
-    [InlineData("starter", PlanTier.Starter)]
-    [InlineData("PRO", PlanTier.Pro)]
-    [InlineData("Enterprise", PlanTier.Enterprise)]
-    [InlineData(null, PlanTier.Starter)]
-    [InlineData("unknown-plan", PlanTier.Starter)]
-    public void PlanTierResolver_fails_closed_to_starter_for_unknown_or_missing_plan_codes(
-        string? planCode,
-        PlanTier expected
-    )
-    {
-        Assert.Equal(expected, PlanTierResolver.FromPlanCode(planCode));
     }
 
     // RBAC Fase 2 (RBAC_Hardening_Plan.md) — SystemTenantAdmin deja de ser un god-role dinámico.
@@ -441,7 +452,7 @@ public sealed class PermissionCatalogTests
     }
 
     [Fact]
-    public void The_four_campaigns_permissions_share_the_module_and_the_pro_tier()
+    public void The_four_campaigns_permissions_share_the_module()
     {
         string[] codes =
         [
@@ -455,7 +466,6 @@ public sealed class PermissionCatalogTests
         {
             var definition = PermissionCatalog.All.Single(d => d.Code == code);
             Assert.Equal("campaigns", definition.Module);
-            Assert.Equal((int)PlanTier.Pro, definition.MinPlanTier);
             Assert.True(definition.IsAssignableByTenant);
             Assert.False(definition.IsDangerous);
         }
@@ -645,8 +655,8 @@ public sealed class PermissionCatalogTests
             .All.Where(definition => definition.Module is "subscription" or "seats" or "addons")
             .ToArray();
 
-        // Cinco de subscription, dos de seats y uno de addons. audit.view se reutiliza.
-        Assert.Equal(8, fase8.Length);
+        // Seis de subscription (D13 suma catalog.manage), dos de seats y uno de addons. audit.view se reutiliza.
+        Assert.Equal(9, fase8.Length);
         Assert.Equal(fase8.Length, fase8.Select(definition => definition.Code).Distinct().Count());
         Assert.Equal(fase8.Length, fase8.Select(definition => definition.Id).Distinct().Count());
 
@@ -698,8 +708,7 @@ public sealed class PermissionCatalogTests
                     definition.Module,
                     definition.Description,
                     definition.IsCustomerPortal,
-                    definition.MinPlanTier,
-                    definition.IsAssignableByTenant,
+                    isAssignableByTenant: definition.IsAssignableByTenant,
                     definition.PlatformOnly,
                     definition.AllowedActorTypes,
                     definition.IsDangerous

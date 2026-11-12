@@ -85,9 +85,6 @@ public sealed record PermissionResponse(Guid Id, string Code, string Module, str
     /// ofrece, para no vender una sensación de control que no existe.</summary>
     public bool IsReserved { get; init; }
 
-    /// <summary>Tier mínimo de plan que lo expone (0 = Starter).</summary>
-    public int MinPlanTier { get; init; }
-
     /// <summary>Módulo con el que lo mide el gate de entitlements en runtime
     /// (<see cref="PermissionModuleMap"/>), o null si no pertenece a ninguno. Distinto de
     /// <see cref="Module"/>, que es la agrupación de presentación del catálogo.</summary>
@@ -121,12 +118,10 @@ public static class GetPermissionsCatalogHandler
     {
         var catalog = await roles.GetPermissionsCatalogAsync(ct);
 
-        var tier = PlanTier.Starter;
         IReadOnlySet<string> enabledModules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (query.TenantId is { } tenantId)
         {
             var limits = await planLimits.GetAsync(tenantId, ct);
-            tier = PlanTierResolver.FromPlanCode(limits?.PlanCode);
             var modules = limits is null
                 ? []
                 : JsonSerializer.Deserialize<List<string>>(limits.EnabledModulesJson) ?? [];
@@ -146,10 +141,9 @@ public static class GetPermissionsCatalogHandler
                 PlatformOnly = permission.PlatformOnly,
                 IsDangerous = permission.IsDangerous,
                 IsReserved = permission.IsReserved,
-                MinPlanTier = permission.MinPlanTier,
                 GateModule = PermissionModuleMap.ModuleFor(permission.Code),
                 AllowedActorTypes = permission.AllowedActorTypes.Select(actorType => actorType.ToString()).ToList(),
-                Grantable = PermissionCeiling.IsGrantable(permission, tier, enabledModules, targetActorType: null),
+                Grantable = PermissionCeiling.IsGrantable(permission, enabledModules, targetActorType: null),
             })
             .OrderBy(permission => permission.Module)
             .ThenBy(permission => permission.Code)

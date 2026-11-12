@@ -23,13 +23,14 @@ namespace TaxVision.Notification.Application.Consumers.Calendar;
 /// </summary>
 public static class AppointmentAttendeeAddedConsumer
 {
-    private const string TemplateKey = "calendar.appointment_scheduled.v1";
+    private const string TemplateKey = "calendar.appointment_attendee_added.v1";
 
     public static async Task Handle(
         AppointmentAttendeeAddedIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        ITenantHostResolver hosts,
         NotificationDispatcher dispatcher,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -38,10 +39,29 @@ public static class AppointmentAttendeeAddedConsumer
         if (evt.Email is not { Length: > 0 } email)
             return;
 
-        IReadOnlyList<AppointmentRecipient> recipients = [new AppointmentRecipient(email, evt.UserId)];
+        IReadOnlyList<AppointmentRecipient> recipients =
+        [
+            new AppointmentRecipient(email, evt.UserId, evt.CustomerId, evt.DisplayName, evt.RsvpToken),
+        ];
 
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            await CalendarRecipients.PushAsync(
+                dispatcher,
+                recipients,
+                evt.TenantId,
+                $"You were added to an appointment: {evt.Title}",
+                "Open your calendar for the details.",
+                NotificationKinds.CalendarAttendeeAdded,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
+
+            // En una cita virtual la invitación de la sala (Communication) ya lleva in-app y correo.
+            if (evt.IsVirtual)
+                return;
+
             await CalendarRecipients.PublishInAppAsync(
                 dispatcher,
                 [new AppointmentRecipient(email, evt.UserId)],
@@ -51,7 +71,7 @@ public static class AppointmentAttendeeAddedConsumer
                 NotificationKinds.CalendarAttendeeAdded,
                 "calendar.attendee_added.v1",
                 evt.OccurredOn,
-                $"Te agregaron a una cita: {evt.Title}",
+                $"You were added to an appointment: {evt.Title}",
                 correlation.CorrelationId,
                 evt.CustomerId,
                 ct
@@ -67,7 +87,7 @@ public static class AppointmentAttendeeAddedConsumer
                     ["appointment_title"] = evt.Title,
                     ["start_local"] = evt.StartUtc is { } start
                         ? CalendarTimeFormatting.InZone(start, evt.TimeZoneId)
-                        : "según la serie",
+                        : "Follows the series schedule",
                     ["time_zone"] = evt.TimeZoneId,
                     ["is_recurring"] = evt.IsRecurring,
                     ["is_virtual"] = evt.IsVirtual,
@@ -77,7 +97,8 @@ public static class AppointmentAttendeeAddedConsumer
                 gateway,
                 evt.EventId,
                 correlation.CorrelationId,
-                ct
+                ct,
+                TenantEmailLinks.StaffBase(await hosts.ResolveHostAsync(evt.TenantId, ct), portal.Value)
             );
         }
     }

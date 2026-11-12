@@ -6,7 +6,9 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using TaxVision.Subscription.Infrastructure.Catalog;
 using TaxVision.Subscription.Infrastructure.Persistence;
+using TaxVision.Subscription.Tests.TestDoubles;
 using Wolverine;
 
 namespace TaxVision.Subscription.Tests.Architecture;
@@ -33,6 +35,8 @@ public sealed class SubscriptionRoutingHostFactory : WebApplicationFactory<Progr
 
             services.DisableAllExternalWolverineTransports();
             services.DisableAllWolverineMessagePersistence();
+            // Sin base ni Redis de verdad: las revisiones del catálogo tienen sus pruebas de integración.
+            services.AddSingleton<ICatalogRevisionRunner, SkipCatalogRevisions>();
             foreach (var hosted in services.Where(d => d.ServiceType == typeof(IHostedService)).ToList())
             {
                 if (hosted.ImplementationType?.Namespace?.StartsWith("TaxVision.", StringComparison.Ordinal) == true)

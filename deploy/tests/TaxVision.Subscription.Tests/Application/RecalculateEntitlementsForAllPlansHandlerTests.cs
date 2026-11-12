@@ -76,6 +76,9 @@ public sealed class RecalculateEntitlementsForAllPlansHandlerTests
         public Task<IReadOnlyList<SubscriptionPlan>> GetPublishedAsync(CancellationToken ct = default) =>
             Task.FromResult(published);
 
+        public Task<IReadOnlyList<SubscriptionPlan>> GetOnSaleAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
         public Task<SubscriptionPlan?> GetByCodeAsync(string code, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

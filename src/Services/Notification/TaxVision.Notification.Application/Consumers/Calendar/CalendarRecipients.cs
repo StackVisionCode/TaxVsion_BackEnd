@@ -13,6 +13,47 @@ namespace TaxVision.Notification.Application.Consumers.Calendar;
 /// </summary>
 internal static class CalendarRecipients
 {
+    /// <summary>
+    /// Un aviso por persona (CAL-10): si la cita tiene sala, sus invitados reciben el de la sala
+    /// (Communication, con su enlace) y el de la cita queda para el organizador, que es el host.
+    /// </summary>
+    public static IReadOnlyList<AppointmentRecipient> WithoutRoomInvitees(
+        IReadOnlyList<AppointmentRecipient> recipients,
+        bool hasRoom,
+        Guid? organizerUserId
+    ) => hasRoom ? recipients.Where(r => r.UserId is { } id && id == organizerUserId).ToList() : recipients;
+
+    /// <summary>Push a cada destinatario con cuenta; sin dispositivo registrado no hace nada.</summary>
+    public static async Task PushAsync(
+        NotificationDispatcher dispatcher,
+        IReadOnlyList<AppointmentRecipient> recipients,
+        Guid tenantId,
+        string title,
+        string body,
+        string kind,
+        Guid relatedEventId,
+        string? correlationId,
+        CancellationToken ct
+    )
+    {
+        foreach (var recipient in recipients)
+        {
+            if (recipient.UserId is not { } userId)
+                continue;
+            await dispatcher.SendPushAsync(
+                tenantId,
+                userId,
+                title,
+                body,
+                NotificationCategory.Calendar,
+                kind,
+                relatedEventId,
+                correlationId,
+                ct
+            );
+        }
+    }
+
     /// <summary>Un compañero (con <c>UserId</c>) lee como Staff; un cliente o invitado sin cuenta, como Client.</summary>
     public static ScribeRenderAudience AudienceOf(AppointmentRecipient recipient) =>
         recipient.UserId is null ? ScribeRenderAudience.Client : ScribeRenderAudience.Staff;
@@ -31,14 +72,16 @@ internal static class CalendarRecipients
         IEmailDispatchGateway gateway,
         Guid relatedEventId,
         string? correlationId,
-        CancellationToken ct
+        CancellationToken ct,
+        string? rsvpBaseUrl = null,
+        Guid? organizerUserId = null
     )
     {
         var renders = new Dictionary<ScribeRenderAudience, ScribeRenderedEmail>();
         foreach (var recipient in recipients)
         {
             var audience = AudienceOf(recipient);
-            if (!renders.ContainsKey(audience))
+            if (RsvpTokenOf(recipient, rsvpBaseUrl, organizerUserId) is null && !renders.ContainsKey(audience))
                 renders[audience] = (
                     await scribeClient.RenderAsync(templateKey, tenantId, variables, audience, ct)
                 ).EnsureRendered(templateKey);
@@ -46,15 +89,25 @@ internal static class CalendarRecipients
 
         foreach (var recipient in recipients)
         {
+            // Con enlace de respuesta el render es de esa persona: sus botones son solo suyos.
+            var rendered = renders.GetValueOrDefault(AudienceOf(recipient));
+            if (RsvpTokenOf(recipient, rsvpBaseUrl, organizerUserId) is { } token)
+            {
+                var own = new Dictionary<string, object?>(variables);
+                CalendarRsvpLinks.AddTo(own, rsvpBaseUrl!, token);
+                rendered = (
+                    await scribeClient.RenderAsync(templateKey, tenantId, own, AudienceOf(recipient), ct)
+                ).EnsureRendered(templateKey);
+            }
+
             await gateway.QueueEmailAsync(
-                renders[AudienceOf(recipient)]
-                    .ToDispatchRequest(
-                        tenantId: tenantId,
-                        to: recipient.Email,
-                        templateKey: templateKey,
-                        relatedEventId: relatedEventId,
-                        correlationId: correlationId
-                    ) with
+                rendered!.ToDispatchRequest(
+                    tenantId: tenantId,
+                    to: recipient.Email,
+                    templateKey: templateKey,
+                    relatedEventId: relatedEventId,
+                    correlationId: correlationId
+                ) with
                 {
                     RecipientUserId = recipient.UserId,
                     Category = NotificationCategory.Calendar,
@@ -64,6 +117,14 @@ internal static class CalendarRecipients
             );
         }
     }
+
+    /// <summary>El organizador ya aceptó: sus avisos no llevan botones.</summary>
+    private static string? RsvpTokenOf(AppointmentRecipient recipient, string? rsvpBaseUrl, Guid? organizerUserId) =>
+        rsvpBaseUrl is null
+        || string.IsNullOrWhiteSpace(recipient.RsvpToken)
+        || (organizerUserId is not null && recipient.UserId == organizerUserId)
+            ? null
+            : recipient.RsvpToken;
 
     /// <summary>
     /// Publica in-app por el puente del catálogo a cada asistente con cuenta. Un asistente sin

@@ -64,6 +64,9 @@ internal static class RescheduleApplier
             return Result.Failure<Appointment>(timing.Error);
 
         var now = DateTime.UtcNow;
+        if (SchedulingWindow.StartsInThePast(timing.Value.StartUtc!.Value, now))
+            return Result.Failure<Appointment>(TimingErrors.StartsInThePast);
+
         var before = AppointmentReminderTargets.Snapshot(appointment, now);
         var previousLead = appointment.ReminderLeadMinutes;
 
@@ -84,6 +87,9 @@ internal static class RescheduleApplier
     {
         if (command.OriginalStartUtc is not { } original)
             return Result.Failure<Appointment>(RecurrenceErrors.NotAnOccurrence);
+
+        if (command.NewStartUtc is { } newStart && SchedulingWindow.StartsInThePast(newStart, DateTime.UtcNow))
+            return Result.Failure<Appointment>(TimingErrors.StartsInThePast);
 
         var overridden = appointment.OverrideOccurrence(
             original,

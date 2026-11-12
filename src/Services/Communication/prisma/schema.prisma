@@ -124,6 +124,8 @@ model TenantCommunicationLimits {
   TranscriptEnabled            Boolean?
   CallsEnabled                 Boolean?
   MaxCallMinutes               Int?
+  // Última revisión de entitlements aplicada: una menor llega tarde y se ignora.
+  LastEntitlementsRevision     BigInt?
   UpdatedAtUtc                 DateTime @default(now()) @updatedAt @db.DateTime2
 }
 
@@ -949,6 +951,8 @@ model Meeting {
   LastDurationWarningSeconds Int?
   // "Start a new meeting" (D-34): enlaza la continuación con la reunión que se cortó.
   ContinuationOfMeetingId    String?   @db.UniqueIdentifier
+  // Cita de Calendar de la que nació la sala; la unicidad la cuida el candado por cita al crearla.
+  AppointmentId              String?   @db.UniqueIdentifier
   // F6 (T-64): recordatorio enviado una sola vez.
   ReminderSentAtUtc          DateTime? @db.DateTime2
   /// @userReference(Provenance)
@@ -963,6 +967,7 @@ model Meeting {
   @@index([TenantId, Status, ScheduledForUtc])
   @@index([TenantId, HostUserId])
   @@index([TenantId, Status, EndsAtUtc])
+  @@index([TenantId, AppointmentId])
 }
 
 model MeetingParticipant {

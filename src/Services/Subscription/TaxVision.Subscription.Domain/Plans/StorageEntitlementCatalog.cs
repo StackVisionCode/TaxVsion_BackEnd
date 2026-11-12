@@ -51,15 +51,10 @@ public static class StorageEntitlementCatalog
         Groups.Xml,
     ];
 
-    /// <summary>Starter/Trial: 10 MB y grupos básicos; Pro/Enterprise: 25 MB y todos los grupos.</summary>
-    public static IReadOnlyCollection<EntitlementSeed> SeedsFor(PlanTier tier)
-    {
-        var extended = tier is PlanTier.Pro or PlanTier.Enterprise;
-        var maxFileBytes = (extended ? 25L : 10L) * 1024 * 1024;
-        return
-        [
-            new(MaxFileBytes, EntitlementValueType.Long, maxFileBytes.ToString(CultureInfo.InvariantCulture)),
-            new(FileTypeGroups, EntitlementValueType.String, string.Join(',', extended ? ExtendedGroups : BaseGroups)),
-        ];
-    }
+    /// <summary>Un solo valor por clave, el de Enterprise: 25 MB y todos los grupos (D-F2: nunca perjudica).</summary>
+    public static IReadOnlyCollection<EntitlementSeed> Defaults { get; } =
+    [
+        new(MaxFileBytes, EntitlementValueType.Long, (25L * 1024 * 1024).ToString(CultureInfo.InvariantCulture)),
+        new(FileTypeGroups, EntitlementValueType.String, string.Join(',', ExtendedGroups)),
+    ];
 }

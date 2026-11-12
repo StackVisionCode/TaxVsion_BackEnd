@@ -13,5 +13,6 @@ public sealed record ClientOfficeProfileResponse(
     string TimeZoneId,
     IReadOnlyList<BusinessHoursResponse> BusinessHours,
     string? BookingUrl,
-    string? ReviewUrl
+    string? ReviewUrl,
+    IReadOnlyList<OfficeClosureResponse>? Closures = null
 );

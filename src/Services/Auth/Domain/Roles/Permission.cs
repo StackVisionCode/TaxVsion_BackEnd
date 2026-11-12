@@ -24,13 +24,6 @@ public sealed class Permission : BaseEntity
     public bool IsCustomerPortal { get; private set; }
 
     /// <summary>
-    /// Nivel de plan mínimo (ver <see cref="TaxVision.Auth.Domain.Tenants.PlanTier"/>) que debe
-    /// tener contratado un tenant para que este permiso pueda incluirse en uno de sus roles
-    /// (de sistema o custom). 0 = disponible desde el plan más básico.
-    /// </summary>
-    public int MinPlanTier { get; private set; }
-
-    /// <summary>
     /// Si es <c>false</c>, ningún rol custom creado por un tenant puede incluir este permiso
     /// (solo puede vivir en los roles de sistema sembrados por la plataforma). Guardarraíl
     /// anti-escalada: reserva permisos sensibles (billing, asientos, gestión de roles) al
@@ -84,7 +77,6 @@ public sealed class Permission : BaseEntity
         string module,
         string description,
         bool isCustomerPortal = false,
-        int minPlanTier = 0,
         bool isAssignableByTenant = true,
         bool platformOnly = false,
         UserActorType[]? allowedActorTypes = null,
@@ -99,7 +91,6 @@ public sealed class Permission : BaseEntity
             Module = module,
             Description = description,
             IsCustomerPortal = isCustomerPortal,
-            MinPlanTier = minPlanTier,
             IsAssignableByTenant = isAssignableByTenant,
             PlatformOnly = platformOnly,
             AllowedActorTypes = allowedActorTypes ?? InferAllowedActorTypes(isCustomerPortal, platformOnly),

@@ -27,12 +27,26 @@ public static class AppointmentScheduledConsumer
 {
     private const string TemplateKey = "calendar.appointment_scheduled.v1";
 
+    /// <summary>
+    /// Tipo y título del push/in-app. Una reserva del cliente en el portal se anuncia como tal, con su
+    /// nombre: para el preparador no es lo mismo que una cita que agendó él.
+    /// </summary>
+    public static (string Kind, string Title) Announcement(AppointmentScheduledIntegrationEvent evt) =>
+        string.IsNullOrWhiteSpace(evt.BookedByCustomerName)
+            ? (NotificationKinds.CalendarAppointmentScheduled, $"New appointment: {evt.Title}")
+            : (
+                NotificationKinds.CalendarAppointmentBookedOnline,
+                $"Booked online by {evt.BookedByCustomerName}: {evt.Title}"
+            );
+
     public static async Task Handle(
         AppointmentScheduledIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        ITenantHostResolver hosts,
         NotificationDispatcher dispatcher,
+        IRecipientResolver recipientResolver,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -41,25 +55,41 @@ public static class AppointmentScheduledConsumer
         if (recipients.Count == 0)
             return;
 
+        // Un aviso por persona: con sala, los invitados reciben el de Communication.
+        var direct = CalendarRecipients.WithoutRoomInvitees(evt.Recipients, evt.IsVirtual, evt.OrganizerUserId);
+
+        var (kind, title) = Announcement(evt);
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            await CalendarRecipients.PublishInAppAsync(
+            await CalendarRecipients.PushAsync(
                 dispatcher,
                 evt.Recipients,
                 evt.TenantId,
+                title,
+                "Open your calendar for the details.",
+                kind,
+                evt.EventId,
+                correlation.CorrelationId,
+                ct
+            );
+
+            await CalendarRecipients.PublishInAppAsync(
+                dispatcher,
+                direct,
+                evt.TenantId,
                 evt.AppointmentId,
                 evt.EventId,
-                NotificationKinds.CalendarAppointmentScheduled,
+                kind,
                 "calendar.appointment_scheduled.v1",
                 evt.OccurredOn,
-                $"Nueva cita: {evt.Title}",
+                title,
                 correlation.CorrelationId,
                 evt.CustomerId,
                 ct
             );
 
             await CalendarRecipients.QueueByAudienceAsync(
-                recipients,
+                direct,
                 evt.TenantId,
                 TemplateKey,
                 NotificationKinds.CalendarAppointmentScheduled,
@@ -76,8 +106,26 @@ public static class AppointmentScheduledConsumer
                 gateway,
                 evt.EventId,
                 correlation.CorrelationId,
-                ct
+                ct,
+                TenantEmailLinks.StaffBase(await hosts.ResolveHostAsync(evt.TenantId, ct), portal.Value),
+                evt.OrganizerUserId
             );
+
+            // Aprobada desde una solicitud del portal: el cliente lo ve en vivo, sin recargar.
+            if (evt.ApprovedRequest && evt.CustomerId is { } customerId)
+                await CalendarClientNotices.SendAsync(
+                    dispatcher,
+                    recipientResolver,
+                    evt.TenantId,
+                    customerId,
+                    evt.AppointmentId,
+                    evt.EventId,
+                    NotificationKinds.CalendarBookingConfirmed,
+                    $"Your appointment is confirmed: {evt.Title}",
+                    evt.OccurredOn,
+                    correlation.CorrelationId,
+                    ct
+                );
         }
     }
 }

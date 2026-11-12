@@ -1,6 +1,5 @@
 using BuildingBlocks.Results;
 using TaxVision.Auth.Domain.Roles;
-using TaxVision.Auth.Domain.Tenants;
 
 namespace TaxVision.Auth.Application.Common;
 
@@ -20,7 +19,6 @@ public static class RolePermissionGuard
     public static Result Validate(
         IReadOnlyCollection<Permission> catalog,
         IReadOnlyCollection<Guid>? requestedPermissionIds,
-        PlanTier tenantPlanTier,
         IReadOnlySet<string> enabledModules
-    ) => PermissionCeiling.Validate(catalog, requestedPermissionIds, tenantPlanTier, enabledModules);
+    ) => PermissionCeiling.Validate(catalog, requestedPermissionIds, enabledModules);
 }

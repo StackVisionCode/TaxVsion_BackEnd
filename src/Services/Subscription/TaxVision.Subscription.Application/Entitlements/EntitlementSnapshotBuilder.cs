@@ -1,5 +1,6 @@
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
@@ -10,14 +11,13 @@ namespace TaxVision.Subscription.Application.Entitlements;
 
 /// <summary>
 /// Reconstruye el <see cref="TenantEntitlementSnapshot"/> de un tenant a partir de su
-/// estado actual: plan publicado + add-ons activos + seats. Determinista — el mismo
+/// estado actual: edición CONTRATADA (con las reglas de <see cref="ContractedEntitlementPolicy"/>) + add-ons
+/// activos + seats. Publicar una edición nueva no cambia la foto de nadie (D4). Determinista — el mismo
 /// estado siempre produce el mismo conjunto de entries (salvo ComputedAtUtc/RevisionNumber).
 /// No hay overrides administrativos todavía (fuera de alcance de esta fase).
 /// </summary>
 public static class EntitlementSnapshotBuilder
 {
-    private const string ModuleFeaturePrefix = "module.";
-
     // Estados que dan acceso: se mantiene el acceso durante PastDue (reintento de cobro) para no cortar por
     // un blip de pago. Fuera (Draft/Suspended/Cancelled/Expired) los módulos se apagan (fail-closed).
 
@@ -25,6 +25,7 @@ public static class EntitlementSnapshotBuilder
         Guid tenantId,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
+        IModuleRepository modules,
         ISubscriptionSeatRepository seats,
         ITenantAddOnRepository tenantAddOns,
         IAddOnDefinitionRepository addOnDefinitions,
@@ -39,17 +40,25 @@ public static class EntitlementSnapshotBuilder
             );
 
         var plan = await plans.GetByIdAsync(subscription.PlanId, ct);
-        var planVersion = plan?.GetPublishedVersion();
+        var planVersion = PlanPricing.FindVersion(plan, subscription.PlanVersionId);
         if (plan is null || planVersion is null)
             return Result.Failure<TenantEntitlementSnapshot>(
-                new Error("Plan.NoPublishedVersion", "Plan has no published version.")
+                new Error("Plan.ContractedVersionNotFound", "The contracted plan edition does not exist.")
             );
 
         // Enforcement status-aware: si la base no da acceso, los módulos del plan se apagan y
         // los add-ons (dependientes) no cuentan. Los límites/cuotas se conservan (el gate es por módulo).
         var grantsAccess = SubscriptionAccess.GrantsAccess(subscription.Status);
 
-        var entries = SeedEntriesFromPlan(planVersion, grantsAccess);
+        var baseEntries = ContractedEntitlementPolicy.BaseEntries(
+            planVersion,
+            await modules.GetAllAsync(ct),
+            grantsAccess
+        );
+        if (baseEntries.IsFailure)
+            return Result.Failure<TenantEntitlementSnapshot>(baseEntries.Error);
+
+        var entries = baseEntries.Value;
         if (grantsAccess)
             await MergeActiveAddOnsAsync(tenantId, tenantAddOns, addOnDefinitions, entries, ct);
 
@@ -67,43 +76,6 @@ public static class EntitlementSnapshotBuilder
             entries.Values.ToList(),
             DateTime.UtcNow
         );
-    }
-
-    private static Dictionary<string, EntitlementEntry> SeedEntriesFromPlan(
-        SubscriptionPlanVersion planVersion,
-        bool grantsAccess
-    )
-    {
-        var entries = new Dictionary<string, EntitlementEntry>();
-
-        foreach (var entitlement in planVersion.Entitlements)
-        {
-            entries[entitlement.Key.Value] = new EntitlementEntry(
-                entitlement.Key,
-                entitlement.ValueType,
-                entitlement.DefaultValue,
-                EntitlementStatus.Active,
-                EntitlementSource.Plan,
-                ExpiresAtUtc: null
-            );
-        }
-
-        foreach (var feature in planVersion.Features)
-        {
-            var isModule = feature.FeatureKey.Value.StartsWith(ModuleFeaturePrefix, StringComparison.Ordinal);
-            // Un módulo solo se enciende si el plan lo trae Y la base da acceso; el gate lee el valor.
-            var enabled = isModule ? grantsAccess && feature.DefaultEnabled : feature.DefaultEnabled;
-            entries[feature.FeatureKey.Value] = new EntitlementEntry(
-                feature.FeatureKey,
-                EntitlementValueType.Bool,
-                enabled.ToString(),
-                isModule && !grantsAccess ? EntitlementStatus.Disabled : EntitlementStatus.Active,
-                EntitlementSource.Plan,
-                ExpiresAtUtc: null
-            );
-        }
-
-        return entries;
     }
 
     private static async Task MergeActiveAddOnsAsync(

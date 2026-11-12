@@ -4,7 +4,7 @@ namespace TaxVision.Tenant.Api.Contracts;
 
 /// <summary>
 /// Estado completo del perfil (mismo cuerpo que el GET sin <c>version</c>/<c>updatedAtUtc</c>). Todo es
-/// opcional; <c>mailingSameAsPhysical</c> ausente = true.
+/// opcional; <c>mailingSameAsPhysical</c> ausente = true; <c>closures</c> ausente = no tocar los guardados.
 /// </summary>
 public sealed record UpdateOfficeProfileRequest(
     string? LegalName,
@@ -20,7 +20,8 @@ public sealed record UpdateOfficeProfileRequest(
     string? DefaultLanguage,
     IReadOnlyList<BusinessHoursRequest>? BusinessHours,
     string? BookingUrl,
-    string? ReviewUrl
+    string? ReviewUrl,
+    IReadOnlyList<OfficeClosureRequest>? Closures = null
 )
 {
     public OfficeProfileDraft ToDraft() =>
@@ -38,6 +39,7 @@ public sealed record UpdateOfficeProfileRequest(
             DefaultLanguage,
             BusinessHours?.Select(hours => hours.ToDraft()).ToList(),
             BookingUrl,
-            ReviewUrl
+            ReviewUrl,
+            Closures?.Select(closure => closure.ToDraft()).ToList()
         );
 }

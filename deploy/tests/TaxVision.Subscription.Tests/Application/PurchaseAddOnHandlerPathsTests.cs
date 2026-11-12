@@ -170,7 +170,7 @@ public sealed class PurchaseAddOnHandlerPathsTests
                 new TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility(
                     Subscriptions,
                     Plans,
-                    new FakeModuleRepo(),
+                    new FakeModuleRepo(AddOnTestCatalog.Modules(["customers", "documents"])),
                     new FakeAddOnDefinitionRepository(Definition),
                     new FixedSettings(Settings),
                     AddOns

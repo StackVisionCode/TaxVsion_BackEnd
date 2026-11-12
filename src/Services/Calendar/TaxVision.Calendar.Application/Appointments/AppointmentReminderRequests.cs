@@ -36,7 +36,10 @@ public static class AppointmentReminderRequests
         Func<Guid, bool>? include = null
     )
     {
-        if (appointment.ReminderLeadMinutes is null || appointment.Status == AppointmentStatus.Cancelled)
+        if (
+            appointment.ReminderLeadMinutes is null
+            || appointment.Status is AppointmentStatus.Cancelled or AppointmentStatus.Requested
+        )
             return [];
 
         var occurrences = OccurrenceExpander.Expand(appointment, nowUtc, nowUtc.AddDays(HorizonDays));

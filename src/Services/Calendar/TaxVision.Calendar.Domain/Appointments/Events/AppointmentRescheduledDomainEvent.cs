@@ -11,5 +11,6 @@ public sealed record AppointmentRescheduledDomainEvent(
     DateTime? NewEndUtc,
     string TimeZoneId,
     Guid MovedByUserId,
-    DateTime MovedAtUtc
+    DateTime MovedAtUtc,
+    AttendeeRsvpToken[]? RsvpTokens = null
 ) : IDomainEvent;

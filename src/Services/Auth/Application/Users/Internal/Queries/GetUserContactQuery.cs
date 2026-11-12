@@ -5,7 +5,8 @@ namespace TaxVision.Auth.Application.Users.Internal.Queries;
 
 public sealed record GetUserContactQuery(Guid TenantId, Guid UserId);
 
-public sealed record UserContactResponse(string Email, string ActorType, bool IsActive);
+// DisplayName (aditivo): Calendar lo muestra al cliente como su preparador.
+public sealed record UserContactResponse(string Email, string ActorType, bool IsActive, string? DisplayName = null);
 
 /// <summary>
 /// Recuperación pull del <b>correo</b> de un usuario — la contraparte de
@@ -41,6 +42,9 @@ public static class GetUserContactHandler
                 new Error("Auth.UserNotFound", "The user does not exist in the given tenant.")
             );
 
-        return Result.Success(new UserContactResponse(user.Email, user.ActorType.ToString(), user.IsActive));
+        var name = $"{user.Name} {user.LastName}".Trim();
+        return Result.Success(
+            new UserContactResponse(user.Email, user.ActorType.ToString(), user.IsActive, name.Length > 0 ? name : null)
+        );
     }
 }

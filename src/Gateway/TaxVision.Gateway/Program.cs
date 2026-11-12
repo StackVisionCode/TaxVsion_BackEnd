@@ -67,6 +67,7 @@ builder
                             "X-RateLimit-Policy",
                             "X-RateLimit-Layer",
                             "X-Seat-Slot-Gated",
+                            "X-Result-Truncated",
                             "ETag"
                         )
             )
@@ -155,6 +156,9 @@ app.UseMiddleware<InternalSurfaceGuardMiddleware>();
 
 app.UseCors("spa");
 app.UseAuthentication();
+
+// Token solo-MFA: no sale de /auth/ (Auth decide qué endpoint de MFA acepta).
+app.UseMiddleware<TaxVision.Gateway.Middleware.MfaEnrollmentGuardMiddleware>();
 
 // Solo acá: Caddy → Gateway → servicios internos; ningún -api expone ports: públicos. Tráfico M2M
 // interno queda exento del gate por ActorType.Service en el propio middleware.

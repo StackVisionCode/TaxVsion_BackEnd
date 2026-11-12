@@ -839,7 +839,7 @@ services:
       Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
       Jwt__Issuer: TaxVision.Auth
       Jwt__Audience: TaxVision.Services
-      Subscriptions__DefaultPlanCode: starter
+      Subscriptions__DefaultPlanCode: enterprise
       Subscriptions__TrialDays: "14"
       OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
       # M2M de Subscription (un solo acquirer, ServiceAuthClientOptions). Usa subscription-worker
@@ -857,6 +857,7 @@ services:
       # M2M a PaymentApp para el hosted-checkout de seats y de renovación self-service. Sin esto el
       # HttpClient cae al default de código (localhost:5430) dentro del contenedor y el checkout falla.
       Subscription__PaymentApp__BaseUrl: http://payment-app-api:8080
+      Subscription__CloudStorage__BaseUrl: http://cloudstorage-api:8080
       # SEC-M1.C — HMAC compartido con PaymentApp (y Wallet). MISMA secret en los 3 servicios.
       PurchaseIntentAmountSignature__Secret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_SECRET:-}
       PurchaseIntentAmountSignature__PreviousSecret: ${PURCHASE_INTENT_AMOUNT_SIGNATURE_PREVIOUS_SECRET:-}

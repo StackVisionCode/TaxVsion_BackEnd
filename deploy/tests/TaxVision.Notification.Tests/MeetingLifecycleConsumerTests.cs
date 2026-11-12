@@ -116,7 +116,7 @@ public sealed class MeetingLifecycleConsumerTests
         Assert.Equal("2026-11-05 16:00", harness.Render.LastVariables["new_local"]);
         var email = Assert.Single(harness.Gateway.Queued);
         var ics = InlineAttachmentReader.Text(Assert.Single(email.InlineAttachments!));
-        Assert.Contains("METHOD:REQUEST", ics);
+        Assert.Contains("METHOD:PUBLISH", ics);
         Assert.Contains("DTSTART:20261105T200000Z", ics);
         Assert.Contains($"SEQUENCE:{MeetingNotificationsSequence(rescheduledAt)}", ics);
         Assert.Single(

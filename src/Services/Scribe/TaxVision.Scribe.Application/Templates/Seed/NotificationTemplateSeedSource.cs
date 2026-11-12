@@ -40,6 +40,8 @@ public sealed record NotificationTemplateSeed(
     // v23 (por plantilla): tenant.wisp_review_due.v1 nueva — revisión anual del WISP (F4 Cumplimiento).
     // v24 (por plantilla): 6 plantillas nuevas de avisos del retiro de empleados (OffboardingNoticesVersion).
     // v25 (por plantilla): auth.user_offboarding_incomplete.v1 nueva — retiro sin todos los acuses en plazo.
+    // v26 (por plantilla): calendar.appointment_attendee_added.v1 nueva — a quien suman a una cita ya agendada.
+    // v27 (por plantilla): botones Accept / Maybe / Decline (RSVP) en las 3 de cita y en la invitación de sala.
     int ContentVersion = 1,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
@@ -115,6 +117,7 @@ public static class NotificationTemplateSeedSource
             SubscriptionSuspended,
             SubscriptionExpired,
             SubscriptionCancellationScheduled,
+            SubscriptionVersionChangeScheduled,
             SubscriptionAccessEnding,
             SubscriptionRenewalUpcoming,
             SubscriptionReactivated,
@@ -135,7 +138,10 @@ public static class NotificationTemplateSeedSource
             ReminderDue,
             TaskWaitingOnClient,
             AppointmentScheduled,
+            AppointmentAttendeeAdded,
             AppointmentRescheduled,
+            AppointmentUpdated,
+            BookingDeclined,
             AppointmentCancelled,
             ClientRequestCreated,
             ClientRequestDocumentRejected,
@@ -293,6 +299,7 @@ public static class NotificationTemplateSeedSource
         ["subscription.suspended"] = "Your subscription is on hold. Renew to restore your team's access.",
         ["subscription.expired"] = "Your subscription has expired. Renew whenever you're ready.",
         ["subscription.cancellation_scheduled"] = "Your subscription is set to end. You keep full access until then.",
+        ["subscription.version_change_scheduled"] = "Your plan terms change at your next renewal. Here's what changes.",
         ["subscription.renewal_upcoming"] = "Your subscription renews soon — nothing to do, just a heads up.",
         ["subscription.reactivated"] = "You're all set — your subscription is active again.",
         ["subscription.recurring_charge"] = "Payment received — your subscription continues.",
@@ -320,7 +327,10 @@ public static class NotificationTemplateSeedSource
         ["reminder.due"] = "A quick reminder about something on your list.",
         ["task.waiting_on_client.v1"] = "We're still missing a few documents from you to move forward.",
         ["calendar.appointment_scheduled.v1"] = "Your appointment is booked. Here are the details.",
+        ["calendar.appointment_attendee_added.v1"] = "You were added to an appointment. Here are the details.",
         ["calendar.appointment_rescheduled.v1"] = "Your appointment time has changed. See the new details.",
+        ["calendar.appointment_updated.v1"] = "Your appointment details changed. Here is what is new.",
+        ["calendar.booking_declined.v1"] = "Your office couldn't confirm the time you asked for.",
         ["calendar.appointment_cancelled.v1"] = "Your appointment was cancelled. Here's what happened.",
         ["task.client_request_created.v1"] = "Your preparer requested a few items from you. Here's what's needed.",
         ["task.client_request_document_rejected.v1"] = "We couldn't process a file you uploaded. Please try again.",
@@ -872,7 +882,10 @@ public static class NotificationTemplateSeedSource
                     </td>
                   </tr>
                   <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ join_link }}</span></td></tr></table></td></tr>
-                  <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This invitation expires on {{ expires_at }} UTC. If you weren't expecting it, you can ignore this email.</td></tr>
+                """
+                + RsvpButtonsRows
+                + """
+                  <tr><td style="padding-top:14px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This invitation expires on {{ expires_at }} UTC. If you weren't expecting it, you can ignore this email.</td></tr>
                 </table>
                 """,
             Variables:
@@ -906,9 +919,10 @@ public static class NotificationTemplateSeedSource
                     "false",
                     "La reunión ya está en curso: el correo invita a entrar ahora."
                 ),
+                .. RsvpButtonsVariables,
                 ProductName,
             ],
-            ContentVersion: 21
+            ContentVersion: RsvpButtonsVersion
         );
 
     private static NotificationTemplateSeed MeetingCancelled { get; } =
@@ -2109,6 +2123,57 @@ public static class NotificationTemplateSeedSource
             ]
         );
 
+    // D11 del plan único: una migración agenda otra edición del plan para la oficina.
+    private static NotificationTemplateSeed SubscriptionVersionChangeScheduled { get; } =
+        new(
+            EventKey: "subscription.version_change_scheduled.v1",
+            TemplateKey: "subscription.version_change_scheduled",
+            Name: "Suscripción — Cambio de condiciones del plan",
+            Subject: "Your {{ product_name }} plan terms change on {{ change_date }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your plan terms will change</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we're updating the terms of your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan. Nothing changes today: the new terms start with your renewal on <strong style="color:#1E466B;">{{ change_date }}</strong>.</td></tr>
+              <tr><td style="padding:18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>What changes:</strong> {{ change_summary }}</td></tr></table></td></tr>
+              <tr>
+                <td align="left" style="padding:8px 0 18px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ manage_url }}" style="height:44px;v-text-anchor:middle;width:230px;" arcsize="23%" stroke="f" fillcolor="#1E466B"><w:anchorlock/><center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Review my subscription</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:13px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none;">Review my subscription</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ manage_url }}</span></td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Until {{ change_date }} you keep your current terms. If you'd rather change plans or cancel before then, you can do it from Manage subscription.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
+                ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
+                ("change_date", VariableType.String, true, null, "Fecha en que entran las condiciones nuevas."),
+                (
+                    "change_summary",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Qué cambia (precio, usuarios, almacenamiento, módulos)."
+                ),
+                ("manage_url", VariableType.Url, true, null, "Manage subscription de la oficina."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ]
+        );
+
     private static NotificationTemplateSeed SubscriptionExpired { get; } =
         new(
             EventKey: "subscription.expired.v1",
@@ -2575,6 +2640,74 @@ public static class NotificationTemplateSeedSource
             ]
         );
 
+    // Plantilla propia de "te sumaron a una cita": versión explícita por encima de las anteriores.
+    private const int AppointmentAttendeeAddedVersion = 26;
+
+    // Botones de respuesta de una cita (RSVP). Solo salen si hay enlace: el organizador y las reuniones
+    // sueltas no los llevan. Los enlaces abren una página que pide confirmar con un clic.
+    private const string RsvpButtonsRows = """
+              {% if rsvp_accept_link != blank %}
+              <tr><td style="padding-top:20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">Will you attend?</td></tr>
+              <tr><td style="padding:10px 0 4px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ rsvp_accept_link }}" target="_blank" style="display:inline-block;padding:11px 22px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Accept</a></td>
+                <td width="8" style="font-size:0;line-height:0;">&nbsp;</td>
+                <td align="center" style="border:1px solid #C9D6E2;border-radius:10px;"><a href="{{ rsvp_maybe_link }}" target="_blank" style="display:inline-block;padding:10px 20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#1E466B;text-decoration:none;border-radius:10px;">Maybe</a></td>
+                <td width="8" style="font-size:0;line-height:0;">&nbsp;</td>
+                <td align="center" style="border:1px solid #C9D6E2;border-radius:10px;"><a href="{{ rsvp_decline_link }}" target="_blank" style="display:inline-block;padding:10px 20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#1E466B;text-decoration:none;border-radius:10px;">Decline</a></td>
+              </tr></table></td></tr>
+              {% endif %}
+""";
+
+    // v27: botones Accept / Maybe / Decline (RSVP) en las citas y en la invitación de su sala.
+    private const int RsvpButtonsVersion = 27;
+
+    // Propiedad y no campo: los inicializadores estáticos corren en orden textual y MeetingInvitation va antes.
+    private static IReadOnlyList<(string, VariableType, bool, string?, string?)> RsvpButtonsVariables =>
+        [
+            ("rsvp_accept_link", VariableType.Url, false, null, "Enlace para aceptar la cita (solo invitados)."),
+            ("rsvp_maybe_link", VariableType.Url, false, null, "Enlace para responder tal vez."),
+            ("rsvp_decline_link", VariableType.Url, false, null, "Enlace para rechazar la cita."),
+        ];
+
+    /// <summary>
+    /// A quien suman a una cita ya agendada. Antes reusaba la de "te agendaron" y no decía que lo habían
+    /// agregado a algo que ya existía (CAL-09 §2).
+    /// </summary>
+    private static NotificationTemplateSeed AppointmentAttendeeAdded { get; } =
+        new(
+            EventKey: "calendar.appointment_attendee_added.v1",
+            TemplateKey: "calendar.appointment_attendee_added.v1",
+            Name: "Calendar — Te sumaron a una cita",
+            Subject: "{{ product_name }} — You were added to {{ appointment_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Appointment</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You're on the guest list</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">The office added you to <strong style="color:#1E466B;">{{ appointment_title }}</strong>.</td></tr>
+              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ start_local }}</strong> <span style="color:#70869A;">({{ time_zone }})</span></td></tr></table></td></tr>
+              {% if is_recurring %}<tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">It repeats: check the calendar for all dates.</td></tr>{% endif %}
+              {% if is_virtual %}<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">It's a video meeting; the link is in the appointment.</td></tr>{% endif %}
+              <tr><td style="padding-top:14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Someone at the office added you to this appointment after it was booked.</td></tr>
+            """
+                + RsvpButtonsRows
+                + """
+                </table>
+                """,
+            Variables:
+            [
+                ("appointment_title", VariableType.String, true, null, "Titulo de la cita."),
+                ("start_local", VariableType.String, true, null, "Inicio en la zona de la cita, ya formateado."),
+                ("time_zone", VariableType.String, true, null, "Zona de la cita, escrita al lado de la hora."),
+                ("is_recurring", VariableType.Bool, false, null, "Si la cita se repite."),
+                ("is_virtual", VariableType.Bool, false, null, "Si es una reunion por video."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+                .. RsvpButtonsVariables,
+            ],
+            ContentVersion: RsvpButtonsVersion
+        );
+
     /// <summary>
     /// La invitación. La hora va con su zona escrita al lado: «10:00» a secas es exactamente lo que
     /// hace que alguien se presente con una hora de diferencia.
@@ -2594,8 +2727,11 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ start_local }}</strong> <span style="color:#70869A;">({{ time_zone }})</span></td></tr></table></td></tr>
               {% if is_recurring %}<tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">It repeats: check the calendar for all dates.</td></tr>{% endif %}
               {% if is_virtual %}<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">It's a video meeting; the link is in the appointment.</td></tr>{% endif %}
-            </table>
-            """,
+            """
+                + RsvpButtonsRows
+                + """
+                </table>
+                """,
             Variables:
             [
                 ("appointment_title", VariableType.String, true, null, "Titulo de la cita."),
@@ -2605,7 +2741,9 @@ public static class NotificationTemplateSeedSource
                 ("is_virtual", VariableType.Bool, false, null, "Si es una reunion por video."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
-            ]
+                .. RsvpButtonsVariables,
+            ],
+            ContentVersion: RsvpButtonsVersion
         );
 
     /// <summary>
@@ -2625,8 +2763,11 @@ public static class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your appointment moved</td></tr>
               {% if previous_local %}<tr><td style="padding-bottom:10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#70869A;mso-line-height-rule:exactly;">Before: <s>{{ previous_local }}</s></td></tr>{% endif %}
               <tr><td style="padding-bottom:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;">Now: <strong>{{ new_local }}</strong> <span style="color:#70869A;">({{ time_zone }})</span></td></tr></table></td></tr>
-            </table>
-            """,
+            """
+                + RsvpButtonsRows
+                + """
+                </table>
+                """,
             Variables:
             [
                 ("scope", VariableType.String, false, null, "Si se movio una ocurrencia o la serie."),
@@ -2635,7 +2776,85 @@ public static class NotificationTemplateSeedSource
                 ("time_zone", VariableType.String, true, null, "Zona de la cita."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
-            ]
+                .. RsvpButtonsVariables,
+            ],
+            ContentVersion: RsvpButtonsVersion
+        );
+
+    // v28: calendar.appointment_updated.v1 nueva ("Edit details": título, descripción o lugar).
+    private const int AppointmentUpdatedVersion = 28;
+
+    /// <summary>
+    /// Cambiaron título, descripción o lugar. El título viejo va tachado al lado: sin él nadie reconoce
+    /// cuál de sus citas cambió.
+    /// </summary>
+    private static NotificationTemplateSeed AppointmentUpdated { get; } =
+        new(
+            EventKey: "calendar.appointment_updated.v1",
+            TemplateKey: "calendar.appointment_updated.v1",
+            Name: "Calendar — Cambiaron los detalles de tu cita",
+            Subject: "{{ product_name }} — Updated: {{ appointment_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Appointment</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your appointment was updated</td></tr>
+              {% if title_changed %}<tr><td style="padding-bottom:10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#70869A;mso-line-height-rule:exactly;">Before: <s>{{ previous_title }}</s></td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ appointment_title }}</strong><br /><span style="color:#496174;">{{ start_local }} <span style="color:#70869A;">({{ time_zone }})</span></span>{% if location != blank %}<br /><span style="color:#496174;">{% if location_changed %}New place: {% endif %}{{ location }}</span>{% endif %}</td></tr></table></td></tr>
+              {% if description_changed and description != blank %}<tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;white-space:pre-line;"><strong style="color:#23384B;">Notes:</strong> {{ description }}</td></tr>{% endif %}
+              <tr><td style="padding-top:10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">The time didn't change, and your answer still stands.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("appointment_title", VariableType.String, true, null, "Titulo actual de la cita."),
+                ("previous_title", VariableType.String, false, null, "Titulo anterior, solo si cambio."),
+                ("title_changed", VariableType.Bool, false, null, "Si cambio el titulo."),
+                ("location", VariableType.String, false, null, "Lugar actual (vacio = sin lugar)."),
+                ("location_changed", VariableType.Bool, false, null, "Si cambio el lugar."),
+                ("description", VariableType.String, false, null, "Notas actuales de la cita."),
+                ("description_changed", VariableType.Bool, false, null, "Si cambiaron las notas."),
+                ("start_local", VariableType.String, true, null, "Inicio en la zona de la cita, ya formateado."),
+                ("time_zone", VariableType.String, true, null, "Zona de la cita."),
+                ("portal_link", VariableType.Url, true, null, "URL base del portal."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ],
+            ContentVersion: AppointmentUpdatedVersion
+        );
+
+    // v29: calendar.booking_declined.v1 nueva (la oficina rechaza una solicitud del portal).
+    private const int BookingDeclinedVersion = 29;
+
+    /// <summary>
+    /// La oficina no pudo tomar la hora que pidió el cliente. Dice cuál era y por qué, y lo invita a
+    /// pedir otra: un "rechazada" sin salida es un cliente que no vuelve.
+    /// </summary>
+    private static NotificationTemplateSeed BookingDeclined { get; } =
+        new(
+            EventKey: "calendar.booking_declined.v1",
+            TemplateKey: "calendar.booking_declined.v1",
+            Name: "Calendar — No se pudo confirmar tu cita",
+            Subject: "{{ product_name }} — We couldn't confirm {{ appointment_title }}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Appointment request</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">We couldn't confirm your appointment</td></tr>
+              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ appointment_title }}</strong>{% if start_local != blank %}<br /><span style="color:#496174;"><s>{{ start_local }}</s> <span style="color:#70869A;">({{ time_zone }})</span></span>{% endif %}</td></tr></table></td></tr>
+              {% if reason != blank %}<tr><td style="padding-bottom:10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">From your office:</strong> {{ reason }}</td></tr>{% endif %}
+              <tr><td style="padding-top:6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">You can pick another time from your portal: <a href="{{ portal_link }}" style="color:#1E466B;font-weight:bold;">Book another time</a></td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("appointment_title", VariableType.String, true, null, "Titulo de la cita pedida."),
+                ("start_local", VariableType.String, false, null, "Hora pedida, en la zona de la cita."),
+                ("time_zone", VariableType.String, true, null, "Zona de la cita."),
+                ("reason", VariableType.String, false, null, "Motivo de la oficina (opcional)."),
+                ("portal_link", VariableType.Url, true, null, "URL del portal del cliente."),
+                ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
+            ],
+            ContentVersion: BookingDeclinedVersion
         );
 
     /// <summary>El aviso que más importa: no mandarlo deja a alguien presentándose a algo que no existe.</summary>

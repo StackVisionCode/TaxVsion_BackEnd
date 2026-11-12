@@ -34,6 +34,7 @@ public static class TenantSubscriptionEmailConsumer
         nameof(SubscriptionChangeReason.RecurringChargeFailed),
         nameof(SubscriptionChangeReason.BillingModeChanged),
         nameof(SubscriptionChangeReason.MandateCreated),
+        nameof(SubscriptionChangeReason.VersionChangeScheduled),
     };
 
     public static async Task Handle(
@@ -99,6 +100,9 @@ public static class TenantSubscriptionEmailConsumer
                     Cadence = evt.Cadence,
                     DateCharged = evt.DateCharged,
                     NextChargeDate = evt.NextChargeDate,
+                    VersionChangeEffectiveAtUtc = evt.VersionChangeEffectiveAtUtc,
+                    VersionChangeSummary = evt.VersionChangeSummary,
+                    MigrationId = evt.MigrationId,
                 }
             );
 

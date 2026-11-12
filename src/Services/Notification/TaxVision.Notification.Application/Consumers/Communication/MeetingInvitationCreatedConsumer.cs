@@ -103,26 +103,25 @@ public static class MeetingInvitationCreatedConsumer
                 return;
             }
 
+            var variables = new Dictionary<string, object?>
+            {
+                ["invitee_name"] = string.IsNullOrWhiteSpace(evt.InviteeName) ? "there" : evt.InviteeName!,
+                ["join_link"] = evt.JoinUrl,
+                ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                ["meeting_title"] = meetingTitle,
+                ["start_local"] = MeetingNotifications.LocalTime(evt.ScheduledForUtc, evt.TimeZone),
+                ["time_zone"] = MeetingNotifications.TimeZoneLabel(evt.TimeZone),
+                ["duration_minutes"] = evt.DurationMinutes,
+                ["host_name"] = evt.HostDisplayName,
+                ["meeting_code"] = evt.ShortCode,
+                ["in_progress"] = inProgress,
+            };
+            // Sala de una cita: el invitado responde a la cita desde aquí, en el host de la oficina.
+            if (!string.IsNullOrWhiteSpace(evt.RsvpToken) && CalendarRsvpLinks.BaseOf(evt.JoinUrl) is { } rsvpBase)
+                CalendarRsvpLinks.AddTo(variables, rsvpBase, evt.RsvpToken);
+
             var render = (
-                await scribeClient.RenderAsync(
-                    EventKey,
-                    evt.TenantId,
-                    new Dictionary<string, object?>
-                    {
-                        ["invitee_name"] = string.IsNullOrWhiteSpace(evt.InviteeName) ? "there" : evt.InviteeName!,
-                        ["join_link"] = evt.JoinUrl,
-                        ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
-                        ["meeting_title"] = meetingTitle,
-                        ["start_local"] = MeetingNotifications.LocalTime(evt.ScheduledForUtc, evt.TimeZone),
-                        ["time_zone"] = MeetingNotifications.TimeZoneLabel(evt.TimeZone),
-                        ["duration_minutes"] = evt.DurationMinutes,
-                        ["host_name"] = evt.HostDisplayName,
-                        ["meeting_code"] = evt.ShortCode,
-                        ["in_progress"] = inProgress,
-                    },
-                    AudienceOf(evt.InviteeKind),
-                    ct
-                )
+                await scribeClient.RenderAsync(EventKey, evt.TenantId, variables, AudienceOf(evt.InviteeKind), ct)
             ).EnsureRendered(EventKey);
 
             // Sin fecha no hay nada que poner en el calendario (reunión en curso o sin agendar).

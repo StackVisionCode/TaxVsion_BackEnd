@@ -16,7 +16,7 @@ namespace TaxVision.Subscription.Api.Controllers.Admin;
 [ApiController]
 [Route("admin/subscription/seats")]
 [Authorize]
-[HasPermission(SubscriptionPermissions.AdminCrossTenant)]
+[HasPermission(SubscriptionPermissions.CatalogManage)]
 [AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class SeatsAdminController(IMessageBus bus) : ControllerBase
 {

@@ -10,6 +10,18 @@ namespace TaxVision.Subscription.Tests.TestDoubles;
 /// <summary>Plan, add-on y suscripción mínimos para probar las dos compras de add-on (off-session y checkout).</summary>
 public static class AddOnTestCatalog
 {
+    /// <summary>Catálogo de módulos: los primeros base, los demás vendibles.</summary>
+    public static Module[] Modules(string[] core, string[]? commercial = null) =>
+        [
+            .. core.Select(code => Module.Create(code, code, code).Value),
+            .. (commercial ?? []).Select(code =>
+            {
+                var module = Module.Create(code, code, code).Value;
+                module.MarkAsCommercial();
+                return module;
+            }),
+        ];
+
     public static SubscriptionPlan PlanWith(string code, string[] modules)
     {
         var nowUtc = DateTime.UtcNow;

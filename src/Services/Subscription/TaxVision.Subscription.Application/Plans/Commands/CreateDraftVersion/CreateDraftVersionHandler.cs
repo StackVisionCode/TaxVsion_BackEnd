@@ -1,6 +1,9 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Audit;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.ValueObjects;
 
@@ -12,6 +15,8 @@ public static class CreateDraftVersionHandler
         CreateDraftVersionCommand command,
         IPlanRepository plans,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -37,16 +42,25 @@ public static class CreateDraftVersionHandler
             cycles.Add(cycle);
         }
 
-        var nextVersion = plan.Versions.Count == 0 ? 1 : plan.Versions.Max(v => v.VersionNumber) + 1;
-        var versionResult = SubscriptionPlanVersion.Create(plan.Id, nextVersion, command.TrialDaysDefault, cycles);
+        // El borrador nace como copia de la edición publicada: se cambia solo lo necesario.
+        var nowUtc = DateTime.UtcNow;
+        var versionResult = plan.OpenDraft(command.TrialDaysDefault, cycles, command.ActorUserId, nowUtc);
         if (versionResult.IsFailure)
             return Result.Failure<CreateDraftVersionResult>(versionResult.Error);
+        var nextVersion = versionResult.Value.VersionNumber;
 
-        var nowUtc = DateTime.UtcNow;
-        var addResult = plan.AddVersion(versionResult.Value, command.ActorUserId, nowUtc);
-        if (addResult.IsFailure)
-            return Result.Failure<CreateDraftVersionResult>(addResult.Error);
-
+        await CatalogAudit.RecordAsync(
+            audit,
+            CatalogAuditActor.ForUser(command.ActorUserId),
+            "plan.draft_created",
+            CatalogAuditViews.Target(plan),
+            before: null,
+            CatalogAuditViews.Draft(versionResult.Value),
+            reason: null,
+            correlation.CorrelationId,
+            nowUtc,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(new CreateDraftVersionResult(versionResult.Value.Id, nextVersion));
     }

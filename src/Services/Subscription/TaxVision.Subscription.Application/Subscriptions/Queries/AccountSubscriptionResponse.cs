@@ -26,7 +26,9 @@ public sealed record AccountPlanView(
     long CurrentCyclePriceCents,
     string Currency,
     IReadOnlyList<string> EnabledModules,
-    bool BillingAccessBlocked
+    bool BillingAccessBlocked,
+    // F8: rango de venta del plan contratado (aditivo), aunque ya no esté a la venta.
+    int Rank = 0
 );
 
 /// <summary>Período vigente y las fechas que la pantalla usa para decir cuándo se cobra o cuándo se corta.</summary>

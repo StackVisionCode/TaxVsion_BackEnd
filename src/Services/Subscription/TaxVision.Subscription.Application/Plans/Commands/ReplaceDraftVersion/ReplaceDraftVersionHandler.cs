@@ -1,8 +1,11 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Audit;
 using TaxVision.Subscription.Application.Plans;
+using TaxVision.Subscription.Domain.Catalog;
 using TaxVision.Subscription.Domain.Entitlements;
 using TaxVision.Subscription.Domain.Plans;
 using TaxVision.Subscription.Domain.ValueObjects;
@@ -20,6 +23,8 @@ public static class ReplaceDraftVersionHandler
         IPlanRepository plans,
         IModuleRepository modules,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
+        ICorrelationContext correlation,
         ILogger<SubscriptionPlan> logger,
         CancellationToken ct
     )
@@ -38,6 +43,8 @@ public static class ReplaceDraftVersionHandler
             return Result.Failure(
                 new Error("PlanVersion.NotDraft", "Only Draft versions can be replaced. Create a new version first.")
             );
+
+        var before = CatalogAuditViews.Draft(version);
 
         var cycles = new List<BillingCycle>(command.SupportedBillingCycles.Count);
         foreach (var raw in command.SupportedBillingCycles)
@@ -153,6 +160,18 @@ public static class ReplaceDraftVersionHandler
         if (replaced.IsFailure)
             return replaced;
 
+        await CatalogAudit.RecordAsync(
+            audit,
+            CatalogAuditActor.ForUser(command.ActorUserId),
+            "plan.draft_replaced",
+            CatalogAuditViews.Target(plan),
+            before,
+            CatalogAuditViews.Draft(version),
+            reason: null,
+            correlation.CorrelationId,
+            DateTime.UtcNow,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
 
         logger.LogInformation(

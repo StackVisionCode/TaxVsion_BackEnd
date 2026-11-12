@@ -3,6 +3,7 @@ import type { Meeting, MeetingSnapshot } from '../../domain/meetings/meeting.js'
 import type { MeetingInvitation } from '../../domain/meetings/meeting-invitation.js';
 import type { MeetingRepository, MeetingsForUserQuery } from '../../application/ports/meeting-repository.js';
 import { toDomainMeeting, toDomainMeetingInvitation } from './meeting-mapper.js';
+import { scheduledBetweenWhere } from './meeting-range-where.js';
 
 const PAST_STATUSES = ['Ended', 'Cancelled', 'Expired'] as const;
 const UPCOMING_STATUSES = ['Scheduled', 'Live'] as const;
@@ -43,6 +44,7 @@ export class PrismaMeetingRepository implements MeetingRepository {
           LastDurationWarningSeconds: snapshot.lastDurationWarningSeconds,
           ReminderSentAtUtc: snapshot.reminderSentAtUtc,
           ContinuationOfMeetingId: snapshot.continuationOfMeetingId,
+          AppointmentId: snapshot.appointmentId ?? null,
           StartedAtUtc: snapshot.startedAtUtc,
           EndedAtUtc: snapshot.endedAtUtc,
           DurationSeconds: snapshot.durationSeconds,
@@ -147,6 +149,15 @@ export class PrismaMeetingRepository implements MeetingRepository {
       where: { MeetingId: row.Id, TenantId: tenantId },
     });
     return toDomainMeeting(row, participants);
+  }
+
+  async findByAppointmentId(tenantId: string, appointmentId: string): Promise<Meeting | null> {
+    const row = await this.prisma.meeting.findFirst({
+      where: { TenantId: tenantId, AppointmentId: appointmentId },
+      include: { Participants: true },
+      orderBy: { CreatedAtUtc: 'asc' },
+    });
+    return row ? toDomainMeeting(row, row.Participants) : null;
   }
 
   async listActiveHostedBy(tenantId: string, hostUserId: string): Promise<Meeting[]> {
@@ -429,6 +440,7 @@ function meetingsForUserWhere(
     }
     conditions.push({ OR: byCustomer });
   }
+  if (input.scheduledBetween) conditions.push(scheduledBetweenWhere(input.scheduledBetween));
   return {
     TenantId: input.tenantId,
     Status: { in: statuses },

@@ -23,7 +23,10 @@ public sealed class CalendarInviteBuilder(IPlatformSettings platform) : ICalenda
     public EmailInlineAttachment Build(CalendarInviteRequest request)
     {
         var settings = platform.Current;
-        var method = request.Method == CalendarInviteMethod.Cancel ? "CANCEL" : "REQUEST";
+        // PUBLISH y no REQUEST: el archivo solo agrega al calendario. Con REQUEST, Gmail y Proton
+        // ofrecen "Sí/No" y mandan la respuesta al organizador (un no-reply): no llegaba a ningún lado.
+        // La respuesta va por los botones del correo.
+        var method = request.Method == CalendarInviteMethod.Cancel ? "CANCEL" : "PUBLISH";
         var start = DateTime.SpecifyKind(request.StartUtc, DateTimeKind.Utc);
         var end = start.AddMinutes(request.DurationMinutes is > 0 and var minutes ? minutes : DefaultDurationMinutes);
 
@@ -50,9 +53,8 @@ public sealed class CalendarInviteBuilder(IPlatformSettings platform) : ICalenda
             lines.Add($"URL:{request.Url.Trim()}");
 
         lines.Add($"ORGANIZER{Cn(request.OrganizerName)}:mailto:{request.OrganizerEmail.Trim()}");
-        lines.Add(
-            $"ATTENDEE;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE{Cn(request.AttendeeName)}:mailto:{request.AttendeeEmail.Trim()}"
-        );
+        if (request.Method == CalendarInviteMethod.Cancel)
+            lines.Add($"ATTENDEE;ROLE=REQ-PARTICIPANT{Cn(request.AttendeeName)}:mailto:{request.AttendeeEmail.Trim()}");
         lines.Add(request.Method == CalendarInviteMethod.Cancel ? "STATUS:CANCELLED" : "STATUS:CONFIRMED");
         lines.Add("END:VEVENT");
         lines.Add("END:VCALENDAR");

@@ -23,6 +23,9 @@ public interface IPlanRepository
 {
     Task<IReadOnlyList<SubscriptionPlan>> GetPublishedAsync(CancellationToken ct = default);
 
+    /// <summary>Planes publicados y a la venta, por rango y después por código: lo que se ofrece al público.</summary>
+    Task<IReadOnlyList<SubscriptionPlan>> GetOnSaleAsync(CancellationToken ct = default);
+
     /// <summary>CAT-F2.2 — vista de admin: todos los planes con todas sus versiones (Draft/Published/
     /// Superseded/Archived). AsNoTracking como el resto de reads; para editar usa <see cref="GetByIdForUpdateAsync"/>.</summary>
     Task<IReadOnlyList<SubscriptionPlan>> GetAllAsync(CancellationToken ct = default);
@@ -349,6 +352,14 @@ public interface IPlanRateLimitRepository
     Task<PlanRateLimit?> GetForUpdateAsync(string planCode, RateLimitCategory category, CancellationToken ct = default);
 
     Task AddAsync(PlanRateLimit rateLimit, CancellationToken ct = default);
+}
+
+/// <summary>D12: el perfil por defecto de rate limits (uno solo, de plataforma).</summary>
+public interface IRateLimitDefaultProfileRepository
+{
+    Task<RateLimitDefaultProfile?> GetAsync(CancellationToken ct = default);
+
+    Task<RateLimitDefaultProfile?> GetForUpdateAsync(CancellationToken ct = default);
 }
 
 /// <summary>Preferencia de cobro por tenant (Automatic/Manual) junto con los mandates que la

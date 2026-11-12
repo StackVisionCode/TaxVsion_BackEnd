@@ -61,8 +61,8 @@ public static class FileErrors
 
     /// <summary>
     /// Antes esto caia en UnsupportedType junto con extension/content-type invalidos —
-    /// un archivo rechazado solo por tamano (ej. una grabacion de meeting en un plan
-    /// "starter" con MaxFileSizeBytes=10MB) mostraba el mismo mensaje enganoso "tipo de
+    /// un archivo rechazado solo por tamano (ej. una grabacion de meeting sobre el
+    /// MaxFileSizeBytes de la oficina) mostraba el mismo mensaje enganoso "tipo de
     /// archivo no permitido", llevando a debuggear la whitelist de tipos en vez del
     /// limite real de tamano del plan.
     /// </summary>

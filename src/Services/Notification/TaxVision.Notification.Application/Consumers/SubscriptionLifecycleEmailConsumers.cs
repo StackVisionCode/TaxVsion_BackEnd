@@ -67,6 +67,9 @@ public static class SubscriptionLifecycleEmailConsumer
                             evt.Consequence,
                             evt.ItemDescription
                         ),
+                        // Cambio de condiciones del plan agendado por una migración.
+                        ["change_date"] = FormatDate(evt.VersionChangeEffectiveAtUtc),
+                        ["change_summary"] = evt.VersionChangeSummary ?? string.Empty,
                     },
                     ct
                 )
@@ -90,6 +93,9 @@ public static class SubscriptionLifecycleEmailConsumer
                         "subscription.renewal_upcoming" =>
                             $"{evt.TenantId:N}:renewal-upcoming:{evt.NextRenewalAtUtc:yyyyMMdd}:{evt.DaysUntilRenewal}",
                         // Un correo por intento: un reenvío del mismo aviso no lo repite.
+                        // Un aviso por migración: un reenvío del evento no lo repite.
+                        "subscription.version_change_scheduled" when evt.MigrationId is { } migrationId =>
+                            $"{evt.TenantId:N}:version-change:{migrationId:N}",
                         "subscription.recurring_charge_failed" when evt.SaaSPaymentId is { } paymentId =>
                             $"{paymentId:N}:attempt-{evt.AttemptNumber}:{evt.Email.Trim().ToLowerInvariant()}",
                         _ => null,
@@ -110,6 +116,10 @@ public static class SubscriptionLifecycleEmailConsumer
             && string.Equals(reason, "CancellationScheduled", StringComparison.OrdinalIgnoreCase)
         )
             return ("subscription.cancellation_scheduled.v1", "subscription.cancellation_scheduled");
+
+        // Cambian las condiciones del plan (migración de edición): no es una transición de estado.
+        if (string.Equals(reason, "VersionChangeScheduled", StringComparison.OrdinalIgnoreCase))
+            return ("subscription.version_change_scheduled.v1", "subscription.version_change_scheduled");
 
         // Recordatorio de que se acerca el fin: lo publica un job, no una transición.
         if (

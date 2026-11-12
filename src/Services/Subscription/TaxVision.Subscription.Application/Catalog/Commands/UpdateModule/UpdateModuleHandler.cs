@@ -5,7 +5,9 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Catalog.Abstractions;
+using TaxVision.Subscription.Application.Catalog.Audit;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlementsForAllPlans;
+using TaxVision.Subscription.Domain.Catalog;
 using Wolverine;
 
 namespace TaxVision.Subscription.Application.Catalog.Commands.UpdateModule;
@@ -17,6 +19,7 @@ public static class UpdateModuleHandler
         IModuleRepository modules,
         IModuleEditSerializer serializer,
         IUnitOfWork unitOfWork,
+        ICatalogAuditLog audit,
         IMessageBus bus,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -29,6 +32,7 @@ public static class UpdateModuleHandler
         if (module is null)
             return Result.Failure(new Error("Module.NotFound", "Module does not exist."));
 
+        var before = CatalogAuditViews.Of(module);
         var oldCategory = module.Category;
         var oldSellable = module.IsSellableAsAddon;
         var oldMonthlyPrice = module.AddonPriceMonthlyUsd;
@@ -49,6 +53,18 @@ public static class UpdateModuleHandler
         if (!structureChanged && !priceChanged)
             return Result.Success();
 
+        await CatalogAudit.RecordIfChangedAsync(
+            audit,
+            CatalogAuditActor.ForUser(command.ActorUserId),
+            "module.updated",
+            CatalogAuditViews.Target(module),
+            before,
+            CatalogAuditViews.Of(module),
+            reason: null,
+            correlation.CorrelationId,
+            DateTime.UtcNow,
+            ct
+        );
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
             new ModuleCategoryChangedIntegrationEvent
