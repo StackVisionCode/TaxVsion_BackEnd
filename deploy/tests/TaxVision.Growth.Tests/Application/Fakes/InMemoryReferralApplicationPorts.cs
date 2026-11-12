@@ -175,7 +175,9 @@ internal sealed class InMemoryReferralAttributionRepository(params ReferralAttri
         CancellationToken ct = default
     ) =>
         Task.FromResult(
-            _items.FirstOrDefault(attribution => attribution.RefereeId == refereeId && attribution.TenantId == ownerTenantId)
+            _items.FirstOrDefault(attribution =>
+                attribution.RefereeId == refereeId && attribution.TenantId == ownerTenantId
+            )
         );
 
     public Task AddAsync(ReferralAttribution attribution, CancellationToken ct = default)

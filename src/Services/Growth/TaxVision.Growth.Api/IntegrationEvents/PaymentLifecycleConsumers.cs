@@ -158,7 +158,9 @@ internal static class PaymentRewardClawback
 
         // El caso de uso devuelve la reversa a pedir (no publica); aquí se publica con el bus del consumer.
         if (result.Value.Request is { } request)
-            await bus.PublishAsync(TaxVision.Growth.Infrastructure.Messaging.WalletCreditRequestEvents.ToEvent(request));
+            await bus.PublishAsync(
+                TaxVision.Growth.Infrastructure.Messaging.WalletCreditRequestEvents.ToEvent(request)
+            );
     }
 }
 

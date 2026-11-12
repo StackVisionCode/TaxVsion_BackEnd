@@ -37,7 +37,11 @@ public sealed class ReferralCodeTokenGeneratorFormatTests
             .Range(0, 200)
             .Select(_ =>
                 generator
-                    .Generate(Program, Owner, $"{HmacSha256ReferralCodeTokenGenerator.ShortFormatKeyPrefix}{Guid.NewGuid()}")
+                    .Generate(
+                        Program,
+                        Owner,
+                        $"{HmacSha256ReferralCodeTokenGenerator.ShortFormatKeyPrefix}{Guid.NewGuid()}"
+                    )
                     .Value.Reveal()
             )
             .ToHashSet();

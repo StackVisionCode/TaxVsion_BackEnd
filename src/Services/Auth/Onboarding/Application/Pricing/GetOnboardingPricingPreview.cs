@@ -43,16 +43,18 @@ public static class GetOnboardingPricingPreviewHandler
     {
         if (query.PlanId == Guid.Empty)
         {
-            return Result.Failure<OnboardingPricingPreview>(
-                new Error("Onboarding.InvalidPlan", "PlanId is required.")
-            );
+            return Result.Failure<OnboardingPricingPreview>(new Error("Onboarding.InvalidPlan", "PlanId is required."));
         }
 
         var codes = new List<OnboardingCodeInput>();
         if (!string.IsNullOrWhiteSpace(query.PromoCode))
-            codes.Add(new OnboardingCodeInput(query.PromoCode.Trim(), OnboardingBenefitType.Promo, query.PromoCode.Trim()));
+            codes.Add(
+                new OnboardingCodeInput(query.PromoCode.Trim(), OnboardingBenefitType.Promo, query.PromoCode.Trim())
+            );
         if (!string.IsNullOrWhiteSpace(query.GiftCode))
-            codes.Add(new OnboardingCodeInput(query.GiftCode.Trim(), OnboardingBenefitType.Gift, query.GiftCode.Trim()));
+            codes.Add(
+                new OnboardingCodeInput(query.GiftCode.Trim(), OnboardingBenefitType.Gift, query.GiftCode.Trim())
+            );
 
         var preview = await reserver.PreviewAsync(query.PlanId, query.BillingCycle, codes, ct);
         if (preview.IsFailure)

@@ -33,11 +33,7 @@ public sealed class ReferrerBenefit : TenantEntity
 
     private ReferrerBenefit() { }
 
-    public static Result<ReferrerBenefit> Record(
-        ReferralRewardCase rewardCase,
-        Guid systemActorId,
-        DateTime nowUtc
-    )
+    public static Result<ReferrerBenefit> Record(ReferralRewardCase rewardCase, Guid systemActorId, DateTime nowUtc)
     {
         var actor = DomainGuards.EnsureActor(systemActorId);
         if (actor.IsFailure)

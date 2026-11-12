@@ -102,10 +102,7 @@ public sealed class ReferralProgramConfiguration : IEntityTypeConfiguration<Refe
                     .IsRequired();
                 policy.Property(value => value.RewardBasisPoints).HasColumnName("RewardBasisPoints").IsRequired();
                 policy.Property(value => value.RewardCapCents).HasColumnName("RewardCapCents");
-                policy
-                    .Property(value => value.RewardCurrency)
-                    .HasColumnName("RewardCurrency")
-                    .HasColumnType("char(3)");
+                policy.Property(value => value.RewardCurrency).HasColumnName("RewardCurrency").HasColumnType("char(3)");
             }
         );
         builder.Navigation(program => program.Policy).IsRequired();

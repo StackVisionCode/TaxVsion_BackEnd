@@ -91,7 +91,11 @@ public sealed class OnboardingPricingPreviewTests
         Assert.Equal("Onboarding.InvalidPlan", result.Error.Code);
     }
 
-    private static Task<Result<OnboardingPricingPreview>> Run(FakeGrowth growth, string? promo = null, string? gift = null) =>
+    private static Task<Result<OnboardingPricingPreview>> Run(
+        FakeGrowth growth,
+        string? promo = null,
+        string? gift = null
+    ) =>
         GetOnboardingPricingPreviewHandler.Handle(
             new GetOnboardingPricingPreviewQuery(Plan, "Monthly", promo, gift),
             new OnboardingCodeReserver(new FixedPricing(), growth),
@@ -139,7 +143,6 @@ public sealed class OnboardingPricingPreviewTests
             Reservations++;
             throw new InvalidOperationException("A preview must never reserve.");
         }
-
 
         public Task<Result> CommitAsync(
             Guid reservationId,

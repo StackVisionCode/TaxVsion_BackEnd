@@ -25,8 +25,10 @@ namespace TaxVision.Growth.Infrastructure.Scheduling;
 /// por caso: un conflicto o un error en uno no arrastra a los demás.
 /// La espera inicial evita correr antes de que el host termine de arrancar (Wolverine/DbContext).
 /// </summary>
-public sealed class ReferralRewardGrantWorker(IServiceScopeFactory scopeFactory, ILogger<ReferralRewardGrantWorker> logger)
-    : BackgroundService
+public sealed class ReferralRewardGrantWorker(
+    IServiceScopeFactory scopeFactory,
+    ILogger<ReferralRewardGrantWorker> logger
+) : BackgroundService
 {
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);

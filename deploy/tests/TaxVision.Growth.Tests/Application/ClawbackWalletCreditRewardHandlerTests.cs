@@ -165,7 +165,10 @@ public sealed class ClawbackWalletCreditRewardHandlerTests
         public static async Task<Fixture> CreateAsync(bool credited)
         {
             var program = GrowthTestData.CreateActiveTenantReferralProgram();
-            var attribution = GrowthTestData.CreateActiveAttribution(program, GrowthTestData.CreateReferralCode(program));
+            var attribution = GrowthTestData.CreateActiveAttribution(
+                program,
+                GrowthTestData.CreateReferralCode(program)
+            );
             var qualification = GrowthTestData.CreateQualifiedReferral(program, attribution);
             Assert.True(attribution.MarkQualified(GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(1)).IsSuccess);
             var reward = ReferralRewardCase

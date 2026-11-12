@@ -50,7 +50,9 @@ public static class GrantWalletCreditRewardHandler
         }
 
         if (reward.Status is ReferralRewardCaseStatus.Granted or ReferralRewardCaseStatus.Vested)
-            return Result.Success(new GrantWalletCreditRewardResult(GrantWalletCreditRewardOutcome.AlreadyGranted, null));
+            return Result.Success(
+                new GrantWalletCreditRewardResult(GrantWalletCreditRewardOutcome.AlreadyGranted, null)
+            );
 
         var fingerprint = CanonicalPayloadFingerprint.Compute(reward.TenantId, reward.Id);
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;

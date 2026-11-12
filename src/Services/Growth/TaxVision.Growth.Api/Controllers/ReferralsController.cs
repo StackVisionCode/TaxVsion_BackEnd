@@ -1,4 +1,5 @@
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
@@ -13,7 +14,6 @@ using TaxVision.Referrals.Application.Codes.RecordReferralCodeShare;
 using TaxVision.Referrals.Application.Codes.RegenerateTenantReferralCode;
 using TaxVision.Referrals.Application.Programs.GetActiveReferralProgram;
 using TaxVision.Referrals.Application.Queries;
-using BuildingBlocks.Common;
 using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Shares;
 using Wolverine;
@@ -117,10 +117,7 @@ public sealed class ReferralsController(IMessageBus bus, IReferralCodeTokenGener
     [ProducesResponseType<ReferralProgramTermsResult>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetActiveProgram(CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<ReferralProgramTermsResult>>(
-            new GetActiveReferralProgramQuery(),
-            ct
-        );
+        var result = await bus.InvokeAsync<Result<ReferralProgramTermsResult>>(new GetActiveReferralProgramQuery(), ct);
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

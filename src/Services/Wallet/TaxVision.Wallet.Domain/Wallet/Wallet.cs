@@ -83,7 +83,14 @@ public sealed class Wallet : AggregateRoot
         if (amount.Currency == Currency && amount.Micros > AvailableMicros)
             return Result.Failure<LedgerEntry>(WalletErrors.InsufficientFunds);
 
-        return Apply(MovementType.RewardReversal, deltaPosted: -amount.Micros, deltaHeld: 0, amount, opKey, referenceId);
+        return Apply(
+            MovementType.RewardReversal,
+            deltaPosted: -amount.Micros,
+            deltaHeld: 0,
+            amount,
+            opKey,
+            referenceId
+        );
     }
 
     /// <summary>Reserve (0, +a): aparta disponible. Requiere <see cref="AvailableMicros"/> ≥ a y wallet no congelada.</summary>

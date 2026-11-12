@@ -97,10 +97,14 @@ public static class ClawbackWalletCreditRewardHandler
 
         var reward = await rewards.GetByPaymentAsync(command.PaymentId, ct);
         if (reward is null || reward.RewardType != ReferralRewardType.WalletCredit)
-            return Result.Success(new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.NoReward, null));
+            return Result.Success(
+                new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.NoReward, null)
+            );
 
         if (command.RefundedCents is { } refunded && refunded < reward.PricePaidCents)
-            return Result.Success(new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.PartialRefundIgnored, null));
+            return Result.Success(
+                new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.PartialRefundIgnored, null)
+            );
 
         // El premio pertenece al tenant referidor: las escrituras siguientes se hacen en SU contexto.
         tenantContext.SetTenant(reward.TenantId);
@@ -111,7 +115,9 @@ public static class ClawbackWalletCreditRewardHandler
             case ReferralRewardCaseStatus.Cancelled
             or ReferralRewardCaseStatus.Reversed
             or ReferralRewardCaseStatus.Failed:
-                return Result.Success(new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.AlreadyHandled, null));
+                return Result.Success(
+                    new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.AlreadyHandled, null)
+                );
 
             case ReferralRewardCaseStatus.Requested:
             {
@@ -125,7 +131,9 @@ public static class ClawbackWalletCreditRewardHandler
                     reward.Id,
                     command.PaymentId
                 );
-                return Result.Success(new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.Cancelled, null));
+                return Result.Success(
+                    new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.Cancelled, null)
+                );
             }
 
             case ReferralRewardCaseStatus.ClawbackPending:

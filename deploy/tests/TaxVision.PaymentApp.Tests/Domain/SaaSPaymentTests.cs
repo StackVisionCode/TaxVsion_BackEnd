@@ -599,8 +599,12 @@ public sealed class SaaSPaymentTests
         payment.ClearDomainEvents();
         var nowUtc = DateTime.UtcNow;
 
-        Assert.True(payment.RefundPartial(Money.Create(999, "USD").Value, "customer request", Guid.Empty, nowUtc).IsSuccess);
-        Assert.True(payment.RefundPartial(Money.Create(1000, "USD").Value, "customer request", Guid.Empty, nowUtc).IsSuccess);
+        Assert.True(
+            payment.RefundPartial(Money.Create(999, "USD").Value, "customer request", Guid.Empty, nowUtc).IsSuccess
+        );
+        Assert.True(
+            payment.RefundPartial(Money.Create(1000, "USD").Value, "customer request", Guid.Empty, nowUtc).IsSuccess
+        );
 
         var events = payment.DomainEvents.OfType<SaaSPaymentRefunded>().ToList();
         Assert.Equal(2, events.Count);

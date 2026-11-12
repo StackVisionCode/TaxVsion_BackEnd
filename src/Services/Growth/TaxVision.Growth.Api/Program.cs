@@ -150,11 +150,17 @@ builder.Host.UseWolverine(options =>
     // Primer evento que Growth publica. Hoy no tiene consumidor.
     options.PublishMessage<CodeReservationCommittedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Solicitud de crédito/reversa del premio al Wallet (el Wallet responde con wallet.credit.applied.v1): sin M2M.
-    options.PublishMessage<BuildingBlocks.Messaging.WalletIntegrationEvents.WalletCreditRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<BuildingBlocks.Messaging.WalletIntegrationEvents.WalletCreditRequestedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
     // Aviso al referidor cuando alguien se registra con su código (Notification lo consume).
-    options.PublishMessage<BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralAttributedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralAttributedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
     // Envío de una giftcard por correo: Notification lo consume y despacha el email.
-    options.PublishMessage<BuildingBlocks.Messaging.GrowthIntegrationEvents.GiftcardShareRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options
+        .PublishMessage<BuildingBlocks.Messaging.GrowthIntegrationEvents.GiftcardShareRequestedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
 
     options
         .ListenToRabbitQueue(
@@ -187,17 +193,17 @@ app.UseTaxVisionClientIp();
 // compañía (PlatformAdmin) desde la administración; sembrar códigos de regalo públicos con montos reales sería un
 // agujero. Se activa con Growth:Seeding:OnboardingDemoCodes=true (lo pone el overlay local de docker).
 if (builder.Configuration.GetValue("Growth:Seeding:OnboardingDemoCodes", false))
-await using (var seedScope = app.Services.CreateAsyncScope())
-{
-    var sp = seedScope.ServiceProvider;
-    await TaxVision.Codes.Application.Definitions.Seeding.PlatformOnboardingCodeSeeder.SeedAsync(
-        sp.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeDefinitionRepository>(),
-        sp.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeTokenHasher>(),
-        sp.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(),
-        sp.GetRequiredService<ILogger<Program>>(),
-        CancellationToken.None
-    );
-}
+    await using (var seedScope = app.Services.CreateAsyncScope())
+    {
+        var sp = seedScope.ServiceProvider;
+        await TaxVision.Codes.Application.Definitions.Seeding.PlatformOnboardingCodeSeeder.SeedAsync(
+            sp.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeDefinitionRepository>(),
+            sp.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeTokenHasher>(),
+            sp.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(),
+            sp.GetRequiredService<ILogger<Program>>(),
+            CancellationToken.None
+        );
+    }
 
 // Referidos — siembra el programa de plataforma por defecto (idempotente por ProgramCode; nunca pisa lo
 // que el PlatformAdmin ajustó). Scope propio: fija el tenant de plataforma sin contaminar requests.

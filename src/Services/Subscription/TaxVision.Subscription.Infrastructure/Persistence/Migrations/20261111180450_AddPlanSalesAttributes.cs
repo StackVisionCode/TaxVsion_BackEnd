@@ -15,14 +15,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 table: "SubscriptionPlans",
                 type: "bit",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: false
+            );
 
             migrationBuilder.AddColumn<bool>(
                 name: "IsOnSale",
                 table: "SubscriptionPlans",
                 type: "bit",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: false
+            );
 
             migrationBuilder.AddColumn<byte[]>(
                 name: "RowVersion",
@@ -30,14 +32,16 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 type: "rowversion",
                 rowVersion: true,
                 nullable: false,
-                defaultValue: new byte[0]);
+                defaultValue: new byte[0]
+            );
 
             migrationBuilder.AddColumn<int>(
                 name: "SalesRank",
                 table: "SubscriptionPlans",
                 type: "int",
                 nullable: false,
-                defaultValue: 100);
+                defaultValue: 100
+            );
 
             // Deja el catálogo como se ve hoy: lo publicado sigue a la venta, en el orden de siempre y con Pro
             // destacado (la landing lo resaltaba por código). sp_executesql porque las columnas son de este mismo lote.
@@ -58,21 +62,13 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "IsFeatured",
-                table: "SubscriptionPlans");
+            migrationBuilder.DropColumn(name: "IsFeatured", table: "SubscriptionPlans");
 
-            migrationBuilder.DropColumn(
-                name: "IsOnSale",
-                table: "SubscriptionPlans");
+            migrationBuilder.DropColumn(name: "IsOnSale", table: "SubscriptionPlans");
 
-            migrationBuilder.DropColumn(
-                name: "RowVersion",
-                table: "SubscriptionPlans");
+            migrationBuilder.DropColumn(name: "RowVersion", table: "SubscriptionPlans");
 
-            migrationBuilder.DropColumn(
-                name: "SalesRank",
-                table: "SubscriptionPlans");
+            migrationBuilder.DropColumn(name: "SalesRank", table: "SubscriptionPlans");
         }
     }
 }

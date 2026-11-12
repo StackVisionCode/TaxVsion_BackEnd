@@ -22,7 +22,9 @@ public static class GiftcardShareConsumer
         using (correlation.Push(Correlation.From(string.Empty, evt.EventId)))
         {
             // Sin nombre se usa la parte local del correo, como el resto de correos de este servicio.
-            var name = string.IsNullOrWhiteSpace(evt.RecipientName) ? evt.RecipientEmail.Split('@')[0] : evt.RecipientName!;
+            var name = string.IsNullOrWhiteSpace(evt.RecipientName)
+                ? evt.RecipientEmail.Split('@')[0]
+                : evt.RecipientName!;
             var expires = evt.ExpiresAtUtc is { } until
                 ? $"Valid until {until.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)}"
                 : "No expiry";

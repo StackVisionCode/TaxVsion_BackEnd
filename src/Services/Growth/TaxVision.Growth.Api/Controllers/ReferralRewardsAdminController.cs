@@ -85,7 +85,9 @@ public sealed class ReferralRewardsAdminController(IMessageBus bus) : Controller
         if (!this.TryGetTenantAndUser(out var callerTenant, out var actorId) || callerTenant != PlatformTenant.Id)
             return Forbid();
         if (request.TenantId == Guid.Empty)
-            return BadRequest(new Error("ReferralReward.InvalidTenant", "The office that owns the reward is required."));
+            return BadRequest(
+                new Error("ReferralReward.InvalidTenant", "The office that owns the reward is required.")
+            );
 
         var caller = bus.TenantId;
         bus.TenantId = request.TenantId.ToString();

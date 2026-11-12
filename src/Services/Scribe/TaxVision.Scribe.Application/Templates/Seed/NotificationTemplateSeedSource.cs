@@ -1756,8 +1756,20 @@ public static class NotificationTemplateSeedSource
             """,
             Variables:
             [
-                ("recipient_name", VariableType.String, true, null, "Nombre del destinatario (con fallback ya resuelto)."),
-                ("value_label", VariableType.String, true, null, "Beneficio tal como se ve en la tarjeta (20% OFF, $25 OFF)."),
+                (
+                    "recipient_name",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Nombre del destinatario (con fallback ya resuelto)."
+                ),
+                (
+                    "value_label",
+                    VariableType.String,
+                    true,
+                    null,
+                    "Beneficio tal como se ve en la tarjeta (20% OFF, $25 OFF)."
+                ),
                 ("code", VariableType.String, true, null, "Código de la giftcard."),
                 ("expires_text", VariableType.String, true, null, "Vigencia legible: 'Valid until …' o 'No expiry'."),
                 ("redeem_url", VariableType.String, true, null, "Enlace al alta con el código precargado."),

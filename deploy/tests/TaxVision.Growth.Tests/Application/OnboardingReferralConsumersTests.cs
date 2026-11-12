@@ -257,18 +257,7 @@ public sealed class OnboardingReferralConsumersTests
         };
 
     private static ReferralProgramTermsResult Program() =>
-        new(
-            Guid.NewGuid(),
-            "TENANT-REFERRALS",
-            1,
-            ReferralRewardType.WalletCredit,
-            1_000,
-            5_000,
-            "USD",
-            30,
-            10,
-            30
-        );
+        new(Guid.NewGuid(), "TENANT-REFERRALS", 1, ReferralRewardType.WalletCredit, 1_000, 5_000, "USD", 30, 10, 30);
 
     /// <summary>Bus falso: responde cada comando con un guion y apunta el tenant activo en cada invocación.</summary>
     private sealed class ScriptedBus(Func<object, object> script) : IMessageBus
@@ -279,7 +268,11 @@ public sealed class OnboardingReferralConsumersTests
         public List<object> Published { get; } = [];
         public List<string?> TenantIdDuring { get; } = [];
 
-        public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
+        public Task<T> InvokeAsync<T>(
+            object message,
+            CancellationToken cancellation = default,
+            TimeSpan? timeout = null
+        )
         {
             Invoked.Add(message);
             TenantIdDuring.Add(TenantId);

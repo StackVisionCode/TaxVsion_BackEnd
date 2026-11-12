@@ -107,9 +107,19 @@ public sealed class ReferralAdminHandlersTests
     {
         var reward = NewReward();
         Assert.True(reward.BeginGrant(GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(40)).IsSuccess);
-        Assert.True(reward.ConfirmGranted("wallet-credit:abc", GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(40)).IsSuccess);
-        Assert.True(reward.RequestClawback("refund", GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(41)).IsSuccess);
-        Assert.True(reward.MoveToManualReview("wallet unreachable", GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(42)).IsSuccess);
+        Assert.True(
+            reward
+                .ConfirmGranted("wallet-credit:abc", GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(40))
+                .IsSuccess
+        );
+        Assert.True(
+            reward.RequestClawback("refund", GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(41)).IsSuccess
+        );
+        Assert.True(
+            reward
+                .MoveToManualReview("wallet unreachable", GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(42))
+                .IsSuccess
+        );
 
         var release = await Review(reward, RewardReviewAction.Release);
         var reject = await Review(reward, RewardReviewAction.Reject);
@@ -208,8 +218,16 @@ public sealed class ReferralAdminHandlersTests
     {
         var readModel = new EmptyReadModel();
 
-        var codes = await ReferralAdminQueryHandler.Handle(new ListReferralCodesAdminQuery(null, null, page, size), readModel, default);
-        var rewards = await ReferralAdminQueryHandler.Handle(new ListReferralRewardsAdminQuery(null, page, size), readModel, default);
+        var codes = await ReferralAdminQueryHandler.Handle(
+            new ListReferralCodesAdminQuery(null, null, page, size),
+            readModel,
+            default
+        );
+        var rewards = await ReferralAdminQueryHandler.Handle(
+            new ListReferralRewardsAdminQuery(null, page, size),
+            readModel,
+            default
+        );
 
         Assert.Equal("Referrals.InvalidPaging", codes.Error.Code);
         Assert.Equal("Referrals.InvalidPaging", rewards.Error.Code);
@@ -221,9 +239,21 @@ public sealed class ReferralAdminHandlersTests
     {
         var readModel = new EmptyReadModel();
 
-        var bad = await ReferralAdminQueryHandler.Handle(new ListReferralCodesAdminQuery(null, "Bogus"), readModel, default);
-        var badReward = await ReferralAdminQueryHandler.Handle(new ListReferralRewardsAdminQuery("Bogus"), readModel, default);
-        var good = await ReferralAdminQueryHandler.Handle(new ListReferralRewardsAdminQuery("manualreview"), readModel, default);
+        var bad = await ReferralAdminQueryHandler.Handle(
+            new ListReferralCodesAdminQuery(null, "Bogus"),
+            readModel,
+            default
+        );
+        var badReward = await ReferralAdminQueryHandler.Handle(
+            new ListReferralRewardsAdminQuery("Bogus"),
+            readModel,
+            default
+        );
+        var good = await ReferralAdminQueryHandler.Handle(
+            new ListReferralRewardsAdminQuery("manualreview"),
+            readModel,
+            default
+        );
 
         Assert.Equal("Referrals.InvalidStatus", bad.Error.Code);
         Assert.Equal("Referrals.InvalidStatus", badReward.Error.Code);

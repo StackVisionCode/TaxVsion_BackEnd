@@ -173,10 +173,11 @@ public sealed class GrantWalletCreditRewardHandlerTests
 
         public static Fixture Create(ReferralProgramPolicy? policy = null)
         {
-            var program = policy is null
-                ? GrowthTestData.CreateActiveTenantReferralProgram()
-                : ProgramWith(policy);
-            var attribution = GrowthTestData.CreateActiveAttribution(program, GrowthTestData.CreateReferralCode(program));
+            var program = policy is null ? GrowthTestData.CreateActiveTenantReferralProgram() : ProgramWith(policy);
+            var attribution = GrowthTestData.CreateActiveAttribution(
+                program,
+                GrowthTestData.CreateReferralCode(program)
+            );
             var qualification = GrowthTestData.CreateQualifiedReferral(program, attribution);
             Assert.True(attribution.MarkQualified(GrowthTestData.ActorId, GrowthTestData.NowUtc.AddDays(1)).IsSuccess);
             var reward = ReferralRewardCase
@@ -249,8 +250,11 @@ public sealed class GrantWalletCreditRewardHandlerTests
         private readonly List<ReferralRewardAttempt> _items = [];
         public IReadOnlyList<ReferralRewardAttempt> Items => _items;
 
-        public Task<ReferralRewardAttempt?> GetByIdAsync(Guid attemptId, Guid ownerTenantId, CancellationToken ct = default) =>
-            Task.FromResult(_items.FirstOrDefault(a => a.Id == attemptId && a.TenantId == ownerTenantId));
+        public Task<ReferralRewardAttempt?> GetByIdAsync(
+            Guid attemptId,
+            Guid ownerTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(_items.FirstOrDefault(a => a.Id == attemptId && a.TenantId == ownerTenantId));
 
         public Task<ReferralRewardAttempt?> GetOpenGrantAttemptAsync(
             Guid rewardCaseId,
@@ -278,8 +282,11 @@ public sealed class GrantWalletCreditRewardHandlerTests
         private readonly List<ReferrerBenefit> _items = [];
         public IReadOnlyList<ReferrerBenefit> Items => _items;
 
-        public Task<ReferrerBenefit?> GetByRewardCaseAsync(Guid rewardCaseId, Guid ownerTenantId, CancellationToken ct = default) =>
-            Task.FromResult(_items.FirstOrDefault(b => b.RewardCaseId == rewardCaseId && b.TenantId == ownerTenantId));
+        public Task<ReferrerBenefit?> GetByRewardCaseAsync(
+            Guid rewardCaseId,
+            Guid ownerTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(_items.FirstOrDefault(b => b.RewardCaseId == rewardCaseId && b.TenantId == ownerTenantId));
 
         public Task AddAsync(ReferrerBenefit benefit, CancellationToken ct = default)
         {

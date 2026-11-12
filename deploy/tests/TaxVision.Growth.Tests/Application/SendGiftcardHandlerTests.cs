@@ -19,15 +19,16 @@ public sealed class SendGiftcardHandlerTests
     )
     {
         // Un código de TENANT necesita su propio dueño y alcance; el de plataforma, no.
-        var card = scope == CodeOwnerScope.Tenant
-            ? GrowthTestData.CreateActivePercentageCode(
-                ownerTenantId: GrowthTestData.ReferrerTenantId,
-                ownerScope: scope,
-                tenantScopeId: GrowthTestData.ReferrerTenantId,
-                basisPoints: 2_000,
-                codeHashCharacter: 'a'
-            )
-            : GrowthTestData.CreateActivePercentageCode(basisPoints: 2_000, codeHashCharacter: 'a');
+        var card =
+            scope == CodeOwnerScope.Tenant
+                ? GrowthTestData.CreateActivePercentageCode(
+                    ownerTenantId: GrowthTestData.ReferrerTenantId,
+                    ownerScope: scope,
+                    tenantScopeId: GrowthTestData.ReferrerTenantId,
+                    basisPoints: 2_000,
+                    codeHashCharacter: 'a'
+                )
+                : GrowthTestData.CreateActivePercentageCode(basisPoints: 2_000, codeHashCharacter: 'a');
         return (card, new InMemoryCodeDefinitionRepository(card));
     }
 

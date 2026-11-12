@@ -202,7 +202,10 @@ public sealed class ReferralProgramPolicy
             if (rewardCapCents is <= 0)
             {
                 return Result.Failure(
-                    new Error("ReferralPolicy.InvalidRewardCap", "RewardCapCents must be greater than zero when supplied.")
+                    new Error(
+                        "ReferralPolicy.InvalidRewardCap",
+                        "RewardCapCents must be greater than zero when supplied."
+                    )
                 );
             }
 

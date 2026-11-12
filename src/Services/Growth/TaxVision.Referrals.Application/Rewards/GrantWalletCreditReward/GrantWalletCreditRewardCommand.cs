@@ -8,7 +8,12 @@ namespace TaxVision.Referrals.Application.Rewards.GrantWalletCreditReward;
 public sealed record GrantWalletCreditRewardCommand(Guid TenantId, Guid RewardCaseId, Guid ActorUserId);
 
 /// <summary>El Wallet respondió que acreditó el premio (evento <c>wallet.credit.applied.v1</c> exitoso).</summary>
-public sealed record ConfirmWalletCreditRewardCommand(Guid TenantId, Guid RewardCaseId, Guid LedgerEntryId, Guid ActorUserId);
+public sealed record ConfirmWalletCreditRewardCommand(
+    Guid TenantId,
+    Guid RewardCaseId,
+    Guid LedgerEntryId,
+    Guid ActorUserId
+);
 
 /// <summary>Resultado de pedir el crédito: qué pasó y, si hay que hablar con el Wallet, la solicitud a publicar.</summary>
 public sealed record GrantWalletCreditRewardResult(

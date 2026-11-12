@@ -14,15 +14,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 name: "LastEntitlementsRevision",
                 table: "TenantPlanLimits",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "LastEntitlementsRevision",
-                table: "TenantPlanLimits");
+            migrationBuilder.DropColumn(name: "LastEntitlementsRevision", table: "TenantPlanLimits");
         }
     }
 }

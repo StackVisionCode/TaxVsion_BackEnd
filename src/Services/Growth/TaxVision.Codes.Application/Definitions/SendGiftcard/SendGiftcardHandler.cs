@@ -50,7 +50,10 @@ public static class SendGiftcardHandler
 
         var message = string.IsNullOrWhiteSpace(command.PersonalMessage) ? null : command.PersonalMessage.Trim();
         if (message is { Length: > MaxMessageLength })
-            return Fail("Codes.SendGiftcard.MessageTooLong", $"The message cannot exceed {MaxMessageLength} characters.");
+            return Fail(
+                "Codes.SendGiftcard.MessageTooLong",
+                $"The message cannot exceed {MaxMessageLength} characters."
+            );
 
         var definition = await definitions.GetOwnedByIdAsync(PlatformTenant.Id, command.CodeDefinitionId, ct);
         if (definition is null || definition.OwnerScope != CodeOwnerScope.Platform)

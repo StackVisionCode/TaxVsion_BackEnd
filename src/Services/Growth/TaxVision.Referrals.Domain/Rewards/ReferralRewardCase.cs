@@ -373,9 +373,7 @@ public sealed class ReferralRewardCase : TenantEntity
             return actor;
 
         if (Status != ReferralRewardCaseStatus.ManualReview || MaterializedBenefitReference is not null)
-            return Result.Failure(
-                new Error("ReferralReward.InvalidTransition", $"Cannot release from {Status}.")
-            );
+            return Result.Failure(new Error("ReferralReward.InvalidTransition", $"Cannot release from {Status}."));
 
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(new Error("ReferralReward.InvalidReason", "A release reason is required."));

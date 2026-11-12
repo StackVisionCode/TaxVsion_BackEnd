@@ -20,12 +20,13 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     RowVersion = table.Column<byte[]>(type: "rowversion", rowVersion: true, nullable: false),
                     UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    UpdatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_RateLimitDefaultProfiles", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "RateLimitDefaultProfileEntries",
@@ -33,7 +34,7 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 {
                     Category = table.Column<string>(type: "nvarchar(5)", maxLength: 5, nullable: false),
                     ProfileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Multiplier = table.Column<decimal>(type: "decimal(9,4)", precision: 9, scale: 4, nullable: false)
+                    Multiplier = table.Column<decimal>(type: "decimal(9,4)", precision: 9, scale: 4, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -43,13 +44,21 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         column: x => x.ProfileId,
                         principalTable: "RateLimitDefaultProfiles",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.InsertData(
                 table: "RateLimitDefaultProfiles",
                 columns: new[] { "Id", "UpdatedAtUtc", "UpdatedBy" },
-                values: new object[] { new Guid("c4000000-0000-0000-0000-000000000001"), new DateTime(2026, 11, 11, 0, 0, 0, 0, DateTimeKind.Utc), new Guid("00000000-0000-0000-0000-000000000000") });
+                values: new object[]
+                {
+                    new Guid("c4000000-0000-0000-0000-000000000001"),
+                    new DateTime(2026, 11, 11, 0, 0, 0, 0, DateTimeKind.Utc),
+                    new Guid("00000000-0000-0000-0000-000000000000"),
+                }
+            );
 
             migrationBuilder.InsertData(
                 table: "RateLimitDefaultProfileEntries",
@@ -65,18 +74,17 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     { "L", new Guid("c4000000-0000-0000-0000-000000000001"), 10m },
                     { "M", new Guid("c4000000-0000-0000-0000-000000000001"), 1m },
                     { "N", new Guid("c4000000-0000-0000-0000-000000000001"), 1m },
-                    { "O", new Guid("c4000000-0000-0000-0000-000000000001"), 10m }
-                });
+                    { "O", new Guid("c4000000-0000-0000-0000-000000000001"), 10m },
+                }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "RateLimitDefaultProfileEntries");
+            migrationBuilder.DropTable(name: "RateLimitDefaultProfileEntries");
 
-            migrationBuilder.DropTable(
-                name: "RateLimitDefaultProfiles");
+            migrationBuilder.DropTable(name: "RateLimitDefaultProfiles");
         }
     }
 }

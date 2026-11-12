@@ -17,6 +17,7 @@ public sealed class HmacSha256ReferralCodeTokenGenerator : IReferralCodeTokenGen
         "TaxVision.Growth.Referrals.TokenGeneration.Key.v1"
     );
     private const string MessageDomain = "TaxVision.Growth.Referrals.TokenGeneration.Message.v1";
+
     /// <summary>Prefijo de la Idempotency-Key que pide el formato corto (lo envía el CRM al generar el código).</summary>
     public const string ShortFormatKeyPrefix = "referral-regenerate:";
 

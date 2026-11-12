@@ -258,7 +258,9 @@ public sealed class ReferralCodeOwnerApplicationTests
         private Fixture(ReferralProgram program, bool withProgram)
         {
             Program = program;
-            Programs = withProgram ? new InMemoryReferralProgramRepository(program) : new InMemoryReferralProgramRepository();
+            Programs = withProgram
+                ? new InMemoryReferralProgramRepository(program)
+                : new InMemoryReferralProgramRepository();
             Codes = new InMemoryReferralCodeRepository();
             _idempotency = new FakeReferralIdempotencyExecutor(Codes);
         }
@@ -266,8 +268,9 @@ public sealed class ReferralCodeOwnerApplicationTests
         public static Fixture Create(bool withProgram = true) =>
             new(GrowthTestData.CreateActiveTenantReferralProgram(), withProgram);
 
-        public Task<Result<TaxVision.Referrals.Application.Codes.IssueTenantReferralCode.IssueTenantReferralCodeResult>>
-            RegenerateAsync(Guid actorUserId, string key) =>
+        public Task<
+            Result<TaxVision.Referrals.Application.Codes.IssueTenantReferralCode.IssueTenantReferralCodeResult>
+        > RegenerateAsync(Guid actorUserId, string key) =>
             RegenerateTenantReferralCodeHandler.Handle(
                 new RegenerateTenantReferralCodeCommand(Owner, actorUserId, key),
                 Programs,
@@ -300,13 +303,17 @@ public sealed class ReferralCodeOwnerApplicationTests
     private sealed class KeyDerivedTokenGenerator : IReferralCodeTokenGenerator
     {
         public Result<ReferralCodeToken> Generate(Guid programId, Guid ownerId, string idempotencyKey) =>
-            ReferralCodeToken.Create($"TVR-{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(idempotencyKey)))[..20]}");
+            ReferralCodeToken.Create(
+                $"TVR-{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(idempotencyKey)))[..20]}"
+            );
     }
 
     private sealed class Sha256Hasher : IReferralCodeTokenHasher
     {
         public Result<string> Hash(string referralCode) =>
-            Result.Success(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(referralCode))).ToLowerInvariant());
+            Result.Success(
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(referralCode))).ToLowerInvariant()
+            );
     }
 
     private sealed class InMemoryShareRepository : IReferralCodeShareRepository

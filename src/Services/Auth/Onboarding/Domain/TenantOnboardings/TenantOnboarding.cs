@@ -190,7 +190,9 @@ public sealed class TenantOnboarding : BaseEntity
     public Result AttachReferralAttribution(Guid referralAttributionId)
     {
         if (referralAttributionId == Guid.Empty)
-            return Result.Failure(new Error("Onboarding.InvalidReferralAttribution", "ReferralAttributionId is required."));
+            return Result.Failure(
+                new Error("Onboarding.InvalidReferralAttribution", "ReferralAttributionId is required.")
+            );
 
         ReferralAttributionId ??= referralAttributionId;
         return Result.Success();

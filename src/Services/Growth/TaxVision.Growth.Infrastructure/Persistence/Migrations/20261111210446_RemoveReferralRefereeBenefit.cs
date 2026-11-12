@@ -10,30 +10,27 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "RefereeBenefitCurrency",
-                schema: "referrals",
-                table: "ReferralPrograms");
+            migrationBuilder.DropColumn(name: "RefereeBenefitCurrency", schema: "referrals", table: "ReferralPrograms");
 
             migrationBuilder.DropColumn(
                 name: "RefereeBenefitExpirationDays",
                 schema: "referrals",
-                table: "ReferralPrograms");
+                table: "ReferralPrograms"
+            );
 
             migrationBuilder.DropColumn(
                 name: "RefereeBenefitFixedAmountCents",
                 schema: "referrals",
-                table: "ReferralPrograms");
+                table: "ReferralPrograms"
+            );
 
             migrationBuilder.DropColumn(
                 name: "RefereeBenefitPercentageBasisPoints",
                 schema: "referrals",
-                table: "ReferralPrograms");
+                table: "ReferralPrograms"
+            );
 
-            migrationBuilder.DropColumn(
-                name: "RefereeBenefitType",
-                schema: "referrals",
-                table: "ReferralPrograms");
+            migrationBuilder.DropColumn(name: "RefereeBenefitType", schema: "referrals", table: "ReferralPrograms");
         }
 
         /// <inheritdoc />
@@ -44,7 +41,8 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 schema: "referrals",
                 table: "ReferralPrograms",
                 type: "char(3)",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<int>(
                 name: "RefereeBenefitExpirationDays",
@@ -52,21 +50,24 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 table: "ReferralPrograms",
                 type: "int",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "RefereeBenefitFixedAmountCents",
                 schema: "referrals",
                 table: "ReferralPrograms",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<int>(
                 name: "RefereeBenefitPercentageBasisPoints",
                 schema: "referrals",
                 table: "ReferralPrograms",
                 type: "int",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "RefereeBenefitType",
@@ -74,7 +75,8 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 table: "ReferralPrograms",
                 type: "nvarchar(20)",
                 maxLength: 20,
-                nullable: true);
+                nullable: true
+            );
         }
     }
 }

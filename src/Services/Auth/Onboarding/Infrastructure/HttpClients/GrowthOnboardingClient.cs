@@ -204,7 +204,6 @@ public sealed class GrowthOnboardingClient(
             : Result.Failure(await MapErrorAsync(message, "Growth.Cancel", ct));
     }
 
-
     private async Task<Result<HttpResponseMessage>> SendAsync(
         string scope,
         HttpMethod method,

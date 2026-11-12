@@ -22,7 +22,11 @@ public static class ReferralAttributedNotificationConsumer
     {
         using (correlation.Push(Correlation.From(string.Empty, evt.EventId)))
         {
-            var owner = await resolver.ResolveAsync(new TenantOwnerAudience(evt.TenantId), RecipientValidation.None, ct);
+            var owner = await resolver.ResolveAsync(
+                new TenantOwnerAudience(evt.TenantId),
+                RecipientValidation.None,
+                ct
+            );
             IReadOnlyList<Guid> recipients = owner.IsSuccess ? owner.Value : [];
             if (recipients.Count == 0)
                 return;

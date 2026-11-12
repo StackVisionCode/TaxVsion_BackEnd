@@ -18,19 +18,19 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     RevisionId = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
                     Summary = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: false),
                     AppliedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    FollowUpPublishedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    FollowUpPublishedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CatalogRevisions", x => x.RevisionId);
-                });
+                }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CatalogRevisions");
+            migrationBuilder.DropTable(name: "CatalogRevisions");
         }
     }
 }

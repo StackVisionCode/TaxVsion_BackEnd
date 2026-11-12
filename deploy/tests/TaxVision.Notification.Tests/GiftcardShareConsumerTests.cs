@@ -109,7 +109,13 @@ public sealed class GiftcardShareConsumerTests
         {
             Requests.Add(request);
             return Task.FromResult(
-                new EmailDispatchResult(Guid.NewGuid(), Guid.NewGuid(), NotificationDispatchAttemptStatus.Sent, null, null)
+                new EmailDispatchResult(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    NotificationDispatchAttemptStatus.Sent,
+                    null,
+                    null
+                )
             );
         }
     }

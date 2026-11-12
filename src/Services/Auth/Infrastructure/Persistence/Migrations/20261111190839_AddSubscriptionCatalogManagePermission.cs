@@ -13,8 +13,37 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "GatedModule", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "IsReserved", "MinPlanTier", "Module", "PlatformOnly" },
-                values: new object[] { new Guid("a1000000-0000-0000-0000-000000000220"), "PlatformAdmin", "subscription.catalog.manage", "Edit the plan catalog: plans, editions, sale status, add-ons, modules, rate limits and seat prices (platform only)", null, false, false, false, false, 0, "subscription", true });
+                columns: new[]
+                {
+                    "Id",
+                    "AllowedActorTypes",
+                    "Code",
+                    "Description",
+                    "GatedModule",
+                    "IsAssignableByTenant",
+                    "IsCustomerPortal",
+                    "IsDangerous",
+                    "IsReserved",
+                    "MinPlanTier",
+                    "Module",
+                    "PlatformOnly",
+                },
+                values: new object[]
+                {
+                    new Guid("a1000000-0000-0000-0000-000000000220"),
+                    "PlatformAdmin",
+                    "subscription.catalog.manage",
+                    "Edit the plan catalog: plans, editions, sale status, add-ons, modules, rate limits and seat prices (platform only)",
+                    null,
+                    false,
+                    false,
+                    false,
+                    false,
+                    0,
+                    "subscription",
+                    true,
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -23,7 +52,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000220"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000220")
+            );
         }
     }
 }

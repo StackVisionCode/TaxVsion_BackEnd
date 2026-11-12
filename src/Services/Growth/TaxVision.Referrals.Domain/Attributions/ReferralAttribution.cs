@@ -2,9 +2,9 @@ using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
 using TaxVision.Referrals.Domain.Codes;
 using TaxVision.Referrals.Domain.Common;
-using TaxVision.Referrals.Domain.Shares;
 using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Programs;
+using TaxVision.Referrals.Domain.Shares;
 
 namespace TaxVision.Referrals.Domain.Attributions;
 

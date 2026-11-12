@@ -26,7 +26,10 @@ public static class CreditWalletHandler
             return Result.Failure<WalletCreditView>(WalletErrors.TenantRequired);
 
         if (!WalletCreditOperationKeys.TryNormalizeReferenceType(command.ReferenceType, out var referenceType))
-            return Failure("Wallet.InvalidReferenceType", "ReferenceType is required (lowercase, up to 40 characters).");
+            return Failure(
+                "Wallet.InvalidReferenceType",
+                "ReferenceType is required (lowercase, up to 40 characters)."
+            );
 
         if (command.ReferenceId == Guid.Empty)
             return Failure("Wallet.InvalidReference", "ReferenceId is required.");

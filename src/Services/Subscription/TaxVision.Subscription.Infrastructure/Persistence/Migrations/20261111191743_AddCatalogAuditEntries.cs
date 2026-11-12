@@ -27,29 +27,31 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     AfterJson = table.Column<string>(type: "nvarchar(max)", nullable: true),
                     Reason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
                     CorrelationId = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    OccurredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    OccurredAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_CatalogAuditEntries", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CatalogAuditEntries_EntityType_EntityId_OccurredAtUtc",
                 table: "CatalogAuditEntries",
-                columns: new[] { "EntityType", "EntityId", "OccurredAtUtc" });
+                columns: new[] { "EntityType", "EntityId", "OccurredAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_CatalogAuditEntries_OccurredAtUtc",
                 table: "CatalogAuditEntries",
-                column: "OccurredAtUtc");
+                column: "OccurredAtUtc"
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "CatalogAuditEntries");
+            migrationBuilder.DropTable(name: "CatalogAuditEntries");
         }
     }
 }

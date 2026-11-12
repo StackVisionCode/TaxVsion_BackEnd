@@ -121,7 +121,10 @@ public sealed class ReferralReadModel(GrowthDbContext db, ITenantContext tenantC
         var earned = await creditedCases.SumAsync(r => (long?)r.RewardAmountCents, ct) ?? 0;
         var credited = await creditedCases.CountAsync(ct);
         var currency =
-            await creditedCases.Where(r => r.RewardCurrency != null).Select(r => r.RewardCurrency).FirstOrDefaultAsync(ct)
+            await creditedCases
+                .Where(r => r.RewardCurrency != null)
+                .Select(r => r.RewardCurrency)
+                .FirstOrDefaultAsync(ct)
             ?? "USD";
 
         var pending =

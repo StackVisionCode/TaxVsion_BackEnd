@@ -338,7 +338,13 @@ public sealed class ReferralsWalletRewardDomainTests
             new string('x', 201),
             GrowthTestData.NowUtc
         );
-        var noActor = ReferralCodeShare.Record(activeCode, ReferralShareChannel.Sms, Guid.Empty, null, GrowthTestData.NowUtc);
+        var noActor = ReferralCodeShare.Record(
+            activeCode,
+            ReferralShareChannel.Sms,
+            Guid.Empty,
+            null,
+            GrowthTestData.NowUtc
+        );
         Assert.True(code.Supersede(GrowthTestData.ActorId, GrowthTestData.NowUtc.AddHours(1)).IsSuccess);
         var revoked = ReferralCodeShare.Record(
             code,
@@ -432,15 +438,7 @@ public sealed class ReferralsWalletRewardDomainTests
 
     private static ReferralProgramPolicy TrialExtensionPolicy() =>
         ReferralProgramPolicy
-            .CreateTenantToTenant(
-                90,
-                1,
-                null,
-                30,
-                10,
-                ReferralRewardType.SubscriptionTrialExtension,
-                "referrals.trial"
-            )
+            .CreateTenantToTenant(90, 1, null, 30, 10, ReferralRewardType.SubscriptionTrialExtension, "referrals.trial")
             .Value;
 
     private static ReferralAttribution QualifiedAttribution(

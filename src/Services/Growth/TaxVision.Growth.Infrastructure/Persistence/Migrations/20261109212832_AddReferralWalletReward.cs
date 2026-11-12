@@ -14,7 +14,8 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
             migrationBuilder.DropCheckConstraint(
                 name: "CK_ReferralPrograms_PolicyLimits",
                 schema: "referrals",
-                table: "ReferralPrograms");
+                table: "ReferralPrograms"
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "PricePaidCents",
@@ -22,7 +23,8 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 table: "ReferralRewardCases",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 0L
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "RewardAmountCents",
@@ -30,7 +32,8 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 table: "ReferralRewardCases",
                 type: "bigint",
                 nullable: false,
-                defaultValue: 0L);
+                defaultValue: 0L
+            );
 
             migrationBuilder.AddColumn<int>(
                 name: "RewardBasisPoints",
@@ -38,21 +41,24 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 table: "ReferralRewardCases",
                 type: "int",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "RewardCapCents",
                 schema: "referrals",
                 table: "ReferralRewardCases",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "RewardCurrency",
                 schema: "referrals",
                 table: "ReferralRewardCases",
                 type: "char(3)",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<int>(
                 name: "RewardBasisPoints",
@@ -60,28 +66,32 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 table: "ReferralPrograms",
                 type: "int",
                 nullable: false,
-                defaultValue: 0);
+                defaultValue: 0
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "RewardCapCents",
                 schema: "referrals",
                 table: "ReferralPrograms",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "RewardCurrency",
                 schema: "referrals",
                 table: "ReferralPrograms",
                 type: "char(3)",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "OwnerUserId",
                 schema: "referrals",
                 table: "ReferralCodes",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "Channel",
@@ -89,21 +99,24 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                 table: "ReferralAttributions",
                 type: "nvarchar(20)",
                 maxLength: 20,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "ReferrerUserId",
                 schema: "referrals",
                 table: "ReferralAttributions",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "ShareId",
                 schema: "referrals",
                 table: "ReferralAttributions",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateTable(
                 name: "ReferralCodeShares",
@@ -116,7 +129,7 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     SharedByUserId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     SharedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: false),
                     RecipientHint = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -127,8 +140,10 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         principalSchema: "referrals",
                         principalTable: "ReferralCodes",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "ReferrerBenefits",
@@ -144,147 +159,121 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     SystemActorId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     CreditedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: false),
                     ReversedAtUtc = table.Column<DateTime>(type: "datetime2(7)", nullable: true),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ReferrerBenefits", x => x.Id);
-                    table.CheckConstraint("CK_ReferrerBenefits_Amounts", "[TotalBenefitWalletCents] > 0 AND [AppliedBasisPoints] BETWEEN 1 AND 10000");
+                    table.CheckConstraint(
+                        "CK_ReferrerBenefits_Amounts",
+                        "[TotalBenefitWalletCents] > 0 AND [AppliedBasisPoints] BETWEEN 1 AND 10000"
+                    );
                     table.ForeignKey(
                         name: "FK_ReferrerBenefits_ReferralAttributions_AttributionId",
                         column: x => x.AttributionId,
                         principalSchema: "referrals",
                         principalTable: "ReferralAttributions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
+                        onDelete: ReferentialAction.Restrict
+                    );
                     table.ForeignKey(
                         name: "FK_ReferrerBenefits_ReferralRewardCases_RewardCaseId",
                         column: x => x.RewardCaseId,
                         principalSchema: "referrals",
                         principalTable: "ReferralRewardCases",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Restrict);
-                });
+                        onDelete: ReferentialAction.Restrict
+                    );
+                }
+            );
 
             migrationBuilder.AddCheckConstraint(
                 name: "CK_ReferralPrograms_PolicyLimits",
                 schema: "referrals",
                 table: "ReferralPrograms",
-                sql: "[AttributionWindowDays] > 0 AND [MinimumPaymentAmountCents] >= 0 AND [WaitingPeriodDays] >= 0 AND [MaximumRewardsPerReferrerPerCalendarYear] > 0 AND [RewardBasisPoints] BETWEEN 0 AND 10000");
+                sql: "[AttributionWindowDays] > 0 AND [MinimumPaymentAmountCents] >= 0 AND [WaitingPeriodDays] >= 0 AND [MaximumRewardsPerReferrerPerCalendarYear] > 0 AND [RewardBasisPoints] BETWEEN 0 AND 10000"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReferralCodeShares_ReferralCodeId_SharedAtUtc",
                 schema: "referrals",
                 table: "ReferralCodeShares",
-                columns: new[] { "ReferralCodeId", "SharedAtUtc" });
+                columns: new[] { "ReferralCodeId", "SharedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReferralCodeShares_TenantId_SharedAtUtc",
                 schema: "referrals",
                 table: "ReferralCodeShares",
-                columns: new[] { "TenantId", "SharedAtUtc" });
+                columns: new[] { "TenantId", "SharedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReferrerBenefits_AttributionId",
                 schema: "referrals",
                 table: "ReferrerBenefits",
-                column: "AttributionId");
+                column: "AttributionId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ReferrerBenefits_TenantId_CreditedAtUtc",
                 schema: "referrals",
                 table: "ReferrerBenefits",
-                columns: new[] { "TenantId", "CreditedAtUtc" });
+                columns: new[] { "TenantId", "CreditedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "UX_ReferrerBenefits_RewardCaseId",
                 schema: "referrals",
                 table: "ReferrerBenefits",
                 column: "RewardCaseId",
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "ReferralCodeShares",
-                schema: "referrals");
+            migrationBuilder.DropTable(name: "ReferralCodeShares", schema: "referrals");
 
-            migrationBuilder.DropTable(
-                name: "ReferrerBenefits",
-                schema: "referrals");
+            migrationBuilder.DropTable(name: "ReferrerBenefits", schema: "referrals");
 
             migrationBuilder.DropCheckConstraint(
                 name: "CK_ReferralPrograms_PolicyLimits",
                 schema: "referrals",
-                table: "ReferralPrograms");
+                table: "ReferralPrograms"
+            );
 
-            migrationBuilder.DropColumn(
-                name: "PricePaidCents",
-                schema: "referrals",
-                table: "ReferralRewardCases");
+            migrationBuilder.DropColumn(name: "PricePaidCents", schema: "referrals", table: "ReferralRewardCases");
 
-            migrationBuilder.DropColumn(
-                name: "RewardAmountCents",
-                schema: "referrals",
-                table: "ReferralRewardCases");
+            migrationBuilder.DropColumn(name: "RewardAmountCents", schema: "referrals", table: "ReferralRewardCases");
 
-            migrationBuilder.DropColumn(
-                name: "RewardBasisPoints",
-                schema: "referrals",
-                table: "ReferralRewardCases");
+            migrationBuilder.DropColumn(name: "RewardBasisPoints", schema: "referrals", table: "ReferralRewardCases");
 
-            migrationBuilder.DropColumn(
-                name: "RewardCapCents",
-                schema: "referrals",
-                table: "ReferralRewardCases");
+            migrationBuilder.DropColumn(name: "RewardCapCents", schema: "referrals", table: "ReferralRewardCases");
 
-            migrationBuilder.DropColumn(
-                name: "RewardCurrency",
-                schema: "referrals",
-                table: "ReferralRewardCases");
+            migrationBuilder.DropColumn(name: "RewardCurrency", schema: "referrals", table: "ReferralRewardCases");
 
-            migrationBuilder.DropColumn(
-                name: "RewardBasisPoints",
-                schema: "referrals",
-                table: "ReferralPrograms");
+            migrationBuilder.DropColumn(name: "RewardBasisPoints", schema: "referrals", table: "ReferralPrograms");
 
-            migrationBuilder.DropColumn(
-                name: "RewardCapCents",
-                schema: "referrals",
-                table: "ReferralPrograms");
+            migrationBuilder.DropColumn(name: "RewardCapCents", schema: "referrals", table: "ReferralPrograms");
 
-            migrationBuilder.DropColumn(
-                name: "RewardCurrency",
-                schema: "referrals",
-                table: "ReferralPrograms");
+            migrationBuilder.DropColumn(name: "RewardCurrency", schema: "referrals", table: "ReferralPrograms");
 
-            migrationBuilder.DropColumn(
-                name: "OwnerUserId",
-                schema: "referrals",
-                table: "ReferralCodes");
+            migrationBuilder.DropColumn(name: "OwnerUserId", schema: "referrals", table: "ReferralCodes");
 
-            migrationBuilder.DropColumn(
-                name: "Channel",
-                schema: "referrals",
-                table: "ReferralAttributions");
+            migrationBuilder.DropColumn(name: "Channel", schema: "referrals", table: "ReferralAttributions");
 
-            migrationBuilder.DropColumn(
-                name: "ReferrerUserId",
-                schema: "referrals",
-                table: "ReferralAttributions");
+            migrationBuilder.DropColumn(name: "ReferrerUserId", schema: "referrals", table: "ReferralAttributions");
 
-            migrationBuilder.DropColumn(
-                name: "ShareId",
-                schema: "referrals",
-                table: "ReferralAttributions");
+            migrationBuilder.DropColumn(name: "ShareId", schema: "referrals", table: "ReferralAttributions");
 
             migrationBuilder.AddCheckConstraint(
                 name: "CK_ReferralPrograms_PolicyLimits",
                 schema: "referrals",
                 table: "ReferralPrograms",
-                sql: "[AttributionWindowDays] > 0 AND [MinimumPaymentAmountCents] >= 0 AND [WaitingPeriodDays] >= 0 AND [MaximumRewardsPerReferrerPerCalendarYear] > 0");
+                sql: "[AttributionWindowDays] > 0 AND [MinimumPaymentAmountCents] >= 0 AND [WaitingPeriodDays] >= 0 AND [MaximumRewardsPerReferrerPerCalendarYear] > 0"
+            );
         }
     }
 }
