@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.GrowthIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -85,11 +86,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // IRateCounter no estaban registrados por ninguna fase previa de Growth (a diferencia de
 // PaymentApp/Auth), así que se agregan acá — mismo patrón que Tenant/Billing/Correspondence/
 // Notification/Customer/CloudStorage/Subscription/Scribe/Signature/PaymentClient.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 

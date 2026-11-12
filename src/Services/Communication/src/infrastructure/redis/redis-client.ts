@@ -1,6 +1,7 @@
 import { Redis, type RedisOptions } from 'ioredis';
 import { config } from '../config.js';
 import { logger } from '../logger/logger.js';
+import { waitForRedis } from './wait-for-redis.js';
 
 /**
  * Factory de conexiones Redis. Comunicacion necesita al menos DOS conexiones
@@ -41,8 +42,9 @@ export const redis = createConnection('general');
 export const redisPub = createConnection('pub');
 export const redisSub = createConnection('sub');
 
+// Sin Redis el arranque espera en vez de morir; ioredis reintenta con retryStrategy.
 export async function connectRedis(): Promise<void> {
-  await Promise.all([redis.connect(), redisPub.connect(), redisSub.connect()]);
+  await Promise.all([redis, redisPub, redisSub].map(waitForRedis));
 }
 
 export async function disconnectRedis(): Promise<void> {

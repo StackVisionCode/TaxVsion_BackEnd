@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
@@ -72,11 +73,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 
 // ---------- Rate limiting ----------
 // AddTieredRateLimiting necesita el multiplexer crudo; AddRedisCache solo aporta IDistributedCache.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 
 // Con EnforceTierQuotas apagado se cae a los Null*Reader y todo aplica la cuota base sin escalar

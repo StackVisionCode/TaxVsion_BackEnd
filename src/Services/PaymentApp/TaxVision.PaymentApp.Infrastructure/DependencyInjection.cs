@@ -1,4 +1,5 @@
 ﻿using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.PurchaseIntentAmount;
@@ -126,9 +127,7 @@ public static class DependencyInjection
         services.AddScoped<IProviderWebhookSecrets, ProviderWebhookSecrets>();
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
 
-        services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
-        );
+        services.AddTaxVisionRedis(configuration.GetConnectionString("Redis") ?? "localhost:6379");
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
         services.AddSingleton<IRateCounter, RedisRateCounter>();
 

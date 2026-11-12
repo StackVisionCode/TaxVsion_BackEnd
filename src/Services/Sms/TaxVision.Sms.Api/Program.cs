@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -60,11 +61,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // registrar explícito (AddRedisCache solo aporta IDistributedCache). La escala por plan (tier-aware,
 // TenantPlanCodeProjection) llega en la Fase 2; hoy hace fail-open a la cuota base. Los webhooks
 // (WebhooksController) son anónimos: los limita el limiter nativo por IP de abajo (SMS-07).
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 
 // RateLimit Fase 2 — escala por plan. Flag OFF por default (fail-open a la cuota base sin escalar,

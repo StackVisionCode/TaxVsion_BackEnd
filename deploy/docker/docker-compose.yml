@@ -10,6 +10,7 @@ services:
   rabbitmq:
     image: rabbitmq:4.3.2-management
     container_name: taxvision-rabbitmq
+    restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
@@ -33,6 +34,7 @@ services:
   redis:
     image: redis:7.2.12-alpine
     container_name: taxvision-redis
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     # Solo loopback — para redis-cli via VPN+SSH, ningun servicio de la app lo
     # necesita publicado (usan redis:6379 por DNS interno).
@@ -55,6 +57,7 @@ services:
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: taxvision-minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
@@ -82,6 +85,7 @@ services:
   clamav:
     image: clamav/clamav:1.4.3
     container_name: taxvision-clamav
+    restart: unless-stopped
     # Límites de clamd subidos por las grabaciones server-side (F7): con los 100M por defecto, un MP4
     # de más de ~100 MB cortaba el INSTREAM y CloudStorage marcaba el archivo como scan_error. Se
     # reescriben en cada arranque (borrar + agregar, idempotente) y luego se cede a /init, el
@@ -149,8 +153,9 @@ services:
   # La base ya no vive aca: SQL Server corre en su propio servidor Ubuntu. Este contenedor no la
   # reemplaza, solo espera a que responda antes de arrancar el resto — que es la garantia que daba el
   # `depends_on: sqlserver: service_healthy` de cuando era local. Sin algo asi, y como los servicios
-  # migran al arrancar, un despliegue con la base un segundo inalcanzable deja los contenedores
-  # muertos: ninguno declara `restart`.
+  # migran al arrancar, un despliegue con la base un segundo inalcanzable falla de entrada. Si una
+  # dependencia cae despues, `restart: unless-stopped` relanza los servicios; este no lo lleva porque
+  # termina a proposito (ver ComposeRestartPolicyWiringTests).
   #
   # Comprueba el puerto, no la sesion: no necesita credenciales y no hay password que montar.
   db-ready:
@@ -207,6 +212,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.153.0
     container_name: taxvision-otel-collector
+    restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yml"]
     volumes:
       - ../observability/otel-collector.yml:/etc/otelcol/config.yml:ro
@@ -346,6 +352,7 @@ services:
   tenant-api:
     image: taxvision/tenant-api:dev
     container_name: taxvision-tenant-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Tenant/TaxVision.Tenant.Api/Dockerfile
@@ -421,6 +428,7 @@ services:
     # /auth/login devuelve 404. En dev se fuerza a false (como appsettings.Development) para aceptar el
     # TenantId del body. En prod real (hosts de tenant reales) se quita este override.
     container_name: taxvision-auth-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Auth/Api/Dockerfile
@@ -747,6 +755,7 @@ services:
   customer-api:
     image: taxvision/customer-api:dev
     container_name: taxvision-customer-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Customer/TaxVision.Customer.Api/Dockerfile
@@ -824,6 +833,7 @@ services:
   subscription-api:
     image: taxvision/subscription-api:dev
     container_name: taxvision-subscription-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Subscription/TaxVision.Subscription.Api/Dockerfile
@@ -879,6 +889,7 @@ services:
   notification-api:
     image: taxvision/notification-api:dev
     container_name: taxvision-notification-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Notification/TaxVision.Notification.Api/Dockerfile
@@ -1002,6 +1013,7 @@ services:
   postmaster-api:
     image: taxvision/postmaster-api:dev
     container_name: taxvision-postmaster-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Postmaster/TaxVision.Postmaster.Api/Dockerfile
@@ -1091,6 +1103,7 @@ services:
   scribe-api:
     image: taxvision/scribe-api:dev
     container_name: taxvision-scribe-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Scribe/TaxVision.Scribe.Api/Dockerfile
@@ -1169,6 +1182,7 @@ services:
   connectors-api:
     image: taxvision/connectors-api:dev
     container_name: taxvision-connectors-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Connectors/TaxVision.Connectors.Api/Dockerfile
@@ -1297,6 +1311,7 @@ services:
   correspondence-api:
     image: taxvision/correspondence-api:dev
     container_name: taxvision-correspondence-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Correspondence/TaxVision.Correspondence.Api/Dockerfile
@@ -1363,6 +1378,7 @@ services:
   notes-api:
     image: taxvision/notes-api:dev
     container_name: taxvision-notes-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Notes/TaxVision.Notes.Api/Dockerfile
@@ -1426,6 +1442,7 @@ services:
   sms-api:
     image: taxvision/sms-api:dev
     container_name: taxvision-sms-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Sms/TaxVision.Sms.Api/Dockerfile
@@ -1490,6 +1507,7 @@ services:
   campaigns-api:
     image: taxvision/campaigns-api:dev
     container_name: taxvision-campaigns-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Campaigns/TaxVision.Campaigns.Api/Dockerfile
@@ -1554,6 +1572,7 @@ services:
   wallet-api:
     image: taxvision/wallet-api:dev
     container_name: taxvision-wallet-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Wallet/TaxVision.Wallet.Api/Dockerfile
@@ -1604,6 +1623,7 @@ services:
   catalog-api:
     image: taxvision/catalog-api:dev
     container_name: taxvision-catalog-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Catalog/TaxVision.Catalog.Api/Dockerfile
@@ -1643,6 +1663,7 @@ services:
   inventory-api:
     image: taxvision/inventory-api:dev
     container_name: taxvision-inventory-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Inventory/TaxVision.Inventory.Api/Dockerfile
@@ -1682,6 +1703,7 @@ services:
   reminder-api:
     image: taxvision/reminder-api:dev
     container_name: taxvision-reminder-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Reminder/TaxVision.Reminder.Api/Dockerfile
@@ -1729,6 +1751,7 @@ services:
   calendar-api:
     image: taxvision/calendar-api:dev
     container_name: taxvision-calendar-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Calendar/TaxVision.Calendar.Api/Dockerfile
@@ -1783,6 +1806,7 @@ services:
   tasks-api:
     image: taxvision/tasks-api:dev
     container_name: taxvision-tasks-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Tasks/TaxVision.Tasks.Api/Dockerfile
@@ -1961,6 +1985,7 @@ services:
   signature-api:
     image: taxvision/signature-api:dev
     container_name: taxvision-signature-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Signature/TaxVision.Signature.Api/Dockerfile
@@ -2045,6 +2070,7 @@ services:
   payment-app-api:
     image: taxvision/payment-app-api:dev
     container_name: taxvision-payment-app-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/PaymentApp/TaxVision.PaymentApp.Api/Dockerfile
@@ -2121,6 +2147,7 @@ services:
   payment-client-api:
     image: taxvision/payment-client-api:dev
     container_name: taxvision-payment-client-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/PaymentClient/TaxVision.PaymentClient.Api/Dockerfile
@@ -2190,6 +2217,7 @@ services:
   growth-api:
     image: taxvision/growth-api:dev
     container_name: taxvision-growth-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Growth/TaxVision.Growth.Api/Dockerfile
@@ -2241,6 +2269,7 @@ services:
   billing-api:
     image: taxvision/billing-api:dev
     container_name: taxvision-billing-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Billing/TaxVision.Billing.Api/Dockerfile
@@ -2300,6 +2329,7 @@ services:
   documents-api:
     image: taxvision/documents-api:dev
     container_name: taxvision-documents-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Documents/TaxVision.Documents.Api/Dockerfile
@@ -2371,6 +2401,7 @@ services:
   communication-api:
     image: taxvision/communication-api:dev
     container_name: taxvision-communication-api
+    restart: unless-stopped
     build:
       context: ../../src/Services/Communication
       dockerfile: Dockerfile
@@ -2510,6 +2541,7 @@ services:
   communication-transcript-worker:
     image: taxvision/communication-transcript-worker:dev
     container_name: taxvision-communication-transcript-worker
+    restart: unless-stopped
     build:
       context: ../../src/Services/CommunicationTranscriptWorker
       dockerfile: Dockerfile
@@ -2579,6 +2611,7 @@ services:
   communication-recorder:
     image: taxvision/communication-recorder:dev
     container_name: taxvision-communication-recorder
+    restart: unless-stopped
     build:
       context: ../../src/Services/CommunicationRecorder
       dockerfile: Dockerfile
@@ -2742,6 +2775,7 @@ services:
   gateway:
     image: taxvision/gateway:dev
     container_name: taxvision-gateway
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Gateway/TaxVision.Gateway/Dockerfile
@@ -2858,6 +2892,7 @@ services:
     build:
       context: ./caddy
     container_name: taxvision-caddy
+    restart: unless-stopped
     environment:
       # Host publico de la API. Cloudflare Tunnel lo entrega por HTTP al puerto
       # 80 del host; el Caddyfile lo envia a gateway:8080 sin redireccionarlo.

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
@@ -114,11 +115,9 @@ builder
 // "tenant-registration" (IP, 5/min sobre POST /tenants) sigue sin existir acá — Fase 0.5 la dejó
 // solo en el Gateway (RateLimitingRegistration.cs), ver el [RateLimitExempt] de
 // TenantController.Create.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 

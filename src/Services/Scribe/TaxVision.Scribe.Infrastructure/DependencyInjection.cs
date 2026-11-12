@@ -1,4 +1,5 @@
 ﻿using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -118,7 +119,7 @@ public static class DependencyInjection
         var redisConnectionString = configuration.GetConnectionString("Redis");
         if (!string.IsNullOrWhiteSpace(redisConnectionString))
         {
-            services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnectionString));
+            services.AddTaxVisionRedis(redisConnectionString);
             services.AddSingleton<ITemplateSourceCache, RedisTemplateSourceCache>();
         }
         else

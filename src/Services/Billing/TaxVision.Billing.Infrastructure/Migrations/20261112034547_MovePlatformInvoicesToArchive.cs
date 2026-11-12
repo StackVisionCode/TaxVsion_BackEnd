@@ -25,19 +25,21 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     Total = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     IssueDateUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     SnapshotJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    ArchivedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    ArchivedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ArchivedPlatformInvoices", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ArchivedPlatformInvoices_OnboardingId",
                 schema: "billing",
                 table: "ArchivedPlatformInvoices",
                 column: "OnboardingId",
-                unique: true);
+                unique: true
+            );
 
             // 1) Archivar las facturas de alta (ONB-) completas antes de sacarlas: cabecera, líneas, pagos,
             //    ajustes y cambios de estado en JSON. No se pierde ningún dato del negocio.
@@ -65,44 +67,22 @@ WHERE i.[OnboardingId] IS NOT NULL
             migrationBuilder.Sql(
                 @"EXEC sp_executesql N'DELETE FROM [billing].[Invoices] WHERE [OnboardingId] IS NOT NULL;'"
             );
-            migrationBuilder.Sql(
-                @"DELETE FROM [billing].[InvoiceNumberSequences] WHERE [PeriodKey] LIKE 'ONB-%';"
-            );
+            migrationBuilder.Sql(@"DELETE FROM [billing].[InvoiceNumberSequences] WHERE [PeriodKey] LIKE 'ONB-%';");
 
             // 3) Billing ya no modela cobros de la plataforma.
-            migrationBuilder.DropTable(
-                name: "InvoiceAdjustmentLines",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "InvoiceAdjustmentLines", schema: "billing");
 
-            migrationBuilder.DropTable(
-                name: "OnboardingTenantMaps",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "OnboardingTenantMaps", schema: "billing");
 
-            migrationBuilder.DropIndex(
-                name: "IX_Invoices_OnboardingId",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropIndex(name: "IX_Invoices_OnboardingId", schema: "billing", table: "Invoices");
 
-            migrationBuilder.DropColumn(
-                name: "OnboardingId",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "OnboardingId", schema: "billing", table: "Invoices");
 
-            migrationBuilder.DropColumn(
-                name: "PaymentId",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "PaymentId", schema: "billing", table: "Invoices");
 
-            migrationBuilder.DropColumn(
-                name: "PlanId",
-                schema: "billing",
-                table: "Invoices");
+            migrationBuilder.DropColumn(name: "PlanId", schema: "billing", table: "Invoices");
 
-            migrationBuilder.DropColumn(
-                name: "SettlementType",
-                schema: "billing",
-                table: "Invoices");
-
+            migrationBuilder.DropColumn(name: "SettlementType", schema: "billing", table: "Invoices");
         }
 
         /// <inheritdoc />
@@ -114,30 +94,31 @@ WHERE i.[OnboardingId] IS NOT NULL
     THROW 50000, 'ArchivedPlatformInvoices has rows: restore them to Invoices by hand before reverting.', 1;"
             );
 
-            migrationBuilder.DropTable(
-                name: "ArchivedPlatformInvoices",
-                schema: "billing");
+            migrationBuilder.DropTable(name: "ArchivedPlatformInvoices", schema: "billing");
 
             migrationBuilder.AddColumn<Guid>(
                 name: "OnboardingId",
                 schema: "billing",
                 table: "Invoices",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "PaymentId",
                 schema: "billing",
                 table: "Invoices",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "PlanId",
                 schema: "billing",
                 table: "Invoices",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<string>(
                 name: "SettlementType",
@@ -145,7 +126,8 @@ WHERE i.[OnboardingId] IS NOT NULL
                 table: "Invoices",
                 type: "nvarchar(32)",
                 maxLength: 32,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateTable(
                 name: "InvoiceAdjustmentLines",
@@ -158,7 +140,7 @@ WHERE i.[OnboardingId] IS NOT NULL
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                     GrowthReservationId = table.Column<Guid>(type: "uniqueidentifier", nullable: true),
                     InvoiceId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Type = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false)
+                    Type = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                 },
                 constraints: table =>
                 {
@@ -169,8 +151,10 @@ WHERE i.[OnboardingId] IS NOT NULL
                         principalSchema: "billing",
                         principalTable: "Invoices",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "OnboardingTenantMaps",
@@ -179,12 +163,13 @@ WHERE i.[OnboardingId] IS NOT NULL
                 {
                     OnboardingId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false)
+                    TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_OnboardingTenantMaps", x => x.OnboardingId);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Invoices_OnboardingId",
@@ -192,13 +177,15 @@ WHERE i.[OnboardingId] IS NOT NULL
                 table: "Invoices",
                 column: "OnboardingId",
                 unique: true,
-                filter: "[OnboardingId] IS NOT NULL");
+                filter: "[OnboardingId] IS NOT NULL"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_InvoiceAdjustmentLines_InvoiceId",
                 schema: "billing",
                 table: "InvoiceAdjustmentLines",
-                column: "InvoiceId");
+                column: "InvoiceId"
+            );
         }
     }
 }

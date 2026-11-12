@@ -5,6 +5,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Permissions;
@@ -197,11 +198,9 @@ builder.Services.AddRateLimiter(options =>
 // costo de 5/min, ver RateLimitPolicyCatalog); "share-public" queda intacta arriba porque
 // protege un endpoint [AllowAnonymous] sin JWT, algo que el evaluador tiered no puede cubrir
 // (ver RateLimitExempt en PublicShareController).
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 

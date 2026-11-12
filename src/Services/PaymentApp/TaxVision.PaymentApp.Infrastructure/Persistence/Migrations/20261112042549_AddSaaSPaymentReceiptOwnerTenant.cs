@@ -15,15 +15,14 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                 name: "ReceiptOwnerTenantId",
                 table: "SaaSPayments",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ReceiptOwnerTenantId",
-                table: "SaaSPayments");
+            migrationBuilder.DropColumn(name: "ReceiptOwnerTenantId", table: "SaaSPayments");
         }
     }
 }
