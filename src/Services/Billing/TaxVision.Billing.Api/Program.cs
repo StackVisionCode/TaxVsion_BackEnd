@@ -118,6 +118,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
     options.ListenForPlatformSettings();
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Billing.Application"));

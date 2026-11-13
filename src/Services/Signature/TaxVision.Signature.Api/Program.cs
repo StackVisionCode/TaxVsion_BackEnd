@@ -224,6 +224,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     // Descubre consumers y handlers en el assembly Application.
     options.Discovery.IncludeAssembly(typeof(TenantCreatedConsumer).Assembly);
     options.ListenForPlatformSettings();

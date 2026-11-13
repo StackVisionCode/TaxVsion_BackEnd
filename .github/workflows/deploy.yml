@@ -627,6 +627,10 @@ jobs:
           # Ambas vacias mantienen IntakeLinksEnabled cerrado. La site key es publica.
           TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY }}
           TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY }}
+          # Calendar "Book a live demo": Turnstile del landing. Ambas vacias dejan la pagina "no disponible"
+          # (el landing ofrece escribir). La site key es publica.
+          CALENDAR_PUBLIC_BOOKING_TURNSTILE_SITE_KEY=${{ secrets.CALENDAR_PUBLIC_BOOKING_TURNSTILE_SITE_KEY }}
+          CALENDAR_PUBLIC_BOOKING_TURNSTILE_SECRET_KEY=${{ secrets.CALENDAR_PUBLIC_BOOKING_TURNSTILE_SECRET_KEY }}
           # CommunicationRecorder (F7): password de su cuenta MinIO scoped (communication-recorder).
           # Requerida con :? por communication-recorder y minio-provision: vacía, compose no arranca.
           RECORDER_MINIO_SECRET=${{ secrets.RECORDER_MINIO_SECRET }}

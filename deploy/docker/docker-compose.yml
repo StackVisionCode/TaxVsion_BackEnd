@@ -1788,6 +1788,12 @@ services:
       # escalón completo en silencio. Así el único grado de libertad es el booleano.
       Authorization__ModuleGate__Enforce: ${CALENDAR_MODULE_GATE_ENFORCE:-false}
       Authorization__ModuleGate__EnforcedModules__0: planner
+      # Demo publica: cifra el codigo y el enlace de gestion con la misma clave que Notification (que los
+      # descifra). Turnstile vacio = pagina "no disponible"; el deploy no se rompe sin los secretos.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
+      Calendar__PublicBooking__Turnstile__SiteKey: ${CALENDAR_PUBLIC_BOOKING_TURNSTILE_SITE_KEY:-}
+      Calendar__PublicBooking__Turnstile__SecretKey: ${CALENDAR_PUBLIC_BOOKING_TURNSTILE_SECRET_KEY:-}
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

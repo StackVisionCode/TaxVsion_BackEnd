@@ -83,6 +83,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
     public bool IsVirtual { get; private set; }
 
+    /// <summary>Página pública de la que nació (demo de un visitante sin cuenta), o null.</summary>
+    public Guid? BookingPageId { get; private set; }
+
     /// <summary>Lo llena Communication por evento, nunca una llamada HTTP desde aca.</summary>
     public Guid? MeetingId { get; private set; }
 
@@ -141,7 +144,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         bool isVirtual = false,
         IReadOnlyList<InitialAttendee>? attendees = null,
         string? bookedByCustomerName = null,
-        bool awaitingApproval = false
+        bool awaitingApproval = false,
+        Guid? bookingPageId = null
     )
     {
         if (organizerUserId == Guid.Empty)
@@ -164,6 +168,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             CustomerId = customerId,
             TaxYear = taxYear,
             IsVirtual = isVirtual,
+            BookingPageId = bookingPageId,
             CreatedAtUtc = nowUtc,
         };
         appointment.SetTenant(tenantId);
@@ -226,6 +231,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
     public Result Reschedule(EventTiming timing, Guid actingUserId, bool canManageAll, DateTime nowUtc)
     {
+        var managed = EnsureNotManagedByPublicPage();
+        if (managed.IsFailure)
+            return managed;
         var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
@@ -339,6 +347,114 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
+    /// <summary>
+    /// El visitante de una página pública la cancela con su enlace de gestión. No tiene usuario: el actor queda vacío.
+    /// </summary>
+    public Result CancelByExternalRequester(string? reason, DateTime nowUtc) =>
+        CancelFromPublicPage(Guid.Empty, reason, nowUtc);
+
+    /// <summary>El equipo de la plataforma cancela la demo desde su reserva; queda quién fue.</summary>
+    public Result CancelByPublicPageStaff(Guid actingUserId, string? reason, DateTime nowUtc) =>
+        actingUserId == Guid.Empty
+            ? Result.Failure(AppointmentErrors.OrganizerRequired)
+            : CancelFromPublicPage(actingUserId, reason, nowUtc);
+
+    private Result CancelFromPublicPage(Guid actingUserId, string? reason, DateTime nowUtc)
+    {
+        var allowed = EnsureExternalRequesterCanChange();
+        if (allowed.IsFailure)
+            return allowed;
+
+        ApplyCancel(actingUserId, reason, nowUtc, null, null);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// El visitante mueve su demo: él eligió la hora nueva, así que sigue aceptada para los externos. Si ese
+    /// horario lo cubre otro anfitrión, la cita pasa a él con su enlace de reunión.
+    /// </summary>
+    public Result RescheduleByExternalRequester(
+        EventTiming timing,
+        DateTime nowUtc,
+        Guid? organizerUserId = null,
+        Location? location = null
+    ) => RescheduleFromPublicPage(timing, Guid.Empty, nowUtc, organizerUserId, location);
+
+    /// <summary>
+    /// El equipo de la plataforma mueve la demo desde su reserva; queda quién fue. El visitante sigue aceptado:
+    /// el correo de la demo le avisa y puede volver a moverla con su enlace.
+    /// </summary>
+    public Result RescheduleByPublicPageStaff(
+        EventTiming timing,
+        Guid actingUserId,
+        DateTime nowUtc,
+        Guid? organizerUserId = null,
+        Location? location = null
+    ) =>
+        actingUserId == Guid.Empty
+            ? Result.Failure(AppointmentErrors.OrganizerRequired)
+            : RescheduleFromPublicPage(timing, actingUserId, nowUtc, organizerUserId, location);
+
+    private Result RescheduleFromPublicPage(
+        EventTiming timing,
+        Guid actingUserId,
+        DateTime nowUtc,
+        Guid? organizerUserId,
+        Location? location
+    )
+    {
+        var allowed = EnsureExternalRequesterCanChange();
+        if (allowed.IsFailure)
+            return allowed;
+
+        if (organizerUserId is { } organizer && organizer != Guid.Empty)
+            OrganizerUserId = organizer;
+        if (location is not null)
+            Location = location;
+
+        ApplyReschedule(timing, actingUserId, nowUtc, keepGoingCustomerId: null, keepGoingExternals: true);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// La reserva pública se anonimizó: la cita queda (es la agenda del anfitrión), pero sin quién era el visitante
+    /// ni su empresa en el título.
+    /// </summary>
+    public Result ForgetPublicVisitor(AppointmentTitle neutralTitle)
+    {
+        if (BookingPageId is null)
+            return Result.Failure(AppointmentErrors.NotFromPublicPage);
+
+        Title = neutralTitle;
+        var anonymized = AttendeeSnapshot.Create("Anonymized", null).Value;
+        foreach (var attendee in _attendees)
+        {
+            if (attendee.Kind == AttendeeKind.External)
+                attendee.Forget(anonymized.Copy());
+        }
+        ChildrenRevision++;
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// ¿Se puede mover o cancelar desde su reserva pública? Se pregunta antes de tocar la reserva: si la cita no
+    /// puede, ninguna de las dos cambia.
+    /// </summary>
+    public Result CanChangeFromPublicPage() => EnsureExternalRequesterCanChange();
+
+    /// <summary>La demo pública se cambia desde su reserva: así la cita y la reserva no se separan.</summary>
+    private Result EnsureNotManagedByPublicPage() =>
+        BookingPageId is null ? Result.Success() : Result.Failure(AppointmentErrors.ManagedByPublicPage);
+
+    private Result EnsureExternalRequesterCanChange()
+    {
+        if (BookingPageId is null)
+            return Result.Failure(AppointmentErrors.NotFromPublicPage);
+        if (Status == AppointmentStatus.Cancelled)
+            return Result.Failure(AppointmentErrors.CancelledIsFinal);
+        return IsRecurring ? Result.Failure(AppointmentErrors.SeriesChangedByOffice) : Result.Success();
+    }
+
     /// <summary>Es del cliente: por su <see cref="CustomerId"/> o porque está invitado como cliente.</summary>
     public bool BelongsToCustomer(Guid customerId)
     {
@@ -362,7 +478,13 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return IsRecurring ? Result.Failure(AppointmentErrors.SeriesChangedByOffice) : Result.Success();
     }
 
-    private void ApplyReschedule(EventTiming timing, Guid actingUserId, DateTime nowUtc, Guid? keepGoingCustomerId)
+    private void ApplyReschedule(
+        EventTiming timing,
+        Guid actingUserId,
+        DateTime nowUtc,
+        Guid? keepGoingCustomerId,
+        bool keepGoingExternals = false
+    )
     {
         var previousStartUtc = Timing.StartUtc;
         Timing = timing;
@@ -374,6 +496,15 @@ public sealed class Appointment : AggregateRoot, IHasOwner
             foreach (var attendee in _attendees)
             {
                 if (attendee.CustomerId == customerId)
+                    attendee.Respond(AttendeeResponse.Accepted, nowUtc);
+            }
+        }
+
+        if (keepGoingExternals)
+        {
+            foreach (var attendee in _attendees)
+            {
+                if (attendee.Kind == AttendeeKind.External)
                     attendee.Respond(AttendeeResponse.Accepted, nowUtc);
             }
         }
@@ -406,6 +537,10 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     {
         if (Status == AppointmentStatus.Cancelled)
             return Result.Failure(AppointmentErrors.AlreadyCancelled);
+
+        var managed = EnsureNotManagedByPublicPage();
+        if (managed.IsFailure)
+            return managed;
 
         if (!canManageAll && actingUserId != OrganizerUserId)
             return Result.Failure(AppointmentErrors.NotTheOrganizer);
@@ -453,6 +588,11 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (Status == AppointmentStatus.Cancelled)
             return Result.Failure(AppointmentErrors.CancelledIsFinal);
 
+        // El anfitrión de una demo pública lo reasigna la reserva (con su enlace de reunión).
+        var managed = EnsureNotManagedByPublicPage();
+        if (managed.IsFailure)
+            return managed;
+
         if (newOrganizerUserId == OrganizerUserId)
             return Result.Success();
 
@@ -496,6 +636,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
+        var managed = EnsureNotManagedByPublicPage();
+        if (managed.IsFailure)
+            return managed;
 
         Location = location;
         return Result.Success();
@@ -549,6 +692,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
+        var managed = EnsureNotManagedByPublicPage();
+        if (managed.IsFailure)
+            return managed;
 
         var attendee = FindById(attendeeId);
         if (attendee is null)
@@ -615,6 +761,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
+        // En una demo pública el enlace de la reunión es del anfitrión de la página: no se cambia aquí.
+        if (BookingPageId is not null && location?.Value != Location?.Value)
+            return Result.Failure(AppointmentErrors.ManagedByPublicPage);
 
         var cleanDescription = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         if (cleanDescription is { Length: > MaxDescriptionLength })
@@ -716,6 +865,9 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         var allowed = EnsureOrganizer(actingUserId, canManageAll);
         if (allowed.IsFailure)
             return allowed;
+        var managed = EnsureNotManagedByPublicPage();
+        if (managed.IsFailure)
+            return managed;
 
         // La regla dice cada cuánto; el timing dice desde cuándo y en qué zona. Uno sin el otro no
         // produce ocurrencias, así que entran juntos.

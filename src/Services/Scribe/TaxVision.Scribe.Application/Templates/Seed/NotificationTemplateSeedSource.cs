@@ -44,6 +44,8 @@ public sealed record NotificationTemplateSeed(
     // v27 (por plantilla): botones Accept / Maybe / Decline (RSVP) en las 3 de cita y en la invitación de sala.
     // v28 (por plantilla): subscription.billing_cycle_changed.v1 nueva — cambio de ciclo (a anual cobrado, a mensual agendado).
     // v29 (por plantilla): subscription.renewal_upcoming muestra el total (plan + extras) y el ciclo; aviso de 30 días al anual.
+    // v30 (por plantilla): 6 plantillas nuevas de la demo pública del landing (PublicDemoVersion).
+    // v31 (por plantilla): demo.confirmed con "Add to calendar" principal y demo.already_booked nueva (PublicDemoCtaVersion).
     int ContentVersion = 1,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
@@ -87,7 +89,7 @@ public sealed record NotificationTemplateSeed(
 /// plano no se declara aparte — el renderer cae a strip-tags automático del HTML cuando
 /// <c>TextFileId</c> es null (ver FluidTemplateRenderer.ResolveTextAsync).
 /// </summary>
-public static class NotificationTemplateSeedSource
+public static partial class NotificationTemplateSeedSource
 {
     // Propiedad computada (no field initializer): "All" aparece antes que las definiciones en este
     // archivo, y los field initializers de una clase estática corren en orden textual — un
@@ -174,6 +176,13 @@ public static class NotificationTemplateSeedSource
             MeetingCancelled,
             MeetingRescheduled,
             MeetingReminder,
+            PublicDemoVerificationCode,
+            PublicDemoConfirmed,
+            PublicDemoNewBooking,
+            PublicDemoRescheduled,
+            PublicDemoCancelled,
+            PublicDemoReminder,
+            PublicDemoAlreadyBooked,
         ];
 
     // v2: tildes en el español de los push.
@@ -390,6 +399,25 @@ public static class NotificationTemplateSeedSource
         ["communication.meeting.cancelled.v1"] = "A meeting you were invited to was cancelled.",
         ["communication.meeting.rescheduled.v1"] = "A meeting you were invited to has a new time.",
         ["communication.meeting.reminder.v1"] = "Your meeting is about to start.",
+        ["demo.verification_code.v1"] = Bilingual(
+            "Tu código para confirmar la demo. Vence en pocos minutos.",
+            "Your code to confirm the demo. It expires in a few minutes."
+        ),
+        ["demo.confirmed.v1"] = Bilingual(
+            "Tu demo quedó agendada: aquí tienes el enlace y la hora.",
+            "Your demo is booked: here's the link and the time."
+        ),
+        ["demo.new_booking.v1"] = "A prospect booked a demo with you. Their details are inside.",
+        ["demo.rescheduled.v1"] = Bilingual("La demo tiene un nuevo horario.", "The demo has a new time."),
+        ["demo.cancelled.v1"] = Bilingual("La demo fue cancelada.", "The demo was canceled."),
+        ["demo.already_booked.v1"] = Bilingual(
+            "Tu demo sigue en pie. Aquí tienes un enlace nuevo para cambiarla.",
+            "Your demo is still on. Here's a new link to change it."
+        ),
+        ["demo.reminder.v1"] = Bilingual(
+            "Tu demo se acerca. Aquí tienes el enlace para entrar.",
+            "Your demo is coming up. Here's the link to join."
+        ),
     };
 
     // Preheader con rama por idioma: el renderer lo evalúa con las variables del envío.

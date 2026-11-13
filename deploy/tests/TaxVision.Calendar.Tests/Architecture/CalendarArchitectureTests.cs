@@ -90,6 +90,9 @@ public sealed class CalendarArchitectureTests
                 .InAssembly(assembly)
                 .That()
                 .DoNotHaveName(nameof(MeetingLinkedConsumer))
+                // El código pregenerado de Wolverine invoca al consumer: no es un acoplamiento nuevo.
+                .And()
+                .DoNotResideInNamespace("Internal.Generated")
                 .ShouldNot()
                 .HaveDependencyOn("BuildingBlocks.Messaging.CommunicationIntegrationEvents")
                 .GetResult();

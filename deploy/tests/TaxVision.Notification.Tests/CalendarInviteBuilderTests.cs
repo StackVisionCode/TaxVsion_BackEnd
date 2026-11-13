@@ -112,6 +112,43 @@ public sealed class CalendarInviteBuilderTests
         Assert.Contains("ORGANIZER;CN=\"Pérez, María\":mailto:support@taxoffix.io\r\n", ics);
     }
 
+    /// <summary>
+    /// La demo pública (F6) usa su propio UID, el lugar, la descripción y avisos del calendario. Es aditivo:
+    /// las invitaciones de reuniones de arriba no cambian.
+    /// </summary>
+    [Fact]
+    public void Una_demo_publica_lleva_su_uid_su_lugar_y_sus_avisos()
+    {
+        var ics = Build(
+            Request() with
+            {
+                MeetingCode = null,
+                UidBase = "public-booking-0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+                Location = "https://meet.google.com/abc-defg-hij",
+                Description = "Your demo with Ana.",
+                AlarmMinutes = [1440, 60],
+            }
+        );
+
+        Assert.Contains("UID:public-booking-0f1e2d3c4b5a69788796a5b4c3d2e1f0@taxoffix.io\r\n", ics);
+        Assert.Contains("LOCATION:https://meet.google.com/abc-defg-hij\r\n", ics);
+        Assert.Contains("DESCRIPTION:Your demo with Ana.\\nJoin: https://manfer.taxoffix.io/meet/abc\r\n", ics);
+        Assert.Contains(
+            "BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:Reminder\r\nTRIGGER:-PT1440M\r\nEND:VALARM\r\n",
+            ics
+        );
+        Assert.Contains("TRIGGER:-PT60M\r\n", ics);
+        Assert.Contains("END:VALARM\r\nEND:VEVENT\r\n", ics);
+    }
+
+    [Fact]
+    public void Una_cancelacion_no_lleva_avisos()
+    {
+        var ics = Build(Request() with { Method = CalendarInviteMethod.Cancel, AlarmMinutes = [60] });
+
+        Assert.DoesNotContain("VALARM", ics);
+    }
+
     private static string Build(CalendarInviteRequest request) =>
         Text(new CalendarInviteBuilder(TestPlatform.Settings).Build(request));
 

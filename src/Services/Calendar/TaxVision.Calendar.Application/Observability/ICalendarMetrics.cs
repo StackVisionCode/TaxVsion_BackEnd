@@ -28,4 +28,7 @@ public interface ICalendarMetrics
     /// para el usuario, así que si nadie la mira, una base caída pasa desapercibida durante un día.
     /// </summary>
     void RecordIcsFeedStale();
+
+    /// <summary>Un paso de la reserva pública (<c>request</c>, <c>verify</c>…) y cómo terminó.</summary>
+    void RecordPublicBooking(string step, string outcome);
 }

@@ -11,6 +11,9 @@ namespace BuildingBlocks.Web.Observability;
 
 public static class OpenTelemetryRegistration
 {
+    /// <summary>Trazas por OTLP. Apagadas: el collector las descarta (nop) hasta que exista un backend.</summary>
+    public const string ExportTracesKey = "OpenTelemetry:ExportTraces";
+
     public static IServiceCollection AddTaxVisionOpenTelemetry(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -20,11 +23,16 @@ public static class OpenTelemetryRegistration
     {
         var endpoint = configuration["OpenTelemetry:OtlpEndpoint"];
 
-        services
+        var telemetry = services
             .AddOpenTelemetry()
-            .ConfigureResource(resource => resource.AddService(serviceName: serviceName))
-            .WithTracing(tracing =>
-            {
+            .ConfigureResource(resource => resource.AddService(serviceName: serviceName));
+
+        if (
+            configuration.GetValue(ExportTracesKey, false)
+            && Uri.TryCreate(endpoint, UriKind.Absolute, out var traceEndpoint)
+        )
+        {
+            telemetry.WithTracing(tracing =>
                 tracing
                     .AddAspNetCoreInstrumentation(options =>
                     {
@@ -33,34 +41,34 @@ public static class OpenTelemetryRegistration
                     .AddHttpClientInstrumentation()
                     // ActivitySource propio del servicio (ej. spans manuales de negocio) — mismo
                     // criterio de nombre que el Meter de abajo: serviceName por convención.
-                    .AddSource(serviceName);
+                    .AddSource(serviceName)
+                    .AddOtlpExporter(options => options.Endpoint = traceEndpoint)
+            );
+        }
 
-                if (Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
-                    tracing.AddOtlpExporter(options => options.Endpoint = uri);
-            })
-            .WithMetrics(metrics =>
-            {
-                // Meter propio del servicio (ej. PostmasterMetrics) — nombre = serviceName por convención,
-                // así cada servicio solo necesita registrar sus Counters/Gauges, sin tocar este builder compartido.
-                metrics
-                    .AddAspNetCoreInstrumentation()
-                    .AddHttpClientInstrumentation()
-                    .AddRuntimeInstrumentation()
-                    .AddMeter(serviceName)
-                    // RBAC Fase 10 — Layer 1/2/3b corren en los 14 servicios, así que este Meter
-                    // compartido de BuildingBlocks se exporta siempre (no opt-in vía additionalMeterNames).
-                    .AddMeter(AuthorizationMetrics.MeterName)
-                    .AddMeter(SeatSlotGateMetrics.MeterName)
-                    // RateLimit Fase 8 — AddTieredRateLimiting() ya lo llaman los 17 servicios desde
-                    // que Fase 4 cerró la migración completa de endpoints; mismo criterio que arriba.
-                    .AddMeter(RateLimitMetrics.MeterName);
+        telemetry.WithMetrics(metrics =>
+        {
+            // Meter propio del servicio (ej. PostmasterMetrics) — nombre = serviceName por convención,
+            // así cada servicio solo necesita registrar sus Counters/Gauges, sin tocar este builder compartido.
+            metrics
+                .AddAspNetCoreInstrumentation()
+                .AddHttpClientInstrumentation()
+                .AddRuntimeInstrumentation()
+                .AddMeter(serviceName)
+                // RBAC Fase 10 — Layer 1/2/3b corren en los 14 servicios, así que este Meter
+                // compartido de BuildingBlocks se exporta siempre (no opt-in vía additionalMeterNames).
+                .AddMeter(AuthorizationMetrics.MeterName)
+                .AddMeter(SeatSlotGateMetrics.MeterName)
+                // RateLimit Fase 8 — AddTieredRateLimiting() ya lo llaman los 17 servicios desde
+                // que Fase 4 cerró la migración completa de endpoints; mismo criterio que arriba.
+                .AddMeter(RateLimitMetrics.MeterName);
 
-                foreach (var meterName in additionalMeterNames)
-                    metrics.AddMeter(meterName);
+            foreach (var meterName in additionalMeterNames)
+                metrics.AddMeter(meterName);
 
-                if (Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
-                    metrics.AddOtlpExporter(options => options.Endpoint = uri);
-            });
+            if (Uri.TryCreate(endpoint, UriKind.Absolute, out var uri))
+                metrics.AddOtlpExporter(options => options.Endpoint = uri);
+        });
 
         return services;
     }

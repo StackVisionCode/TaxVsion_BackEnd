@@ -121,6 +121,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Codes.Application"));
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Referrals.Application"));

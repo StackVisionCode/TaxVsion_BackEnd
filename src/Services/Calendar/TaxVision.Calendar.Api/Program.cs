@@ -8,6 +8,7 @@ using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.BotProtection;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Health;
 using BuildingBlocks.Web.Hosting;
@@ -112,7 +113,20 @@ builder.Services.AddRateLimiter(options =>
                 }
             )
     );
+
+    // La demo pública del landing: mismo criterio, un cupo por IP y ruta para cada tipo de paso.
+    AddPublicBookingPolicy(options, PublicBookingController.ReadPolicy, 60);
+    AddPublicBookingPolicy(options, PublicBookingController.BookingPolicy, 5);
+    AddPublicBookingPolicy(options, PublicBookingController.VerifyPolicy, 10);
+    AddPublicBookingPolicy(options, PublicBookingController.ManagePolicy, 10);
 });
+
+// Anti-bot del formulario de la demo. Sin claves, la página responde que no hay reservas (fail-closed).
+builder.Services.AddTurnstileVerification(builder.Configuration.GetSection("Calendar:PublicBooking:Turnstile"));
+builder.Services.AddScoped<
+    TaxVision.Calendar.Application.PublicBookings.Abstractions.IPublicBookingBotCheck,
+    TaxVision.Calendar.Api.PublicBookings.TurnstilePublicBookingBotCheck
+>();
 
 // ---------- Health checks ----------
 var rabbitUri = new Uri(
@@ -126,6 +140,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
 
     // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el
@@ -174,6 +189,16 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<AppointmentAttendeeRespondedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AppointmentStartingSoonIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AppointmentMeetingRoomRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Faltaban: sin ruta Wolverine los descartaba y Notification nunca avisaba (IntegrationEventRoutingTests).
+    options.PublishMessage<AppointmentDetailsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AppointmentBookingRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<AppointmentBookingDeclinedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PublicBookingCodeRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PublicBookingConfirmedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PublicBookingRescheduledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PublicBookingCancelledIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PublicBookingReminderDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<PublicBookingAlreadyBookedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Contratos de Reminder, no de Calendar: los define Reminder y Calendar solo los publica.
     options.PublishMessage<ReminderRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -225,5 +250,21 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check 
 app.MapControllers();
 
 app.Run();
+
+static void AddPublicBookingPolicy(RateLimiterOptions options, string policy, int permitsPerMinute) =>
+    options.AddPolicy(
+        policy,
+        context =>
+            TaxVisionRateLimitPartition.GetFixedWindowLimiter(
+                $"{policy}:{context.Connection.RemoteIpAddress?.ToString() ?? "unknown"}:{context.Request.Path.Value?.ToLowerInvariant()}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = permitsPerMinute,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0,
+                    AutoReplenishment = true,
+                }
+            )
+    );
 
 public partial class Program;

@@ -25,6 +25,10 @@ public enum CalendarInviteMethod
 /// <param name="Url">Enlace para entrar; va también en la descripción junto al código.</param>
 /// <param name="OrganizerName">CN del organizador (host de la reunión).</param>
 /// <param name="OrganizerEmail">mailto del organizador (remitente del sistema).</param>
+/// <param name="UidBase">Base del <c>UID</c> en vez de la reunión (la demo pública usa <c>public-booking-{id}</c>).</param>
+/// <param name="Location">LOCATION del evento (el enlace de la reunión del anfitrión).</param>
+/// <param name="Description">Texto que va primero en la descripción.</param>
+/// <param name="AlarmMinutes">Avisos del calendario (VALARM), en minutos antes. No van en una cancelación.</param>
 public sealed record CalendarInviteRequest(
     CalendarInviteMethod Method,
     Guid MeetingId,
@@ -38,5 +42,9 @@ public sealed record CalendarInviteRequest(
     string? OrganizerName,
     string OrganizerEmail,
     string AttendeeEmail,
-    string? AttendeeName
+    string? AttendeeName,
+    string? UidBase = null,
+    string? Location = null,
+    string? Description = null,
+    IReadOnlyList<int>? AlarmMinutes = null
 );

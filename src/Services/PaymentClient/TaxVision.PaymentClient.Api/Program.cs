@@ -195,6 +195,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(CreateTenantPaymentConfigCommand).Assembly);
     options.ListenForPlatformSettings();
     // Registro explícito del consumer de "factura anulada" (revoca el payable/link). La discovery por

@@ -505,3 +505,7 @@ src/Services/CommunicationTranscriptWorker/vendor/whisper/models/*.bin
 .codex-logs/
 .codex-test-results/
 .tools/
+
+# Anfitriones de la demo pública: datos de personas, no se versionan (ver hosts.example.json).
+scripts/public-demo/hosts.*.json
+!scripts/public-demo/hosts.example.json

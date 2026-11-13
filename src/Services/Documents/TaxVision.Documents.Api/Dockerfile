@@ -18,6 +18,8 @@ RUN dotnet publish "src/Services/Documents/TaxVision.Documents.Api/TaxVision.Doc
 # dependencias del sistema ya instaladas para Linux (fuentes incluidas), evitando el error
 # "No appropriate font found" y el peso de instalar navegadores en runtime.
 FROM mcr.microsoft.com/playwright/dotnet:v1.49.0-noble AS final
+# glibc: 2 arenas de malloc en vez de 8 por nucleo; .NET retenia memoria nativa ya liberada.
+ENV MALLOC_ARENA_MAX=2
 WORKDIR /app
 EXPOSE 8080
 

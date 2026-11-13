@@ -1,0 +1,11 @@
+[
+  {
+    "userId": "00000000-0000-0000-0000-000000000000",
+    "displayName": "Host name shown to the visitor",
+    "notificationEmail": "host@your-domain.com",
+    "meetingUrl": "https://meet.google.com/aaa-bbbb-ccc",
+    "availability": [
+      { "daysMask": 62, "startTime": "09:00", "endTime": "17:00", "timeZoneId": "America/New_York" }
+    ]
+  }
+]
