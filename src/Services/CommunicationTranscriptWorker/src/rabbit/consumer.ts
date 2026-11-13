@@ -251,7 +251,9 @@ export function toRecordingReadyEvent(
   const tenantId = str(raw['tenantId']);
   const recordingFileId = str(raw[mapping.recordingFileIdField]);
   const targetId = str(raw[mapping.targetIdField]);
-  if (!eventId || !tenantId || !recordingFileId || !targetId) return undefined;
+  // eventId nombra un directorio que el pipeline borra recursivamente; targetId
+  // forma parte de un nombre de archivo. Ambos deben ser un solo segmento seguro.
+  if (!isSafeFileSegment(eventId) || !tenantId || !recordingFileId || !isSafeFileSegment(targetId)) return undefined;
 
   const passthrough: Record<string, PassthroughValue> = {};
   for (const field of mapping.passthroughFields) {
@@ -278,6 +280,10 @@ export function toRecordingReadyEvent(
     maxDurationSeconds: positiveNumber(raw['maxDurationSeconds']),
     timeoutFactorPct: positiveNumber(raw['timeoutFactorPct']),
   };
+}
+
+function isSafeFileSegment(value: string | undefined): value is string {
+  return value !== undefined && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value);
 }
 
 /** Pistas invalidas (sin fileId/userId) se descartan; el resto sigue. */

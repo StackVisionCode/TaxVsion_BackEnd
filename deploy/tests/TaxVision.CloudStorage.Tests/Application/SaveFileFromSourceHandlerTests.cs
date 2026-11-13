@@ -73,6 +73,29 @@ public sealed class SaveFileFromSourceHandlerTests
     private static IOptions<CloudStorageOptions> DefaultOptions() =>
         Microsoft.Extensions.Options.Options.Create(new CloudStorageOptions());
 
+    [Theory]
+    [InlineData("taxvision-storage", "Invalid")]
+    [InlineData("taxvision-storage", "Signature")]
+    [InlineData("taxvision-quarantine", "Invalid")]
+    public async Task External_upload_request_cannot_access_an_object_outside_the_temp_bucket(string bucket, string ownerType)
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var storage = new FakeObjectStorage { SizeToReturn = 1024 };
+        var bus = new FakeMessageBus();
+        var evt = Evt(tenantId, fileId, b => b.OwnerType = ownerType) with
+        {
+            SourceBucket = bucket,
+            SourceObjectKey = "another-tenant/private.pdf",
+        };
+
+        await HandleAsync(evt, Limit(tenantId), storage, bus);
+
+        Assert.Empty(storage.Deleted);
+        Assert.Empty(storage.Copied);
+        Assert.Equal("InvalidSourceBucket", Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>()).Reason);
+    }
+
     [Fact]
     public async Task Valid_event_registers_the_file_copies_it_and_triggers_the_scan()
     {
