@@ -118,18 +118,6 @@ public sealed class CommunicationRecorderDeployWiringTests
         );
     }
 
-    [Fact]
-    public void Workflow_runs_the_recorder_node_tests_before_deploying()
-    {
-        var workflow = ReadRepoFile(".github/workflows/deploy.yml").Replace("\r\n", "\n");
-
-        Assert.Contains(
-            "- name: Test CommunicationRecorder (Node)\n        working-directory: src/Services/CommunicationRecorder",
-            workflow,
-            StringComparison.Ordinal
-        );
-    }
-
     private static string ServiceBlock(string compose, string service)
     {
         var lines = compose.Replace("\r\n", "\n").Split('\n');

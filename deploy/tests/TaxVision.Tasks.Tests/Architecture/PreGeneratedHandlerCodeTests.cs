@@ -11,17 +11,17 @@ using Xunit;
 namespace TaxVision.Tasks.Tests.Architecture;
 
 /// <summary>
-/// Producción corre en Static: sin Roslyn ni compilación al primer uso (eran cientos de MB por handler). Cada
-/// handler tiene que existir ya compilado en el Api y estar al día con el código. El host es el de producción
-/// (mismo registro de servicios que <c>codegen write</c>), sin base ni Rabbit.
-/// </summary>
-/// <summary>
 /// Aislada: generar código prende una bandera estática de JasperFx que deja sin transportes a cualquier host que
 /// arranque en paralelo en el mismo proceso.
 /// </summary>
 [CollectionDefinition(nameof(PreGeneratedHandlerCodeTests), DisableParallelization = true)]
 public sealed class PreGeneratedHandlerCodeCollection;
 
+/// <summary>
+/// Producción corre en Static: sin Roslyn ni compilación al primer uso (eran cientos de MB por handler). Cada
+/// handler tiene que existir ya compilado en el Api y estar al día con el código. El host es el de producción
+/// (mismo registro de servicios que <c>codegen write</c>), sin base ni Rabbit.
+/// </summary>
 [Collection(nameof(PreGeneratedHandlerCodeTests))]
 public sealed class PreGeneratedHandlerCodeTests
 {
