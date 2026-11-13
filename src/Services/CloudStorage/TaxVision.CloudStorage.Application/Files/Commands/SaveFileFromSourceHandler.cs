@@ -42,11 +42,20 @@ public static class SaveFileFromSourceHandler
         CancellationToken ct
     )
     {
-        Task Reject(string reason) =>
-            RejectAsync(evt, reason, audit, storage, unitOfWork, bus, correlation, clock, logger, ct);
+        Task Reject(string reason, bool deleteSource = true) =>
+            RejectAsync(evt, reason, audit, storage, unitOfWork, bus, correlation, clock, logger, ct, deleteSource);
 
         using (correlation.Push(evt.CorrelationId))
         {
+            // El mensaje de RabbitMQ no puede ampliar el alcance de las credenciales de
+            // CloudStorage: solo se importan y eliminan objetos del bucket temporal.
+            if (!string.Equals(evt.SourceBucket, options.Value.TempBucket, StringComparison.Ordinal))
+            {
+                logger.LogWarning("SaveFileRequested {FileId} rejected: source bucket is not the configured temp bucket.", evt.FileId);
+                await Reject("InvalidSourceBucket", deleteSource: false);
+                return;
+            }
+
             // Redelivery del mismo evento (at-least-once) tras un crash post-persist:
             // el FileId ya existe, no hay nada mas que hacer.
             if (await files.GetAsync(evt.TenantId, evt.FileId, ct) is not null)
@@ -306,7 +315,8 @@ public static class SaveFileFromSourceHandler
         ICorrelationContext correlation,
         ISystemClock clock,
         ILogger logger,
-        CancellationToken ct
+        CancellationToken ct,
+        bool deleteSource
     )
     {
         audit.Add(
@@ -339,13 +349,16 @@ public static class SaveFileFromSourceHandler
         await unitOfWork.SaveChangesAsync(ct);
 
         // Va al final: si no se pudo guardar, el reintento necesita el origen. Lo que quede lo borra la regla de 24 h.
-        try
+        if (deleteSource)
         {
-            await storage.DeleteAsync(evt.SourceBucket, evt.SourceObjectKey, ct);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            logger.LogWarning(ex, "SaveFileRequested {FileId}: rejected source could not be deleted.", evt.FileId);
+            try
+            {
+                await storage.DeleteAsync(evt.SourceBucket, evt.SourceObjectKey, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "SaveFileRequested {FileId}: rejected source could not be deleted.", evt.FileId);
+            }
         }
     }
 }
