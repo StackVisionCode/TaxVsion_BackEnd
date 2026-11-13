@@ -19,6 +19,9 @@ internal static class AppointmentEvents
         var recipients = new List<AppointmentRecipient>();
         foreach (var attendee in appointment.Attendees)
         {
+            // El visitante de una demo pública recibe los correos de la demo (con su enlace de gestión), no estos.
+            if (appointment.BookingPageId is not null && attendee.Kind == AttendeeKind.External)
+                continue;
             if (attendee.Snapshot.Email is { } email)
                 recipients.Add(
                     new AppointmentRecipient(

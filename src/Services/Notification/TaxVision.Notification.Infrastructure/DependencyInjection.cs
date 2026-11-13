@@ -168,6 +168,7 @@ public static class DependencyInjection
         services.AddScoped<InAppDispatch>();
         services.AddScoped<NotificationDispatcher>();
         services.AddScoped<TaxVision.Notification.Application.Consumers.Signature.SignedDeliveryLinkResolver>();
+        services.AddScoped<TaxVision.Notification.Application.Consumers.Calendar.PublicBookings.PublicBookingEmails>();
         services.AddSingleton<TaxVision.Notification.Application.Consumers.AuthAccountTokenReader>();
         services.AddScoped<IPushAttemptRecorder, Notifications.PushAttemptRecorder>();
         services.AddScoped<

@@ -77,6 +77,13 @@ public sealed class AppointmentAttendee : BaseEntity
     /// Al mover la cita las respuestas vuelven a cero: quien acepto el martes a las 9 no acepto el
     /// jueves a las 4. Dar por buena la respuesta vieja es como se llega a una sala vacia.
     /// </summary>
+    /// <summary>Borra quién era (anonimización): queda la fila, sin nombre real, correo ni enlace de respuesta.</summary>
+    internal void Forget(AttendeeSnapshot anonymized)
+    {
+        Snapshot = anonymized;
+        RsvpTokenHash = null;
+    }
+
     internal void ResetResponse()
     {
         Response = AttendeeResponse.NeedsAction;

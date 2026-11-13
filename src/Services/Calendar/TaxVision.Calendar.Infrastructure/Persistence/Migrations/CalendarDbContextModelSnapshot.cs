@@ -58,6 +58,9 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("AppointmentTypeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("BookingPageId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("CancellationReason")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
@@ -130,6 +133,9 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("BookingPageId")
+                        .HasFilter("[BookingPageId] IS NOT NULL");
 
                     b.HasIndex("TenantId", "CustomerId", "TaxYear");
 
@@ -605,6 +611,381 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerDirectoryEntries", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Calendar.Domain.PublicBookings.BookingPage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AppointmentTypeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("BufferMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ConsentVersion")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IcsAlarmMinutesJson")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("InterestField")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxDaysAhead")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinNoticeMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OfficeSizeField")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PhoneField")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReminderHoursBefore")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("RequireEmailVerification")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SlotStepMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Slug")
+                        .IsUnique();
+
+                    b.ToTable("BookingPages", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.PublicBookings.BookingPageHeardAboutOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("AllowsDetail")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("BookingPageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LabelEn")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LabelEs")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingPageId", "Code")
+                        .IsUnique();
+
+                    b.ToTable("BookingPageHeardAboutOptions", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.PublicBookings.BookingPageHost", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BookingPageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MeetingUrl")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("NotificationEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("BookingPageId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("BookingPageHosts", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.PublicBookings.PublicBooking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AnonymizedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("AppointmentId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BookingPageId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CancelledBy")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("CancelledByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CodeAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("CodeHash")
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<int>("CodeSends")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Company")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ConsentTextVersion")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTime?>("EmailVerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("EntrySource")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ExpiredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HeardAboutCode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("HeardAboutDetail")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("HoldExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("HostUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("IcsSequence")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Interest")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Language")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("ManagementTokenHash")
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<int>("ManagementTokenVersion")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("MarketingOptIn")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("OfficeSize")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("OutcomeAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("OutcomeByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("ReferrerDomain")
+                        .HasMaxLength(253)
+                        .HasColumnType("nvarchar(253)");
+
+                    b.Property<DateTime?>("ReminderSentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RepeatNoticeSentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RequestHandleHash")
+                        .IsRequired()
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<string>("RequesterKey")
+                        .HasColumnType("char(64)");
+
+                    b.Property<bool>("RequiresVerification")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("SlotStartUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UtmCampaign")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("UtmMedium")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("UtmSource")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("VisitorTimeZone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId")
+                        .HasFilter("[AppointmentId] IS NOT NULL");
+
+                    b.HasIndex("ManagementTokenHash")
+                        .IsUnique()
+                        .HasFilter("[ManagementTokenHash] IS NOT NULL");
+
+                    b.HasIndex("RequestHandleHash")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "HoldExpiresAtUtc");
+
+                    b.HasIndex("Status", "SlotStartUtc");
+
+                    b.HasIndex("TenantId", "BookingPageId", "IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "BookingPageId", "RequesterKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PublicBookings_Requester_Holding")
+                        .HasFilter("[Status] IN (0, 1)");
+
+                    b.HasIndex("TenantId", "HostUserId", "SlotStartUtc")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PublicBookings_Host_Slot_Holding")
+                        .HasFilter("[Status] IN (0, 1)");
+
+                    b.ToTable("PublicBookings", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Calendar.Domain.RateLimiting.TenantPlanCodeProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -787,11 +1168,145 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Calendar.Domain.PublicBookings.BookingPage", b =>
+                {
+                    b.OwnsOne("TaxVision.Calendar.Domain.ValueObjects.LocalizedText", "Description", b1 =>
+                        {
+                            b1.Property<Guid>("BookingPageId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("En")
+                                .IsRequired()
+                                .HasMaxLength(1000)
+                                .HasColumnType("nvarchar(1000)")
+                                .HasColumnName("DescriptionEn");
+
+                            b1.Property<string>("Es")
+                                .HasMaxLength(1000)
+                                .HasColumnType("nvarchar(1000)")
+                                .HasColumnName("DescriptionEs");
+
+                            b1.HasKey("BookingPageId");
+
+                            b1.ToTable("BookingPages");
+
+                            b1.WithOwner()
+                                .HasForeignKey("BookingPageId");
+                        });
+
+                    b.OwnsOne("TaxVision.Calendar.Domain.ValueObjects.LocalizedText", "MarketingConsent", b1 =>
+                        {
+                            b1.Property<Guid>("BookingPageId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("En")
+                                .IsRequired()
+                                .HasMaxLength(1000)
+                                .HasColumnType("nvarchar(1000)")
+                                .HasColumnName("MarketingConsentEn");
+
+                            b1.Property<string>("Es")
+                                .HasMaxLength(1000)
+                                .HasColumnType("nvarchar(1000)")
+                                .HasColumnName("MarketingConsentEs");
+
+                            b1.HasKey("BookingPageId");
+
+                            b1.ToTable("BookingPages");
+
+                            b1.WithOwner()
+                                .HasForeignKey("BookingPageId");
+                        });
+
+                    b.OwnsOne("TaxVision.Calendar.Domain.ValueObjects.LocalizedText", "PrivacyNotice", b1 =>
+                        {
+                            b1.Property<Guid>("BookingPageId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("En")
+                                .IsRequired()
+                                .HasMaxLength(1000)
+                                .HasColumnType("nvarchar(1000)")
+                                .HasColumnName("PrivacyNoticeEn");
+
+                            b1.Property<string>("Es")
+                                .HasMaxLength(1000)
+                                .HasColumnType("nvarchar(1000)")
+                                .HasColumnName("PrivacyNoticeEs");
+
+                            b1.HasKey("BookingPageId");
+
+                            b1.ToTable("BookingPages");
+
+                            b1.WithOwner()
+                                .HasForeignKey("BookingPageId");
+                        });
+
+                    b.OwnsOne("TaxVision.Calendar.Domain.ValueObjects.LocalizedText", "Title", b1 =>
+                        {
+                            b1.Property<Guid>("BookingPageId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("En")
+                                .IsRequired()
+                                .HasMaxLength(120)
+                                .HasColumnType("nvarchar(120)")
+                                .HasColumnName("TitleEn");
+
+                            b1.Property<string>("Es")
+                                .HasMaxLength(120)
+                                .HasColumnType("nvarchar(120)")
+                                .HasColumnName("TitleEs");
+
+                            b1.HasKey("BookingPageId");
+
+                            b1.ToTable("BookingPages");
+
+                            b1.WithOwner()
+                                .HasForeignKey("BookingPageId");
+                        });
+
+                    b.Navigation("Description")
+                        .IsRequired();
+
+                    b.Navigation("MarketingConsent");
+
+                    b.Navigation("PrivacyNotice");
+
+                    b.Navigation("Title")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.PublicBookings.BookingPageHeardAboutOption", b =>
+                {
+                    b.HasOne("TaxVision.Calendar.Domain.PublicBookings.BookingPage", null)
+                        .WithMany("HeardAboutOptions")
+                        .HasForeignKey("BookingPageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.PublicBookings.BookingPageHost", b =>
+                {
+                    b.HasOne("TaxVision.Calendar.Domain.PublicBookings.BookingPage", null)
+                        .WithMany("Hosts")
+                        .HasForeignKey("BookingPageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Calendar.Domain.Appointments.Appointment", b =>
                 {
                     b.Navigation("Attendees");
 
                     b.Navigation("Exceptions");
+                });
+
+            modelBuilder.Entity("TaxVision.Calendar.Domain.PublicBookings.BookingPage", b =>
+                {
+                    b.Navigation("HeardAboutOptions");
+
+                    b.Navigation("Hosts");
                 });
 #pragma warning restore 612, 618
         }

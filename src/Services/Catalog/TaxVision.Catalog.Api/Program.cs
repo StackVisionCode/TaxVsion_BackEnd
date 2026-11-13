@@ -92,6 +92,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
 
     // RBAC Fase 7 — consumers de proyección de permisos (clases estáticas): registro EXPLÍCITO por tipo,

@@ -229,6 +229,8 @@ internal sealed class NullCalendarMetrics : ICalendarMetrics
     public void RecordIcsFeedRequest(bool found) { }
 
     public void RecordIcsFeedStale() { }
+
+    public void RecordPublicBooking(string step, string outcome) { }
 }
 
 internal sealed class FixedCorrelation : ICorrelationContext

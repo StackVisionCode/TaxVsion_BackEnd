@@ -154,6 +154,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(ChargeSaaSPaymentCommand).Assembly);
     options.ListenForPlatformSettings();
     // Registro explícito de los consumers de la proyección RBAC: la discovery convencional no los

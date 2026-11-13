@@ -11,6 +11,8 @@ RUN dotnet restore "src/Services/Calendar/TaxVision.Calendar.Api/TaxVision.Calen
 RUN dotnet publish "src/Services/Calendar/TaxVision.Calendar.Api/TaxVision.Calendar.Api.csproj"     -c Release     -o /app/publish     --no-restore     /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.9 AS final
+# glibc: 2 arenas de malloc en vez de 8 por nucleo; .NET retenia memoria nativa ya liberada.
+ENV MALLOC_ARENA_MAX=2
 WORKDIR /app
 EXPOSE 8080
 

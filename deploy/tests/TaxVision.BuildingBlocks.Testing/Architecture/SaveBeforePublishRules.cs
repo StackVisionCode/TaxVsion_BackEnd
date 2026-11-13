@@ -102,6 +102,8 @@ public static partial class SaveBeforePublishRules
         var normalized = path.Replace('\\', '/');
         return normalized.Contains("/bin/", StringComparison.Ordinal)
             || normalized.Contains("/obj/", StringComparison.Ordinal)
-            || normalized.Contains("/Migrations/", StringComparison.Ordinal);
+            || normalized.Contains("/Migrations/", StringComparison.Ordinal)
+            // Código pregenerado de Wolverine: es su pipeline (outbox y commit), no un handler nuestro.
+            || normalized.Contains("/Internal/Generated/", StringComparison.Ordinal);
     }
 }

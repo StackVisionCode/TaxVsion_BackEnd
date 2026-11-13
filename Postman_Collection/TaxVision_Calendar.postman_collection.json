@@ -956,6 +956,947 @@
           }
         }
       ]
+    },
+    {
+      "name": "Demo pública — plataforma",
+      "description": "Páginas públicas de reservas (\"Book a live demo\") y sus demos. Solo PlatformAdmin: el accessToken debe ser de la plataforma. El tenant sale del token.",
+      "item": [
+        {
+          "name": "Crear página",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slug\": \"demo\",\n  \"titleEn\": \"Book a live demo\",\n  \"titleEs\": \"Agenda una demo en vivo\",\n  \"descriptionEn\": \"See how {brand} brings your clients, documents, e-signatures and payments into one place.\",\n  \"descriptionEs\": null,\n  \"appointmentTypeId\": \"{{appointmentTypeId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) { pm.collectionVariables.set('bookingPageId', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar páginas",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ver página",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reglas",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}/rules",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}",
+                "rules"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"minNoticeMinutes\": 240,\n  \"maxDaysAhead\": 30,\n  \"bufferMinutes\": 15,\n  \"slotStepMinutes\": 30,\n  \"requireEmailVerification\": true,\n  \"reminderHoursBefore\": 24,\n  \"icsAlarmMinutes\": [\n    1440,\n    60\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Campos",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}/fields",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}",
+                "fields"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneField\": \"Optional\",\n  \"officeSizeField\": \"Optional\",\n  \"interestField\": \"Optional\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Consentimiento",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}/consent",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}",
+                "consent"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"privacyNoticeEn\": \"We use this information only to schedule and run your demo.\",\n  \"privacyNoticeEs\": \"Usamos estos datos solo para agendar y dar tu demo.\",\n  \"marketingConsentEn\": \"Send me product news and tips by email. I can unsubscribe anytime.\",\n  \"marketingConsentEs\": \"Envíame novedades y consejos por correo. Puedo darme de baja cuando quiera.\",\n  \"consentVersion\": \"2026-11-demo-v1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Anfitriones",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}/hosts",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}",
+                "hosts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"hosts\": [\n    {\n      \"userId\": \"{{hostUserId}}\",\n      \"displayName\": \"Product specialist\",\n      \"notificationEmail\": \"demos@example.com\",\n      \"meetingUrl\": \"https://meet.google.com/abc-defg-hij\",\n      \"sortOrder\": 0,\n      \"isActive\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Respuestas de \"How did you hear about us?\"",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}/heard-about-options",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}",
+                "heard-about-options"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"options\": [\n    {\n      \"code\": \"google_search\",\n      \"labelEn\": \"Google search\",\n      \"labelEs\": \"Búsqueda en Google\",\n      \"sortOrder\": 0,\n      \"isActive\": true,\n      \"allowsDetail\": false\n    },\n    {\n      \"code\": \"whatsapp\",\n      \"labelEn\": \"WhatsApp\",\n      \"labelEs\": \"WhatsApp\",\n      \"sortOrder\": 1,\n      \"isActive\": true,\n      \"allowsDetail\": false\n    },\n    {\n      \"code\": \"colleague_referral\",\n      \"labelEn\": \"A colleague recommended us\",\n      \"labelEs\": \"Me lo recomendó un colega\",\n      \"sortOrder\": 2,\n      \"isActive\": true,\n      \"allowsDetail\": false\n    },\n    {\n      \"code\": \"other\",\n      \"labelEn\": \"Other\",\n      \"labelEs\": \"Otro\",\n      \"sortOrder\": 99,\n      \"isActive\": true,\n      \"allowsDetail\": true\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Activar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}/activate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}",
+                "activate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Desactivar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}/deactivate",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}",
+                "deactivate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reservas de la página",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}/bookings?from=2026-11-01T00:00:00Z&to=2026-12-31T00:00:00Z&page=1&pageSize=50",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}",
+                "bookings"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-11-01T00:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-12-31T00:00:00Z"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "50"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resumen (estado, cómo nos conociste, origen)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages/{{bookingPageId}}/bookings/summary?from=2026-11-01T00:00:00Z&to=2026-12-31T00:00:00Z",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages",
+                "{{bookingPageId}}",
+                "bookings",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-11-01T00:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-12-31T00:00:00Z"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancelar demo (equipo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/bookings/{{publicBookingId}}/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "bookings",
+                "{{publicBookingId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Host unavailable\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Mover demo (equipo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/bookings/{{publicBookingId}}/reschedule",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "bookings",
+                "{{publicBookingId}}",
+                "reschedule"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slotStartUtc\": \"2026-11-20T15:00:00Z\",\n  \"reason\": \"Host conflict\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Resultado de la demo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/bookings/{{publicBookingId}}/outcome",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "bookings",
+                "{{publicBookingId}}",
+                "outcome"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"Completed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Negativo: sin token de plataforma → 403",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{officeAccessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/platform/booking-pages",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "platform",
+                "booking-pages"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Una oficina no entra', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Demo pública — visitante (anónimo)",
+      "description": "Lo que usa el landing. Sin token. Necesita Turnstile configurado (en local, claves de prueba con AllowTestingKeys).",
+      "item": [
+        {
+          "name": "Página",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/public/booking-pages/demo?lang=en",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "public",
+                "booking-pages",
+                "demo"
+              ],
+              "query": [
+                {
+                  "key": "lang",
+                  "value": "en"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Horarios",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/public/booking-pages/demo/slots?from=2026-11-13T00:00:00Z&to=2026-11-20T00:00:00Z",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "public",
+                "booking-pages",
+                "demo",
+                "slots"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-11-13T00:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-20T00:00:00Z"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pedir demo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/public/booking-pages/demo/bookings",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "public",
+                "booking-pages",
+                "demo",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"slotStartUtc\": \"2026-11-18T15:00:00Z\",\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane@example.com\",\n  \"company\": \"Acme Tax\",\n  \"officeSize\": \"TwoToFive\",\n  \"phone\": null,\n  \"interest\": \"E-signatures\",\n  \"heardAboutCode\": \"whatsapp\",\n  \"heardAboutDetail\": null,\n  \"entrySource\": \"Hero\",\n  \"utmSource\": null,\n  \"utmMedium\": null,\n  \"utmCampaign\": null,\n  \"referrerDomain\": null,\n  \"language\": \"En\",\n  \"timeZone\": \"America/New_York\",\n  \"marketingOptIn\": false,\n  \"consentVersion\": \"2026-11-demo-v1\",\n  \"botToken\": \"XXXX.DUMMY.TOKEN.XXXX\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 202) { pm.collectionVariables.set('requestHandle', pm.response.json().requestHandle); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verificar código",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/public/bookings/verify",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "public",
+                "bookings",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestHandle\": \"{{requestHandle}}\",\n  \"code\": \"000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Elegir otro horario",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/public/bookings/choose-slot",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "public",
+                "bookings",
+                "choose-slot"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestHandle\": \"{{requestHandle}}\",\n  \"slotStartUtc\": \"2026-11-18T16:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reenviar código",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/public/bookings/resend",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "public",
+                "bookings",
+                "resend"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestHandle\": \"{{requestHandle}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Ver mi demo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/public/bookings/manage/view",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "public",
+                "bookings",
+                "manage",
+                "view"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{managementToken}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Mover mi demo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/public/bookings/manage/reschedule",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "public",
+                "bookings",
+                "manage",
+                "reschedule"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{managementToken}}\",\n  \"slotStartUtc\": \"2026-11-19T15:00:00Z\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cancelar mi demo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/public/bookings/manage/cancel",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "public",
+                "bookings",
+                "manage",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{managementToken}}\",\n  \"reason\": null\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -997,6 +1938,30 @@
     },
     {
       "key": "revokedFeedToken",
+      "value": ""
+    },
+    {
+      "key": "bookingPageId",
+      "value": ""
+    },
+    {
+      "key": "hostUserId",
+      "value": ""
+    },
+    {
+      "key": "publicBookingId",
+      "value": ""
+    },
+    {
+      "key": "requestHandle",
+      "value": ""
+    },
+    {
+      "key": "managementToken",
+      "value": ""
+    },
+    {
+      "key": "officeAccessToken",
       "value": ""
     }
   ]

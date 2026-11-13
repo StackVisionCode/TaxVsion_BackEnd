@@ -29,7 +29,11 @@ public static class OffboardingParticipants
         new(
             "Calendar",
             "Calendar",
-            ["CalendarUserOffboardedConsumer", "UserLifecyclePermissionsProjectionConsumer"],
+            [
+                "CalendarUserOffboardedConsumer",
+                "PublicBookingHostOffboardedConsumer",
+                "UserLifecyclePermissionsProjectionConsumer",
+            ],
             "/calendar/offboarding-impact/{userId}"
         ),
         new(

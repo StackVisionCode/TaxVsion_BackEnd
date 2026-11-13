@@ -16,6 +16,7 @@ using TaxVision.Calendar.Domain.Feeds;
 using TaxVision.Calendar.Domain.Office;
 using TaxVision.Calendar.Domain.Permissions;
 using TaxVision.Calendar.Domain.Projections;
+using TaxVision.Calendar.Domain.PublicBookings;
 using TaxVision.Calendar.Domain.RateLimiting;
 using TaxVision.Calendar.Domain.Types;
 
@@ -66,6 +67,11 @@ public sealed class CalendarDbContext(DbContextOptions<CalendarDbContext> option
     public DbSet<BookingPolicy> BookingPolicies => Set<BookingPolicy>();
 
     public DbSet<BookingRequest> BookingRequests => Set<BookingRequest>();
+
+    /// <summary>Páginas públicas de reservas de la plataforma ("Book a live demo") y sus reservas.</summary>
+    public DbSet<BookingPage> BookingPages => Set<BookingPage>();
+
+    public DbSet<PublicBooking> PublicBookings => Set<PublicBooking>();
 
     // P2 — proyección compartida de asignaciones cliente↔staff (kit BuildingBlocks.CustomerVisibility),
     // mantenida por el snapshot CustomerAssignmentsChanged de Customer. Filtra la visibilidad por asignación.

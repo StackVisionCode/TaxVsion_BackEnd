@@ -101,6 +101,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
 
     // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el

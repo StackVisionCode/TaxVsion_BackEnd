@@ -15,6 +15,8 @@ RUN dotnet publish "src/Services/Growth/TaxVision.Growth.Api/TaxVision.Growth.Ap
     /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.9 AS final
+# glibc: 2 arenas de malloc en vez de 8 por nucleo; .NET retenia memoria nativa ya liberada.
+ENV MALLOC_ARENA_MAX=2
 WORKDIR /app
 EXPOSE 8080
 

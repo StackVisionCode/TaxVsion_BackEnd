@@ -19,7 +19,7 @@ namespace TaxVision.Tasks.Infrastructure.Jobs;
 ///
 /// <para>
 /// Idempotente porque reusa los mismos mutadores del dominio que el consumer de eventos, así que
-/// correrlo N veces converge sin duplicar. Persiste por página para acotar el change-tracker.
+/// correrlo N veces converge sin duplicar. Cada página va en su propio scope para acotar el change-tracker.
 /// </para>
 /// </summary>
 public sealed class TenantCustomerFullReconciliationJob(
@@ -70,55 +70,56 @@ public sealed class TenantCustomerFullReconciliationJob(
 
     private async Task RunOnceAsync(int pageSize, CancellationToken ct)
     {
-        using var scope = serviceProvider.CreateScope();
-        var client = scope.ServiceProvider.GetRequiredService<ITasksCustomerClient>();
-        var repository = scope.ServiceProvider.GetRequiredService<ICustomerDirectoryRepository>();
-        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
+        var correlationId = Guid.NewGuid().ToString("N");
+        // Un solo instante por corrida: refleja el estado autoritativo actual, así que siempre es
+        // más nuevo que cualquier evento pasado y ApplyIfNewer converge sin retroceder.
+        var observedAtUtc = DateTime.UtcNow;
+        var page = 1;
+        var inserted = 0;
+        var updated = 0;
 
-        using (correlation.Push(Guid.NewGuid().ToString("N")))
+        while (true)
         {
-            // Un solo instante por corrida: refleja el estado autoritativo actual, así que siempre es
-            // más nuevo que cualquier evento pasado y ApplyIfNewer converge sin retroceder.
-            var observedAtUtc = DateTime.UtcNow;
-            var page = 1;
-            var inserted = 0;
-            var updated = 0;
+            // Scope (y DbContext) por página: SaveChanges no suelta lo seguido, y con uno solo la
+            // memoria crecía con todos los clientes de la plataforma.
+            using var scope = serviceProvider.CreateScope();
+            var client = scope.ServiceProvider.GetRequiredService<ITasksCustomerClient>();
+            var repository = scope.ServiceProvider.GetRequiredService<ICustomerDirectoryRepository>();
+            var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
+            using var correlated = correlation.Push(correlationId);
 
-            while (true)
+            var result = await client.ListAllForReconciliationAsync(page, pageSize, ct);
+            if (result is null)
             {
-                var result = await client.ListAllForReconciliationAsync(page, pageSize, ct);
-                if (result is null)
-                {
-                    logger.LogWarning(
-                        "TenantCustomerFullReconciliationJob aborted on page {Page} (Customer unreachable/unauthorized).",
-                        page
-                    );
-                    return;
-                }
-
-                foreach (var customer in result.Items)
-                {
-                    if (await UpsertAsync(repository, customer, observedAtUtc, ct))
-                        inserted++;
-                    else
-                        updated++;
-                }
-
-                await unitOfWork.SaveChangesAsync(ct);
-
-                if (!result.HasMore)
-                    break;
-                page++;
+                logger.LogWarning(
+                    "TenantCustomerFullReconciliationJob aborted on page {Page} (Customer unreachable/unauthorized).",
+                    page
+                );
+                return;
             }
 
-            if (inserted > 0 || updated > 0)
-                logger.LogInformation(
-                    "TenantCustomerFullReconciliationJob reconciled projections: {Inserted} inserted, {Updated} refreshed.",
-                    inserted,
-                    updated
-                );
+            foreach (var customer in result.Items)
+            {
+                if (await UpsertAsync(repository, customer, observedAtUtc, ct))
+                    inserted++;
+                else
+                    updated++;
+            }
+
+            await unitOfWork.SaveChangesAsync(ct);
+
+            if (!result.HasMore)
+                break;
+            page++;
         }
+
+        if (inserted > 0 || updated > 0)
+            logger.LogInformation(
+                "TenantCustomerFullReconciliationJob reconciled projections: {Inserted} inserted, {Updated} refreshed.",
+                inserted,
+                updated
+            );
     }
 
     /// <summary>Devuelve <c>true</c> si insertó una fila nueva.</summary>

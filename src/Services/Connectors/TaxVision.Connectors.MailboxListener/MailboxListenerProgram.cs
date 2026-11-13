@@ -49,6 +49,11 @@ public static class MailboxListenerProgram
         {
             // Solo publica: sin handlers, sin colas propias y sin outbox (el aviso es descartable,
             // la reconciliación cubre lo que se pierda).
+            options.UseTaxVisionCodeGeneration(
+                builder.Environment,
+                builder.Configuration,
+                typeof(MailboxListenerProgram).Assembly
+            );
             options.Discovery.DisableConventionalDiscovery();
             options.UseTaxVisionRabbitMq(rabbitUri);
             options.PublishMessage<ConnectorsMailboxChangeDetectedIntegrationEvent>().ToRabbitExchange(EventsExchange);

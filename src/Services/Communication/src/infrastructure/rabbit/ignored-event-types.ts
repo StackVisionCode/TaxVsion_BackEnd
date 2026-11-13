@@ -52,6 +52,13 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   // Solicitudes de reserva del portal: las atiende Notification; la sala se crea recién al aprobar.
   'calendar.booking_requested.v1',
   'calendar.booking_declined.v1',
+  // Demo pública del landing: la cita no es virtual (sin sala); los correos los manda Notification.
+  'calendar.public_booking_code_requested.v1',
+  'calendar.public_booking_confirmed.v1',
+  'calendar.public_booking_rescheduled.v1',
+  'calendar.public_booking_cancelled.v1',
+  'calendar.public_booking_reminder_due.v1',
+  'calendar.public_booking_already_booked.v1',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentStartingSoonIntegrationEvent',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.CalendarSeriesSplitIntegrationEvent',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.OccurrenceCancelledIntegrationEvent',

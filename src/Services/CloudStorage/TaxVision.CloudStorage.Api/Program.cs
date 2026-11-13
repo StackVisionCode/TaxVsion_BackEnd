@@ -237,6 +237,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(InitiateUploadHandler).Assembly);
     // Consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));

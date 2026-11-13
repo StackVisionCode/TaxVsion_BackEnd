@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.9" />
     <PackageReference Include="WolverineFx.EntityFrameworkCore" Version="6.14.0" />
     <PackageReference Include="WolverineFx.SqlServer" Version="6.14.0" />
@@ -22,11 +23,16 @@
     <ProjectReference Include="..\..\..\src\Services\Inventory\TaxVision.Inventory.Domain\TaxVision.Inventory.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Inventory\TaxVision.Inventory.Application\TaxVision.Inventory.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Inventory\TaxVision.Inventory.Infrastructure\TaxVision.Inventory.Infrastructure.csproj" />
+    <!-- Host real para el guardarraíl del código pregenerado de Wolverine. -->
+    <ProjectReference Include="..\..\..\src\Services\Inventory\TaxVision.Inventory.Api\TaxVision.Inventory.Api.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="..\..\..\src\BuildingBlocks\Authorization\BuildingBlocks.Authorization.csproj" />
     <ProjectReference
       Include="..\TaxVision.BuildingBlocks.Testing\TaxVision.BuildingBlocks.Testing.csproj"
       Aliases="BbTesting"
     />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 </Project>

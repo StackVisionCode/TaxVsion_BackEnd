@@ -89,6 +89,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
 
     // Consumers estáticos — registro EXPLÍCITO por tipo (la discovery convencional no siempre los levanta).

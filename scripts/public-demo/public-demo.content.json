@@ -1,0 +1,54 @@
+{
+  "appointmentType": {
+    "name": "Product demo",
+    "durationMinutes": 30,
+    "colorHex": "#057BC1",
+    "dailyCap": null
+  },
+  "page": {
+    "slug": "demo",
+    "titleEn": "Book a live demo",
+    "titleEs": "Agenda una demo en vivo",
+    "descriptionEn": "See how {brand} brings your clients, documents, e-signatures and payments into one place. In 30 minutes, a product specialist walks you through a typical day at a tax office and answers your questions. Free, no commitment.",
+    "descriptionEs": "Descubre cómo {brand} reúne tus clientes, documentos, firmas electrónicas y pagos en un solo lugar. En 30 minutos, un especialista te muestra un día normal en una oficina de impuestos y responde tus preguntas. Gratis y sin compromiso."
+  },
+  "rules": {
+    "minNoticeMinutes": 240,
+    "maxDaysAhead": 30,
+    "bufferMinutes": 15,
+    "slotStepMinutes": 30,
+    "requireEmailVerification": true,
+    "reminderHoursBefore": 24,
+    "icsAlarmMinutes": [1440, 60]
+  },
+  "fields": {
+    "phoneField": "Optional",
+    "officeSizeField": "Optional",
+    "interestField": "Optional"
+  },
+  "consent": {
+    "privacyNoticeEn": "We use this information only to schedule and run your demo. See our [Privacy Policy](/privacy).",
+    "privacyNoticeEs": "Usamos estos datos solo para agendar y dar tu demo. Consulta nuestra [Política de privacidad](/privacy).",
+    "marketingConsentEn": "Send me product news and tips by email. I can unsubscribe anytime.",
+    "marketingConsentEs": "Envíame novedades y consejos por correo. Puedo darme de baja cuando quiera.",
+    "consentVersion": "2026-11-demo-v1"
+  },
+  "heardAboutOptions": [
+    { "code": "google_search", "labelEn": "Google search", "labelEs": "Búsqueda en Google", "allowsDetail": false },
+    { "code": "other_search_engine", "labelEn": "Other search engine (Bing, Yahoo)", "labelEs": "Otro buscador (Bing, Yahoo)", "allowsDetail": false },
+    { "code": "facebook", "labelEn": "Facebook", "labelEs": "Facebook", "allowsDetail": false },
+    { "code": "instagram", "labelEn": "Instagram", "labelEs": "Instagram", "allowsDetail": false },
+    { "code": "linkedin", "labelEn": "LinkedIn", "labelEs": "LinkedIn", "allowsDetail": false },
+    { "code": "youtube", "labelEn": "YouTube", "labelEs": "YouTube", "allowsDetail": false },
+    { "code": "tiktok", "labelEn": "TikTok", "labelEs": "TikTok", "allowsDetail": false },
+    { "code": "whatsapp", "labelEn": "WhatsApp", "labelEs": "WhatsApp", "allowsDetail": false },
+    { "code": "x_twitter", "labelEn": "X (Twitter)", "labelEs": "X (Twitter)", "allowsDetail": false },
+    { "code": "colleague_referral", "labelEn": "Referral from a colleague or friend", "labelEs": "Recomendación de un colega o amigo", "allowsDetail": false },
+    { "code": "existing_customer", "labelEn": "I'm already a {brand} customer", "labelEs": "Ya soy cliente de {brand}", "allowsDetail": false },
+    { "code": "event_webinar", "labelEn": "Event, conference or webinar", "labelEs": "Evento, conferencia o webinar", "allowsDetail": false },
+    { "code": "online_ad", "labelEn": "Online ad", "labelEs": "Anuncio en línea", "allowsDetail": false },
+    { "code": "email_newsletter", "labelEn": "Email or newsletter", "labelEs": "Correo o newsletter", "allowsDetail": false },
+    { "code": "podcast_blog", "labelEn": "Podcast, blog or article", "labelEs": "Podcast, blog o artículo", "allowsDetail": false },
+    { "code": "other", "labelEn": "Other", "labelEs": "Otro", "allowsDetail": true }
+  ]
+}
