@@ -4,6 +4,7 @@ import type { CallRepository } from '../ports/call-repository.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import type { SfuService } from '../ports/sfu-service.js';
 import { CallEventTypes, type CallScreenShareStoppedEvent } from '../../contracts/events/call-events.js';
 import { CallSocketEvents, type CallScreenShareStoppedDto } from '../../contracts/socket/call-socket-events.js';
 
@@ -27,6 +28,8 @@ export interface StopCallScreenShareDeps {
   readonly idempotency: IdempotencyStore;
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
+  /** Llamada grabada server-side: su pantalla también se publica a la captura. */
+  readonly sfu?: Pick<SfuService, 'closeProducersBySource'>;
 }
 
 /**
@@ -60,6 +63,15 @@ export async function stopCallScreenShare(
   if (!call) {
     await release();
     return Result.fail(makeError('Call.NotFound', 'Call not found.'));
+  }
+
+  // La pantalla de la captura se cierra aunque el dominio rechace el stop: el recorder corta ese tramo.
+  if (call.isParticipant(cmd.actorUserId)) {
+    try {
+      deps.sfu?.closeProducersBySource({ meetingId: cmd.callId, userId: cmd.actorUserId, source: 'screen' });
+    } catch {
+      // Sin router de captura (llamada no grabada) o SFU caído: dejar de compartir no depende de esto.
+    }
   }
 
   const stopResult = call.stopScreenShare({ actorUserId: cmd.actorUserId });

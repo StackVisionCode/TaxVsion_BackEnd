@@ -57,7 +57,8 @@ export const WEBRTC_TRANSPORT_BASE_OPTIONS = {
   enableUdp: true,
   enableTcp: SFU_NETWORK_SETTINGS.enableTcp,
   preferUdp: true,
-  initialAvailableOutgoingBitrate: 800_000,
+  // Estimación inicial hacia quien mira: con 800 kbps la pantalla tardaba en verse nítida; el BWE baja si la red no da.
+  initialAvailableOutgoingBitrate: 2_000_000,
 } as const;
 
 /**

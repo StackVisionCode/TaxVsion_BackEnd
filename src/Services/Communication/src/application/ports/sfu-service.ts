@@ -254,6 +254,9 @@ export interface SfuService {
   /** Producers propios de un participante — usado para avisar al resto antes de cerrarlos (leave/disconnect). */
   listProducersForUser(meetingId: string, userId: string): readonly RemoteProducerInfo[];
 
+  /** Cierra los producers de una fuente de un participante (la pantalla al dejar de compartir). Devuelve cuántos. */
+  closeProducersBySource(input: { meetingId: string; userId: string; source: SfuMediaSource }): number;
+
   /** Cierra transports/producers/consumers de un participante (leave/disconnect). No cierra el router. */
   closeParticipant(meetingId: string, userId: string): Promise<void>;
 
