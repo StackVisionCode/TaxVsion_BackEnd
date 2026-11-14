@@ -883,6 +883,48 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-0000000001a0"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "financial.import",
+                            Description = "Register customer bank statement imports",
+                            GatedModule = "financial_insights",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "financial_insights",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-0000000001a1"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "financial.view",
+                            Description = "View customer financial imports",
+                            GatedModule = "financial_insights",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "financial_insights",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-0000000001a2"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "financial.portal.import",
+                            Description = "The client can submit bank statements for analysis",
+                            GatedModule = "financial_insights",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "financial_insights",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000152"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "documents.branding.manage",

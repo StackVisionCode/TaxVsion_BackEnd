@@ -92,6 +92,14 @@ describe('toRecordingReadyEvent', () => {
       toRecordingReadyEvent(mappingFor('voice-note'), { eventId: 'e', tenantId: 't', messageId: 'm' }),
     ).toBeUndefined();
   });
+
+  it('rechaza identificadores que podrian escapar del directorio temporal', () => {
+    const base = { tenantId: 't1', meetingId: 'm1', recordingFileId: 'r1' };
+    expect(toRecordingReadyEvent(mappingFor('meeting'), { ...base, eventId: '../../shared' })).toBeUndefined();
+    expect(toRecordingReadyEvent(mappingFor('meeting'), { ...base, eventId: '..\\..\\shared' })).toBeUndefined();
+    expect(toRecordingReadyEvent(mappingFor('meeting'), { ...base, eventId: 'e1', meetingId: '../shared' })).toBeUndefined();
+    expect(toRecordingReadyEvent(mappingFor('meeting'), { ...base, eventId: 'e1', meetingId: 'm1\\..\\shared' })).toBeUndefined();
+  });
 });
 
 describe('parseAudioTracks', () => {

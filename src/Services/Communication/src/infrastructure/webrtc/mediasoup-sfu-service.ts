@@ -509,6 +509,20 @@ export class MediasoupSfuService implements SfuService {
     }));
   }
 
+  closeProducersBySource(input: { meetingId: string; userId: string; source: SfuMediaSource }): number {
+    const participant = this.rooms.get(input.meetingId)?.participants.get(input.userId);
+    if (!participant) return 0;
+    let closed = 0;
+    for (const producer of [...participant.producers.values()]) {
+      if (producerSource(producer) !== input.source) continue;
+      // El observer 'close' avisa a la captura: el recorder cierra esa pista.
+      producer.close();
+      participant.producers.delete(producer.id);
+      closed += 1;
+    }
+    return closed;
+  }
+
   async closeParticipant(meetingId: string, userId: string): Promise<void> {
     const room = this.rooms.get(meetingId);
     if (!room) return;

@@ -166,4 +166,14 @@ apply_migration \
   "src/Services/Wallet/TaxVision.Wallet.Api/TaxVision.Wallet.Api.csproj" \
   "$WALLET_DB_CONNECTION"
 
+# New service is profile-gated. Existing environments without its database keep their
+# current migration run unchanged; once configured, the same runner applies its schema.
+if [ -n "${FINANCIAL_INSIGHTS_DB_CONNECTION:-}" ]; then
+  apply_migration \
+    "FinancialInsights" \
+    "src/Services/FinancialInsights/TaxVision.FinancialInsights.Infrastructure/TaxVision.FinancialInsights.Infrastructure.csproj" \
+    "src/Services/FinancialInsights/TaxVision.FinancialInsights.Api/TaxVision.FinancialInsights.Api.csproj" \
+    "$FINANCIAL_INSIGHTS_DB_CONNECTION"
+fi
+
 echo "All TaxVision migrations were applied successfully."
