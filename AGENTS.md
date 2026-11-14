@@ -14,6 +14,7 @@ existentes. Este archivo describe el checkout real del backend TaxVision.
 | `src/Services/Communication/` | API Node.js/TypeScript con Fastify, Socket.IO, Mediasoup y Prisma |
 | `src/Services/CommunicationRecorder/` | Worker Node.js de grabaciones |
 | `src/Services/CommunicationTranscriptWorker/` | Worker Node.js de transcripcion con `whisper.cpp` |
+| `src/Services/FinancialInsights/` | Servicio .NET de registro de lotes financieros por tenant y cliente |
 | `deploy/docker/` | Compose, overrides locales y wrapper `compose.ps1` |
 
 Los frontends Angular **no estan en este repositorio**. En el workspace del
@@ -42,6 +43,7 @@ Para una prueba puntual, usa el proyecto correspondiente. Ejemplo:
 
 ```powershell
 dotnet test deploy/tests/TaxVision.CloudStorage.Tests/TaxVision.CloudStorage.Tests.csproj
+dotnet test deploy/tests/TaxVision.FinancialInsights.Tests/TaxVision.FinancialInsights.Tests.csproj
 ```
 
 Las pruebas .NET tambien pueden ejecutarse en la imagen definida en

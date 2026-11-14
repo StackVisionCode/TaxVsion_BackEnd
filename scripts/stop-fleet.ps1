@@ -5,11 +5,12 @@
 # La raiz del repo es la carpeta padre de scripts/: sirve en cualquier maquina sin editar la ruta.
 $root = Split-Path -Parent $PSScriptRoot
 
-# Mismos puertos que start-fleet.ps1 (25 .NET + listener IMAP 5395 + Gateway 5047 + Communication 5350 + Recorder 5365).
+# Mismos puertos que start-fleet.ps1 (incluye FinancialInsights 5276, listener IMAP 5395,
+# Gateway 5047, Communication 5350 y Recorder 5365).
 # El content-scanner (5540) NO va acá: es un contenedor de la infra Docker (como clamav) y ese puerto lo
 # atiende el proxy de Docker Desktop; matar ese proceso tumbaría Docker. Se apaga con docker compose.
 $ports = @(
-  5124, 5217, 5263, 5270, 5320, 5330, 5340, 5360, 5370, 5380, 5390, 5395, 5400, 5410, 5420, 5430,
+  5124, 5217, 5263, 5270, 5276, 5320, 5330, 5340, 5360, 5370, 5380, 5390, 5395, 5400, 5410, 5420, 5430,
   5440, 5450, 5460, 5470, 5480, 5490, 5500, 5510, 5520, 5530, 5047, 5350, 5365
 )
 
