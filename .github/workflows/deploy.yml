@@ -595,6 +595,9 @@ jobs:
         run: |
           cat >> .env <<EOF
           # ---------- production-extra environment (secrets nuevos post-cupo) ----------
+          # FinancialInsights: la clave local de User Secrets no se exporta al runner.
+          # Configurar FINANCIAL_INSIGHTS_OPENAI_API_KEY como secret de production-extra.
+          FINANCIAL_INSIGHTS_OPENAI_API_KEY=${{ secrets.FINANCIAL_INSIGHTS_OPENAI_API_KEY }}
           # CloudStorage: OAuth de Google Drive / OneDrive / Dropbox. Opcionales: vacíos dejan
           # solo MinIO y deshabilitan conectar ese proveedor.
           GOOGLE_DRIVE_CLIENT_ID=${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
