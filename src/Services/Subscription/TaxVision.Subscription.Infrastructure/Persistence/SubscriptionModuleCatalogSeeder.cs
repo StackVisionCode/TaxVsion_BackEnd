@@ -73,7 +73,9 @@ public static class SubscriptionModuleCatalogSeeder
             "b2000000-0000-0000-0000-00000000000a",
             "financial_insights",
             "Financial Insights",
-            "Bank statement imports and financial analysis."
+            "Client bank statement imports with AI-assisted financial analysis.",
+            29m,
+            290m
         ),
     ];
 

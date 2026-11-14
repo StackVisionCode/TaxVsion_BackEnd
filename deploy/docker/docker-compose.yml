@@ -1576,7 +1576,6 @@ services:
       - taxvision-network
 
   financial-insights-api:
-    profiles: [financial]
     image: taxvision/financial-insights-api:dev
     container_name: taxvision-financial-insights-api
     restart: unless-stopped
@@ -1624,6 +1623,8 @@ services:
         condition: service_started
       cloudstorage-api:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     networks:
       - taxvision-network
 
@@ -2944,6 +2945,7 @@ services:
       - catalog-api
       - campaigns-api
       - wallet-api
+      - financial-insights-api
       - inventory-api
       - otel-collector
     networks:

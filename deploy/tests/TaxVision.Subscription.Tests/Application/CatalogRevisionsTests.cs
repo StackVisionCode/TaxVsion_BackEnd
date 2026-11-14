@@ -20,9 +20,176 @@ public sealed class CatalogRevisionsTests
     public void R1_runs_before_R2_and_R3_goes_last()
     {
         Assert.Equal(
-            ["2026-11-11-r1-rebaseline", "2026-11-11-r2-single-enterprise", "2026-11-11-r3-plan-descriptions"],
+            [
+                "2026-11-11-r1-rebaseline",
+                "2026-11-11-r2-single-enterprise",
+                "2026-11-11-r3-plan-descriptions",
+                "2026-11-13-r4-financial-insights",
+                "2026-11-13-financial-insights-legacy-editions",
+            ],
             CatalogRevisionCatalog.All.Select(revision => revision.Id)
         );
+    }
+
+    // Financial Insights entra a Enterprise y Pro (también a quien ya es cliente, porque solo suma) y se vende
+    // como add-on a los demás.
+    [Fact]
+    public async Task Financial_insights_enters_enterprise_and_pro_and_re_anchors_their_offices()
+    {
+        var (starter, pro, enterprise, _) = TodaysCatalog();
+        var proOffice = ActiveOn(pro, pro.GetPublishedVersion()!);
+        var enterpriseOffice = ActiveOn(enterprise, enterprise.GetPublishedVersion()!);
+        var starterOffice = ActiveOn(starter, starter.GetPublishedVersion()!);
+        var modules = ModuleCatalog();
+
+        var result = await Apply(
+            new FinancialInsightsModuleRevision(),
+            [starter, pro, enterprise],
+            [proOffice, enterpriseOffice, starterOffice],
+            modules: modules
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        foreach (var plan in new[] { pro, enterprise })
+        {
+            var published = plan.GetPublishedVersion()!;
+            Assert.Contains(
+                "financial_insights",
+                ContractedEntitlementPolicy.EnabledModules(published, modules.All).Value
+            );
+            // Lo demás de la edición se conserva.
+            Assert.Contains("meetings", ContractedEntitlementPolicy.EnabledModules(published, modules.All).Value);
+        }
+        Assert.Equal(pro.GetPublishedVersion()!.Id, proOffice.PlanVersionId);
+        Assert.Equal(enterprise.GetPublishedVersion()!.Id, enterpriseOffice.PlanVersionId);
+        Assert.DoesNotContain(
+            "financial_insights",
+            ContractedEntitlementPolicy.EnabledModules(starter.GetPublishedVersion()!, modules.All).Value
+        );
+
+        var addon = modules.All.Single(module => module.Code == "financial_insights");
+        Assert.True(addon.IsSellableAsAddon);
+        Assert.Equal(29m, addon.AddonPriceMonthlyUsd);
+        Assert.Equal(290m, addon.AddonPriceYearlyUsd);
+    }
+
+    [Fact]
+    public async Task Financial_insights_module_revision_is_idempotent()
+    {
+        var (starter, pro, enterprise, _) = TodaysCatalog();
+        var modules = ModuleCatalog();
+        await Apply(new FinancialInsightsModuleRevision(), [starter, pro, enterprise], [], modules: modules);
+        var proEdition = pro.GetPublishedVersion()!.Id;
+
+        var again = await Apply(new FinancialInsightsModuleRevision(), [starter, pro, enterprise], [], modules: modules);
+
+        Assert.True(again.IsSuccess);
+        Assert.Equal(proEdition, pro.GetPublishedVersion()!.Id);
+    }
+
+    // Solo mejora: si la edición de la oficina tiene un módulo que la nueva no trae, no se la mueve.
+    [Fact]
+    public async Task Financial_insights_never_moves_an_office_that_would_lose_a_module()
+    {
+        var pro = Plan("pro", 129m, 1290m, seats: 10, storage: 50 * GiB);
+        var richer = PublishCopy(pro, 129m, 1290m, seats: 10, storage: 50 * GiB, extraModule: "campaigns");
+        var office = ActiveOn(pro, richer);
+        PublishCopy(pro, 129m, 1290m, seats: 10, storage: 50 * GiB, extraModule: "meetings");
+        var enterprise = Plan("enterprise", 99m, 999m, seats: 3, storage: 15 * GiB);
+
+        var result = await Apply(new FinancialInsightsModuleRevision(), [pro, enterprise], [office], modules: ModuleCatalog());
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.Equal(richer.Id, office.PlanVersionId);
+        Assert.Contains("skipped 1", result.Value);
+    }
+
+    // Edición heredada: copia una edición superada con el módulo nuevo, mismos términos, y nunca se vende.
+    [Fact]
+    public void A_legacy_edition_keeps_the_terms_of_its_source_adds_the_module_and_is_never_published()
+    {
+        var enterprise = Plan("enterprise", 299m, 2990m, seats: 25, storage: 200 * GiB);
+        var old = enterprise.GetPublishedVersion()!;
+        var current = PublishCopy(enterprise, 99m, 999m, seats: 3, storage: 15 * GiB, extraModule: "meetings");
+
+        var legacy = enterprise.AddLegacyEditionWithModules(old.Id, ["financial_insights"], Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(legacy.IsSuccess, legacy.IsFailure ? legacy.Error.Code : null);
+        Assert.Equal(PlanVersionStatus.Superseded, legacy.Value.Status);
+        Assert.Equal(CommercialTerms.Of(old), CommercialTerms.Of(legacy.Value));
+        Assert.Equal(current.Id, enterprise.GetPublishedVersion()!.Id);
+        var modules = ContractedEntitlementPolicy.EnabledModules(legacy.Value, ModuleCatalog().All).Value;
+        Assert.Contains("financial_insights", modules);
+        Assert.Contains("meetings", modules);
+    }
+
+    [Fact]
+    public void A_legacy_edition_only_comes_from_a_superseded_edition()
+    {
+        var enterprise = Plan("enterprise", 99m, 999m, seats: 3, storage: 15 * GiB);
+
+        var fromPublished = enterprise.AddLegacyEditionWithModules(
+            enterprise.GetPublishedVersion()!.Id,
+            ["financial_insights"],
+            Guid.Empty,
+            DateTime.UtcNow
+        );
+
+        Assert.True(fromPublished.IsFailure);
+        Assert.Equal("Plan.LegacyEditionSourceNotSuperseded", fromPublished.Error.Code);
+    }
+
+    // Toda oficina de Enterprise o Pro sin el módulo lo recibe, conservando su precio y sus límites.
+    [Fact]
+    public async Task Offices_on_old_editions_get_financial_insights_without_changing_their_terms()
+    {
+        var modules = ModuleCatalog();
+        var enterprise = Plan("enterprise", 299m, 2990m, seats: 25, storage: 200 * GiB);
+        var old = enterprise.GetPublishedVersion()!;
+        var office = ActiveOn(enterprise, old);
+        PublishCopy(enterprise, 99m, 999m, seats: 3, storage: 15 * GiB, extraModule: "meetings");
+        var starter = Plan("starter", 39m, 390m, seats: 1, storage: 5 * GiB);
+        var starterOffice = ActiveOn(starter, starter.GetPublishedVersion()!);
+        await Apply(new FinancialInsightsModuleRevision(), [enterprise, starter], [office, starterOffice], modules: modules);
+        var published = enterprise.GetPublishedVersion()!.Id;
+
+        var result = await Apply(
+            new FinancialInsightsLegacyEditionsRevision(),
+            [enterprise, starter],
+            [office, starterOffice],
+            modules: modules
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        var edition = enterprise.Versions.Single(version => version.Id == office.PlanVersionId);
+        Assert.Equal(CommercialTerms.Of(old), CommercialTerms.Of(edition));
+        Assert.Contains("financial_insights", ContractedEntitlementPolicy.EnabledModules(edition, modules.All).Value);
+        Assert.Equal(published, enterprise.GetPublishedVersion()!.Id);
+        Assert.Equal(starter.GetPublishedVersion()!.Id, starterOffice.PlanVersionId);
+
+        // Idempotente: una segunda pasada no crea otra edición ni mueve a nadie.
+        var editions = enterprise.Versions.Count;
+        var again = await Apply(
+            new FinancialInsightsLegacyEditionsRevision(),
+            [enterprise, starter],
+            [office, starterOffice],
+            modules: modules
+        );
+        Assert.True(again.IsSuccess);
+        Assert.Equal(editions, enterprise.Versions.Count);
+        Assert.Equal(edition.Id, office.PlanVersionId);
+    }
+
+    [Fact]
+    public void The_monthly_document_quota_of_financial_insights_has_a_platform_default()
+    {
+        var seed = Assert.Single(
+            EntitlementKeyCatalog.PlatformDefaults,
+            item => item.Key == FinancialInsightsEntitlementCatalog.DocumentsPerMonth
+        );
+        Assert.Equal("financial.documents_per_month", seed.Key);
+        Assert.Equal(EntitlementValueType.Int, seed.ValueType);
+        Assert.Equal("200", seed.DefaultValue);
     }
 
     // R3: la descripción sembrada decía "25 usuarios" y estaba en español; la edición manda en las cifras.
@@ -305,7 +472,8 @@ public sealed class CatalogRevisionsTests
         TenantSubscription[] subscriptions,
         string trialPlan = "enterprise",
         InMemoryCatalogAuditLog? catalogAudit = null,
-        FakeSubscriptionAuditLogWriter? tenantAudit = null
+        FakeSubscriptionAuditLogWriter? tenantAudit = null,
+        ModuleCatalogFixture? modules = null
     ) =>
         revision.ApplyAsync(
             new CatalogRevisionContext(
@@ -316,9 +484,38 @@ public sealed class CatalogRevisionsTests
                 tenantAudit ?? new FakeSubscriptionAuditLogWriter(),
                 CatalogAuditActor.Deploy(revision.Id),
                 DateTime.UtcNow
-            ),
+            )
+            {
+                Modules = modules?.Repository,
+            },
             CancellationToken.None
         );
+
+    public sealed record ModuleCatalogFixture(IReadOnlyCollection<Module> All, FakeModuleRepo Repository);
+
+    // Catálogo como el de hoy: Financial Insights comercial y todavía sin precio de add-on.
+    private static ModuleCatalogFixture ModuleCatalog()
+    {
+        Module Core(string code) => Module.Create(code, code, code).Value;
+        Module Commercial(string code, decimal? monthly)
+        {
+            var module = Module.Create(code, code, code).Value;
+            module.MarkAsCommercial();
+            if (monthly is { } price)
+                module.SetAsAddon(price, price * 10);
+            return module;
+        }
+
+        Module[] all =
+        [
+            Core("customers"),
+            Commercial("meetings", 29m),
+            Commercial("campaigns", 29m),
+            Commercial("email", 29m),
+            Commercial("financial_insights", null),
+        ];
+        return new ModuleCatalogFixture(all, new FakeModuleRepo(all));
+    }
 
     private static (
         SubscriptionPlan Starter,

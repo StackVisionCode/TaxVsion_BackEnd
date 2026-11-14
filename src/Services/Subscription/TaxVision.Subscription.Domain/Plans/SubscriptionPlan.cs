@@ -405,6 +405,102 @@ public sealed class SubscriptionPlan : TenantlessAggregateRoot
     }
 
     /// <summary>
+    /// Edición heredada: copia una edición ya superada (precios, límites, claves y features) y le suma módulos, para
+    /// que las oficinas que la tienen ganen un módulo nuevo sin cambiar lo que pagan ni sus límites. Nace superada:
+    /// nunca se vende ni reemplaza a la publicada.
+    /// </summary>
+    public Result<SubscriptionPlanVersion> AddLegacyEditionWithModules(
+        Guid sourceVersionId,
+        IReadOnlyCollection<string> extraModules,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        var source = FindVersionById(sourceVersionId);
+        if (source is null)
+            return Result.Failure<SubscriptionPlanVersion>(
+                new Error("Plan.VersionNotFound", "Version does not exist on this plan.")
+            );
+        if (source.Status != PlanVersionStatus.Superseded)
+            return Result.Failure<SubscriptionPlanVersion>(
+                new Error(
+                    "Plan.LegacyEditionSourceNotSuperseded",
+                    "Only a superseded edition can be copied as a legacy edition."
+                )
+            );
+
+        var draft = SubscriptionPlanVersion.Create(
+            Id,
+            _versions.Max(version => version.VersionNumber) + 1,
+            source.TrialDaysDefault,
+            source.SupportedBillingCycles.ToArray()
+        );
+        if (draft.IsFailure)
+            return draft;
+        var version = draft.Value;
+
+        foreach (var entitlement in source.Entitlements)
+        {
+            var clone = PlanEntitlementDefinition.Create(
+                version.Id,
+                entitlement.Key,
+                entitlement.ValueType,
+                entitlement.DefaultValue,
+                entitlement.Description
+            );
+            if (clone.IsFailure)
+                return Result.Failure<SubscriptionPlanVersion>(clone.Error);
+            version.AddEntitlementDefinition(clone.Value);
+        }
+
+        foreach (var tier in source.PriceTiers)
+        {
+            // UnitAmount es owned type: se clona el Money, no se reusa la instancia.
+            var amount = Money.Create(tier.UnitAmount.Amount, tier.UnitAmount.Currency);
+            if (amount.IsFailure)
+                return Result.Failure<SubscriptionPlanVersion>(amount.Error);
+            var clone = PlanPriceTier.Create(version.Id, tier.BillingCycle, tier.MinQuantity, tier.MaxQuantity, amount.Value);
+            if (clone.IsFailure)
+                return Result.Failure<SubscriptionPlanVersion>(clone.Error);
+            version.AddPriceTier(clone.Value);
+        }
+
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var feature in source.Features)
+        {
+            var clone = PlanFeature.Create(version.Id, feature.FeatureKey, feature.DefaultEnabled, feature.Description);
+            if (clone.IsFailure)
+                return Result.Failure<SubscriptionPlanVersion>(clone.Error);
+            version.AddFeature(clone.Value);
+            keys.Add(feature.FeatureKey.Value);
+        }
+
+        foreach (var module in extraModules.Select(m => m.Trim().ToLowerInvariant()).Where(m => m.Length > 0).Distinct())
+        {
+            var key = EntitlementKey.Create($"module.{module}");
+            if (key.IsFailure)
+                return Result.Failure<SubscriptionPlanVersion>(key.Error);
+            if (!keys.Add(key.Value.Value))
+                continue;
+            var feature = PlanFeature.Create(version.Id, key.Value, defaultEnabled: true, description: $"module.{module}");
+            if (feature.IsFailure)
+                return Result.Failure<SubscriptionPlanVersion>(feature.Error);
+            version.AddFeature(feature.Value);
+        }
+
+        var added = AddVersion(version, actorUserId, nowUtc);
+        if (added.IsFailure)
+            return Result.Failure<SubscriptionPlanVersion>(added.Error);
+
+        // Se valida como cualquier publicación y queda superada en el acto: solo la usan las oficinas re-ancladas.
+        var published = version.Publish(nowUtc);
+        if (published.IsFailure)
+            return Result.Failure<SubscriptionPlanVersion>(published.Error);
+        var superseded = version.Supersede(nowUtc);
+        return superseded.IsFailure ? Result.Failure<SubscriptionPlanVersion>(superseded.Error) : Result.Success(version);
+    }
+
+    /// <summary>
     /// Publica una versión nueva idéntica a la actual pero con otro precio mensual/anual, superando
     /// la anterior. Como una versión publicada es inmutable, se versiona en vez de editar. Módulos,
     /// límites y demás features se conservan; el precio nuevo aplica a las compras/renovaciones futuras.

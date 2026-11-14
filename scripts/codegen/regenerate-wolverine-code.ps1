@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $all = @(
   "Auth", "Billing", "Calendar", "Campaigns", "Catalog", "CloudStorage", "Connectors", "Correspondence",
-  "Customer", "Documents", "Growth", "Inventory", "Notes", "Notification", "PaymentApp", "PaymentClient",
+  "Customer", "Documents", "FinancialInsights", "Growth", "Inventory", "Notes", "Notification", "PaymentApp", "PaymentClient",
   "Postmaster", "Reminder", "Scribe", "Signature", "Sms", "Subscription", "Tasks", "Tenant", "Wallet"
 )
 # Con -File la lista llega como un solo texto "Tasks,Auth".
@@ -19,6 +19,9 @@ $targets = if ($Service) { $Service | ForEach-Object { $_ -split ',' } | ForEach
 
 $failed = @()
 $env:TAXVISION_CODEGEN_WRITE = "1"
+# En Static Wolverine solo descubre los handlers del GeneratedHandlerRegistry existente: un handler nuevo
+# quedaria fuera sin aviso. Se regenera en Dynamic para que entren todos.
+$env:Wolverine__CodeGeneration__TypeLoadMode = "Dynamic"
 try {
   foreach ($s in $targets) {
     $project = Join-Path $root "deploy\tests\TaxVision.$s.Tests\TaxVision.$s.Tests.csproj"
@@ -29,6 +32,7 @@ try {
 }
 finally {
   Remove-Item env:TAXVISION_CODEGEN_WRITE -ErrorAction SilentlyContinue
+  Remove-Item env:Wolverine__CodeGeneration__TypeLoadMode -ErrorAction SilentlyContinue
 }
 
 if ($failed.Count -gt 0) {

@@ -139,6 +139,7 @@ public static class OffboardingParticipants
             "/tenants/offboarding-impact/{userId}"
         ),
         new("Wallet", "Wallet", ["UserLifecyclePermissionsProjectionConsumer"]),
+        new("FinancialInsights", "Financial Insights", ["UserLifecyclePermissionsProjectionConsumer"]),
     ];
 
     /// <summary>Todos los pasos esperados (servicio, consumer).</summary>

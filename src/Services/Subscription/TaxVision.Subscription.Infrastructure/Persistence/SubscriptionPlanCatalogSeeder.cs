@@ -70,7 +70,7 @@ public static class SubscriptionPlanCatalogSeeder
             seatsMax: 10,
             maxPendingInvitations: 15,
             storageQuotaBytes: 50L * 1024 * 1024 * 1024,
-            modules: [.. coreModules, "email", "meetings", "campaigns"],
+            modules: [.. coreModules, "email", "meetings", "campaigns", "financial_insights"],
             nowUtc: nowUtc
         );
 
@@ -88,7 +88,7 @@ public static class SubscriptionPlanCatalogSeeder
             seatsMax: 25,
             maxPendingInvitations: 40,
             storageQuotaBytes: 200L * 1024 * 1024 * 1024,
-            modules: [.. coreModules, "email", "meetings", "campaigns"],
+            modules: [.. coreModules, "email", "meetings", "campaigns", "financial_insights"],
             nowUtc: nowUtc
         );
 

@@ -489,6 +489,21 @@ public sealed class PermissionCatalogTests
         );
     }
 
+    [Theory]
+    [InlineData(PermissionCatalog.FinancialImport)]
+    [InlineData(PermissionCatalog.FinancialView)]
+    public void Financial_insights_is_a_normal_module_for_staff(string code)
+    {
+        // Módulo normal: el admin y el empleado lo reciben; el plan (gate de módulo) decide si se ve.
+        var definition = PermissionCatalog.All.Single(item => item.Code == code);
+
+        Assert.False(definition.ExcludeFromAdminBundle);
+        Assert.Equal("financial_insights", definition.GatedModule);
+        Assert.Contains(code, PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin));
+        Assert.Contains(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+        Assert.Contains(code, PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee));
+    }
+
     [Fact]
     public void Financial_portal_import_can_be_disabled_per_client_without_granting_it_to_staff()
     {
