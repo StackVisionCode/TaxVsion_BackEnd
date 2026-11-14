@@ -1,6 +1,6 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 import type { Call, CallSnapshot } from '../../domain/calls/call.js';
-import type { CallRepository } from '../../application/ports/call-repository.js';
+import type { CallHistoryFilter, CallRepository } from '../../application/ports/call-repository.js';
 import { toDomainCall, toDomainCallParticipant } from './call-mapper.js';
 
 export class PrismaCallRepository implements CallRepository {
@@ -35,6 +35,8 @@ export class PrismaCallRepository implements CallRepository {
           UpdatedAtUtc: snapshot.updatedAtUtc,
         },
         update: {
+          // El tipo cambia al pasar de audio a video.
+          Kind: snapshot.kind,
           Status: snapshot.status,
           AcceptedAtUtc: snapshot.acceptedAtUtc,
           StartedAtUtc: snapshot.startedAtUtc,
@@ -129,12 +131,10 @@ export class PrismaCallRepository implements CallRepository {
     userId: string;
     take: number;
     skip: number;
+    filter?: CallHistoryFilter;
   }): Promise<CallSnapshot[]> {
     const rows = await this.prisma.call.findMany({
-      where: {
-        TenantId: input.tenantId,
-        OR: [{ CallerUserId: input.userId }, { CalleeUserId: input.userId }],
-      },
+      where: userHistoryWhere(input.tenantId, input.userId, input.filter),
       include: { Participants: true },
       orderBy: { RingingAtUtc: 'desc' },
       take: input.take,
@@ -180,12 +180,26 @@ export class PrismaCallRepository implements CallRepository {
     return rows.map((row) => toDomainCall(row, row.Participants).toSnapshot());
   }
 
-  async countRecentForUser(tenantId: string, userId: string): Promise<number> {
-    return this.prisma.call.count({
-      where: {
-        TenantId: tenantId,
-        OR: [{ CallerUserId: userId }, { CalleeUserId: userId }],
-      },
-    });
+  async countRecentForUser(tenantId: string, userId: string, filter?: CallHistoryFilter): Promise<number> {
+    return this.prisma.call.count({ where: userHistoryWhere(tenantId, userId, filter) });
   }
+}
+
+/**
+ * Llamadas del usuario con los filtros de la pagina Calls (cliente = algun participante con CustomerId).
+ * Van en AND porque audiencia y busqueda filtran ambas por participantes.
+ */
+function userHistoryWhere(tenantId: string, userId: string, filter?: CallHistoryFilter): Prisma.CallWhereInput {
+  const clientParticipant = { CustomerId: { not: null } };
+  const and: Prisma.CallWhereInput[] = [];
+  if (filter?.audience === 'client') and.push({ Participants: { some: clientParticipant } });
+  if (filter?.audience === 'team') and.push({ Participants: { none: clientParticipant } });
+  if (filter?.recordedOnly) and.push({ RecordingFileId: { not: null } });
+  // El nombre se busca en el OTRO participante (SQL Server compara sin mayusculas por la intercalacion).
+  if (filter?.search) and.push({ Participants: { some: { UserId: { not: userId }, DisplayName: { contains: filter.search } } } });
+  return {
+    TenantId: tenantId,
+    OR: [{ CallerUserId: userId }, { CalleeUserId: userId }],
+    ...(and.length > 0 ? { AND: and } : {}),
+  };
 }

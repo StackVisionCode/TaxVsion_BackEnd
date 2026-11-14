@@ -3,7 +3,7 @@ import { Result, makeError } from '../shared/result.js';
 import { CallKind } from './call-kind.js';
 import { CallStatus, isTerminal } from './call-status.js';
 import { CallParticipant, type CallParticipantSnapshot } from './call-participant.js';
-import type { ConnectionQuality, MediaStatus } from './media-status.js';
+import { isConnectedQuality, type ConnectionQuality, type MediaStatus } from './media-status.js';
 import { RecordingSession } from '../recording/recording-session.js';
 import { RecordingScope, type RecordingCaptureMode, type RecordingStopReason } from '../recording/recording-session-state.js';
 import { RecordingConsentEntry } from '../recording/recording-consent-entry.js';
@@ -437,17 +437,22 @@ export class Call {
     return Result.okVoid();
   }
 
-  reportConnectionQuality(input: { byUserId: string; quality: ConnectionQuality }): Result<void> {
+  reportConnectionQuality(input: { byUserId: string; quality: ConnectionQuality; now?: Date }): Result<void> {
     const participant = this.participants.find((p) => p.userId === input.byUserId);
     if (!participant) {
       return Result.fail(makeError('Call.NotParticipant', 'User is not a participant of this call.'));
     }
+    const now = input.now ?? new Date();
     participant.updateConnectionQuality(input.quality);
     this.state = {
       ...this.state,
-      updatedAtUtc: new Date(),
+      updatedAtUtc: now,
       participants: this.participants.map((p) => p.toSnapshot()),
     };
+    // La primera calidad real solo sale con WebRTC conectado: ahí empieza la conversación.
+    if (this.state.status === CallStatus.Accepted && isConnectedQuality(input.quality)) {
+      this.markActive(now);
+    }
     return Result.okVoid();
   }
 
