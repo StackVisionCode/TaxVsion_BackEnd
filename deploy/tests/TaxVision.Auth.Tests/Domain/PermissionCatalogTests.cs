@@ -489,6 +489,20 @@ public sealed class PermissionCatalogTests
         );
     }
 
+    [Fact]
+    public void Financial_portal_import_can_be_disabled_per_client_without_granting_it_to_staff()
+    {
+        var code = PermissionCatalog.FinancialPortalImport;
+        var definition = PermissionCatalog.All.Single(item => item.Code == code);
+
+        Assert.True(definition.IsCustomerPortal);
+        Assert.True(definition.IsAssignableByTenant);
+        Assert.Equal("financial_insights", definition.GatedModule);
+        Assert.Contains(code, PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal));
+        Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee));
+        Assert.DoesNotContain(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+    }
+
     /// <summary>
     /// Fitness: un permiso reservado no protege nada todavía, así que no puede ser asignable ni
     /// aparecer en ningún bundle. Si alguien marca uno como reservado y se olvida del otro flag,

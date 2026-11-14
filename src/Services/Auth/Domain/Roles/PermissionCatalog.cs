@@ -39,6 +39,9 @@ public static class PermissionCatalog
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
     public const string CustomersImport = CustomersPermissions.Import;
+    public const string FinancialImport = FinancialInsightsPermissions.Import;
+    public const string FinancialView = FinancialInsightsPermissions.View;
+    public const string FinancialPortalImport = FinancialInsightsPermissions.PortalImport;
     public const string DocumentsBrandingManage = DocumentsPermissions.BrandingManage;
     public const string CampaignsView = CampaignsPermissions.View;
     public const string CampaignsManage = CampaignsPermissions.Manage;
@@ -532,6 +535,14 @@ public static class PermissionCatalog
             "Bulk import clients (CSV/Excel)",
             false
         ),
+        new(new Guid("a1000000-0000-0000-0000-0000000001a0"), FinancialImport,
+            "financial_insights", "Register customer bank statement imports", false,
+            ExcludeFromAdminBundle: true),
+        new(new Guid("a1000000-0000-0000-0000-0000000001a1"), FinancialView,
+            "financial_insights", "View customer financial imports", false,
+            ExcludeFromAdminBundle: true),
+        new(new Guid("a1000000-0000-0000-0000-0000000001a2"), FinancialPortalImport,
+            "financial_insights", "The client can submit bank statements for analysis", true),
         new(
             new Guid("a1000000-0000-0000-0000-000000000152"),
             DocumentsBrandingManage,
@@ -2468,6 +2479,7 @@ public static class PermissionCatalog
                 NotesPortalRead,
                 CloudStorageFileView,
                 CloudStorageFileUpload,
+                FinancialPortalImport,
                 CloudStorageFileDownload,
                 // Communication: mismo set que sembró la migración AddCommunicationPermissions
                 // para el rol "Customer Portal" — nunca moderate/host/record/settings.

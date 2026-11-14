@@ -7,6 +7,7 @@
     <Project Path="src/BuildingBlocks/BuildingBlocks.Web/BuildingBlocks.Web.csproj" />
   </Folder>
   <Folder Name="/src/BuildingBlocks/" />
+  <Folder Name="/src/BuildingBlocks/Authorization/" />
   <Folder Name="/src/BuildingBlocks/CustomerVisibility/">
     <Project Path="src/BuildingBlocks/CustomerVisibility/BuildingBlocks.CustomerVisibility.csproj" />
   </Folder>
@@ -67,6 +68,12 @@
     <Project Path="src/Services/PaymentClient/TaxVision.PaymentClient.Application/TaxVision.PaymentClient.Application.csproj" />
     <Project Path="src/Services/PaymentClient/TaxVision.PaymentClient.Domain/TaxVision.PaymentClient.Domain.csproj" />
     <Project Path="src/Services/PaymentClient/TaxVision.PaymentClient.Infrastructure/TaxVision.PaymentClient.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/FinancialInsights/">
+    <Project Path="src/Services/FinancialInsights/TaxVision.FinancialInsights.Api/TaxVision.FinancialInsights.Api.csproj" />
+    <Project Path="src/Services/FinancialInsights/TaxVision.FinancialInsights.Application/TaxVision.FinancialInsights.Application.csproj" />
+    <Project Path="src/Services/FinancialInsights/TaxVision.FinancialInsights.Domain/TaxVision.FinancialInsights.Domain.csproj" />
+    <Project Path="src/Services/FinancialInsights/TaxVision.FinancialInsights.Infrastructure/TaxVision.FinancialInsights.Infrastructure.csproj" />
   </Folder>
   <!-- GrowthService: modular deployment, bounded contexts remain independently extractable -->
   <Folder Name="/src/Services/Growth/">
@@ -217,6 +224,7 @@
     <Project Path="deploy/tests/TaxVision.Documents.Tests/TaxVision.Documents.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Correspondence.Tests/TaxVision.Correspondence.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Customer.Tests/TaxVision.Customer.Tests.csproj" />
+    <Project Path="deploy/tests/TaxVision.FinancialInsights.Tests/TaxVision.FinancialInsights.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Gateway.Tests/TaxVision.Gateway.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Growth.Tests/TaxVision.Growth.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.Notes.Tests/TaxVision.Notes.Tests.csproj" />
