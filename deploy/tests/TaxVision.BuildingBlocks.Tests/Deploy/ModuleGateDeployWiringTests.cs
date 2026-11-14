@@ -101,7 +101,8 @@ public sealed class ModuleGateDeployWiringTests
         var enforceCount = Regex.Matches(compose, @"Authorization__ModuleGate__Enforce:").Count;
         var moduleCount = Regex.Matches(compose, @"Authorization__ModuleGate__EnforcedModules__\d+:").Count;
 
-        Assert.Equal(14, enforceCount);
+        // 15 desde Financial Insights (financial-insights-api, 2026-11-13).
+        Assert.Equal(15, enforceCount);
         Assert.True(
             moduleCount >= enforceCount,
             $"Hay {enforceCount} servicios con Enforce y solo {moduleCount} entradas de módulo."

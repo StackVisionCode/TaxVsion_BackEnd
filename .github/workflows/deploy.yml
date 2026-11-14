@@ -109,7 +109,6 @@ jobs:
           # Wallet: requerido tanto por wallet-api como por el runner de migraciones.
           # Sin esta entrada Compose aborta antes de construir o migrar cualquier servicio.
           WALLET_DB_CONNECTION=${{ secrets.WALLET_DB_CONNECTION }}
-          FINANCIAL_INSIGHTS_DB_CONNECTION=${{ secrets.FINANCIAL_INSIGHTS_DB_CONNECTION }}
           # SQL Server ya no corre en este host: vive en su propio servidor Ubuntu. De aca solo sale
           # a donde esta, para que `db-ready` compruebe el puerto antes de arrancar el resto. La
           # credencial ya viaja dentro de cada *_DB_CONNECTION, asi que no hay password suelta.
@@ -318,8 +317,6 @@ jobs:
           # ServiceOnly registrada como ServiceAuth__Clients__30 en auth-api.
           WALLET_SERVICE_CLIENT_ID=${{ secrets.WALLET_SERVICE_CLIENT_ID }}
           WALLET_SERVICE_CLIENT_SECRET=${{ secrets.WALLET_SERVICE_CLIENT_SECRET }}
-          FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID=${{ secrets.FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID }}
-          FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET=${{ secrets.FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET }}
 
           EOF
 
@@ -595,8 +592,12 @@ jobs:
         run: |
           cat >> .env <<EOF
           # ---------- production-extra environment (secrets nuevos post-cupo) ----------
-          # FinancialInsights: la clave local de User Secrets no se exporta al runner.
-          # Configurar FINANCIAL_INSIGHTS_OPENAI_API_KEY como secret de production-extra.
+          # FinancialInsights: sus cuatro secrets viven en production-extra (production está lleno).
+          # Sin la base el servicio no arranca y apply-migrations.sh salta sus migraciones; el
+          # cliente M2M (ServiceAuth__Clients__31 en auth-api) es el mismo en Auth y en el servicio.
+          FINANCIAL_INSIGHTS_DB_CONNECTION=${{ secrets.FINANCIAL_INSIGHTS_DB_CONNECTION }}
+          FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID=${{ secrets.FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID }}
+          FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET=${{ secrets.FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET }}
           FINANCIAL_INSIGHTS_OPENAI_API_KEY=${{ secrets.FINANCIAL_INSIGHTS_OPENAI_API_KEY }}
           # CloudStorage: OAuth de Google Drive / OneDrive / Dropbox. Opcionales: vacíos dejan
           # solo MinIO y deshabilitan conectar ese proveedor.

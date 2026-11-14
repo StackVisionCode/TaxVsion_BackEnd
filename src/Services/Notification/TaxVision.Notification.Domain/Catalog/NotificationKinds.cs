@@ -107,4 +107,9 @@ public static class NotificationKinds
     public const string CloudStorageConnectionReviewRequired = "cloudstorage.connection.review_required";
     public const string ConnectorsOfficeMailboxReviewRequired = "connectors.office_mailbox.review_required";
     public const string AuthOffboardingIncomplete = "auth.offboarding.incomplete";
+
+    // Financial Insights: lote de estados de cuenta terminado.
+    public const string FinancialImportBatchCompleted = "financial.import_batch.completed";
+    public const string FinancialPortalImportBatchCompleted = "financial.portal_import_batch.completed";
+    public const string FinancialPortalImportBatchSubmitted = "financial.portal_import_batch.submitted";
 }

@@ -73,7 +73,10 @@ public sealed class CatalogRevisionRunner(
                 services.GetRequiredService<ISubscriptionAuditLogWriter>(),
                 CatalogAuditActor.Deploy(revision.Id),
                 DateTime.UtcNow
-            );
+            )
+            {
+                Modules = services.GetRequiredService<IModuleRepository>(),
+            };
             result = await revision.ApplyAsync(context, ct);
             if (result.IsSuccess)
             {
@@ -140,6 +143,7 @@ public static class CatalogRevisionServiceCollectionExtensions
     public static IServiceCollection AddSubscriptionCatalogRevisions(this IServiceCollection services)
     {
         services.TryAddScoped<IPlanRepository, PlanRepository>();
+        services.TryAddScoped<IModuleRepository, ModuleRepository>();
         services.TryAddScoped<ICatalogRevisionStore, CatalogRevisionStore>();
         services.TryAddScoped<IPlanSubscriptionsAcrossTenants, PlanSubscriptionsAcrossTenants>();
         services.TryAddScoped<ICatalogAuditLog, CatalogAuditLog>();

@@ -29,6 +29,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.SmsDispatch Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.SmsDispatch
@@ -49,7 +50,6 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder is not public, so requires service location
             */
             var notificationDispatcher = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Common.NotificationDispatcher>(serviceScope.ServiceProvider);
-            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
             var campaignDispatchSendRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignDispatchSendRepository>(serviceScope.ServiceProvider);
             
             /*
@@ -72,11 +72,11 @@ namespace Internal.Generated.WolverineHandlers
             TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
             
             // The actual message execution
-            var outgoing1 = await TaxVision.Notification.Application.Email.Sending.Consumers.CampaignEmailDispatchConsumer.Handle(campaignDispatchRequestedIntegrationEvent, campaignEmailProvider, customerContactPolicyRepository, campaignDispatchSendRepository, unitOfWork, _optionsOfCampaignDispatchOptions, _loggerOfCampaignEmailMessage, cancellation).ConfigureAwait(false);
+            var outgoing1 = await TaxVision.Notification.Application.Push.Consumers.CampaignPushDispatchConsumer.Handle(campaignDispatchRequestedIntegrationEvent, notificationDispatcher, _platformSettings, cancellation).ConfigureAwait(false);
 
             
             // The actual message execution
-            var outgoing2 = await TaxVision.Notification.Application.Push.Consumers.CampaignPushDispatchConsumer.Handle(campaignDispatchRequestedIntegrationEvent, notificationDispatcher, _platformSettings, cancellation).ConfigureAwait(false);
+            var outgoing2 = await TaxVision.Notification.Application.Email.Sending.Consumers.CampaignEmailDispatchConsumer.Handle(campaignDispatchRequestedIntegrationEvent, campaignEmailProvider, customerContactPolicyRepository, campaignDispatchSendRepository, unitOfWork, _optionsOfCampaignDispatchOptions, _loggerOfCampaignEmailMessage, cancellation).ConfigureAwait(false);
 
             
             // Outgoing, cascaded message

@@ -7,6 +7,7 @@ namespace TaxVision.FinancialInsights.Domain.Projections;
 public sealed class UserPermissionsProjection : TenantEntity
 {
     private UserPermissionsProjection() { }
+    [UserReference(UserReferenceKind.Projection, HandledBy = "UserLifecyclePermissionsProjectionConsumer")]
     public Guid UserId { get; private set; }
     public int PermissionsVersion { get; private set; }
     public string PermissionCodesJson { get; private set; } = "[]";
@@ -88,26 +89,34 @@ public sealed class TenantEntitlementsProjection : TenantEntity
     public string PlanCode { get; private set; } = string.Empty;
     public long RevisionNumber { get; private set; }
     public string EnabledModulesJson { get; private set; } = "[]";
+    // Tope mensual de documentos con IA del plan (financial.documents_per_month); null si el plan no lo trae.
+    public int? DocumentsPerMonth { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public IReadOnlyList<string> EnabledModules => JsonSerializer.Deserialize<List<string>>(EnabledModulesJson) ?? [];
 
     public static TenantEntitlementsProjection Create(Guid tenantId, string planCode, long revision,
-        IReadOnlyList<string> modules)
+        IReadOnlyList<string> modules, int? documentsPerMonth)
     {
         var projection = new TenantEntitlementsProjection { Id = tenantId };
         projection.SetTenant(tenantId);
-        projection.ApplyIfNewer(planCode, revision, modules);
+        projection.ApplyIfNewer(planCode, revision, modules, documentsPerMonth);
         return projection;
     }
 
-    public void ApplyIfNewer(string planCode, long revision, IReadOnlyList<string> modules)
+    public void ApplyIfNewer(string planCode, long revision, IReadOnlyList<string> modules, int? documentsPerMonth)
     {
         if (revision < RevisionNumber) return;
         PlanCode = planCode;
         RevisionNumber = revision;
         EnabledModulesJson = JsonSerializer.Serialize(modules);
+        DocumentsPerMonth = documentsPerMonth is >= 0 ? documentsPerMonth : null;
         UpdatedAtUtc = DateTime.UtcNow;
     }
+
+    public bool HasModule(string module) => EnabledModules.Contains(module, StringComparer.OrdinalIgnoreCase);
+
+    // El plan manda; la configuración solo cubre planes que aún no envían la clave.
+    public int MonthlyDocumentLimit(int fallback) => DocumentsPerMonth ?? fallback;
 }
 
 public sealed class TenantDirectoryProjection : TenantEntity

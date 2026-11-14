@@ -131,6 +131,8 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   // Wallet — solicitud y respuesta de crédito/reversa por referencia opaca: Growth (premios de referidos) y Wallet.
   'wallet.credit.requested.v1',
   'wallet.credit.applied.v1',
+  // Financial Insights — lote terminado: lo consume Notification (avisos); Communication no hace nada con él.
+  'financial.import_batch.completed.v1',
   // Giftcards por correo y aviso de referido: los consume Notification; Communication no hace nada con ellos.
   'growth.giftcards.share_requested',
   'growth.giftcards.share_requested.v1',

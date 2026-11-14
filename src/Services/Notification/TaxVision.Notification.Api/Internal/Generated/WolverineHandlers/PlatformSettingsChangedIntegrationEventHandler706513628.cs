@@ -27,8 +27,8 @@ namespace Internal.Generated.WolverineHandlers
 
         public override System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var platformSettingsChangedIntegrationEvent = (BuildingBlocks.Messaging.PlatformIntegrationEvents.PlatformSettingsChangedIntegrationEvent)context.Envelope.Message;
 
@@ -37,11 +37,11 @@ namespace Internal.Generated.WolverineHandlers
             TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
             
             // The actual message execution
-            BuildingBlocks.Web.Platform.PlatformSettingsChangedHandler.Handle(platformSettingsChangedIntegrationEvent, _platformSettingsProvider, _loggerOfPlatformSettingsProvider);
+            TaxVision.Notification.Application.Consumers.TenantHostCacheInvalidationConsumer.Handle(platformSettingsChangedIntegrationEvent, _tenantHostCache, _loggerOfTenantHostCache);
 
             
             // The actual message execution
-            TaxVision.Notification.Application.Consumers.TenantHostCacheInvalidationConsumer.Handle(platformSettingsChangedIntegrationEvent, _tenantHostCache, _loggerOfTenantHostCache);
+            BuildingBlocks.Web.Platform.PlatformSettingsChangedHandler.Handle(platformSettingsChangedIntegrationEvent, _platformSettingsProvider, _loggerOfPlatformSettingsProvider);
 
             return System.Threading.Tasks.Task.CompletedTask;
         }

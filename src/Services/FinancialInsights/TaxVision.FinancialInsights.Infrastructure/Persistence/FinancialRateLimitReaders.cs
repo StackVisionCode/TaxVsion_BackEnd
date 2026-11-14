@@ -12,14 +12,3 @@ public sealed class FinancialTenantPlanCodeReader(FinancialInsightsDbContext db)
             .Select(x => x.PlanCode)
             .SingleOrDefaultAsync(ct);
 }
-
-public sealed class FinancialEntitlementsCacheInvalidator(
-    CachedTenantPlanCodeReader planCode,
-    CachedTenantEntitlementModulesReader modules)
-{
-    public async Task InvalidateAsync(Guid tenantId, CancellationToken ct = default)
-    {
-        await planCode.InvalidateAsync(tenantId, ct);
-        await modules.InvalidateAsync(tenantId, ct);
-    }
-}

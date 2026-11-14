@@ -22,10 +22,37 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("TaxVision.FinancialInsights.Domain.Imports.AiProcessingReservation", b =>
+            modelBuilder.Entity("BuildingBlocks.CustomerVisibility.CustomerAssignmentProjection", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Version")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId");
+
+                    b.HasIndex("TenantId", "CustomerId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerAssignmentProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.FinancialInsights.Domain.Imports.AiProcessingReservation", b =>
+                {
+                    b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("CompletedAtUtc")
@@ -67,7 +94,6 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.FinancialInsights.Domain.Imports.FinancialMovement", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Amount")
@@ -127,8 +153,10 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.FinancialInsights.Domain.Imports.ImportBatch", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletionNotifiedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -138,6 +166,11 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("CustomerId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -152,7 +185,6 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.FinancialInsights.Domain.Imports.ImportDocument", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("BatchId")
@@ -283,6 +315,9 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("DocumentsPerMonth")
+                        .HasColumnType("int");
 
                     b.Property<string>("EnabledModulesJson")
                         .IsRequired()
