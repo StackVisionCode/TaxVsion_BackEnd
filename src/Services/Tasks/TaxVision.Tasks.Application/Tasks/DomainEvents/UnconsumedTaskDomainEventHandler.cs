@@ -14,6 +14,8 @@ public static class UnconsumedTaskDomainEventHandler
 
     public static void Handle(TaskStartedDomainEvent _) { }
 
+    public static void Handle(TaskMovedToNotStartedDomainEvent _) { }
+
     public static void Handle(TaskUnassignedDomainEvent _) { }
 
     public static void Handle(TaskDueChangedDomainEvent _) { }

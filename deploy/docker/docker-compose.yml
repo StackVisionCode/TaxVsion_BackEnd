@@ -1368,6 +1368,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CORRESPONDENCE_DB_CONNECTION:?Set CORRESPONDENCE_DB_CONNECTION in .env}
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
@@ -1644,6 +1646,8 @@ services:
       Services__Customer__BaseUrl: http://customer-api:8080/
       Services__CloudStorage__BaseUrl: http://cloudstorage-api:8080/
       Services__Tenant__BaseUrl: http://tenant-api:8080/
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ServiceAuthClient__ClientId: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID:-financial-insights-worker}
       ServiceAuthClient__ClientSecret: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET:-}
       OpenAI__ApiKey: ${FINANCIAL_INSIGHTS_OPENAI_API_KEY:-}
