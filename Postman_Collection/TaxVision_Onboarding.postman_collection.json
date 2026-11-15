@@ -187,6 +187,54 @@
 					"response": []
 				},
 				{
+					"name": "GetPricingPreview",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{UrlBase}}/onboarding/pricing-preview?planId={{onboardingPlanId}}&billingCycle=Monthly&giftCode=WELCOME20&promoCode=",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"onboarding",
+								"pricing-preview"
+							],
+							"query": [
+								{
+									"key": "planId",
+									"value": "{{onboardingPlanId}}"
+								},
+								{
+									"key": "billingCycle",
+									"value": "Monthly"
+								},
+								{
+									"key": "giftCode",
+									"value": "WELCOME20"
+								},
+								{
+									"key": "promoCode",
+									"value": ""
+								}
+							]
+						},
+						"description": "Vista previa del precio ANTES de pagar: bruto → descuento → neto y si cada código sirve (no reserva nada). Misma sesión post-OTP que payment-options (cookie __Host-taxvision-onboarding tras VerifyEmailChallenge). Probado: WELCOME20 → $103.20, WELCOME100 → cubierto 100 %, un código inválido se marca sin romper."
+					},
+					"response": []
+				},
+				{
 					"name": "StartOnboardingCheckout",
 					"event": [
 						{
@@ -213,7 +261,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"onboardingId\": \"{{onboardingId}}\",\n  \"payerEmail\": \"{{onboardingBuyerEmail}}\",\n  \"successUrl\": \"https://taxvision.com/onboarding/success?session_id={CHECKOUT_SESSION_ID}\",\n  \"cancelUrl\": \"https://taxvision.com/onboarding/cancelled\"\n}",
+							"raw": "{\n  \"onboardingId\": \"{{onboardingId}}\",\n  \"payerEmail\": \"{{onboardingBuyerEmail}}\",\n  \"successUrl\": \"https://taxvision.com/onboarding/success?session_id={CHECKOUT_SESSION_ID}\",\n  \"cancelUrl\": \"https://taxvision.com/onboarding/cancelled\",\n  \"giftCode\": \"\",\n  \"promoCode\": \"\",\n  \"referralCode\": \"{{growthReferralCode}}\",\n  \"referralChannel\": \"whatsapp\",\n  \"referralShareId\": null\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -230,7 +278,7 @@
 								"checkout"
 							]
 						},
-						"description": "Arranca la Stripe Checkout Session (M2M a PaymentApp). Abrir checkoutUrl en el browser para pagar con la tarjeta de test 4242 4242 4242 4242. Sesion valida 24h."
+						"description": "Arranca la Stripe Checkout Session (M2M a PaymentApp). Abrir checkoutUrl en el browser para pagar con la tarjeta de test 4242 4242 4242 4242. Sesion valida 24h. CAMPOS DE CÓDIGOS (todos opcionales): giftCode y promoCode dan DESCUENTO (apilables dentro del residual; WELCOME100 cubre el 100 % y va por el carril $0). referralCode NO da descuento: solo identifica quién recomendó (premia al referidor); el referido paga el precio completo. Auth publica el evento auth.onboarding.referral_declared.v1 y Growth registra la atribución; un código inválido se descarta sin bloquear el pago. referralChannel/referralShareId vienen del enlace compartido (?ch=&sid=)."
 					},
 					"response": []
 				}

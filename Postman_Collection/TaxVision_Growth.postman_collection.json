@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "7c1d4e2a-9f3b-4a6c-8e21-5b0a7d3c6f4e",
 		"name": "TaxVision - Growth",
-		"description": "Colección de pruebas del microservicio Growth (bounded contexts Codes + Referrals). Usa el environment TaxVisionBackEnd. Los endpoints bajo /growth/* (Codes, Referrals) están pensados para ir vía Gateway (variable UrlBase, p.ej. http://localhost:5047). Los endpoints bajo /internal/* (InternalCodes, InternalReferrals) son M2M y por diseño NO están expuestos por el Gateway (el controller lo dice explícitamente) — se llaman directo contra el contenedor growth-api usando la variable GrowthDirectBase (p.ej. http://localhost:5410 en dev local) con un JWT de servicio (actor_type=Service, aud=taxvision-growth, claim scope con el growth.*.* correspondiente). Los endpoints humanos (Codes, Referrals) requieren un JWT con los claims perm correspondientes en accessToken.\n\nESTADO VERIFICADO EN VIVO (2026-07-20, contenedor real SQL Server + RabbitMQ):\n- Codes: CreateCode -> GetCode -> ActivateCode encadenan real (codeToken dinamico via prerequest script). RevokeCode se movio a una carpeta separada al FINAL de la coleccion para no revocar el codigo antes de que Internal Codes lo use (ver nota de esa carpeta).\n- Internal Codes (M2M): CreateQuote -> ReserveCode -> CommitReservation -> CompensateRedemption encadenan real contra un codigo Active (descuento calculado correctamente: 5000 gross, 10% -> 4500 net). redemptionId se captura del response de CommitReservation.\n- Referrals: CreateAttribution funciona con un ReferralProgram + ReferralCode reales -- PERO no existe NINGUN endpoint HTTP para crear/activar un ReferralProgram ni para emitir un ReferralCode (CreateTenantReferralProgramCommand/ActivateTenantReferralProgramCommand/IssueTenantReferralCodeCommand existen en Application pero ningun controller los expone). Se sembraron directo en SQL (programId=a1a2a3a4-0000-0000-0000-000000000001, ScopeType=Platform, referralCode=REF-POSTMAN con su hash HMAC-SHA256 real usando el pepper GROWTH_REFERRAL_CODE_TOKEN_PEPPER) -- ver script comentado en la request CreateAttribution. QualifyReferral tambien funciona real (decision Qualified + rewardCaseId real) contra la atribucion creada.\n- ConfirmGrant/ConfirmClawback: RESUELTO (investigado 2026-07-20 con Extended Events de SQL Server capturando los parametros reales de cada query). El 404 ReferralReward.NotFound INICIAL era un error de seeding propio, no un bug de Growth: el ReferralRewardAttempt sembrado a mano quedo con TenantId del tenant REFEREE (91f000d4...) por copiar mal la variable, cuando el ReferralRewardCase (y el Grant en si) pertenece al tenant REFERRER (b2b2b2b2...) -- la query de ReferralRewardCaseRepository.GetByGrantIdAsync SI encontraba el RewardCase (row_count=1, confirmado por XE), pero la de ReferralRewardAttemptRepository fallaba (row_count=0) por ese tenant mal puesto. Corregido el seed -> ConfirmGrant da 204, RewardCase queda en Status=Granted. B-16 sigue arreglado, no hubo relacion.\n\nB-16 (tenant-context perdido en comandos locales de Wolverine) esta arreglado -- ver documents/architecture/growth/audit/Growth_Code_Bug_Audit.md seccion B-16 (GrowthLocalCommandTenantMiddleware + Envelope.TenantId).",
+		"description": "Colección de pruebas del microservicio Growth (Codes = giftcards, Referrals). Usa el environment TaxVisionBackEnd. Giftcards y administración de referidos: SOLO PlatformAdmin ({{platformAdminToken}}). Referidos de la oficina: token de la oficina ({{accessToken}}). Los endpoints /internal/* son M2M y NO pasan por el Gateway (GrowthDirectBase).",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -35,7 +35,8 @@
 									"    pm.environment.set('growthCodeDefinitionId', body.codeDefinitionId);\r",
 									"    console.log('growthCodeDefinitionId:', body.codeDefinitionId);\r",
 									"}\r",
-									"pm.test('Created in Draft status', () => pm.expect(body.status).to.eql('Draft'));"
+									"pm.test('Created in Draft status', () => pm.expect(body.status).to.eql('Draft'));",
+									"if (body && body.codeDefinitionId) { pm.environment.set('growthGiftcardCode', pm.environment.get('growthCodeToken')); }"
 								]
 							}
 						}
@@ -45,7 +46,7 @@
 						"header": [
 							{
 								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
+								"value": "Bearer {{platformAdminToken}}",
 								"type": "text"
 							},
 							{
@@ -56,7 +57,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"ownerScope\": \"Tenant\",\n  \"tenantScopeId\": \"{{tenantId}}\",\n  \"name\": \"Postman 20 percent off\",\n  \"kind\": \"Promotional\",\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 2000,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": false,\n  \"startsAtUtc\": \"2026-01-01T00:00:00Z\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\",\n  \"maxRedemptions\": 1000,\n  \"maxRedemptionsPerTenant\": 1,\n  \"maxRedemptionsPerSubject\": 1,\n  \"scopes\": null\n}",
+							"raw": "{\n  \"ownerScope\": \"Platform\",\n  \"tenantScopeId\": null,\n  \"name\": \"Postman gift card 20 percent off\",\n  \"kind\": \"Promotional\",\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 2000,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": false,\n  \"startsAtUtc\": \"2026-01-01T00:00:00Z\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\",\n  \"maxRedemptions\": 1000,\n  \"maxRedemptionsPerTenant\": null,\n  \"maxRedemptionsPerSubject\": null,\n  \"scopes\": null\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -73,7 +74,57 @@
 								"codes"
 							]
 						},
-						"description": "Crea una CodeDefinition en estado Draft (percentageBasisPoints en basis points, 10000=100%). ownerScope=Tenant requiere tenantScopeId == tenantId del caller (no puede ser el Platform tenant). Requiere codes.code.manage. codeToken generado dinamicamente (prerequest script) para poder correr esta request repetidas veces sin chocar contra el indice unico."
+						"description": "Crea una GIFTCARD. REGLA DE PRODUCTO: solo la compañía (PlatformAdmin) las crea —afectan suscripciones y planes—; el descuento (monto o %) se aplica a quien usa el código al pagar un plan, válido en cualquier plan. OwnerScope siempre Platform. Requiere codes.code.manage + token de PlatformAdmin ({{platformAdminToken}}); un token de oficina recibe 403. Queda en Draft: usar ActivateCode."
+					},
+					"response": []
+				},
+				{
+					"name": "ListGiftcards",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes?page=1&size=20&status=Active",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								},
+								{
+									"key": "status",
+									"value": "Active"
+								}
+							]
+						},
+						"description": "Lista paginada de giftcards (solo PlatformAdmin, codes.code.read). El filtro status es opcional (Draft/Active/Suspended/Revoked/Expired). El código completo NUNCA se devuelve: solo prefijo y últimos 4."
 					},
 					"response": []
 				},
@@ -95,7 +146,7 @@
 						"header": [
 							{
 								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
+								"value": "Bearer {{platformAdminToken}}",
 								"type": "text"
 							}
 						],
@@ -133,7 +184,7 @@
 						"header": [
 							{
 								"key": "Authorization",
-								"value": "Bearer {{accessToken}}",
+								"value": "Bearer {{platformAdminToken}}",
 								"type": "text"
 							},
 							{
@@ -157,8 +208,110 @@
 						"description": "Draft -> Active. Requiere codes.code.activate. Deja el codigo Active -- la carpeta 'Internal Codes' lo usa a continuacion via {{growthCodeToken}}."
 					},
 					"response": []
+				},
+				{
+					"name": "SendGiftcardEmail",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"pm.test('Queued', () => pm.expect(pm.response.json().status).to.be.a('string'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/send",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}",
+								"send"
+							]
+						},
+						"description": "Envía la giftcard por correo DESDE la plataforma (evento giftcards.share_requested.v1 → Notification + plantilla Scribe 'GiftcardShare'). Solo guardamos el hash del código: hay que reenviar el código completo y el backend lo verifica contra esta giftcard (si no coincide, 4xx). Requiere codes.code.manage. La giftcard debe estar Active.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"code\": \"{{growthGiftcardCode}}\",\n  \"recipientEmail\": \"regalo@example.com\",\n  \"recipientName\": \"Ana\",\n  \"personalMessage\": \"Felicidades!\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ListGiftcardRedemptions",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/redemptions?page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}",
+								"redemptions"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Quién usó la giftcard y cuánto descontó (bruto → descuento → neto). Requiere codes.redemption.read (PlatformAdmin)."
+					},
+					"response": []
 				}
-			]
+			],
+			"description": "Giftcards (Codes BC). Solo PlatformAdmin: usar {{platformAdminToken}}."
 		},
 		{
 			"name": "Internal Codes (M2M, sin Gateway)",
@@ -470,31 +623,95 @@
 			"name": "Referrals",
 			"item": [
 				{
-					"name": "IssueCode",
+					"name": "GetActiveProgram",
 					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"// Idempotency-Key fija (no {{$guid}}): reusarla es lo que permite pedir\r",
-									"// el mismo codigo de vuelta sin chocar con ReferralCode.ActiveOwnerExists.\r",
-									"if (!pm.environment.get('growthIssueCodeIdempotencyKey')) {\r",
-									"    pm.environment.set('growthIssueCodeIdempotencyKey', 'postman-issue-' + Date.now());\r",
-									"}"
-								]
-							}
-						},
 						{
 							"listen": "test",
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
-									"const body = pm.response.json();\r",
-									"if (body && body.referralCode) {\r",
-									"    console.log('Tu codigo de referido:', body.referralCode, '- link: https://app.taxvision.com/signup?ref=' + body.referralCode);\r",
-									"}"
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const b = pm.response.json();",
+									"if (b && b.programId) { pm.environment.set('growthReferralProgramId', b.programId); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/referrals/programs/active",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"referrals",
+								"programs",
+								"active"
+							]
+						},
+						"description": "Términos del programa vigente (quién gana, % del plan, tope, espera). Requiere referrals.program.read. El referido NO recibe nada: solo gana el referidor, en su Wallet."
+					},
+					"response": []
+				},
+				{
+					"name": "GetMyCode",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('200 o 404 si aún no hay código', () => pm.expect([200, 404]).to.include(pm.response.code));",
+									"if (pm.response.code === 200) { const b = pm.response.json(); pm.environment.set('growthReferralCodeId', b.referralCodeId); if (b.referralCode) { pm.environment.set('growthReferralCode', b.referralCode); } }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/referrals/codes/mine",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"referrals",
+								"codes",
+								"mine"
+							]
+						},
+						"description": "Código de referido ACTIVO de la oficina (para copiar/compartir). Cualquier usuario con referrals.own.read lo ve; solo el owner lo regenera."
+					},
+					"response": []
+				},
+				{
+					"name": "RegenerateCode",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const b = pm.response.json();",
+									"if (b && b.referralCode) { pm.environment.set('growthReferralCode', b.referralCode); pm.environment.set('growthReferralCodeId', b.referralCodeId); console.log('Código nuevo:', b.referralCode); }"
 								]
 							}
 						}
@@ -509,31 +726,219 @@
 							},
 							{
 								"key": "Idempotency-Key",
-								"value": "{{growthIssueCodeIdempotencyKey}}",
+								"value": "{{$guid}}",
 								"type": "text"
 							}
 						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"programId\": \"{{growthReferralProgramId}}\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
 						"url": {
-							"raw": "{{UrlBase}}/growth/referrals/codes",
+							"raw": "{{UrlBase}}/growth/referrals/codes/regenerate",
 							"host": [
 								"{{UrlBase}}"
 							],
 							"path": [
 								"growth",
 								"referrals",
-								"codes"
+								"codes",
+								"regenerate"
 							]
 						},
-						"description": "Fase 1 del diseno de Referrals: el tenant pide su propio codigo (get-or-create idempotente). Requiere referrals.own.read (se reusa el permiso existente -- agregar uno nuevo tipo referrals.code.issue hubiera requerido tocar el catalogo de permisos de Auth, fuera de alcance sin pedir permiso). El texto plano del codigo se recalcula en el controller (determinista sobre ProgramId+TenantId+IdempotencyKey) y nunca queda persistido en la respuesta idempotente guardada -- por eso es seguro devolverlo de nuevo si el tenant repite la misma Idempotency-Key. Requiere que exista un ReferralProgram con ScopeType=Platform y FlowType=TenantToTenant (growthReferralProgramId ya apunta al sembrado en SQL de esta coleccion)."
+						"description": "El OWNER de la oficina (referrals.code.manage) genera su código cuantas veces quiera: el anterior queda REVOCADO (Superseded) y deja de validar; los ya atribuidos conservan su premio. Cada generación necesita su propio Idempotency-Key (aquí {{$guid}}). Formato corto TVR-XXXXXXXXXX."
+					},
+					"response": []
+				},
+				{
+					"name": "RegisterShare",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"const b = pm.response.json();",
+									"if (b && b.shareId) { pm.environment.set('growthShareId', b.shareId); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/referrals/codes/{{growthReferralCodeId}}/shares",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"referrals",
+								"codes",
+								"{{growthReferralCodeId}}",
+								"shares"
+							]
+						},
+						"description": "Registra un ENVÍO del código (copiar/compartir) con su canal: Copy, Email, Sms, WhatsApp, Social, Other. Devuelve el shareId que viaja en el enlace como ?sid= (y ?ch=).",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"channel\": \"WhatsApp\",\n  \"recipientHint\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ListShares",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/referrals/shares?page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"referrals",
+								"shares"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Historial de envíos del código con los registros y pagos que produjo cada uno. Requiere referrals.reward.read."
+					},
+					"response": []
+				},
+				{
+					"name": "ListInvites",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/referrals/invites?page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"referrals",
+								"invites"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Oficinas que se registraron con tu código y el estado de tu premio. Requiere referrals.reward.read."
+					},
+					"response": []
+				},
+				{
+					"name": "ListRewards",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/referrals/rewards?page=1&size=20",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"referrals",
+								"rewards"
+							],
+							"query": [
+								{
+									"key": "page",
+									"value": "1"
+								},
+								{
+									"key": "size",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Totales de premios (acreditado, pendiente) de la oficina. Los acredita el Wallet por evento wallet.credit.requested/applied.v1."
 					},
 					"response": []
 				},
@@ -610,71 +1015,657 @@
 								"attributions"
 							]
 						},
-						"description": "Ingreso self-service: el referee sale del JWT (tenantId del caller), nunca del body. Sin permiso explicito requerido (solo [Authorize] de clase — ver B-07 del audit). Rate limited: politica growth-referral-attribution, 30 req/min particionado por tenant+IP (B-02, verificado en vivo) -- correr esta request 31+ veces seguidas en la misma ventana de 1 min debe dar 429.\n\nNo existe NINGUN endpoint HTTP para crear un ReferralProgram ni para emitir un ReferralCode -- growthReferralProgramId apunta a un programa sembrado directo en SQL (ver seed en la descripcion del top de la coleccion). referralCode=REF-POSTMAN hashea (HMAC-SHA256 con GROWTH_REFERRAL_CODE_TOKEN_PEPPER) a 8deaa554c5f77a5ea679f877d7c99f36f204a04d43f0a89f1cfb24edf66eb2be, que es el CodeHash sembrado. El {{accessToken}} usado debe ser de un tenant DISTINTO al dueno del codigo (b2b2b2b2-0000-0000-0000-000000000001 en el seed) o falla con ReferralAttribution.SelfReferral. Verificado en vivo: 200, status Active.\n\nFASE 3 (opcion B, 2026-07-20 -- referido tambien recibe descuento): la respuesta 200 ahora incluye un campo opcional `refereeBenefit`. Si el ReferralProgram tiene terminos de referee-benefit configurados en su Policy (RefereeBenefitType/Percentage|FixedAmount + expiracion), el controller (unico lugar que conoce Referrals Y Codes) orquesta CreateCodeDefinitionCommand + ActivateCodeCommand para emitir y activar automaticamente un CodeDefinition Kind=BenefitGift, MaxRedemptions=1, ya activo, a nombre del tenant referido, y devuelve su codigo en texto plano una sola vez (refereeBenefit.code) junto con codeDefinitionId, displayPrefix/lastFour y expiresAtUtc. Es best-effort y no bloqueante: si la emision o activacion en Codes falla, refereeBenefit viene null pero la atribucion igual se confirma con 200 (nunca se revierte por un fallo secundario). Tambien viene null si el programa NO tiene referee-benefit configurado (opcion A, comportamiento anterior, 100% backward compatible). Reintentable: reenviar la misma Idempotency-Key reintenta solo la parte de emision del beneficio si fallo antes (usa sufijos `:create`/`:activate` propios, la atribucion en si ya es idempotente y no se duplica). Verificado en vivo end-to-end el 2026-07-21: 200 con refereeBenefit poblado (CodeDefinition real en codes.CodeDefinitions, Kind=BenefitGift, Status=Active, Benefit_Type=Percentage, BenefitBasisPoints=1500 coincidiendo con el 15% configurado en el programa de prueba) y, por separado, 200 con refereeBenefit=null al probar contra un programa sin el beneficio configurado."
+						"description": "Registra un referido DENTRO de una oficina ya existente (programa + código). Ojo: en el ALTA (pre-tenant) la atribución NO se hace por aquí: Auth publica auth.onboarding.referral_declared.v1 y Growth la registra por evento (ver carpeta Onboarding → StartOnboardingCheckout con referralCode)."
 					},
 					"response": []
 				}
-			]
+			],
+			"description": "Referidos de la OFICINA (tenant). Solo gana el referidor: % del plan que paga el referido, acreditado al Wallet. El referido paga precio completo."
 		},
 		{
-			"name": "Internal Referrals (M2M, sin Gateway)",
+			"name": "Referrals Public (sin token)",
+			"description": "Sin autenticación (limitado por IP). No revela beneficios.",
 			"item": [
 				{
-					"name": "QualifyReferral",
+					"name": "ValidateReferralCode",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
-									"const body = pm.response.json();\r",
-									"if (body && body.rewardCaseId) {\r",
-									"    pm.environment.set('growthRewardCaseId', body.rewardCaseId);\r",
-									"    console.log('rewardCaseId:', body.rewardCaseId, '- decision:', body.decision);\r",
-									"}"
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+									"pm.test('isActive es booleano', () => pm.expect(pm.response.json().isActive).to.be.a('boolean'));"
 								]
 							}
 						}
 					],
 					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{serviceAccessToken}}",
-								"type": "text"
-							},
-							{
-								"key": "Idempotency-Key",
-								"value": "postman-{{$guid}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"attributionId\": \"{{growthAttributionId}}\",\n  \"qualifyingEventId\": \"{{$guid}}\",\n  \"paymentId\": \"{{$guid}}\",\n  \"paymentSource\": \"PaymentClient\",\n  \"paymentAmountCents\": 5000,\n  \"paymentCurrency\": \"USD\",\n  \"isFirstSuccessfulPayment\": true,\n  \"paymentSucceededAtUtc\": \"2027-01-01T00:00:00Z\"\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
+						"method": "GET",
+						"header": [],
 						"url": {
-							"raw": "{{GrowthDirectBase}}/internal/referrals/qualifications",
+							"raw": "{{UrlBase}}/growth/public/referrals/codes/{{growthReferralCode}}/validate",
 							"host": [
-								"{{GrowthDirectBase}}"
+								"{{UrlBase}}"
 							],
 							"path": [
-								"internal",
+								"growth",
+								"public",
 								"referrals",
-								"qualifications"
+								"codes",
+								"{{growthReferralCode}}",
+								"validate"
 							]
 						},
-						"description": "Decision idempotente de calificacion sobre un evento financiero (paymentId). Requiere scope growth.referrals.qualify. M2M, NO pasa por Gateway. paymentSucceededAtUtc debe ser POSTERIOR al momento en que se creo la atribucion (CreateAttribution) o falla con PaymentPredatesAttribution -- 2027-01-01 es un valor fijo comodo mientras el reloj del sistema siga en 2026. Verificado en vivo: 200, decision=Qualified, rewardCaseId real devuelto y capturado en {{growthRewardCaseId}}."
+						"description": "¿Este código de referido está vigente? Devuelve solo {isActive}. Lo usa el landing al abrir /register?referral=CODE. Un código revocado/desconocido da isActive=false (nunca 404, para no permitir enumerar)."
 					},
 					"response": []
+				}
+			]
+		},
+		{
+			"name": "Referrals Admin (PlatformAdmin)",
+			"description": "Solo PlatformAdmin ({{platformAdminToken}}): programa, códigos de cualquier oficina y revisión de premios.",
+			"item": [
+				{
+					"name": "Programa",
+					"item": [
+						{
+							"name": "CreateProgram",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+											"const b = pm.response.json(); if (b && b.programId) { pm.environment.set('growthReferralProgramId', b.programId); }"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Idempotency-Key",
+										"value": "{{$guid}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/programs",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"programs"
+									]
+								},
+								"description": "Crea un programa (referrals.program.manage). Normalmente ya existe el sembrado: usar UpdatePolicy.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"programCode\": \"PM-{{$timestamp}}\",\n  \"name\": \"Programa Postman\",\n  \"startsAtUtc\": null,\n  \"endsAtUtc\": null,\n  \"policy\": {\n    \"rewardBasisPoints\": 1000,\n    \"rewardCapCents\": 5000,\n    \"rewardCurrency\": \"USD\",\n    \"waitingPeriodDays\": 30,\n    \"maximumRewardsPerReferrerPerCalendarYear\": 10\n  }\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "UpdateProgramPolicy",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Idempotency-Key",
+										"value": "{{$guid}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/programs/{{growthReferralProgramId}}/policy",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"programs",
+										"{{growthReferralProgramId}}",
+										"policy"
+									]
+								},
+								"description": "Cambia el % del plan (basis points: 1000 = 10 %), el tope, la espera y el cupo anual. Aplica a calificaciones futuras; los premios ya pedidos conservan su monto.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"rewardBasisPoints\": 1000,\n  \"rewardCapCents\": 5000,\n  \"rewardCurrency\": \"USD\",\n  \"waitingPeriodDays\": 30,\n  \"maximumRewardsPerReferrerPerCalendarYear\": 10\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "ActivateProgram",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Idempotency-Key",
+										"value": "{{$guid}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/programs/{{growthReferralProgramId}}/activate",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"programs",
+										"{{growthReferralProgramId}}",
+										"activate"
+									]
+								},
+								"description": "Activa el programa."
+							},
+							"response": []
+						},
+						{
+							"name": "SuspendProgram",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Idempotency-Key",
+										"value": "{{$guid}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/programs/{{growthReferralProgramId}}/suspend",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"programs",
+										"{{growthReferralProgramId}}",
+										"suspend"
+									]
+								},
+								"description": "Suspende el programa (no se atribuyen referidos nuevos)."
+							},
+							"response": []
+						}
+					]
 				},
+				{
+					"name": "Códigos de oficinas",
+					"item": [
+						{
+							"name": "AdminListCodes",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+											"const b = pm.response.json(); if (b.items && b.items.length) { pm.environment.set('growthAdminCodeId', b.items[0].codeId); pm.environment.set('growthAdminCodeTenantId', b.items[0].ownerTenantId); }"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/codes?page=1&size=20&status=Active",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"codes"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "size",
+											"value": "20"
+										},
+										{
+											"key": "status",
+											"value": "Active"
+										}
+									]
+								},
+								"description": "Todos los códigos de referido (referrals.admin.code.manage). Filtros opcionales: tenantId, status (Active/Revoked/Expired)."
+							},
+							"response": []
+						},
+						{
+							"name": "AdminGenerateCode",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+											"const b = pm.response.json(); if (b && b.referralCode) { console.log('Código:', b.referralCode); pm.environment.set('growthReferralCode', b.referralCode); }"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Idempotency-Key",
+										"value": "{{$guid}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/codes",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"codes"
+									]
+								},
+								"description": "Genera un código para cualquier oficina (soporte). Revoca el activo (Superseded). El código en claro se devuelve UNA sola vez.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"tenantId\": \"{{tenantId}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "AdminRevokeCode",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/codes/{{growthAdminCodeId}}/revoke",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"codes",
+										"{{growthAdminCodeId}}",
+										"revoke"
+									]
+								},
+								"description": "Revoca un código con motivo obligatorio (auditoría). Los referidos ya atribuidos conservan su premio.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"tenantId\": \"{{growthAdminCodeTenantId}}\",\n  \"reason\": \"Revocado desde Postman\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Revisión de premios",
+					"item": [
+						{
+							"name": "AdminListRewards",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+											"const b = pm.response.json(); if (b.items && b.items.length) { pm.environment.set('growthRewardCaseId', b.items[0].rewardCaseId); pm.environment.set('growthRewardReferrerTenantId', b.items[0].referrerTenantId); }"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/rewards?page=1&size=20",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"rewards"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "size",
+											"value": "20"
+										}
+									]
+								},
+								"description": "Premios por revisar (referrals.reward.manage). Estados: Requested, PendingGrant, Granted, Vested, ManualReview, ClawbackPending, Reversed, Cancelled…"
+							},
+							"response": []
+						},
+						{
+							"name": "AdminFlagReward",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/rewards/{{growthRewardCaseId}}/flag",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"rewards",
+										"{{growthRewardCaseId}}",
+										"flag"
+									]
+								},
+								"description": "Retiene el premio para revisión manual (Requested → ManualReview).",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"tenantId\": \"{{growthRewardReferrerTenantId}}\",\n  \"reason\": \"Posible fraude: mismo dispositivo\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "AdminReleaseReward",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/rewards/{{growthRewardCaseId}}/release",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"rewards",
+										"{{growthRewardCaseId}}",
+										"release"
+									]
+								},
+								"description": "Da el visto bueno (ManualReview → de vuelta al flujo normal).",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"tenantId\": \"{{growthRewardReferrerTenantId}}\",\n  \"reason\": \"Revisado: es leg\\u00edtimo\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "AdminRejectReward",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/rewards/{{growthRewardCaseId}}/reject",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"rewards",
+										"{{growthRewardCaseId}}",
+										"reject"
+									]
+								},
+								"description": "Rechaza el premio (→ Cancelled). No se puede rechazar uno que ya se acreditó al Wallet: ese va por clawback.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"tenantId\": \"{{growthRewardReferrerTenantId}}\",\n  \"reason\": \"Fraude confirmado\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Internal Referrals (M2M, sin Gateway)",
+			"item": [
 				{
 					"name": "ConfirmGrant",
 					"request": {
@@ -760,7 +1751,8 @@
 					},
 					"response": []
 				}
-			]
+			],
+			"description": "Callbacks M2M que quedan. La CALIFICACIÓN del referido (antes POST internal/referrals/qualifications) y la atribución del alta (onboarding-attributions) se eliminaron: ahora son eventos (auth.onboarding.referral_declared.v1 y onboarding.payment_succeeded), y el premio se acredita al Wallet por eventos wallet.credit.requested/applied.v1 (sin HTTP)."
 		},
 		{
 			"name": "Cleanup (opcional, corre al final)",
