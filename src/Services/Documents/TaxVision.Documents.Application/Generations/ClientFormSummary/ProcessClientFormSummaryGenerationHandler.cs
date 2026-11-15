@@ -42,6 +42,7 @@ public static class ProcessClientFormSummaryGenerationHandler
         IPlatformSettings platform,
         TimeProvider clock,
         ILogger<ProcessClientFormSummaryGenerationCommand> logger,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -97,6 +98,7 @@ public static class ProcessClientFormSummaryGenerationHandler
                 platform.Current.BrandName,
                 command.SignatureCopy is not null,
                 now,
+                await zones.ResolveAsync(command.TenantId, ct),
                 renderer,
                 pdfConverter,
                 ct
@@ -270,6 +272,7 @@ public static class ProcessClientFormSummaryGenerationHandler
         string platformBrand,
         bool includeSignatureBox,
         DateTime nowUtc,
+        BuildingBlocks.TimeZones.ResolvedTimeZone officeZone,
         IDocumentTemplateRenderer renderer,
         IHtmlToPdfConverter pdfConverter,
         CancellationToken ct
@@ -280,7 +283,8 @@ public static class ProcessClientFormSummaryGenerationHandler
             branding,
             platformBrand,
             includeSignatureBox,
-            nowUtc
+            nowUtc,
+            officeZone
         );
         var html = await renderer.RenderHtmlAsync(
             ClientFormSubmissionSummaryRequestedConsumer.TemplateKey,

@@ -67,7 +67,7 @@ public static class SignedDocumentsDeliveryReadyConsumer
                 ["document_count"] = evt.Items.Count,
                 ["language"] = signer.Language,
                 ["delivery_url"] = pageUrl,
-                ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd"),
+                ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
                 ["portal_url"] = portalUrl,
                 ["is_reissue"] = evt.IsReissue,
                 ["can_request_new_link"] = evt.CanRequestNewLink,
@@ -80,7 +80,8 @@ public static class SignedDocumentsDeliveryReadyConsumer
             {
                 eventKey = "sig.partial_copy_ready.v1";
                 templateKey = SignatureTemplateCatalog.PartialCopyKey;
-                variables["signed_at"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm");
+                // La hora real de firma viene del evento; los eventos viejos no la traen.
+                variables["signed_at"] = ScribeDates.Instant(evt.SignedAtUtc ?? DateTime.UtcNow);
                 variables["total_signers"] = evt.TotalSignersCount;
                 variables["send_sealed_to_signers"] = evt.SendSealedToSigners;
             }
@@ -88,11 +89,18 @@ public static class SignedDocumentsDeliveryReadyConsumer
             {
                 eventKey = "sig.request_completed.v1";
                 templateKey = SignatureTemplateCatalog.CompletedKey;
-                variables["completed_at"] = evt.CompletedAtUtc.ToString("yyyy-MM-dd HH:mm");
+                variables["completed_at"] = ScribeDates.Instant(evt.CompletedAtUtc);
             }
 
             var render = (
-                await scribeClient.RenderAsync(eventKey, evt.TenantId, variables, ScribeRenderAudience.Client, ct)
+                await scribeClient.RenderAsync(
+                    eventKey,
+                    evt.TenantId,
+                    variables,
+                    ScribeRenderAudience.Client,
+                    ScribeReader.From(signer.Language),
+                    ct
+                )
             ).EnsureRendered(eventKey);
 
             await gateway.QueueEmailAsync(

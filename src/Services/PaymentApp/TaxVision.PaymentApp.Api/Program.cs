@@ -54,6 +54,7 @@ builder.Services.AddSwaggerGen();
 
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddPaymentAppInfrastructure(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);

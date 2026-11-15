@@ -20,17 +20,22 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Scribe.Application.Abstractions.ICloudStorageClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
             * The service registration for TaxVision.Scribe.Application.Abstractions.ICloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.TenantTimeZones.ITenantTimeZoneResolver Lifetime: Scoped ImplementationType: BuildingBlocks.TenantTimeZones.TenantTimeZoneResolver
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore Lifetime: Scoped ImplementationFactory: BuildingBlocks.TenantTimeZones.TenantTimeZonesServiceCollectionExtensions+<>c__0"1.<AddTenantTimeZoneProjection>b__0_0
+            * The service registration for BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var emailRenderer = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Scribe.Application.Rendering.IEmailRenderer>(serviceScope.ServiceProvider);
             var emailTemplateRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Scribe.Application.Templates.IEmailTemplateRepository>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var previewTemplateVersionQuery = (TaxVision.Scribe.Application.Templates.PreviewTemplateVersionQuery)context.Envelope.Message;
 

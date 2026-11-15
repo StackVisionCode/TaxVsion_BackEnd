@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Tasks.Domain.Tasks.Events;
 using TaxVision.Tasks.Domain.ValueObjects;
 
@@ -79,6 +80,11 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
 
     public ClientRequestNote? ExpectedItems { get; private set; }
     public DateTime? ClientDueAtUtc { get; private set; }
+
+    /// <summary>La fecha civil pedida al cliente; su instante (fin del día de la oficina) ya no la dice.</summary>
+    public DateOnly? ClientDueOn { get; private set; }
+
+    public DateOnly? ClientDueCivilDate => ClientDueOn ?? DueDate.LegacyCivilDate(ClientDueAtUtc);
 
     [UserReference(
         UserReferenceKind.Provenance,
@@ -413,7 +419,8 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         ClientRequestNote expectedItems,
         DateTime? clientDueAtUtc,
         Guid byUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        DateOnly? clientDueOn = null
     )
     {
         if (IsClosed)
@@ -425,6 +432,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         Status = TaskItemStatus.WaitingOnClient;
         ExpectedItems = expectedItems;
         ClientDueAtUtc = clientDueAtUtc;
+        ClientDueOn = clientDueAtUtc is null ? null : clientDueOn;
         ClientRequestedByUserId = byUserId;
         ClientRequestedAtUtc = nowUtc;
 
@@ -737,4 +745,29 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         _attachments.FirstOrDefault(a => a.FileId == fileId && a.IsActive);
 
     private bool IsClosed => Status is TaskItemStatus.Completed or TaskItemStatus.Cancelled;
+
+    /// <summary>
+    /// P9: la oficina cambió de zona. El vencimiento propio y el del cliente que eran fin de día en la zona anterior
+    /// pasan al fin del mismo día en la nueva. No es un cambio de fecha: no avisa ni reinicia el aviso de vencida.
+    /// </summary>
+    public bool RezoneCivilDues(string previousTimeZoneId, ResolvedTimeZone newZone)
+    {
+        if (IsClosed)
+            return false;
+
+        var changed = false;
+        if (Due is { } due && due.TimeZoneId == previousTimeZoneId && due.IsEndOfCivilDay)
+        {
+            Due = DueDate.EndOfCivilDay(due.DueOn, newZone, due.IsStatutory).Value;
+            changed = true;
+        }
+
+        var previousZone = ResolvedTimeZone.Resolve(previousTimeZoneId);
+        if (ClientDueOn is { } clientDay && ClientDueAtUtc == LocalDay.EndUtc(clientDay, previousZone))
+        {
+            ClientDueAtUtc = LocalDay.EndUtc(clientDay, newZone);
+            changed = true;
+        }
+        return changed;
+    }
 }

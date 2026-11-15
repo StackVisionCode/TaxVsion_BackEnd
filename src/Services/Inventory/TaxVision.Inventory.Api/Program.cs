@@ -38,6 +38,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);

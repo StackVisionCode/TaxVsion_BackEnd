@@ -1,7 +1,8 @@
 using BuildingBlocks.Platform;
+using BuildingBlocks.TimeZones;
+using BuildingBlocks.TimeZones.Formatting;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
-using TaxVision.Notification.Application.Consumers.Calendar;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -14,9 +15,9 @@ namespace TaxVision.Notification.Application.Consumers.Communication;
 /// </summary>
 internal static class MeetingNotifications
 {
-    /// <summary>Hora en la zona de la oficina; sin zona (o zona inválida) sale en UTC y lo dice.</summary>
-    public static string? LocalTime(DateTime? utc, string? timeZone) =>
-        utc is { } value ? CalendarTimeFormatting.InZone(value, timeZone ?? string.Empty) : null;
+    /// <summary>Hora para la campana con el formato único (P15) en la zona de la reunión; sin zona válida, "UTC".</summary>
+    public static string? Describe(DateTime? utc, string? timeZone) =>
+        utc is { } value ? ZonedTimeFormatter.DateTime(value, ResolvedTimeZone.Resolve(timeZone)) : null;
 
     public static string TimeZoneLabel(string? timeZone) =>
         string.IsNullOrWhiteSpace(timeZone) ? "UTC" : timeZone.Trim();

@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 
@@ -17,7 +18,8 @@ public sealed record CreateTaskCommand(
     DateTime? DueAtUtc,
     string? DueTimeZoneId,
     bool DueIsStatutory,
-    decimal? EstimatedHours
+    decimal? EstimatedHours,
+    DateOnly? DueOn = null
 );
 
 /// <summary>
@@ -31,10 +33,12 @@ public static class CreateTaskHandler
         ITaskRepository tasks,
         IUnitOfWork unitOfWork,
         ITaskMetrics metrics,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
-        var draft = BuildDraft(command);
+        var officeZone = command.DueOn is null ? null : await zones.ResolveAsync(command.TenantId, ct);
+        var draft = BuildDraft(command, officeZone);
         if (draft.IsFailure)
             return Result.Failure<TaskResponse>(draft.Error);
 
@@ -61,7 +65,10 @@ public static class CreateTaskHandler
         return Result.Success(TaskResponse.From(created.Value));
     }
 
-    private static Result<TaskDraft> BuildDraft(CreateTaskCommand command) =>
+    private static Result<TaskDraft> BuildDraft(
+        CreateTaskCommand command,
+        BuildingBlocks.TimeZones.ResolvedTimeZone? officeZone
+    ) =>
         TaskDraft.From(
             command.Title,
             command.Description,
@@ -70,6 +77,8 @@ public static class CreateTaskHandler
             command.DueIsStatutory,
             command.EstimatedHours,
             command.CustomerId,
-            command.TaxYear
+            command.TaxYear,
+            command.DueOn,
+            officeZone
         );
 }

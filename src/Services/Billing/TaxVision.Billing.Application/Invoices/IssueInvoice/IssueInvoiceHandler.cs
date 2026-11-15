@@ -1,6 +1,7 @@
 using System.Globalization;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
 using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
@@ -21,6 +22,7 @@ public static class IssueInvoiceHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         TimeProvider clock,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -50,7 +52,9 @@ public static class IssueInvoiceHandler
         }
 
         var nowUtc = clock.GetUtcNow().UtcDateTime;
-        var periodKey = nowUtc.Year.ToString(CultureInfo.InvariantCulture);
+        // P6: el número y las fechas salen del día de la oficina (20:00 del 31-dic en Nueva York es 2026).
+        var officeZone = await zones.ResolveAsync(command.TenantId, ct);
+        var periodKey = CivilDate.Of(nowUtc, officeZone).Year.ToString(CultureInfo.InvariantCulture);
 
         var sequence = await sequences.GetOrCreateAsync(command.TenantId, periodKey, ct);
         var number = sequence.Allocate();
@@ -59,7 +63,7 @@ public static class IssueInvoiceHandler
             return Result.Failure<IssueInvoiceResult>(invoiceNumber.Error);
 
         // El vencimiento sale del plazo congelado en la factura (sin plazo: el histórico de 30 días).
-        var issueResult = invoice.Issue(invoiceNumber.Value, nowUtc, invoice.DueDateFor(nowUtc), command.ActorUserId);
+        var issueResult = invoice.Issue(invoiceNumber.Value, nowUtc, officeZone, command.ActorUserId);
         if (issueResult.IsFailure)
             return Result.Failure<IssueInvoiceResult>(issueResult.Error);
 

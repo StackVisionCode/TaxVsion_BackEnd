@@ -88,11 +88,12 @@ public static class SignatureRequestReminderDueConsumer
                     {
                         ["full_name"] = evt.FullName,
                         ["invite_link"] = inviteLink,
-                        ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
                         ["reminders_sent"] = evt.RemindersSent,
                         ["language"] = evt.Language,
                     },
                     ScribeRenderAudience.Client,
+                    ScribeReader.From(evt.Language),
                     ct
                 )
             ).EnsureRendered("sig.request_reminder_due.v1");

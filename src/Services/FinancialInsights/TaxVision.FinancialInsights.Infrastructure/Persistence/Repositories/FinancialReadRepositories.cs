@@ -40,7 +40,8 @@ public sealed class FinancialMovementRepository(FinancialInsightsDbContext db) :
 public sealed class AiReservationRepository(FinancialInsightsDbContext db) : IAiReservationRepository
 {
     public Task<bool> ExistsForDocumentAsync(Guid tenantId, Guid documentId, CancellationToken ct = default) =>
-        db.AiProcessingReservations.IgnoreQueryFilters()
+        db
+            .AiProcessingReservations.IgnoreQueryFilters()
             .AnyAsync(r => r.TenantId == tenantId && r.ImportDocumentId == documentId, ct);
 
     public Task<AiProcessingReservation?> GetForDocumentAsync(
@@ -48,21 +49,26 @@ public sealed class AiReservationRepository(FinancialInsightsDbContext db) : IAi
         Guid documentId,
         CancellationToken ct = default
     ) =>
-        db.AiProcessingReservations.IgnoreQueryFilters()
+        db
+            .AiProcessingReservations.IgnoreQueryFilters()
             .SingleOrDefaultAsync(r => r.TenantId == tenantId && r.ImportDocumentId == documentId, ct);
 }
 
 public sealed class FinancialAccessReader(FinancialInsightsDbContext db) : IFinancialAccessReader
 {
     public Task<TenantDirectoryProjection?> FindTenantAsync(Guid tenantId, CancellationToken ct = default) =>
-        db.TenantDirectoryProjections.IgnoreQueryFilters().AsNoTracking().SingleOrDefaultAsync(t => t.TenantId == tenantId, ct);
+        db
+            .TenantDirectoryProjections.IgnoreQueryFilters()
+            .AsNoTracking()
+            .SingleOrDefaultAsync(t => t.TenantId == tenantId, ct);
 
     public Task<CustomerDirectoryProjection?> FindCustomerAsync(
         Guid tenantId,
         Guid customerId,
         CancellationToken ct = default
     ) =>
-        db.CustomerDirectoryProjections.IgnoreQueryFilters()
+        db
+            .CustomerDirectoryProjections.IgnoreQueryFilters()
             .AsNoTracking()
             .SingleOrDefaultAsync(c => c.TenantId == tenantId && c.CustomerId == customerId, ct);
 

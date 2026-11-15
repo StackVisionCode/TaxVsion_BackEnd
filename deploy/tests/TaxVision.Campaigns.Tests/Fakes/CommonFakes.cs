@@ -41,3 +41,19 @@ internal sealed class FakeCorrelationContext : ICorrelationContext
         public void Dispose() => owner.CorrelationId = previous;
     }
 }
+
+/// <summary>Ventana de SMS por oficina en memoria.</summary>
+internal sealed class FakeCampaignSmsWindowRepository
+    : TaxVision.Campaigns.Application.Settings.SmsWindow.ICampaignSmsWindowRepository
+{
+    public List<TaxVision.Campaigns.Domain.Settings.CampaignSmsWindow> Windows { get; } = [];
+
+    public Task<TaxVision.Campaigns.Domain.Settings.CampaignSmsWindow?> GetAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => Task.FromResult(Windows.Find(w => w.TenantId == tenantId));
+
+    public void Add(TaxVision.Campaigns.Domain.Settings.CampaignSmsWindow window) => Windows.Add(window);
+
+    public void Remove(TaxVision.Campaigns.Domain.Settings.CampaignSmsWindow window) => Windows.Remove(window);
+}

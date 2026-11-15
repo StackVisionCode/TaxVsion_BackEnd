@@ -74,16 +74,19 @@ internal static class CalendarRecipients
         string? correlationId,
         CancellationToken ct,
         string? rsvpBaseUrl = null,
-        Guid? organizerUserId = null
+        Guid? organizerUserId = null,
+        string? timeZoneId = null
     )
     {
+        // Las horas tipadas se imprimen en la zona de la cita, con su rótulo.
+        var reader = ScribeReader.From(null, timeZoneId);
         var renders = new Dictionary<ScribeRenderAudience, ScribeRenderedEmail>();
         foreach (var recipient in recipients)
         {
             var audience = AudienceOf(recipient);
             if (RsvpTokenOf(recipient, rsvpBaseUrl, organizerUserId) is null && !renders.ContainsKey(audience))
                 renders[audience] = (
-                    await scribeClient.RenderAsync(templateKey, tenantId, variables, audience, ct)
+                    await scribeClient.RenderAsync(templateKey, tenantId, variables, audience, reader, ct)
                 ).EnsureRendered(templateKey);
         }
 
@@ -96,7 +99,7 @@ internal static class CalendarRecipients
                 var own = new Dictionary<string, object?>(variables);
                 CalendarRsvpLinks.AddTo(own, rsvpBaseUrl!, token);
                 rendered = (
-                    await scribeClient.RenderAsync(templateKey, tenantId, own, AudienceOf(recipient), ct)
+                    await scribeClient.RenderAsync(templateKey, tenantId, own, AudienceOf(recipient), reader, ct)
                 ).EnsureRendered(templateKey);
             }
 

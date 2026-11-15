@@ -45,6 +45,7 @@ export class PrismaMeetingRepository implements MeetingRepository {
           ReminderSentAtUtc: snapshot.reminderSentAtUtc,
           ContinuationOfMeetingId: snapshot.continuationOfMeetingId,
           AppointmentId: snapshot.appointmentId ?? null,
+          TimeZoneId: snapshot.timeZoneId ?? null,
           StartedAtUtc: snapshot.startedAtUtc,
           EndedAtUtc: snapshot.endedAtUtc,
           DurationSeconds: snapshot.durationSeconds,

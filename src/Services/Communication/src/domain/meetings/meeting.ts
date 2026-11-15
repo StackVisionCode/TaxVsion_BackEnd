@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { normalizeTimeZoneId } from '../time-zones/tenant-time-zone.js';
 import { Result, makeError } from '../shared/result.js';
 import {
   MeetingEndReason,
@@ -57,6 +58,8 @@ export interface MeetingSnapshot {
   readonly continuationOfMeetingId: string | null;
   /** Cita de Calendar de la que nació la sala (una sala por cita). */
   readonly appointmentId?: string | null;
+  /** TZ03-H7: zona IANA de la cita para los correos de su sala; null = la de la oficina. */
+  readonly timeZoneId?: string | null;
   readonly startedAtUtc: Date | null;
   readonly endedAtUtc: Date | null;
   readonly durationSeconds: number | null;
@@ -112,6 +115,7 @@ export interface ScheduleMeetingInput {
   readonly durationPolicy?: MeetingDurationPolicy;
   readonly continuationOfMeetingId?: string | null;
   readonly appointmentId?: string | null;
+  readonly timeZoneId?: string | null;
   readonly now?: Date;
 }
 
@@ -197,6 +201,7 @@ export class Meeting {
       reminderSentAtUtc: null,
       continuationOfMeetingId: input.continuationOfMeetingId ?? null,
       appointmentId: input.appointmentId ?? null,
+      timeZoneId: normalizeTimeZoneId(input.timeZoneId),
       startedAtUtc: null,
       endedAtUtc: null,
       durationSeconds: null,

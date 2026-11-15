@@ -4,8 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { logger } from '../../infrastructure/logger/logger.js';
 import type { Call } from '../../domain/calls/call.js';
 import type { CallRepository } from '../ports/call-repository.js';
-import type { CallUsageRepository } from '../ports/call-usage-repository.js';
-import { yearMonthUtc } from '../ports/call-usage-repository.js';
+import type { CallUsageMeter } from '../ports/call-usage-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { PresenceService } from '../ports/presence-service.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
@@ -20,7 +19,7 @@ export interface CallLifecycleSweepDeps extends RecordingLifecycleOptionalDeps {
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
   readonly presence: PresenceService;
-  readonly callUsage?: CallUsageRepository | undefined;
+  readonly callUsage?: CallUsageMeter | undefined;
 }
 
 export interface CallSweepReport {
@@ -84,7 +83,7 @@ async function sweepOne(call: Call, now: Date, correlationId: string, deps: Call
       recordingFileId: after.recordingFileId,
     };
     await deps.publisher.enqueue(endedEvent);
-    await deps.callUsage?.addSeconds({ tenantId: after.tenantId, yearMonth: yearMonthUtc(now), seconds: after.durationSeconds ?? 0 }).catch(() => undefined);
+    await deps.callUsage?.addSeconds({ tenantId: after.tenantId, at: now, seconds: after.durationSeconds ?? 0 }).catch(() => undefined);
     const state: CallStateDto = {
       callId: after.id,
       status: after.status,

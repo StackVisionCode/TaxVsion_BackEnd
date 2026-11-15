@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 
@@ -124,6 +125,11 @@ public sealed class TaskSeries : BaseEntity, ITenantOwned
         // Los dos modos comparten el RRULE; lo único que cambia es desde dónde se expande.
         var seed = Mode switch
         {
+            // Una serie de fecha civil cuenta desde el día en que se cerró, no desde la hora (P4).
+            RecurrenceMode.AfterCompletion when completedAtUtc is { } done && IsCivil(out var zone) => EndOfDayOf(
+                done,
+                zone
+            ),
             RecurrenceMode.AfterCompletion => completedAtUtc ?? lastDueUtc ?? AnchorUtc,
             _ => lastDueUtc ?? AnchorUtc,
         };
@@ -234,9 +240,34 @@ public sealed class TaskSeries : BaseEntity, ITenantOwned
             return Result.Failure(TaskErrors.Series.AlreadyEnded);
 
         Status = SeriesStatus.Active;
-        AnchorUtc = nowUtc;
+        AnchorUtc = IsCivil(out var zone) ? EndOfDayOf(nowUtc, zone) : nowUtc;
         return Result.Success();
     }
+
+    /// <summary>
+    /// P9: la oficina cambió de zona. Una serie activa con la regla en la zona anterior pasa a la nueva; si era de fecha
+    /// civil, su ancla queda al fin del mismo día en la nueva.
+    /// </summary>
+    public bool RezoneCivilDue(string previousTimeZoneId, ResolvedTimeZone newZone)
+    {
+        if (Status != SeriesStatus.Active || Rule.TimeZoneId != previousTimeZoneId)
+            return false;
+        var wasCivil = IsCivil(out var previousZone);
+        Rule = RecurrenceRule.Create(Rule.Value, newZone.Id).Value;
+        if (wasCivil)
+            AnchorUtc = LocalDay.EndUtc(CivilDate.Of(AnchorUtc, previousZone), newZone);
+        return true;
+    }
+
+    /// <summary>Serie de fecha civil: su ancla es el final de un día en la zona de la regla (P4).</summary>
+    private bool IsCivil(out ResolvedTimeZone zone)
+    {
+        zone = ResolvedTimeZone.Resolve(Rule.TimeZoneId);
+        return AnchorUtc == EndOfDayOf(AnchorUtc, zone);
+    }
+
+    private static DateTime EndOfDayOf(DateTime instantUtc, ResolvedTimeZone zone) =>
+        LocalDay.EndUtc(CivilDate.Of(instantUtc, zone), zone);
 
     public void End()
     {

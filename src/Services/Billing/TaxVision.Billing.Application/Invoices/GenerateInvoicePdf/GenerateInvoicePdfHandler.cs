@@ -31,10 +31,11 @@ public static class GenerateInvoicePdfHandler
         var request = new InvoiceDocumentRequest(
             InvoiceId: invoice.Id,
             InvoiceNumber: invoice.InvoiceNumber,
-            TaxYear: invoice.IssueDateUtc.Year,
+            // Fechas congeladas al emitir (P6); una factura vieja conserva el día UTC que ya imprimió.
+            TaxYear: (invoice.IssueDate ?? DateOnly.FromDateTime(invoice.IssueDateUtc)).Year,
             Currency: invoice.Currency,
-            IssueDate: DateOnly.FromDateTime(invoice.IssueDateUtc),
-            DueDate: DateOnly.FromDateTime(invoice.DueDateUtc),
+            IssueDate: invoice.IssueDate ?? DateOnly.FromDateTime(invoice.IssueDateUtc),
+            DueDate: invoice.DueDate ?? DateOnly.FromDateTime(invoice.DueDateUtc),
             Issuer: MapIssuer(invoice.Issuer),
             Customer: MapCustomer(invoice.Customer),
             Lines: invoice
@@ -51,7 +52,7 @@ public static class GenerateInvoicePdfHandler
             Notes: invoice.Notes,
             Status: invoice.Status.ToString(),
             PaymentUrl: paymentUrl,
-            PaidDate: invoice.PaidAtUtc is { } paid ? DateOnly.FromDateTime(paid) : null,
+            PaidDate: invoice.PaidDate ?? (invoice.PaidAtUtc is { } paid ? DateOnly.FromDateTime(paid) : null),
             ReceiptNumber: invoice.ReceiptNumber,
             ReceiptHash: invoice.ReceiptHash,
             Discount: ToDollars(invoice.DiscountTotal.AmountCents),

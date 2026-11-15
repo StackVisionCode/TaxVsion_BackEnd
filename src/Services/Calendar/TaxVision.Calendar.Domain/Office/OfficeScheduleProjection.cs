@@ -62,12 +62,12 @@ public sealed class OfficeScheduleProjection : TenantEntity
     }
 
     /// <summary>
-    /// El horario para calcular disponibilidad. Sin zona conocida se usa la del preparador: la oficina y
-    /// su gente suelen compartirla, y es mejor que ignorar el horario.
+    /// El horario para calcular disponibilidad. La zona de la oficina conocida desde Tenant manda; sin ninguna
+    /// se usa la del preparador: la oficina y su gente suelen compartirla, y es mejor que ignorar el horario.
     /// </summary>
-    public OfficeSchedule? ToSchedule(string? fallbackZoneId)
+    public OfficeSchedule? ToSchedule(string? fallbackZoneId, string? officeZoneId = null)
     {
-        var zone = TimeZoneId ?? fallbackZoneId;
+        var zone = officeZoneId ?? TimeZoneId ?? fallbackZoneId;
         return string.IsNullOrWhiteSpace(zone) ? null : OfficeSchedule.Of(zone, Hours, Closures);
     }
 

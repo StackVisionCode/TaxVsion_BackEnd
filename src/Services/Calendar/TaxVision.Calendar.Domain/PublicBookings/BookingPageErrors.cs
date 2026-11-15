@@ -69,6 +69,11 @@ public static class BookingPageErrors
         "Enter a valid email address."
     );
 
+    public static readonly Error HostTimeZoneInvalid = new(
+        "Calendar.BookingPage.HostTimeZoneInvalid",
+        "The host time zone must be an IANA time zone such as \"America/New_York\"."
+    );
+
     public static readonly Error MeetingUrlInvalid = new(
         "Calendar.BookingPage.MeetingUrlInvalid",
         "Each host needs an https meeting link of up to 300 characters."

@@ -22,6 +22,7 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var subscriptionDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Infrastructure.Persistence.SubscriptionDbContext>(serviceScope.ServiceProvider);
@@ -29,7 +30,6 @@ namespace Internal.Generated.WolverineHandlers
             var planRateLimitRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.PlanRateLimitRepository(subscriptionDbContext);
             var planRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.PlanRepository(subscriptionDbContext);
             var rateLimitDefaultProfileRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.RateLimitDefaultProfileRepository(subscriptionDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var previewPlanRateLimitChangeQuery = (TaxVision.Subscription.Application.RateLimiting.PreviewPlanRateLimitChangeQuery)context.Envelope.Message;
 

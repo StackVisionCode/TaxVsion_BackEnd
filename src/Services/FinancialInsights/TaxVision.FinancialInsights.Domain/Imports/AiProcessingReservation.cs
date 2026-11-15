@@ -21,7 +21,14 @@ public sealed class AiProcessingReservation : AggregateRoot, ITenantOwned
 
     public static DateTime MonthStart(DateTime nowUtc) => new(nowUtc.Year, nowUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    public static Result<AiProcessingReservation> Create(Guid tenantId, Guid documentId, string? model, DateTime nowUtc)
+    /// <param name="periodStartUtc">Inicio del período del cupo (P11); sin él, el mes UTC.</param>
+    public static Result<AiProcessingReservation> Create(
+        Guid tenantId,
+        Guid documentId,
+        string? model,
+        DateTime nowUtc,
+        DateTime? periodStartUtc = null
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<AiProcessingReservation>(FinancialInsightsErrors.TenantRequired);
@@ -35,7 +42,7 @@ public sealed class AiProcessingReservation : AggregateRoot, ITenantOwned
             Id = Guid.NewGuid(),
             ImportDocumentId = documentId,
             Model = model.Trim(),
-            MonthStartUtc = MonthStart(nowUtc),
+            MonthStartUtc = periodStartUtc ?? MonthStart(nowUtc),
             ReservedAtUtc = nowUtc,
         };
         reservation.SetTenant(tenantId);

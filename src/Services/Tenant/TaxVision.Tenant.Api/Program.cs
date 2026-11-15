@@ -58,6 +58,7 @@ builder.Services.AddOpenApi();
 
 // 2) Services Shared plus Services's Infrastructure
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 
 //  Added Cache's Services
 builder.Services.AddRedisCache(builder.Configuration);
@@ -171,6 +172,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantStatusChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Renombre / cambio de zona horaria (PUT tenants/current): estado completo para las proyecciones.
     options.PublishMessage<TenantUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<TenantTimeZoneChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Perfil público de la oficina (PUT tenants/current/profile + importación desde Billing).
     options.PublishMessage<TenantProfileChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Cumplimiento (F4): años de retención (PUT tenants/current/compliance) y aviso anual del WISP (job diario).

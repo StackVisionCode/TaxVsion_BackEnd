@@ -37,7 +37,17 @@ public static class FileScanConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => RejectAsync(evt.TenantId, evt.FileId, "Infected", CorrelationOf(evt.CorrelationId, evt.EventId), batches, unitOfWork, correlation, ct);
+    ) =>
+        RejectAsync(
+            evt.TenantId,
+            evt.FileId,
+            "Infected",
+            CorrelationOf(evt.CorrelationId, evt.EventId),
+            batches,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     public static Task Handle(
         FileScanFailedIntegrationEvent evt,
@@ -45,7 +55,17 @@ public static class FileScanConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => RejectAsync(evt.TenantId, evt.FileId, "ScanFailed", CorrelationOf(evt.CorrelationId, evt.EventId), batches, unitOfWork, correlation, ct);
+    ) =>
+        RejectAsync(
+            evt.TenantId,
+            evt.FileId,
+            "ScanFailed",
+            CorrelationOf(evt.CorrelationId, evt.EventId),
+            batches,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     private static async Task RejectAsync(
         Guid tenantId,

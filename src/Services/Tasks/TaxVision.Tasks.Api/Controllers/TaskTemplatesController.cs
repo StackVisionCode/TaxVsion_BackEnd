@@ -175,7 +175,8 @@ public sealed class TaskTemplatesController(IMessageBus bus) : ControllerBase
                 request.TaxYear,
                 request.DueAtUtc,
                 request.TimeZoneId,
-                request.AllowDuplicate
+                request.AllowDuplicate,
+                request.DueOn
             ),
             ct
         );

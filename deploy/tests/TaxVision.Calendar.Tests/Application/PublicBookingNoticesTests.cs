@@ -56,6 +56,34 @@ public sealed class PublicBookingNoticesTests
         );
     }
 
+    // P23 (TZ02-H15): la zona del anfitrión es un campo explícito y manda sobre su disponibilidad y la del visitante.
+    [Fact]
+    public async Task The_host_sees_the_time_in_the_zone_set_on_the_page()
+    {
+        var (page, booking, code) = Pending();
+        Assert.True(
+            page.SetHosts(
+                [BookingPageTests.Host(_host) with { TimeZoneId = "America/Chicago" }],
+                Guid.NewGuid(),
+                Now
+            ).IsSuccess
+        );
+        booking.VerifyCode(code, Now);
+        var token = booking.Confirm(_host, Guid.NewGuid(), Now).Value;
+
+        var evt = await Notices().ConfirmedAsync(page, booking, token, default);
+
+        Assert.Equal("America/Chicago", evt.Host.TimeZoneId);
+        Assert.Equal(
+            "Calendar.BookingPage.HostTimeZoneInvalid",
+            page.SetHosts(
+                [BookingPageTests.Host(_host) with { TimeZoneId = "Mars/Base" }],
+                Guid.NewGuid(),
+                Now
+            ).Error.Code
+        );
+    }
+
     [Fact]
     public async Task The_confirmation_carries_both_parties_and_a_token_bound_to_its_version()
     {

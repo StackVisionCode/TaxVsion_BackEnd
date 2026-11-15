@@ -177,6 +177,7 @@ public static class RecordSaaSPaymentChargeHandler
                     "MMMM d, yyyy",
                     System.Globalization.CultureInfo.InvariantCulture
                 ),
+                DateChargedAtUtc = DateTime.UtcNow,
             }
         );
 }

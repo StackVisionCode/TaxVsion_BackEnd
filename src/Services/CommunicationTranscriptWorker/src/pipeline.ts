@@ -220,9 +220,10 @@ async function transcribeSource(
   }
 }
 
-function downloadName(kind: string, extension: 'txt' | 'json'): string {
+/** P25: con la fecha local de la grabación; sin ella (eventos viejos), la UTC del procesamiento. */
+export function downloadName(kind: string, extension: 'txt' | 'json', recordingLocalDate: string | undefined): string {
   const capKind = kind.charAt(0).toUpperCase() + kind.slice(1);
-  return `${capKind}_Transcript_${new Date().toISOString().slice(0, 10)}.${extension}`;
+  return `${capKind}_Transcript_${recordingLocalDate ?? new Date().toISOString().slice(0, 10)}.${extension}`;
 }
 
 async function uploadTranscriptFile(
@@ -239,7 +240,7 @@ async function uploadTranscriptFile(
       ctx.cloudStorage.uploadFile({
         tenantId: event.tenantId,
         filePath: localPath,
-        originalName: downloadName(event.kind, extension),
+        originalName: downloadName(event.kind, extension, event.recordingLocalDate),
         contentType,
         sizeBytes: Buffer.byteLength(content, 'utf-8'),
         ownerId: event.targetId,

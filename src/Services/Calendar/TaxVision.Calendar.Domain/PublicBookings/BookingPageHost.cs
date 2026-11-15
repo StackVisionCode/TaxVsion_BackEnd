@@ -22,13 +22,24 @@ public sealed class BookingPageHost : BaseEntity
     public string NotificationEmail { get; private set; } = string.Empty;
     public string MeetingUrl { get; private set; } = string.Empty;
     public int SortOrder { get; private set; }
+
+    /// <summary>P23 (TZ02-H15): zona en la que el anfitrión ve sus demos; null = la de su disponibilidad.</summary>
+    public string? TimeZoneId { get; private set; }
     public bool IsActive { get; private set; }
 
     internal static BookingPageHost Create(Guid bookingPageId, Guid userId) =>
         new() { BookingPageId = bookingPageId, UserId = userId };
 
-    internal void Apply(string displayName, string notificationEmail, string meetingUrl, int sortOrder, bool isActive)
+    internal void Apply(
+        string displayName,
+        string notificationEmail,
+        string meetingUrl,
+        int sortOrder,
+        bool isActive,
+        string? timeZoneId
+    )
     {
+        TimeZoneId = timeZoneId;
         DisplayName = displayName;
         NotificationEmail = notificationEmail;
         MeetingUrl = meetingUrl;

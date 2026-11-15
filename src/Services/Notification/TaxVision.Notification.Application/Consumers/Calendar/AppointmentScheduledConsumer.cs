@@ -96,7 +96,7 @@ public static class AppointmentScheduledConsumer
                 new Dictionary<string, object?>
                 {
                     ["appointment_title"] = evt.Title,
-                    ["start_local"] = CalendarTimeFormatting.InZone(evt.StartUtc, evt.TimeZoneId),
+                    ["start_local"] = ScribeDates.Instant(evt.StartUtc),
                     ["time_zone"] = evt.TimeZoneId,
                     ["is_recurring"] = evt.IsRecurring,
                     ["is_virtual"] = evt.IsVirtual,
@@ -108,7 +108,8 @@ public static class AppointmentScheduledConsumer
                 correlation.CorrelationId,
                 ct,
                 TenantEmailLinks.StaffBase(await hosts.ResolveHostAsync(evt.TenantId, ct), portal.Value),
-                evt.OrganizerUserId
+                evt.OrganizerUserId,
+                timeZoneId: evt.TimeZoneId
             );
 
             // Aprobada desde una solicitud del portal: el cliente lo ve en vivo, sin recargar.

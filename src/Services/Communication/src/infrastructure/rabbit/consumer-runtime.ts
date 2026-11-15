@@ -62,6 +62,9 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
     'auth.tenant.subdomain_changed.v1',
   'BuildingBlocks.Messaging.PlatformIntegrationEvents.PlatformSettingsChangedIntegrationEvent':
     'platform.settings_changed.v1',
+  // Zona de cada oficina: alta y cambios de Tenant (ver tenant-time-zone-consumers.ts).
+  'BuildingBlocks.Messaging.TenantCreatedIntegrationEvent': 'tenant.created.v1',
+  'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantUpdatedIntegrationEvent': 'tenant.updated.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserProfileUpdatedIntegrationEvent':
     'auth.user.profile_updated.v1',
   // Offboarding (retiro terminal) — reasigna/cancela reuniones del host que se va (ver offboarding-consumers.ts).

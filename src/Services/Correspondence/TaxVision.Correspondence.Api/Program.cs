@@ -51,6 +51,7 @@ builder.Services.AddSwaggerGen();
 
 // ---------- BuildingBlocks + Infrastructure + Auth + OTEL ----------
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddCorrespondenceInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
@@ -127,6 +128,8 @@ builder.Host.UseWolverine(options =>
 
     // Consumer compartido (kit) de CustomerAssignmentsChanged: vive fuera del assembly → registro explícito.
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
+    // Zona de cada oficina: consumer compartido de TenantTimeZones.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

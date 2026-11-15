@@ -101,6 +101,17 @@ model TenantCommunicationSettings {
 }
 
 // -----------------------------------------------------------------------------
+// Zona IANA de cada oficina (dueño: Tenant). La siembran TenantCreated/TenantUpdated y la
+// reconciliación contra el directorio de Tenant; mismas reglas que la proyección .NET.
+// -----------------------------------------------------------------------------
+model TenantTimeZoneProjection {
+  TenantId           String   @id @db.UniqueIdentifier
+  TimeZoneId         String   @db.NVarChar(64)
+  SourceVersion      BigInt?
+  SourceUpdatedAtUtc DateTime @db.DateTime2
+}
+
+// -----------------------------------------------------------------------------
 // TenantCommunicationLimits — proyección desde Subscription events.
 // Las columnas de plan son nullable: null = el plan no define la clave y rige el
 // valor global de PlatformCommunicationSettings (los defaults salen del código).
@@ -124,6 +135,8 @@ model TenantCommunicationLimits {
   TranscriptEnabled            Boolean?
   CallsEnabled                 Boolean?
   MaxCallMinutes               Int?
+  // Inicio del período de la suscripción: ancla del cupo mensual de minutos (P11).
+  UsagePeriodAnchorUtc         DateTime? @db.DateTime2
   // Última revisión de entitlements aplicada: una menor llega tarde y se ignora.
   LastEntitlementsRevision     BigInt?
   UpdatedAtUtc                 DateTime @default(now()) @updatedAt @db.DateTime2
@@ -953,6 +966,8 @@ model Meeting {
   ContinuationOfMeetingId    String?   @db.UniqueIdentifier
   // Cita de Calendar de la que nació la sala; la unicidad la cuida el candado por cita al crearla.
   AppointmentId              String?   @db.UniqueIdentifier
+  // Zona de la cita para los correos de su sala (TZ03-H7); null = la de la oficina.
+  TimeZoneId                 String?   @db.NVarChar(64)
   // F6 (T-64): recordatorio enviado una sola vez.
   ReminderSentAtUtc          DateTime? @db.DateTime2
   /// @userReference(Provenance)

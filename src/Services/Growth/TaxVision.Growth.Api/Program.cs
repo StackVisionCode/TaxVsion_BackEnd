@@ -44,6 +44,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddGrowthInfrastructure(builder.Configuration);
 
 // Red de seguridad: barre reservas de código vencidas (checkout abandonado) → Expired + libera el hold,

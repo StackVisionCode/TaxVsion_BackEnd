@@ -19,12 +19,13 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
                     TenantId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     CustomerId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     CreatedBy = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ImportBatches", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "ImportDocuments",
@@ -36,7 +37,7 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
                     FileId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
                     Status = table.Column<string>(type: "nvarchar(32)", maxLength: 32, nullable: false),
                     FailureReason = table.Column<string>(type: "nvarchar(128)", maxLength: 128, nullable: true),
-                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    UpdatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -46,34 +47,37 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
                         column: x => x.BatchId,
                         principalTable: "ImportBatches",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ImportBatches_TenantId_CustomerId_CreatedAtUtc",
                 table: "ImportBatches",
-                columns: new[] { "TenantId", "CustomerId", "CreatedAtUtc" });
+                columns: new[] { "TenantId", "CustomerId", "CreatedAtUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ImportDocuments_BatchId",
                 table: "ImportDocuments",
-                column: "BatchId");
+                column: "BatchId"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_ImportDocuments_TenantId_FileId",
                 table: "ImportDocuments",
                 columns: new[] { "TenantId", "FileId" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "ImportDocuments");
+            migrationBuilder.DropTable(name: "ImportDocuments");
 
-            migrationBuilder.DropTable(
-                name: "ImportBatches");
+            migrationBuilder.DropTable(name: "ImportBatches");
         }
     }
 }

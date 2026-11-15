@@ -33,7 +33,7 @@ public static class AppointmentAttendeeInvitedDomainEventHandler
             DisplayName = attendee?.Snapshot.DisplayName,
             RsvpToken = invited.RsvpToken,
             Title = appointment.Title.Value,
-            StartUtc = AppointmentEvents.FirstStartOf(appointment),
+            StartUtc = AppointmentEvents.UpcomingStartOf(appointment, DateTime.UtcNow),
             TimeZoneId = appointment.Timing.TimeZone.Id,
             IsRecurring = appointment.IsRecurring,
             IsVirtual = appointment.IsVirtual,

@@ -24,6 +24,7 @@ public static class SaaSPaymentSucceededReceiptConsumer
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger<GenerateSaaSReceiptDocumentResult> logger,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -36,6 +37,8 @@ public static class SaaSPaymentSucceededReceiptConsumer
             if (evt.TenantId == Guid.Empty)
                 return; // El pago de un onboarding tiene su propio recibo, pedido por Auth.
 
+            // P7: el recibo va en la zona de la oficina que paga.
+            var officeZone = await zones.ResolveAsync(evt.TenantId, ct);
             var result = await bus.InvokeAsync<Result<GenerateSaaSReceiptDocumentResult>>(
                 new GenerateSaaSReceiptDocumentCommand(
                     evt.TenantId,
@@ -61,7 +64,8 @@ public static class SaaSPaymentSucceededReceiptConsumer
                         evt.BilledTo?.LegalName,
                         evt.BilledTo?.Ein,
                         evt.BilledTo?.Address,
-                        evt.Lines
+                        evt.Lines,
+                        officeZone.Id
                     )
                 ),
                 ct

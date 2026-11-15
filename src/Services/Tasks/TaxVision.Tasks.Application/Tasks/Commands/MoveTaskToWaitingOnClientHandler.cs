@@ -2,6 +2,8 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
+using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Reminders;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
@@ -12,13 +14,15 @@ namespace TaxVision.Tasks.Application.Tasks.Commands;
 
 /// <param name="ExpectedItems">Qué se le pide al cliente. Viaja hasta el correo, así que es obligatorio.</param>
 /// <param name="ClientDueAtUtc">Para cuándo se lo pide, distinta del vencimiento de la tarea.</param>
+/// <param name="ClientDueOn">Fecha civil: si viene, manda y vence al final de ese día en la oficina.</param>
 public sealed record MoveTaskToWaitingOnClientCommand(
     Guid TenantId,
     Guid TaskId,
     Guid ByUserId,
     bool HasManageAll,
     string? ExpectedItems,
-    DateTime? ClientDueAtUtc
+    DateTime? ClientDueAtUtc,
+    DateOnly? ClientDueOn = null
 );
 
 /// <summary>
@@ -33,6 +37,7 @@ public static class MoveTaskToWaitingOnClientHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -47,18 +52,23 @@ public static class MoveTaskToWaitingOnClientHandler
         var task = found.Value;
         if (!TaskAccessPolicy.CanMutate(task, command.ByUserId, command.HasManageAll))
             return Result.Failure<TaskResponse>(TaskErrors.Forbidden);
-
         if (task.Reference.CustomerId is not { } customerId)
             return Result.Failure<TaskResponse>(TaskErrors.WaitingOnClient.CustomerRequired);
 
-        var nowUtc = DateTime.UtcNow;
-        var moved = task.MoveToWaitingOnClient(expectedItems.Value, command.ClientDueAtUtc, command.ByUserId, nowUtc);
+        var clientDueAtUtc = await ClientDueAtUtcAsync(command, zones, ct);
+        var moved = task.MoveToWaitingOnClient(
+            expectedItems.Value,
+            clientDueAtUtc,
+            command.ByUserId,
+            DateTime.UtcNow,
+            command.ClientDueOn
+        );
         if (moved.IsFailure)
             return Result.Failure<TaskResponse>(moved.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(BuildEvent(task, customerId, correlation.CorrelationId));
-        await RequestPreparerReminderAsync(task, command.ClientDueAtUtc, bus, correlation);
+        await RequestPreparerReminderAsync(task, clientDueAtUtc, bus, correlation);
 
         return Result.Success(TaskResponse.From(task));
     }
@@ -69,6 +79,16 @@ public static class MoveTaskToWaitingOnClientHandler
     /// se le escribe por Notification, que es otro camino. Sin fecha pedida no hay ancla, y sin
     /// asignado no hay a quién recordarle.
     /// </summary>
+    // Fecha civil: vence al final de ese día en la oficina.
+    private static async Task<DateTime?> ClientDueAtUtcAsync(
+        MoveTaskToWaitingOnClientCommand command,
+        IOfficeTimeZone zones,
+        CancellationToken ct
+    ) =>
+        command.ClientDueOn is { } civil
+            ? LocalDay.EndUtc(civil, await zones.ResolveAsync(command.TenantId, ct))
+            : command.ClientDueAtUtc;
+
     private static async Task RequestPreparerReminderAsync(
         TaskItem task,
         DateTime? clientDueAtUtc,
@@ -99,6 +119,7 @@ public static class MoveTaskToWaitingOnClientHandler
             TaxYear = task.Reference.TaxYear,
             ExpectedItems = task.ExpectedItems!.Value,
             ClientDueAtUtc = task.ClientDueAtUtc,
+            ClientDueOn = task.ClientDueCivilDate,
             RequestedByUserId = task.ClientRequestedByUserId!.Value,
             RequestedAtUtc = task.ClientRequestedAtUtc!.Value,
         };

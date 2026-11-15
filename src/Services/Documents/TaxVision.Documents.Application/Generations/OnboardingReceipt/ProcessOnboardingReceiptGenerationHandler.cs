@@ -145,7 +145,7 @@ public static class ProcessOnboardingReceiptGenerationHandler
                     OwnerTypeOnboarding,
                     command.OnboardingId,
                     FolderTypeReceipts,
-                    command.Receipt.PaidAtUtc.Year,
+                    Receipts.ReceiptRenderData.PaidDay(command.Receipt.PaidAtUtc, command.Receipt.TimeZoneId).Year,
                     PlatformTenant.Id,
                     correlation.CorrelationId
                 )
@@ -207,7 +207,7 @@ public static class ProcessOnboardingReceiptGenerationHandler
                 ["planName"] = receipt.PlanName,
                 ["price"] = priceFormatted,
                 ["currency"] = receipt.Currency,
-                ["paidAt"] = receipt.PaidAtUtc.ToString("yyyy-MM-dd HH:mm 'UTC'", culture),
+                ["paidAt"] = Receipts.ReceiptRenderData.PaidAt(receipt.PaidAtUtc, receipt.TimeZoneId),
                 ["transactionReferenceMask"] = receipt.TransactionReferenceMask,
                 ["paymentMethodMasked"] = receipt.PaymentMethodMasked ?? string.Empty,
                 ["issuer"] = new Dictionary<string, object>

@@ -13,6 +13,10 @@ import { PrismaUserPermissionsProjectionRepository } from './persistence/prisma-
 import { PrismaRolePermissionsProjectionRepository } from './persistence/prisma-role-permissions-projection.js';
 import { PrismaCustomerPortalAccountRepository } from './persistence/prisma-customer-portal-account-repository.js';
 import { PrismaUserDirectoryRepository } from './persistence/prisma-user-directory-repository.js';
+import { PrismaTenantTimeZoneStore } from './persistence/prisma-tenant-time-zone-store.js';
+import { HttpTenantDirectoryClient } from './platform/http-tenant-directory-client.js';
+import { ProjectedTimeZoneHostResolver } from '../application/services/projected-time-zone-host-resolver.js';
+import type { TenantTimeZoneStore } from '../application/ports/tenant-time-zone-store.js';
 import { PrismaCustomerDirectoryRepository } from './persistence/prisma-customer-directory-repository.js';
 import { PrismaAvatarLookupRepository } from './persistence/prisma-avatar-lookup-repository.js';
 import { DirectoryAvatarResolver, type AvatarResolver } from '../application/use-cases/resolve-avatars.js';
@@ -51,7 +55,8 @@ import { HttpRateLimiter } from './redis/http-rate-limiter.js';
 import { RedisDistributedLock } from './redis/redis-distributed-lock.js';
 import { MediasoupSfuService } from './webrtc/mediasoup-sfu-service.js';
 import { PrismaCallUsageRepository } from './persistence/prisma-call-usage-repository.js';
-import type { CallUsageRepository } from '../application/ports/call-usage-repository.js';
+import type { CallUsageMeter } from '../application/ports/call-usage-repository.js';
+import { PeriodCallUsageMeter } from '../application/services/call-usage-meter.js';
 import { MeetingQualityAggregator } from '../application/services/meeting-quality-aggregator.js';
 import { ServiceTokenClient } from './auth/service-token-client.js';
 import { HttpTenantHostResolver } from './auth/tenant-host-resolver.js';
@@ -150,7 +155,7 @@ export interface AppContainer {
   readonly messages: MessageRepository;
   readonly calls: CallRepository;
   /** F4: minutos de llamada por oficina y mes. */
-  readonly callUsage: CallUsageRepository;
+  readonly callUsage: CallUsageMeter;
   /** F4: agregado de calidad por reunion para `quality_summary.v1`. */
   readonly qualityAggregator: MeetingQualityAggregator;
   readonly meetings: MeetingRepository;
@@ -245,6 +250,9 @@ export interface AppContainer {
   readonly tenantHostResolver: TenantHostResolver;
   /** La misma instancia que tenantHostResolver: los consumers invalidan lo que el resolver cachea. */
   readonly tenantHostCache: TenantHostCache;
+  /** Zona de cada oficina proyectada desde Tenant; el resolver la lee antes que el pull a Auth. */
+  readonly tenantTimeZones: TenantTimeZoneStore;
+  readonly tenantDirectory: HttpTenantDirectoryClient;
   /**
    * Wired late (post-init) por main.ts inmediatamente despues de construir el
    * Socket.IO server, porque `SocketRealtimeEmitter` necesita el `io` que a
@@ -269,6 +277,7 @@ export function buildContainer(): AppContainer {
   const tenantModulesCache = new CachedTenantModulesReader(limitsRepository);
   const planRateLimitReader = new HttpPlanRateLimitReader(serviceTokens);
   const tenantHost = new HttpTenantHostResolver(serviceTokens);
+  const tenantTimeZones = new PrismaTenantTimeZoneStore(prisma);
   const notifications = new PrismaNotificationRepository(prisma);
   const userDirectoryRepository = new PrismaUserDirectoryRepository(prisma);
   const customerDirectoryRepository = new PrismaCustomerDirectoryRepository(prisma);
@@ -302,12 +311,13 @@ export function buildContainer(): AppContainer {
     avatars,
     tapListenIp: config.recorder.tapListenIp,
     keyframeIntervalSeconds: config.recorder.keyframeIntervalSeconds,
+    tenantTimeZones,
   });
   return {
     conversations: new PrismaConversationRepository(prisma),
     messages: new PrismaMessageRepository(prisma),
     calls,
-    callUsage: new PrismaCallUsageRepository(prisma),
+    callUsage: new PeriodCallUsageMeter({ usage: new PrismaCallUsageRepository(prisma), limits: limitsRepository, timeZones: tenantTimeZones }),
     qualityAggregator: new MeetingQualityAggregator(),
     meetings,
     appointmentRoomLock: new PrismaAppointmentRoomLock(prisma),
@@ -385,8 +395,10 @@ export function buildContainer(): AppContainer {
     userDirectoryReconciliation: new HttpUserDirectoryReconciliationClient(serviceTokens),
     portalAccountsReconciliation: new HttpPortalAccountsReconciliationClient(serviceTokens),
     customerAssignmentsReconciliation: new HttpCustomerAssignmentsReconciliationClient(serviceTokens),
-    tenantHostResolver: tenantHost,
+    tenantHostResolver: new ProjectedTimeZoneHostResolver(tenantTimeZones, tenantHost),
     tenantHostCache: tenantHost,
+    tenantTimeZones,
+    tenantDirectory: new HttpTenantDirectoryClient(serviceTokens),
   };
 }
 

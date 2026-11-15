@@ -17,7 +17,8 @@ public sealed record PortalFormRequestSummaryResponse(
     bool IsOverdue,
     int ProgressPercent,
     DateTime? LastSubmittedAtUtc,
-    bool HasReviewMessage
+    bool HasReviewMessage,
+    DateOnly? DueOn = null
 );
 
 public sealed record GetPortalFormRequestQuery(Guid TenantId, Guid PortalUserId, Guid CustomerId, Guid RequestId);
@@ -53,7 +54,12 @@ public sealed record PortalFormRequestDetailResponse(
     // P-11 — copia del formulario enviado (Submission Summary) cuando ya está lista.
     PortalFormSummaryResponse? Summary,
     // P-13.1 — componentes prellenados (y secciones repeater): el portal muestra el callout "please review".
-    IReadOnlyList<string> PrefilledComponentIds
+    IReadOnlyList<string> PrefilledComponentIds,
+    DateOnly? DueOn = null,
+    // Vencida según el backend (fin del día de la oficina): el portal no la recalcula con su reloj.
+    bool IsOverdue = false,
+    // Zona de la oficina: el "hoy" del formulario en el front es el mismo que valida el backend (P13).
+    string? OfficeTimeZoneId = null
 );
 
 public sealed record PortalFormSummaryResponse(

@@ -305,6 +305,34 @@ describe('recording lifecycle (server capture)', () => {
     expect((await rt.transcripts.findByScope(meeting.tenantId, 'Meeting', meeting.id))?.toSnapshot().state).toBe('Processing');
   });
 
+  // P25 (TZ03-H10/H11): los archivos nuevos llevan la fecha local de la grabación en la zona de la oficina.
+  it('asks for the transcript with the recording local date of the office', async () => {
+    const rt = runtime();
+    const { meeting, host } = liveMeeting();
+    await rt.meetings.save(meeting);
+    // 01:00Z del 13-nov = 20:00 del 12-nov en Nueva York.
+    const session = serverSession({
+      tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, requestedByUserId: host.userId,
+      state: RecordingSessionState.Composing, patch: { startedAtUtc: new Date('2026-11-13T01:00:00Z') },
+    });
+    await rt.recordingSessions.save(session);
+    const tenantTimeZones = {
+      find: async (tenantId: string) => ({ tenantId, timeZoneId: 'America/New_York', sourceVersion: 1, sourceUpdatedAtUtc: new Date() }),
+    };
+
+    await handleRecordingComposed(
+      { sessionId: session.id, scope: 'Meeting' as const, scopeId: meeting.id, composedFileId: u(), composedSizeBytes: 1, format: 'mp4',
+        durationSeconds: 60, audioTracks: [], videoTrackCount: 0 },
+      { tenantId: meeting.tenantId, correlationId: 'c' },
+      { ...rt.deps, tenantTimeZones },
+    );
+
+    const processing = rt.publisher.events.find((e) => e.eventType === 'communication.meeting.recording_processing_started.v1') as unknown as {
+      recordingLocalDate?: string;
+    };
+    expect(processing.recordingLocalDate).toBe('2026-11-12');
+  });
+
   it('cada pista lleva el idioma que eligió su participante; la pantalla va en auto', async () => {
     const rt = runtime();
     const { meeting, host } = liveMeeting();

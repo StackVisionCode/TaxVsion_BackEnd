@@ -27,6 +27,7 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.Property(request => request.Description).HasMaxLength(SignatureRequest.MaxDescriptionLength);
 
         builder.Property(request => request.Category).HasMaxLength(64).IsRequired();
+        builder.Property(request => request.DisplayTimeZoneId).HasMaxLength(64);
         builder.Property(request => request.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
 
         builder.Property(request => request.CertificateFileId);

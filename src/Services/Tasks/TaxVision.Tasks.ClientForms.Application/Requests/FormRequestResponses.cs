@@ -32,7 +32,8 @@ public sealed record FormRequestResponse(
     // P-13 — estado de "apply to client profile" y motivos, para el drawer.
     FormProfileUpdateStatus ProfileUpdateStatus,
     IReadOnlyList<FormProfileUpdateOutcomeResponse> ProfileUpdateOutcomes,
-    string RowVersion
+    string RowVersion,
+    DateOnly? DueOn = null
 )
 {
     public static FormRequestResponse From(FormRequest request) => From(request, DateTime.UtcNow);
@@ -69,6 +70,7 @@ public sealed record FormRequestResponse(
                     outcome.FailureCode
                 ))
                 .ToArray(),
-            Convert.ToBase64String(request.RowVersion)
+            Convert.ToBase64String(request.RowVersion),
+            request.DueCivilDate
         );
 }

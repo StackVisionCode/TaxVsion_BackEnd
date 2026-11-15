@@ -19,7 +19,18 @@ public static class UserLifecyclePermissionsProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => SetUserActive(evt.TenantId, evt.UserId, false, evt.OccurredOn, ProjectionConsumer.CorrelationOf(evt), projections, unitOfWork, correlation, ct);
+    ) =>
+        SetUserActive(
+            evt.TenantId,
+            evt.UserId,
+            false,
+            evt.OccurredOn,
+            ProjectionConsumer.CorrelationOf(evt),
+            projections,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     public static Task Handle(
         UserOffboardedIntegrationEvent evt,
@@ -27,7 +38,18 @@ public static class UserLifecyclePermissionsProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => SetUserActive(evt.TenantId, evt.UserId, false, evt.OccurredOn, ProjectionConsumer.CorrelationOf(evt), projections, unitOfWork, correlation, ct);
+    ) =>
+        SetUserActive(
+            evt.TenantId,
+            evt.UserId,
+            false,
+            evt.OccurredOn,
+            ProjectionConsumer.CorrelationOf(evt),
+            projections,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     public static Task Handle(
         UserReactivatedIntegrationEvent evt,
@@ -35,7 +57,18 @@ public static class UserLifecyclePermissionsProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => SetUserActive(evt.TenantId, evt.UserId, true, evt.OccurredOn, ProjectionConsumer.CorrelationOf(evt), projections, unitOfWork, correlation, ct);
+    ) =>
+        SetUserActive(
+            evt.TenantId,
+            evt.UserId,
+            true,
+            evt.OccurredOn,
+            ProjectionConsumer.CorrelationOf(evt),
+            projections,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     private static async Task SetUserActive(
         Guid tenantId,

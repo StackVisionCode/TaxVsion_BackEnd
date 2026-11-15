@@ -20,13 +20,13 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Tenant.Application.Tenants.Abstractions.ITenantBrandingCloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var tenantBrandingCloudStorageClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tenant.Application.Tenants.Abstractions.ITenantBrandingCloudStorageClient>(serviceScope.ServiceProvider);
             var tenantBrandRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tenant.Application.Brands.Abstractions.ITenantBrandRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var tenantDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tenant.Infrastructure.Persistence.TenantDbContext>(serviceScope.ServiceProvider);
             // The actual message body

@@ -10,6 +10,8 @@ import type { RecordingSessionRepository } from '../ports/recording-repository.j
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { CallRepository } from '../ports/call-repository.js';
 import type { MeetingEventLogRepository } from '../ports/meeting-event-log-repository.js';
+import type { TenantTimeZoneStore } from '../ports/tenant-time-zone-store.js';
+import { recordingLocalDate } from './recording-local-date.js';
 import {
   RecorderRequestError,
   type RecorderClient,
@@ -39,6 +41,8 @@ export interface RecordingCaptureDeps {
   readonly avatars?: AvatarResolver | undefined;
   readonly tapListenIp: string;
   readonly keyframeIntervalSeconds: number;
+  /** P25: zona de la oficina para la fecha local del archivo compuesto. */
+  readonly tenantTimeZones?: Pick<TenantTimeZoneStore, 'find'> | undefined;
 }
 
 interface CapturedTrack {
@@ -84,13 +88,16 @@ export class RecordingCaptureService {
       return Result.fail(makeError('Recording.RecorderUnavailable', 'The recording service is not available.'));
     }
     const context = await this.deps.resolveContext(session);
+    const startedAt = snap.startedAtUtc ?? new Date();
+    const localDate = await recordingLocalDate(this.deps.tenantTimeZones, snap.tenantId, startedAt);
     try {
       await this.deps.recorder.startSession(snap.tenantId, {
         sessionId: snap.id,
         tenantId: snap.tenantId,
         scope: snap.scope,
         scopeId: snap.scopeId,
-        startedAtUtc: (snap.startedAtUtc ?? new Date()).toISOString(),
+        startedAtUtc: startedAt.toISOString(),
+        ...(localDate ? { recordingLocalDate: localDate } : {}),
         maxDurationSeconds: context.maxDurationSeconds,
         toleranceSeconds: context.toleranceSeconds,
         tracksRetentionDays: context.tracksRetentionDays,

@@ -87,6 +87,10 @@ export class PrismaAnalyticsRepository implements AnalyticsRepository {
     return rows.map(toRow);
   }
 
+  async hasAnyDay(): Promise<boolean> {
+    return (await this.prisma.communicationAnalyticsSnapshot.findFirst({ select: { TenantId: true } })) !== null;
+  }
+
   async purgeBefore(beforeDay: string): Promise<number> {
     const result = await this.prisma.communicationAnalyticsSnapshot.deleteMany({ where: { Day: { lt: dayDate(beforeDay) } } });
     return result.count;

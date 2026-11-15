@@ -69,6 +69,8 @@ type ScheduledPayload = {
   IsVirtual?: boolean;
   correlationId?: string;
   CorrelationId?: string;
+  timeZoneId?: string;
+  TimeZoneId?: string;
 };
 
 /**
@@ -115,6 +117,8 @@ async function appointmentScheduledHandler(env: IncomingEnvelope, deps: Calendar
         title,
         scheduledForUtc: startUtc ?? null,
         appointmentId,
+        // TZ03-H7: los correos de la sala van en la zona de la cita.
+        timeZoneId: (read(payload, 'timeZoneId', 'TimeZoneId') as string | undefined) ?? null,
         ...(durationMinutes && durationMinutes > 0 ? { scheduledDurationMinutes: durationMinutes } : {}),
       },
       deps,

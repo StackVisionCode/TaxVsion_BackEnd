@@ -62,7 +62,7 @@ public static class FormAccessLinkDeliveryRequestedConsumer
                         ["participant_name"] = content.Name,
                         ["form_title"] = content.Title,
                         ["access_link"] = link,
-                        ["expires_at"] = command.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["expires_at"] = ScribeDates.Instant(command.ExpiresAtUtc),
                     }
                 ),
                 ct

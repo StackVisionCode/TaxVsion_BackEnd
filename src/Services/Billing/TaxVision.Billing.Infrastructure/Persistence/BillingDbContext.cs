@@ -2,9 +2,11 @@ using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Billing.Domain.Invoices;
@@ -56,10 +58,13 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options,
     {
         modelBuilder.HasDefaultSchema(BillingSchemas.Billing);
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyTenantTimeZoneProjection();
         // Schema null → usa el default (billing); misma tabla/índices que la config inline anterior.
         modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilters(modelBuilder);
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

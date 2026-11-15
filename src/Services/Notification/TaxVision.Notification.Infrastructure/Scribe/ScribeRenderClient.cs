@@ -21,7 +21,7 @@ public sealed class ScribeRenderClient(
     HttpClient httpClient,
     IServiceTokenAcquirer tokenAcquirer,
     ILogger<ScribeRenderClient> logger
-) : IScribeRenderClient
+) : IScribeRenderClient, IScribeReaderRenderClient
 {
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -37,11 +37,20 @@ public sealed class ScribeRenderClient(
         CancellationToken ct = default
     ) => RenderAsync(eventKey, tenantId, variables, ScribeRenderAudience.Staff, ct);
 
-    public async Task<Result<ScribeRenderedEmail>> RenderAsync(
+    public Task<Result<ScribeRenderedEmail>> RenderAsync(
         string eventKey,
         Guid tenantId,
         IReadOnlyDictionary<string, object?> variables,
         ScribeRenderAudience audience,
+        CancellationToken ct = default
+    ) => RenderForReaderAsync(eventKey, tenantId, variables, audience, ScribeReader.Office, ct);
+
+    public async Task<Result<ScribeRenderedEmail>> RenderForReaderAsync(
+        string eventKey,
+        Guid tenantId,
+        IReadOnlyDictionary<string, object?> variables,
+        ScribeRenderAudience audience,
+        ScribeReader reader,
         CancellationToken ct = default
     )
     {
@@ -54,7 +63,14 @@ public sealed class ScribeRenderClient(
         using var request = new HttpRequestMessage(HttpMethod.Post, "scribe/render");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Content = JsonContent.Create(
-            new RenderRequestDto(eventKey, tenantId, variables, Audience: audience),
+            new RenderRequestDto(
+                eventKey,
+                tenantId,
+                variables,
+                Audience: audience,
+                Locale: reader.Locale,
+                TimeZoneId: reader.TimeZoneId
+            ),
             options: Json
         );
 
@@ -175,7 +191,10 @@ public sealed class ScribeRenderClient(
         Guid? TenantId,
         IReadOnlyDictionary<string, object?> Variables,
         string Channel = "Email",
-        ScribeRenderAudience Audience = ScribeRenderAudience.Staff
+        ScribeRenderAudience Audience = ScribeRenderAudience.Staff,
+        // Fase 5: idioma y zona de quien lee. Sin zona, Scribe usa la de la oficina.
+        string? Locale = null,
+        string? TimeZoneId = null
     );
 
     /// <summary>

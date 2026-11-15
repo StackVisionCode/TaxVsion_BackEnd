@@ -70,7 +70,7 @@ export async function cancelMeeting(
     snapshot.hostUserId,
     snapshot.participants.find((p) => p.userId === snapshot.hostUserId)?.displayName,
   );
-  const timeZone = (await deps.tenantHostResolver?.resolveTimeZone?.(cmd.tenantId)) ?? null;
+  const timeZone = snapshot.timeZoneId ?? (await deps.tenantHostResolver?.resolveTimeZone?.(cmd.tenantId)) ?? null;
 
   const now = new Date();
   const event: MeetingCancelledEvent = {

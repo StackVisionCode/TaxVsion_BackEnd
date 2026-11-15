@@ -94,11 +94,18 @@ public static class ProjectionConsumer
                         evt.PlanCode,
                         evt.RevisionNumber,
                         modules,
-                        documentsPerMonth
+                        documentsPerMonth,
+                        evt.CurrentPeriodStartUtc
                     )
                 );
             else
-                row.ApplyIfNewer(evt.PlanCode, evt.RevisionNumber, modules, documentsPerMonth);
+                row.ApplyIfNewer(
+                    evt.PlanCode,
+                    evt.RevisionNumber,
+                    modules,
+                    documentsPerMonth,
+                    evt.CurrentPeriodStartUtc
+                );
             await unitOfWork.SaveChangesAsync(ct);
             await cache.InvalidateAsync(evt.TenantId, ct);
         }
@@ -118,7 +125,9 @@ public static class ProjectionConsumer
         {
             var row = await projections.FindTenantDirectoryAsync(evt.TenantId, ct);
             if (row is null)
-                projections.AddTenantDirectory(TenantDirectoryProjection.Create(evt.TenantId, evt.Name, evt.OccurredOn));
+                projections.AddTenantDirectory(
+                    TenantDirectoryProjection.Create(evt.TenantId, evt.Name, evt.OccurredOn)
+                );
             else
                 row.ApplyName(evt.Name, null, evt.OccurredOn);
             await unitOfWork.SaveChangesAsync(ct);
@@ -175,7 +184,18 @@ public static class ProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => UpsertCustomer(evt, evt.CustomerId, evt.DisplayName, true, evt.OccurredOn, projections, unitOfWork, correlation, ct);
+    ) =>
+        UpsertCustomer(
+            evt,
+            evt.CustomerId,
+            evt.DisplayName,
+            true,
+            evt.OccurredOn,
+            projections,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     public static Task Handle(
         CustomerUpdatedIntegrationEvent evt,
@@ -183,7 +203,18 @@ public static class ProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => UpsertCustomer(evt, evt.CustomerId, evt.DisplayName, null, evt.OccurredOn, projections, unitOfWork, correlation, ct);
+    ) =>
+        UpsertCustomer(
+            evt,
+            evt.CustomerId,
+            evt.DisplayName,
+            null,
+            evt.OccurredOn,
+            projections,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     public static Task Handle(
         CustomerActivatedIntegrationEvent evt,
@@ -199,7 +230,8 @@ public static class ProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => UpsertCustomer(evt, evt.CustomerId, null, true, evt.ReactivatedAtUtc, projections, unitOfWork, correlation, ct);
+    ) =>
+        UpsertCustomer(evt, evt.CustomerId, null, true, evt.ReactivatedAtUtc, projections, unitOfWork, correlation, ct);
 
     public static Task Handle(
         CustomerDeactivatedIntegrationEvent evt,
@@ -207,7 +239,18 @@ public static class ProjectionConsumer
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
         CancellationToken ct
-    ) => UpsertCustomer(evt, evt.CustomerId, null, false, evt.DeactivatedAtUtc, projections, unitOfWork, correlation, ct);
+    ) =>
+        UpsertCustomer(
+            evt,
+            evt.CustomerId,
+            null,
+            false,
+            evt.DeactivatedAtUtc,
+            projections,
+            unitOfWork,
+            correlation,
+            ct
+        );
 
     public static Task Handle(
         CustomerArchivedIntegrationEvent evt,
@@ -236,7 +279,9 @@ public static class ProjectionConsumer
             {
                 var known = (await projections.FindKnownCustomerIdsAsync(evt.TenantId, chunk, ct)).ToHashSet();
                 foreach (var id in chunk.Where(id => !known.Contains(id)))
-                    projections.AddCustomer(CustomerDirectoryProjection.Create(evt.TenantId, id, null, evt.CompletedAtUtc));
+                    projections.AddCustomer(
+                        CustomerDirectoryProjection.Create(evt.TenantId, id, null, evt.CompletedAtUtc)
+                    );
                 await unitOfWork.SaveChangesAsync(ct);
             }
         }

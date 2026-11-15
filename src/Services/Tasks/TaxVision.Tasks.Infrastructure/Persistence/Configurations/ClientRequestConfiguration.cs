@@ -18,6 +18,8 @@ public sealed class ClientRequestConfiguration : IEntityTypeConfiguration<Client
         builder.Property(r => r.Details).HasMaxLength(4000);
         builder.Property(r => r.Status).HasConversion<int>().IsRequired();
         builder.Property(r => r.DueAtUtc);
+        builder.Property(r => r.DueOn);
+        builder.Ignore(r => r.DueCivilDate);
         builder.Property(r => r.RequestedByUserId).IsRequired();
         builder.Property(r => r.FollowUpUserId);
         builder.Property(r => r.CreatedAtUtc).IsRequired();

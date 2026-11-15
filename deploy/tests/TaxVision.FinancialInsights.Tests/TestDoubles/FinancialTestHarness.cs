@@ -107,7 +107,8 @@ public sealed class FakeImportFileGateway : IImportFileGateway
     public ImportFileState Default { get; set; } = ImportFileState.Ready;
     public int Calls { get; private set; }
 
-    public void Set(Guid fileId, params ImportFileState[] states) => _states[fileId] = new Queue<ImportFileState>(states);
+    public void Set(Guid fileId, params ImportFileState[] states) =>
+        _states[fileId] = new Queue<ImportFileState>(states);
 
     public Task<ImportFileState> CheckAsync(Guid fileId, Guid customerId, CancellationToken ct = default)
     {

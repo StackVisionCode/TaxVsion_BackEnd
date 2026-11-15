@@ -1,9 +1,12 @@
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Runs;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Audience;
 using TaxVision.Campaigns.Application.Runs.Commands;
+using TaxVision.Campaigns.Application.Scheduling.Abstractions;
+using TaxVision.Campaigns.Application.Settings.SmsWindow;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Runs;
 using TaxVision.Campaigns.Domain.Scheduling;
@@ -15,7 +18,10 @@ namespace TaxVision.Campaigns.Application.Scheduling.Commands;
 public sealed class ScheduledRunOpener(
     ICampaignRepository campaigns,
     ICampaignRunRepository runs,
-    CampaignAudienceService audience
+    CampaignAudienceService audience,
+    IOfficeTimeZone zones,
+    IOptions<CampaignSchedulerOptions> schedulerOptions,
+    ICampaignSmsWindowRepository smsWindows
 )
 {
     // Actor de sistema cuando el agendado no tiene creador.
@@ -33,6 +39,28 @@ public sealed class ScheduledRunOpener(
             return Result.Failure<OpenedCampaignRun>(CampaignErrors.NotFound);
         if (campaign.Status == CampaignStatus.Archived)
             return Result.Failure<OpenedCampaignRun>(CampaignErrors.Archived);
+
+        // P12: un SMS fuera de la ventana de la oficina espera a la próxima apertura (los contactos no traen zona).
+        if (campaign.Channels.HasFlag(CampaignChannel.Sms))
+        {
+            // P32: la ventana de la oficina si la acortó; si no, la de la plataforma.
+            var office = await smsWindows.GetAsync(schedule.TenantId, ct);
+            var platform = schedulerOptions.Value;
+            var opening = SmsSendWindow.NextOpening(
+                slot.SlotUtc,
+                await zones.ResolveAsync(schedule.TenantId, ct),
+                office?.Opens ?? TimeOnly.FromTimeSpan(platform.SmsWindowOpens),
+                office?.Closes ?? TimeOnly.FromTimeSpan(platform.SmsWindowCloses)
+            );
+            if (opening is { } until)
+            {
+                await bus.InvokeAsync<Result>(
+                    new DeferScheduledSlotCommand(schedule.TenantId, schedule.Id, slot.LeaseToken, slot.SlotUtc, until),
+                    ct
+                );
+                return Result.Failure<OpenedCampaignRun>(CampaignScheduleErrors.OutsideSmsWindow);
+            }
+        }
 
         var existing = await runs.GetByIdAsync(schedule.TenantId, ScheduledRunId.For(schedule.Id, slot.SlotUtc), ct);
         if (existing is not null)

@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
@@ -82,6 +83,8 @@ public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options, ITena
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     // RBAC Fase 5 — el filtro NO debe cerrar sobre `tenantContext` directo: EF Core cachea el

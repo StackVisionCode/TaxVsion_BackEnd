@@ -36,7 +36,11 @@ public sealed class FinancialOcrWorker(
         "NoReadableContent",
         "AccessChanged",
         "TenantAiLimit",
+        // Reintentar no sirve: el mismo documento se corta igual.
+        "OpenAiIncomplete",
     ];
+
+    public static bool HoldsForReview(string code) => HoldCodes.Contains(code);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -70,7 +74,8 @@ public sealed class FinancialOcrWorker(
     {
         IReadOnlyList<ClaimCandidate> stale;
         await using (var scope = scopes.CreateAsyncScope())
-            stale = await scope.ServiceProvider.GetRequiredService<ImportProcessingQueue>()
+            stale = await scope
+                .ServiceProvider.GetRequiredService<ImportProcessingQueue>()
                 .ListInterruptedAsync(DateTime.UtcNow - InterruptedAfter, 20, ct);
 
         foreach (var document in stale)
@@ -82,7 +87,8 @@ public sealed class FinancialOcrWorker(
     {
         IReadOnlyList<Guid> waiting;
         await using (var scope = scopes.CreateAsyncScope())
-            waiting = await scope.ServiceProvider.GetRequiredService<ImportProcessingQueue>()
+            waiting = await scope
+                .ServiceProvider.GetRequiredService<ImportProcessingQueue>()
                 .ListTenantsWaitingForPlanAsync(5, ct);
 
         var now = DateTime.UtcNow;
@@ -92,9 +98,14 @@ public sealed class FinancialOcrWorker(
                 continue;
             _planAttempts[tenantId] = now;
             await using var scope = scopes.CreateAsyncScope();
-            var plan = await scope.ServiceProvider.GetRequiredService<TenantEntitlementsResolver>().GetOrPullAsync(tenantId, ct);
+            var plan = await scope
+                .ServiceProvider.GetRequiredService<TenantEntitlementsResolver>()
+                .GetOrPullAsync(tenantId, ct);
             if (plan is null)
-                logger.LogWarning("Entitlements for tenant {TenantId} are still unavailable; documents keep waiting.", tenantId);
+                logger.LogWarning(
+                    "Entitlements for tenant {TenantId} are still unavailable; documents keep waiting.",
+                    tenantId
+                );
         }
     }
 
@@ -119,7 +130,9 @@ public sealed class FinancialOcrWorker(
             return;
 
         // Carrera rara: la fila del plan falta justo al tomar el documento; se intenta traer antes de devolverlo.
-        var plan = context.Plan ?? await services.GetRequiredService<TenantEntitlementsResolver>().GetOrPullAsync(claimed.TenantId, ct);
+        var plan =
+            context.Plan
+            ?? await services.GetRequiredService<TenantEntitlementsResolver>().GetOrPullAsync(claimed.TenantId, ct);
         context = context with { Plan = plan };
         switch (DocumentProcessingAccess.Evaluate(context.Tenant, context.Customer, context.Plan))
         {
@@ -133,9 +146,11 @@ public sealed class FinancialOcrWorker(
 
         try
         {
-            var file = await services.GetRequiredService<CloudStorageStatementSource>()
+            var file = await services
+                .GetRequiredService<CloudStorageStatementSource>()
                 .DownloadAsync(claimed.TenantId, context.CustomerId, context.FileId, ct);
-            var pages = await services.GetRequiredService<LocalStatementExtractor>()
+            var pages = await services
+                .GetRequiredService<LocalStatementExtractor>()
                 .ExtractAsync(file.Bytes, file.MediaType, ct);
             var limit = context.Plan!.MonthlyDocumentLimit(settings.Value.MaxDocumentsPerTenantMonth);
             if (!await queue.TryReserveAsync(claimed.TenantId, claimed.DocumentId, openAi.Value.Model, limit, ct))
@@ -176,12 +191,14 @@ public sealed class FinancialOcrWorker(
         }
         catch (DocumentProcessingException ex)
         {
-            var stop = HoldCodes.Contains(ex.Code) ? ImportDocumentStop.HoldForReview : ImportDocumentStop.Fail;
+            var stop = HoldsForReview(ex.Code) ? ImportDocumentStop.HoldForReview : ImportDocumentStop.Fail;
+            // El detalle lo arma el propio servicio (sin URLs ni texto del documento).
             logger.LogWarning(
-                "Financial document {DocumentId} of tenant {TenantId} stopped: {Code}.",
+                "Financial document {DocumentId} of tenant {TenantId} stopped: {Code}. {Detail}",
                 claimed.DocumentId,
                 claimed.TenantId,
-                ex.Code
+                ex.Code,
+                ex.Message
             );
             await StopAsync(claimed, stop, ex.Code, ct);
         }
@@ -199,7 +216,10 @@ public sealed class FinancialOcrWorker(
 
     private async Task StopAsync(ClaimCandidate document, ImportDocumentStop stop, string reason, CancellationToken ct)
     {
-        var result = await InvokeAsync(new StopImportDocumentCommand(document.TenantId, document.DocumentId, stop, reason), ct);
+        var result = await InvokeAsync(
+            new StopImportDocumentCommand(document.TenantId, document.DocumentId, stop, reason),
+            ct
+        );
         if (result.IsFailure)
             LogRejected(document, result.Error);
     }

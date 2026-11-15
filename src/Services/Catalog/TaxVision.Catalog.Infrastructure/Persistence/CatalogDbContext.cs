@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
@@ -35,6 +36,8 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options,
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     // Ver SmsDbContext/NotesDbContext: se cierra sobre `this` (no sobre el tenantContext inyectado) porque

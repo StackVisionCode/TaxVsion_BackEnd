@@ -48,6 +48,7 @@ builder.Services.AddSwaggerGen();
 
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddPaymentClientInfrastructure(builder.Configuration);
 
 // Base pública para componer la URL estable de facturas (la embebe Billing en el PDF).

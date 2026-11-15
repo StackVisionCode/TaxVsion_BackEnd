@@ -56,7 +56,8 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
                 request.DueAtUtc,
                 request.DueTimeZoneId,
                 request.DueIsStatutory,
-                request.EstimatedHours
+                request.EstimatedHours,
+                request.DueOn
             ),
             ct
         );
@@ -88,7 +89,8 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
                 request.DueAtUtc,
                 request.DueTimeZoneId,
                 request.DueIsStatutory,
-                request.EstimatedHours
+                request.EstimatedHours,
+                request.DueOn
             ),
             ct
         );
@@ -374,7 +376,8 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
                 request.DueAtUtc,
                 request.TimeZoneId,
                 request.IsStatutory,
-                request.StatutoryChangeReason
+                request.StatutoryChangeReason,
+                request.DueOn
             ),
             ct
         );
@@ -513,7 +516,8 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
                 userId,
                 await HasManageAllAsync(ct),
                 request.ExpectedItems,
-                request.ClientDueAtUtc
+                request.ClientDueAtUtc,
+                request.ClientDueOn
             ),
             ct
         );

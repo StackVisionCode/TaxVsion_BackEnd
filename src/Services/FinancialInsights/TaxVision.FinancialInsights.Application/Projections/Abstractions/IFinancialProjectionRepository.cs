@@ -5,11 +5,19 @@ namespace TaxVision.FinancialInsights.Application.Projections.Abstractions;
 /// <summary>Proyecciones locales para consumers y reparación; siempre con tenant explícito.</summary>
 public interface IFinancialProjectionRepository
 {
-    Task<UserPermissionsProjection?> FindUserPermissionsAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+    Task<UserPermissionsProjection?> FindUserPermissionsAsync(
+        Guid tenantId,
+        Guid userId,
+        CancellationToken ct = default
+    );
 
     void AddUserPermissions(UserPermissionsProjection projection);
 
-    Task<RolePermissionsProjection?> FindRolePermissionsAsync(Guid tenantId, Guid roleId, CancellationToken ct = default);
+    Task<RolePermissionsProjection?> FindRolePermissionsAsync(
+        Guid tenantId,
+        Guid roleId,
+        CancellationToken ct = default
+    );
 
     void AddRolePermissions(RolePermissionsProjection projection);
 
@@ -24,7 +32,11 @@ public interface IFinancialProjectionRepository
 
     void AddTenantDirectory(TenantDirectoryProjection projection);
 
-    Task<CustomerDirectoryProjection?> FindCustomerAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
+    Task<CustomerDirectoryProjection?> FindCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        CancellationToken ct = default
+    );
 
     Task<IReadOnlyCollection<Guid>> FindKnownCustomerIdsAsync(
         Guid tenantId,

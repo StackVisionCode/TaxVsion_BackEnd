@@ -19,4 +19,9 @@ public sealed class CampaignSchedulerOptions
     /// OneTime sin Wallet, que queda pausado para que la oficina decida.
     /// </summary>
     public TimeSpan MaxFireDelay { get; set; } = TimeSpan.FromHours(6);
+
+    /// <summary>Ventana de los SMS de campañas (P12), en la zona de la oficina: apertura y cierre.</summary>
+    public TimeSpan SmsWindowOpens { get; set; } = TimeSpan.FromHours(8);
+
+    public TimeSpan SmsWindowCloses { get; set; } = TimeSpan.FromHours(21);
 }

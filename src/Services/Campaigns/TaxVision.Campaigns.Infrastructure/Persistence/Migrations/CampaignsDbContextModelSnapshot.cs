@@ -50,6 +50,27 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerAssignmentProjections", (string)null);
                 });
 
+            modelBuilder.Entity("BuildingBlocks.TenantTimeZones.TenantTimeZoneProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("SourceVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantTimeZoneProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Campaigns.Campaign", b =>
                 {
                     b.Property<Guid>("Id")
@@ -550,6 +571,9 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ActiveRunId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("AnchorDay")
+                        .HasColumnType("int");
+
                     b.Property<Guid>("CampaignId")
                         .HasColumnType("uniqueidentifier");
 
@@ -574,6 +598,9 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(4000)")
                         .HasDefaultValue("");
 
+                    b.Property<DateTime?>("DeferredUntilUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("EndsAtUtc")
                         .HasColumnType("datetime2");
 
@@ -597,6 +624,9 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("LeasedUntilUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<TimeOnly?>("LocalTimeOfDay")
+                        .HasColumnType("time");
 
                     b.Property<int?>("MaxOccurrences")
                         .HasColumnType("int");
@@ -627,6 +657,10 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -732,6 +766,36 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_SenderProfiles_TenantId_Status");
 
                     b.ToTable("SenderProfiles", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Campaigns.Domain.Settings.CampaignSmsWindow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<TimeOnly>("Closes")
+                        .HasColumnType("time");
+
+                    b.Property<TimeOnly>("Opens")
+                        .HasColumnType("time");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CampaignSmsWindows_TenantId");
+
+                    b.ToTable("CampaignSmsWindows", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Campaigns.Domain.Templates.CampaignTemplate", b =>

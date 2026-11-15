@@ -15,12 +15,50 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.InsertData(
                 table: "Permissions",
-                columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "GatedModule", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "IsReserved", "Module", "PlatformOnly" },
+                columns: new[]
+                {
+                    "Id",
+                    "AllowedActorTypes",
+                    "Code",
+                    "Description",
+                    "GatedModule",
+                    "IsAssignableByTenant",
+                    "IsCustomerPortal",
+                    "IsDangerous",
+                    "IsReserved",
+                    "Module",
+                    "PlatformOnly",
+                },
                 values: new object[,]
                 {
-                    { new Guid("a1000000-0000-0000-0000-0000000001a0"), "TenantEmployee,TenantAdmin,PlatformAdmin", "financial.import", "Register customer bank statement imports", "financial_insights", true, false, false, false, "financial_insights", false },
-                    { new Guid("a1000000-0000-0000-0000-0000000001a1"), "TenantEmployee,TenantAdmin,PlatformAdmin", "financial.view", "View customer financial imports", "financial_insights", true, false, false, false, "financial_insights", false }
-                });
+                    {
+                        new Guid("a1000000-0000-0000-0000-0000000001a0"),
+                        "TenantEmployee,TenantAdmin,PlatformAdmin",
+                        "financial.import",
+                        "Register customer bank statement imports",
+                        "financial_insights",
+                        true,
+                        false,
+                        false,
+                        false,
+                        "financial_insights",
+                        false,
+                    },
+                    {
+                        new Guid("a1000000-0000-0000-0000-0000000001a1"),
+                        "TenantEmployee,TenantAdmin,PlatformAdmin",
+                        "financial.view",
+                        "View customer financial imports",
+                        "financial_insights",
+                        true,
+                        false,
+                        false,
+                        false,
+                        "financial_insights",
+                        false,
+                    },
+                }
+            );
         }
 
         /// <inheritdoc />
@@ -29,12 +67,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-0000000001a0"));
+                keyValue: new Guid("a1000000-0000-0000-0000-0000000001a0")
+            );
 
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-0000000001a1"));
+                keyValue: new Guid("a1000000-0000-0000-0000-0000000001a1")
+            );
         }
     }
 }

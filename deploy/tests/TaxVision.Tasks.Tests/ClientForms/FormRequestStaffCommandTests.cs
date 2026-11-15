@@ -183,6 +183,36 @@ public sealed class FormRequestStaffCommandTests
     }
 
     // La validación de entrada corre antes de tocar cualquier dependencia.
+    /// <summary>P4: con la fecha civil, el formulario vence al final de ese día en la oficina.</summary>
+    [Fact]
+    public async Task Changing_to_a_civil_due_date_ends_at_the_end_of_the_office_day()
+    {
+        var request = CustomerRequest();
+
+        var result = await ChangeFormRequestDueDateHandler.Handle(
+            new ChangeFormRequestDueDateCommand(
+                TenantId,
+                UserId,
+                true,
+                request.Id,
+                null,
+                request.RowVersion,
+                Now,
+                DueOn: new DateOnly(2027, 1, 15)
+            ),
+            new SingleFormRequestRepository(request),
+            new FixedRequestVisibility(true),
+            new RecordingFormAuditLog(),
+            new RecordingUnitOfWork(),
+            new FixedFormsOfficeZone("America/New_York"),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new DateTime(2027, 1, 16, 4, 59, 59, DateTimeKind.Utc), result.Value.DueAtUtc);
+        Assert.Equal(new DateOnly(2027, 1, 15), result.Value.DueOn);
+    }
+
     private static Task<BuildingBlocks.Results.Result<TaxVision.Tasks.ClientForms.Application.Requests.FormRequestResponse>> Assign(
         string? title,
         string? message,
@@ -216,6 +246,7 @@ public sealed class FormRequestStaffCommandTests
             new FakeMessageBus(),
             new TestCorrelationContext(),
             new RecordingClientFormsMetrics(),
+            null!,
             default
         );
 

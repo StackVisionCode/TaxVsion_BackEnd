@@ -166,6 +166,9 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
                 options.Services.AddSingleton<ITenantContext, NoTenantContext>();
                 options.Services.AddSingleton<ICorrelationContext>(new NoOpCorrelationContext());
                 options.Services.AddSingleton<ITaskMetrics>(_metrics);
+                options.Services.AddSingleton<TaxVision.Tasks.Application.Common.Abstractions.IOfficeTimeZone>(
+                    new FixedOfficeZone("Etc/UTC")
+                );
                 options.Services.AddScoped<ITaskRepository, TaskRepository>();
                 options.Services.AddScoped<ITaskSeriesRepository>(
                     sp => new SeriesMaterializationIntegrationTests.OwnTenantSeries(

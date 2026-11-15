@@ -20,7 +20,8 @@ public static class ListPortalFormRequestsHandler
                     && item.Status is FormRequestStatus.Pending or FormRequestStatus.Returned,
                 item.DraftProgressPercent,
                 item.LastSubmittedAtUtc,
-                item.Status == FormRequestStatus.Returned
+                item.Status == FormRequestStatus.Returned,
+                item.DueCivilDate
             ))
             .ToArray();
 }

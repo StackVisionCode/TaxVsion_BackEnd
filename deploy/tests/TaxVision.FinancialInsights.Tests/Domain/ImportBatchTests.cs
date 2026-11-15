@@ -20,7 +20,9 @@ public sealed class ImportBatchTests
         Assert.Equal("Import.InvalidBatch", ImportBatch.Create(Tenant, Customer, User, [Guid.Empty]).Error.Code);
         Assert.Equal(
             "Import.InvalidBatch",
-            ImportBatch.Create(Tenant, Customer, User, Enumerable.Range(0, 21).Select(_ => Guid.NewGuid()).ToArray()).Error.Code
+            ImportBatch
+                .Create(Tenant, Customer, User, Enumerable.Range(0, 21).Select(_ => Guid.NewGuid()).ToArray())
+                .Error.Code
         );
     }
 

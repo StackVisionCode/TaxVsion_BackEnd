@@ -26,10 +26,6 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: BuildingBlocks.CustomerVisibility.ICustomerAssignmentProjectionStore Lifetime: Scoped ImplementationFactory: BuildingBlocks.CustomerVisibility.CustomerVisibilityServiceCollectionExtensions+<>c__0"1.<AddCustomerVisibilityProjection>b__0_0
@@ -56,6 +52,12 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder is not public, so requires service location
             */
             var notificationDispatcher = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Common.NotificationDispatcher>(serviceScope.ServiceProvider);
+            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Notification.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -67,7 +69,10 @@ namespace Internal.Generated.WolverineHandlers
             */
             var scribeRenderClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IScribeRenderClient>(serviceScope.ServiceProvider);
             var emailDispatchGateway = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IEmailDispatchGateway>(serviceScope.ServiceProvider);
-            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
             var tenantSubscriptionEmailRequestedIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.TenantSubscriptionEmailRequestedIntegrationEvent)context.Envelope.Message;
 
@@ -89,11 +94,11 @@ namespace Internal.Generated.WolverineHandlers
                 TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
                 
                 // The actual message execution
-                await TaxVision.Notification.Application.Consumers.SubscriptionLifecycleEmailConsumer.Handle(tenantSubscriptionEmailRequestedIntegrationEvent, emailDispatchGateway, scribeRenderClient, _optionsOfPortalOptions, correlationContext, _subscriptionEmailMetrics, cancellation).ConfigureAwait(false);
+                await TaxVision.Notification.Application.Consumers.SubscriptionLifecycleEmailConsumer.Handle(tenantSubscriptionEmailRequestedIntegrationEvent, emailDispatchGateway, scribeRenderClient, _optionsOfPortalOptions, correlationContext, _subscriptionEmailMetrics, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // The actual message execution
-                await TaxVision.Notification.Application.Consumers.SubscriptionLifecycleInAppConsumer.Handle(tenantSubscriptionEmailRequestedIntegrationEvent, notificationDispatcher, recipientResolver, correlationContext, cancellation).ConfigureAwait(false);
+                await TaxVision.Notification.Application.Consumers.SubscriptionLifecycleInAppConsumer.Handle(tenantSubscriptionEmailRequestedIntegrationEvent, notificationDispatcher, recipientResolver, correlationContext, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

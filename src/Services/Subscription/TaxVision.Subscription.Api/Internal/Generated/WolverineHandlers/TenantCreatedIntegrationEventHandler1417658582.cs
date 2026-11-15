@@ -11,12 +11,14 @@ namespace Internal.Generated.WolverineHandlers
     public sealed class TenantCreatedIntegrationEventHandler1417658582 : Wolverine.Runtime.Handlers.MessageHandler
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
+        private readonly Microsoft.Extensions.Logging.ILoggerFactory _loggerFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.Subscription.Domain.Subscriptions.TenantSubscription> _loggerOfTenantSubscription;
         private readonly Microsoft.Extensions.Options.IOptions<TaxVision.Subscription.Application.Subscriptions.IntegrationEvents.SubscriptionOptions> _optionsOfSubscriptionOptions;
 
-        public TenantCreatedIntegrationEventHandler1417658582(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Subscription.Domain.Subscriptions.TenantSubscription> loggerOfTenantSubscription, Microsoft.Extensions.Options.IOptions<TaxVision.Subscription.Application.Subscriptions.IntegrationEvents.SubscriptionOptions> optionsOfSubscriptionOptions)
+        public TenantCreatedIntegrationEventHandler1417658582(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Subscription.Domain.Subscriptions.TenantSubscription> loggerOfTenantSubscription, Microsoft.Extensions.Options.IOptions<TaxVision.Subscription.Application.Subscriptions.IntegrationEvents.SubscriptionOptions> optionsOfSubscriptionOptions)
         {
             _serviceScopeFactory = serviceScopeFactory;
+            _loggerFactory = loggerFactory;
             _loggerOfTenantSubscription = loggerOfTenantSubscription;
             _optionsOfSubscriptionOptions = optionsOfSubscriptionOptions;
         }
@@ -26,18 +28,29 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var planRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.IPlanRepository>(serviceScope.ServiceProvider);
+            var subscriptionTenantSettingsRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ISubscriptionTenantSettingsRepository>(serviceScope.ServiceProvider);
+            var subscriptionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ISubscriptionRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
-            var planRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.IPlanRepository>(serviceScope.ServiceProvider);
-            var subscriptionTenantSettingsRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ISubscriptionTenantSettingsRepository>(serviceScope.ServiceProvider);
-            var subscriptionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ISubscriptionRepository>(serviceScope.ServiceProvider);
+            
+            /*
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore Lifetime: Scoped ImplementationFactory: BuildingBlocks.TenantTimeZones.TenantTimeZonesServiceCollectionExtensions+<>c__0"1.<AddTenantTimeZoneProjection>b__0_0
+            * The service registration for BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var tenantTimeZoneResolver = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.TenantTimeZones.ITenantTimeZoneResolver>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var tenantTimeZoneStore = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var tenantCreatedIntegrationEvent = (BuildingBlocks.Messaging.TenantCreatedIntegrationEvent)context.Envelope.Message;
 
@@ -56,11 +69,13 @@ namespace Internal.Generated.WolverineHandlers
             {
                 BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(tenantCreatedIntegrationEvent, tenantContext, context);
                 BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
-                System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Subscription.Application.Subscriptions.IntegrationEvents.TenantCreatedConsumer");
-                System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Subscription.Application.Subscriptions.IntegrationEvents.TenantCreatedConsumer");
                 
                 // The actual message execution
                 await TaxVision.Subscription.Application.Subscriptions.IntegrationEvents.TenantCreatedConsumer.Handle(tenantCreatedIntegrationEvent, subscriptionRepository, subscriptionTenantSettingsRepository, planRepository, _optionsOfSubscriptionOptions, unitOfWork, context, correlationContext, _loggerOfTenantSubscription, cancellation).ConfigureAwait(false);
+
+                
+                // The actual message execution
+                await BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer.Handle(tenantCreatedIntegrationEvent, tenantTimeZoneStore, tenantTimeZoneResolver, unitOfWork, correlationContext, _loggerFactory, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

@@ -196,7 +196,7 @@ export class ComposeWorker {
           filePath: outputPath,
           folderType: 'Recordings',
           contentType: ext === 'mp4' ? 'video/mp4' : 'video/webm',
-          originalName: composedFileName(manifest.scope, manifest.startedAtUtc, ext),
+          originalName: composedFileName(manifest.scope, manifest.startedAtUtc, ext, manifest.recordingLocalDate),
           sizeBytes,
         });
         const composedResult: CompositionResult = {

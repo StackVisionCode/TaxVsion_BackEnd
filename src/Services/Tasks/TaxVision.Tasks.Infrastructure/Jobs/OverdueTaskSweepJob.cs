@@ -128,6 +128,8 @@ internal sealed class OverdueTaskSweepJob(
             TaskId = task.Id,
             Title = task.Title.Value,
             DueAtUtc = task.Due!.DueAtUtc,
+            DueOn = task.Due.DueOn,
+            DueTimeZoneId = task.Due.TimeZoneId,
             IsStatutory = task.Due.IsStatutory,
             AssigneeUserId = task.AssigneeUserId,
             CustomerId = task.Reference.CustomerId,

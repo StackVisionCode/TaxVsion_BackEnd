@@ -37,6 +37,7 @@ function setup(inAppSource: 'Communication' | 'Notification' = 'Communication') 
     countForAgentTenant: vi.fn(),
   };
   const analytics: AnalyticsRepository = {
+    hasAnyDay: vi.fn().mockResolvedValue(false),
     incrementCounters: vi.fn().mockResolvedValue(undefined),
     listForRange: vi.fn().mockResolvedValue([]),
     raisePeaks: vi.fn().mockResolvedValue(undefined),

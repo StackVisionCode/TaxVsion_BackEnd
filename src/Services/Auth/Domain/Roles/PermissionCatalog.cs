@@ -536,12 +536,27 @@ public static class PermissionCatalog
             false
         ),
         // Financial Insights es un módulo normal: entra al bundle del admin; el plan lo filtra por módulo.
-        new(new Guid("a1000000-0000-0000-0000-0000000001a0"), FinancialImport,
-            "financial_insights", "Import client bank statements into Financial Insights", false),
-        new(new Guid("a1000000-0000-0000-0000-0000000001a1"), FinancialView,
-            "financial_insights", "View client Financial Insights imports and movements", false),
-        new(new Guid("a1000000-0000-0000-0000-0000000001a2"), FinancialPortalImport,
-            "financial_insights", "The client can submit bank statements for analysis", true),
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001a0"),
+            FinancialImport,
+            "financial_insights",
+            "Import client bank statements into Financial Insights",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001a1"),
+            FinancialView,
+            "financial_insights",
+            "View client Financial Insights imports and movements",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001a2"),
+            FinancialPortalImport,
+            "financial_insights",
+            "The client can submit bank statements for analysis",
+            true
+        ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000152"),
             DocumentsBrandingManage,

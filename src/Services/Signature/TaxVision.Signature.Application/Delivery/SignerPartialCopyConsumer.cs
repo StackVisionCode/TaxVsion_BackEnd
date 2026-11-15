@@ -251,7 +251,7 @@ public static class SignerPartialCopyConsumer
                     ownerType,
                     ownerId,
                     "Signatures",
-                    DateTime.UtcNow.Year,
+                    request.OfficeYearOf(DateTime.UtcNow),
                     request.CreatedByUserId
                 ),
                 ct

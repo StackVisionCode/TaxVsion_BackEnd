@@ -43,7 +43,15 @@ public sealed class ImportBatchCompletedDomainEventHandlerTests
         Assert.Equal(completed.CustomerId, integration.CustomerId);
         Assert.Equal(completed.CreatedBy, integration.CreatedByUserId);
         Assert.Equal(expected, integration.Source);
-        Assert.Equal((3, 2, 1, 4), (integration.CompletedDocuments, integration.NeedsReviewDocuments, integration.FailedDocuments, integration.RejectedDocuments));
+        Assert.Equal(
+            (3, 2, 1, 4),
+            (
+                integration.CompletedDocuments,
+                integration.NeedsReviewDocuments,
+                integration.FailedDocuments,
+                integration.RejectedDocuments
+            )
+        );
         Assert.Equal(at, integration.CompletedAtUtc);
         Assert.Equal(at, integration.OccurredOn);
     }

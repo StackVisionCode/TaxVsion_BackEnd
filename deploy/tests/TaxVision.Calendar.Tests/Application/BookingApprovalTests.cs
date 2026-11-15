@@ -113,14 +113,17 @@ public sealed class BookingApprovalTests
             default
         );
 
-    private Task<BuildingBlocks.Results.Result<BookingOptionsResponse>> Options(Store store) =>
+    private Task<BuildingBlocks.Results.Result<BookingOptionsResponse>> Options(
+        Store store,
+        TaxVision.Calendar.Application.Office.Abstractions.IOfficeScheduleRepository? offices = null
+    ) =>
         GetBookingOptionsHandler.Handle(
             new GetBookingOptionsQuery(_tenant, _customer),
             store,
             new SingleTypeRepository(_type),
             _policies,
             _rules,
-            new NoOffice(),
+            offices ?? new NoOffice(),
             new Contacts(_olga, _andres),
             default
         );
@@ -287,6 +290,29 @@ public sealed class BookingApprovalTests
         Assert.Equal("NoPreparer", options.Value.Reason);
     }
 
+    [Fact]
+    public async Task Booking_options_show_the_office_zone_known_from_tenant_over_the_preparer_zone()
+    {
+        // El horario del preparador está en New York; la oficina, según Tenant, en Chicago.
+        var options = await Options(new Store(_appointments, [_olga]), new OfficeZone("America/Chicago"));
+
+        Assert.Equal("America/Chicago", options.Value.TimeZoneId);
+    }
+
+    private sealed class OfficeZone(string zone)
+        : TaxVision.Calendar.Application.Office.Abstractions.IOfficeScheduleRepository
+    {
+        public Task<TaxVision.Calendar.Domain.Office.OfficeScheduleProjection?> GetAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult<TaxVision.Calendar.Domain.Office.OfficeScheduleProjection?>(null);
+
+        public Task<string?> GetTimeZoneIdAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<string?>(zone);
+
+        public void Add(TaxVision.Calendar.Domain.Office.OfficeScheduleProjection projection) { }
+    }
+
     private sealed class Store(InMemoryAppointments appointments, Guid[] assigned, Guid[]? office = null)
         : IPortalCalendarStore
     {
@@ -357,6 +383,9 @@ public sealed class BookingApprovalTests
             Guid tenantId,
             CancellationToken ct = default
         ) => Task.FromResult<TaxVision.Calendar.Domain.Office.OfficeScheduleProjection?>(null);
+
+        public Task<string?> GetTimeZoneIdAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<string?>(null);
 
         public void Add(TaxVision.Calendar.Domain.Office.OfficeScheduleProjection projection) { }
     }

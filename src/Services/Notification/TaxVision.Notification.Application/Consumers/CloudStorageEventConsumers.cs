@@ -125,11 +125,12 @@ public static class ShareLinkExternalRecipientInvitedConsumer
                     {
                         ["file_name"] = evt.FileName,
                         ["open_link"] = openLink,
-                        ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
                         ["permission"] = evt.Permission,
                         ["language"] = evt.Language,
                     },
                     ScribeRenderAudience.Client,
+                    ScribeReader.From(evt.Language),
                     ct
                 )
             ).EnsureRendered(TemplateKey);

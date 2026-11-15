@@ -37,7 +37,9 @@ public sealed record OnboardingReceiptPayload(
     DateTime PaidAtUtc,
     string TransactionReferenceMask,
     string? PaymentMethodMasked,
-    string? OfficeName = null
+    string? OfficeName = null,
+    // P7: zona del navegador del pagador; sin ella, el recibo sale en UTC rotulado.
+    string? TimeZoneId = null
 );
 
 /// <summary>Respuesta 202: la generación se registró; el archivo se produce de forma asíncrona.</summary>

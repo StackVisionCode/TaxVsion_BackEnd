@@ -389,6 +389,7 @@ public sealed class FormActionHandlerTests
             bus,
             new TestCorrelationContext(),
             metrics ?? new RecordingClientFormsMetrics(),
+            new FixedFormsOfficeZone(),
             default
         );
 

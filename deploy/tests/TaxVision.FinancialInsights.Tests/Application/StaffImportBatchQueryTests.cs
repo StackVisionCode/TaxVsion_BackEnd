@@ -76,7 +76,18 @@ public sealed class StaffImportBatchQueryTests
         var document = batch.Documents[0].Id;
         h.Db.FinancialMovements.Add(
             FinancialMovement
-                .Create(_tenant, _assigned, document, new DateOnly(2026, 1, 2), "Deposit", 100, "USD", "credit", "Income", 1)
+                .Create(
+                    _tenant,
+                    _assigned,
+                    document,
+                    new DateOnly(2026, 1, 2),
+                    "Deposit",
+                    100,
+                    "USD",
+                    "credit",
+                    "Income",
+                    1
+                )
                 .Value
         );
         await h.Db.SaveChangesAsync();
@@ -122,7 +133,9 @@ public sealed class StaffImportBatchQueryTests
 
     private async Task<ImportBatch> Batch(FinancialTestHarness h, Guid customer, int files)
     {
-        var batch = ImportBatch.Create(_tenant, customer, _user, Enumerable.Range(0, files).Select(_ => Guid.NewGuid()).ToArray()).Value;
+        var batch = ImportBatch
+            .Create(_tenant, customer, _user, Enumerable.Range(0, files).Select(_ => Guid.NewGuid()).ToArray())
+            .Value;
         foreach (var document in batch.Documents)
             batch.MarkDocumentReady(document.Id);
         Assert.True(await h.Batches.TryAddAsync(batch, CancellationToken.None));
@@ -144,7 +157,11 @@ public sealed class StaffImportBatchQueryTests
             CancellationToken.None
         );
 
-    private Task<BuildingBlocks.Results.Result<ImportBatchDetailView>> Get(FinancialTestHarness h, Guid id, bool canViewAll) =>
+    private Task<BuildingBlocks.Results.Result<ImportBatchDetailView>> Get(
+        FinancialTestHarness h,
+        Guid id,
+        bool canViewAll
+    ) =>
         GetImportBatchHandler.Handle(
             new GetImportBatchQuery(_tenant, _user, id, canViewAll),
             h.Batches,

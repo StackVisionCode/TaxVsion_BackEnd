@@ -1,6 +1,8 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
+using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Series.Abstractions;
 using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Application.Templates.Abstractions;
@@ -25,7 +27,8 @@ public sealed record ApplyTaskTemplateCommand(
     int? TaxYear,
     DateTime DueAtUtc,
     string? TimeZoneId,
-    bool AllowDuplicate
+    bool AllowDuplicate,
+    DateOnly? DueOn = null
 );
 
 /// <summary>
@@ -42,9 +45,19 @@ public static class ApplyTaskTemplateHandler
         ITaskSeriesRepository seriesRepository,
         ITaskSeriesMaterializer materializer,
         IUnitOfWork unitOfWork,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
+        // Con fecha civil (P4/P24): vence al final de ese día y se cuenta en la zona de la oficina.
+        string? officeZoneId = null;
+        if (command.DueOn is { } civil)
+        {
+            var zone = await zones.ResolveAsync(command.TenantId, ct);
+            officeZoneId = zone.Id;
+            command = command with { DueAtUtc = LocalDay.EndUtc(civil, zone), TimeZoneId = zone.Id };
+        }
+
         var template = await templates.GetByIdAsync(command.TenantId, command.TemplateId, ct);
         if (template.IsFailure)
             return Result.Failure<TemplateApplicationResponse>(template.Error);
@@ -54,7 +67,7 @@ public static class ApplyTaskTemplateHandler
             return Result.Failure<TemplateApplicationResponse>(duplicate.Error);
 
         var applied = template.Value.IsRecurring
-            ? await OpenSeriesAsync(command, template.Value, seriesRepository, materializer, ct)
+            ? await OpenSeriesAsync(command, template.Value, officeZoneId, seriesRepository, materializer, ct)
             : InstantiateGraph(command, template.Value, instantiator);
         if (applied.IsFailure)
             return Result.Failure<TemplateApplicationResponse>(applied.Error);
@@ -88,6 +101,7 @@ public static class ApplyTaskTemplateHandler
     private static async Task<Result<Applied>> OpenSeriesAsync(
         ApplyTaskTemplateCommand command,
         TaskTemplate template,
+        string? officeZoneId,
         ITaskSeriesRepository seriesRepository,
         ITaskSeriesMaterializer materializer,
         CancellationToken ct
@@ -97,10 +111,14 @@ public static class ApplyTaskTemplateHandler
         if (blueprint.IsFailure)
             return Result.Failure<Applied>(blueprint.Error);
 
+        var rule = RuleFor(template, officeZoneId);
+        if (rule.IsFailure)
+            return Result.Failure<Applied>(rule.Error);
+
         var series = TaskSeries.Create(
             command.TenantId,
             command.ByUserId,
-            template.Recurrence!,
+            rule.Value,
             template.RecurrenceMode,
             blueprint.Value,
             command.DueAtUtc,
@@ -120,6 +138,12 @@ public static class ApplyTaskTemplateHandler
 
         return Result.Success(SeriesApplied(template.Id, first.Value, series.Value.Id));
     }
+
+    /// <summary>Con fecha civil, la regla de la plantilla se cuenta en la zona de la oficina (P24).</summary>
+    private static Result<RecurrenceRule> RuleFor(TaskTemplate template, string? officeZoneId) =>
+        officeZoneId is null
+            ? Result.Success(template.Recurrence!)
+            : RecurrenceRule.Create(template.Recurrence!.Value, officeZoneId);
 
     private static Applied SeriesApplied(Guid templateId, TaskItem first, Guid seriesId) =>
         new(new TemplateApplicationResponse(templateId, 1, 0, first.Id, [first.Id], seriesId), [first]);

@@ -58,7 +58,12 @@ public sealed class TenantEntitlementsResolver(
         }
         else
         {
-            row.ApplyIfNewer(snapshot.PlanCode, snapshot.RevisionNumber, snapshot.EnabledModules, snapshot.DocumentsPerMonth);
+            row.ApplyIfNewer(
+                snapshot.PlanCode,
+                snapshot.RevisionNumber,
+                snapshot.EnabledModules,
+                snapshot.DocumentsPerMonth
+            );
             await unitOfWork.SaveChangesAsync(ct);
         }
         await cache.InvalidateAsync(tenantId, ct);

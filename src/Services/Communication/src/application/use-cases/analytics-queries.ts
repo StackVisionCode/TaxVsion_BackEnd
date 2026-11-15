@@ -1,4 +1,12 @@
 import type { AnalyticsRepository, AnalyticsSnapshotRow } from '../ports/analytics-repository.js';
+import { dayInTimeZone } from '../services/analytics-recorder.js';
+
+export interface AnalyticsQueryDeps {
+  readonly analytics: AnalyticsRepository;
+  /** Zona IANA de la analítica (`analyticsTimeZone`), la misma que corta los días del snapshot. */
+  readonly timeZone: () => Promise<string>;
+  readonly now?: () => Date;
+}
 
 export interface AnalyticsSummary {
   readonly fromDay: string;
@@ -25,20 +33,19 @@ export interface AnalyticsTimeline {
   readonly days: readonly AnalyticsSnapshotRow[];
 }
 
-function defaultRange(): { fromDay: string; toDay: string } {
-  const today = new Date();
-  const from = new Date(today.getTime() - 29 * 24 * 3600 * 1000);
-  return {
-    fromDay: from.toISOString().slice(0, 10),
-    toDay: today.toISOString().slice(0, 10),
-  };
+// TZ03-H3: "hoy" es el día en la zona de analítica, no el UTC.
+async function defaultRange(deps: AnalyticsQueryDeps): Promise<{ fromDay: string; toDay: string }> {
+  const now = (deps.now ?? (() => new Date()))();
+  const toDay = dayInTimeZone(now.toISOString(), await deps.timeZone());
+  const fromDay = new Date(Date.parse(`${toDay}T00:00:00Z`) - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  return { fromDay, toDay };
 }
 
 export async function analyticsSummary(
   input: { tenantId: string; fromDay?: string; toDay?: string },
-  deps: { analytics: AnalyticsRepository },
+  deps: AnalyticsQueryDeps,
 ): Promise<AnalyticsSummary> {
-  const range = defaultRange();
+  const range = await defaultRange(deps);
   const fromDay = input.fromDay ?? range.fromDay;
   const toDay = input.toDay ?? range.toDay;
   const rows = await deps.analytics.listForRange({ tenantId: input.tenantId, fromDay, toDay });
@@ -75,9 +82,9 @@ export async function analyticsSummary(
 
 export async function analyticsTimeline(
   input: { tenantId: string; fromDay?: string; toDay?: string },
-  deps: { analytics: AnalyticsRepository },
+  deps: AnalyticsQueryDeps,
 ): Promise<AnalyticsTimeline> {
-  const range = defaultRange();
+  const range = await defaultRange(deps);
   const fromDay = input.fromDay ?? range.fromDay;
   const toDay = input.toDay ?? range.toDay;
   const rows = await deps.analytics.listForRange({ tenantId: input.tenantId, fromDay, toDay });

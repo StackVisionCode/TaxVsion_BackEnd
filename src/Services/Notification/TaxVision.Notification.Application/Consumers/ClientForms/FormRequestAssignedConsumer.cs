@@ -44,7 +44,7 @@ public static class FormRequestAssignedConsumer
             {
                 ["request_title"] = evt.Title,
                 ["has_message"] = evt.HasMessage,
-                ["due_date"] = evt.DueAtUtc,
+                ["due_date"] = CivilDue.Typed(evt.DueOn, evt.DueAtUtc),
             },
             new Dictionary<string, string> { ["title"] = evt.Title }
         );

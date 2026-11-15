@@ -20,8 +20,13 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Common.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -51,7 +56,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Tasks.Commands.ChangeTaskDueHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Tasks.Application.Tasks.Commands.ChangeTaskDueHandler.Handle(changeTaskDueCommand, taskRepository, unitOfWork, context, correlationContext, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Tasks.Application.Tasks.Commands.ChangeTaskDueHandler.Handle(changeTaskDueCommand, taskRepository, unitOfWork, context, correlationContext, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

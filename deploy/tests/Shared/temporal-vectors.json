@@ -1,0 +1,31 @@
+{
+  "description": "Vectores temporales compartidos por las pruebas .NET y Node. Valores generados con Intl (tzdb del runtime) y verificados con TimeZoneInfo. Política de horas inexistentes y ambiguas: la de Calendar (C-T9): inexistente se rechaza al crear y corre hacia adelante al expandir; ambigua toma la primera.",
+  "utcToLocal": [
+    { "zone": "America/New_York", "utc": "2026-11-13T01:30:00Z", "local": "2026-11-12T20:30", "civilDate": "2026-11-12", "offset": "-05:00", "note": "instante de la tarde: día anterior en NY" },
+    { "zone": "America/New_York", "utc": "2026-03-08T06:59:00Z", "local": "2026-03-08T01:59", "civilDate": "2026-03-08", "offset": "-05:00", "note": "último minuto antes del horario de verano" },
+    { "zone": "America/New_York", "utc": "2026-03-08T07:00:00Z", "local": "2026-03-08T03:00", "civilDate": "2026-03-08", "offset": "-04:00", "note": "primer minuto de horario de verano (las 02:00 no existen)" },
+    { "zone": "America/New_York", "utc": "2026-11-01T05:30:00Z", "local": "2026-11-01T01:30", "civilDate": "2026-11-01", "offset": "-04:00", "note": "01:30 ambigua, primera vez (EDT)" },
+    { "zone": "America/New_York", "utc": "2026-11-01T06:30:00Z", "local": "2026-11-01T01:30", "civilDate": "2026-11-01", "offset": "-05:00", "note": "01:30 ambigua, segunda vez (EST)" },
+    { "zone": "America/New_York", "utc": "2028-02-29T03:00:00Z", "local": "2028-02-28T22:00", "civilDate": "2028-02-28", "offset": "-05:00", "note": "bisiesto: 29-feb UTC es 28-feb en NY" },
+    { "zone": "America/Chicago", "utc": "2026-12-31T23:30:00Z", "local": "2026-12-31T17:30", "civilDate": "2026-12-31", "offset": "-06:00", "note": "fin de año en Chicago" },
+    { "zone": "America/Los_Angeles", "utc": "2027-01-01T05:00:00Z", "local": "2026-12-31T21:00", "civilDate": "2026-12-31", "offset": "-08:00", "note": "año nuevo UTC sigue en 2026 en LA" },
+    { "zone": "Asia/Tokyo", "utc": "2026-12-31T15:30:00Z", "local": "2027-01-01T00:30", "civilDate": "2027-01-01", "offset": "+09:00", "note": "cambio de año: ya es 2027 en Tokio" },
+    { "zone": "Asia/Kolkata", "utc": "2026-02-28T19:00:00Z", "local": "2026-03-01T00:30", "civilDate": "2026-03-01", "offset": "+05:30", "note": "offset de media hora y cambio de mes" },
+    { "zone": "Pacific/Kiritimati", "utc": "2026-11-14T10:30:00Z", "local": "2026-11-15T00:30", "civilDate": "2026-11-15", "offset": "+14:00", "note": "+14: día siguiente" },
+    { "zone": "Australia/Lord_Howe", "utc": "2026-11-13T01:30:00Z", "local": "2026-11-13T12:30", "civilDate": "2026-11-13", "offset": "+11:00", "note": "horario de verano de media hora" },
+    { "zone": "Etc/UTC", "utc": "2026-11-13T01:30:00Z", "local": "2026-11-13T01:30", "civilDate": "2026-11-13", "offset": "+00:00", "note": "oficina en UTC" }
+  ],
+  "wallToUtc": [
+    { "zone": "America/New_York", "local": "2026-11-12T20:30", "kind": "normal", "utc": "2026-11-13T01:30:00Z" },
+    { "zone": "America/New_York", "local": "2026-03-08T02:30", "kind": "nonexistent", "onCreate": "reject", "onExpandUtc": "2026-03-08T07:30:00Z", "note": "corre 1 h hacia adelante: 03:30 EDT" },
+    { "zone": "America/New_York", "local": "2026-11-01T01:30", "kind": "ambiguous", "utc": "2026-11-01T05:30:00Z", "note": "la primera (EDT)" },
+    { "zone": "Australia/Lord_Howe", "local": "2026-10-04T02:15", "kind": "nonexistent", "onCreate": "reject", "onExpandUtc": "2026-10-03T15:45:00Z", "note": "el salto es de 30 min: 02:45" }
+  ],
+  "civilDayBounds": [
+    { "zone": "America/New_York", "date": "2026-11-15", "startUtc": "2026-11-15T05:00:00Z", "endUtc": "2026-11-16T04:59:59Z" },
+    { "zone": "America/New_York", "date": "2026-03-08", "startUtc": "2026-03-08T05:00:00Z", "endUtc": "2026-03-09T03:59:59Z", "note": "día de 23 h" },
+    { "zone": "America/New_York", "date": "2026-11-01", "startUtc": "2026-11-01T04:00:00Z", "endUtc": "2026-11-02T04:59:59Z", "note": "día de 25 h" },
+    { "zone": "Asia/Tokyo", "date": "2026-11-15", "startUtc": "2026-11-14T15:00:00Z", "endUtc": "2026-11-15T14:59:59Z" },
+    { "zone": "Pacific/Kiritimati", "date": "2026-11-15", "startUtc": "2026-11-14T10:00:00Z", "endUtc": "2026-11-15T09:59:59Z" }
+  ]
+}

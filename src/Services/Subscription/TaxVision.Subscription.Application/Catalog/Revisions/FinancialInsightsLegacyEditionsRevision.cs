@@ -21,7 +21,8 @@ public sealed class FinancialInsightsLegacyEditionsRevision : ICatalogRevision
 
     public string Id => "2026-11-13-financial-insights-legacy-editions";
 
-    public string Description => "Give Financial Insights to Enterprise and Pro offices on older editions, keeping their terms.";
+    public string Description =>
+        "Give Financial Insights to Enterprise and Pro offices on older editions, keeping their terms.";
 
     public async Task<Result<string>> ApplyAsync(CatalogRevisionContext context, CancellationToken ct)
     {

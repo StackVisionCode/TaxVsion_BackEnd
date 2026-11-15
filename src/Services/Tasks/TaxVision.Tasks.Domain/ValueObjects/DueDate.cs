@@ -17,6 +17,12 @@ public sealed record DueDate
     public string TimeZoneId { get; }
     public bool IsStatutory { get; }
 
+    /// <summary>Fecha civil del vencimiento. Lo guardado a medianoche UTC es una fecha civil enviada como instante (P5).</summary>
+    public DateOnly DueOn =>
+        DueAtUtc.TimeOfDay == TimeSpan.Zero
+            ? DateOnly.FromDateTime(DueAtUtc)
+            : CivilDate.Of(DueAtUtc, ResolvedTimeZone.Resolve(TimeZoneId));
+
     private DueDate(DateTime dueAtUtc, string timeZoneId, bool isStatutory)
     {
         DueAtUtc = dueAtUtc;
@@ -35,4 +41,18 @@ public sealed record DueDate
 
         return Result.Success(new DueDate(dueAtUtc, normalizedTimeZoneId, isStatutory));
     }
+
+    /// <summary>Vence al final de un día civil (P4), no a una hora puesta por alguien.</summary>
+    public bool IsEndOfCivilDay => DueAtUtc == LocalDay.EndUtc(DueOn, ResolvedTimeZone.Resolve(TimeZoneId));
+
+    /// <summary>
+    /// Fecha civil de un instante guardado sin su fecha (datos de antes de P4). Medianoche UTC es la fecha
+    /// civil enviada como instante (P5); con otra hora, sin zona guardada, se toma el día UTC.
+    /// </summary>
+    public static DateOnly? LegacyCivilDate(DateTime? instantUtc) =>
+        instantUtc is { } instant ? DateOnly.FromDateTime(instant) : null;
+
+    /// <summary>Una fecha sin hora vence al terminar ese día en la zona de la oficina (P4: 23:59:59 local).</summary>
+    public static Result<DueDate> EndOfCivilDay(DateOnly dueOn, ResolvedTimeZone zone, bool isStatutory) =>
+        Create(LocalDay.EndUtc(dueOn, zone), zone.Id, isStatutory);
 }

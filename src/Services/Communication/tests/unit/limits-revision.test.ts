@@ -27,4 +27,24 @@ describe('subscription.entitlements_changed — revisión de los límites', () =
 
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ revisionNumber: 7 }));
   });
+
+  // P11: el inicio del período es el ancla del cupo mensual; un DateTime de .NET sin zona se lee como UTC.
+  it('guarda el inicio del período como ancla del cupo, en UTC', async () => {
+    const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
+    const upsert = vi.fn();
+    bindSubscriptionConsumers((eventType, handler) => void handlers.set(eventType, handler), {
+      limits: { findByTenantId: vi.fn(), upsert } as never,
+    } as never);
+
+    await handlers.get('subscription.entitlements_changed.v1')?.({
+      eventId: 'evt-2',
+      eventType: 'subscription.entitlements_changed.v1',
+      tenantId: 'tenant-1',
+      correlationId: 'corr-2',
+      occurredOnUtc: new Date().toISOString(),
+      payload: { PlanCode: 'enterprise', RevisionNumber: 8, EntitlementValues: {}, CurrentPeriodStartUtc: '2026-03-15T14:00:00' },
+    });
+
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ usagePeriodAnchorUtc: new Date('2026-03-15T14:00:00Z') }));
+  });
 });

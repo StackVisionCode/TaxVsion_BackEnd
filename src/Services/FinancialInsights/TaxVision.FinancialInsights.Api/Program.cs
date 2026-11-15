@@ -46,6 +46,7 @@ builder.Services.AddSwaggerGen();
 
 // ---------- BuildingBlocks + Infrastructure + Auth + OTEL ----------
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddFinancialInsightsInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
@@ -85,6 +86,8 @@ builder.Host.UseWolverine(options =>
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
     // Consumer compartido de la proyección de asignaciones (visibilidad por cliente).
     options.Discovery.IncludeType(typeof(CustomerAssignmentsProjectionConsumer));
+    // Zona de cada oficina: consumer compartido de TenantTimeZones.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
 
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
@@ -95,9 +98,7 @@ builder.Host.UseWolverine(options =>
     options.UseTaxVisionRabbitMq(rabbitUri);
     options.PersistMessagesWithSqlServer(sqlConn);
     options.Policies.UseDurableOutboxOnAllSendingEndpoints();
-    options
-        .UseEntityFrameworkCoreTransactions()
-        .WithDbContextAbstraction<IUnitOfWork, FinancialInsightsDbContext>();
+    options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, FinancialInsightsDbContext>();
     options.Policies.AutoApplyTransactions();
 
     options.UseTaxVisionConflictPolicy();

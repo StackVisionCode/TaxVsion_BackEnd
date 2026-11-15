@@ -60,6 +60,7 @@ builder.Services.AddSwaggerGen();
 
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddSignatureInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 
@@ -230,6 +231,8 @@ builder.Host.UseWolverine(options =>
     options.ListenForPlatformSettings();
     // P2 — consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
+    // Zona de cada oficina: consumer compartido de TenantTimeZones, vive fuera de Application.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

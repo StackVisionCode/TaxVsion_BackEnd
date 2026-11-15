@@ -1,5 +1,6 @@
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
+using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents;
 using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
@@ -18,6 +19,7 @@ public static class GetPortalFormRequestHandler
         IFormEngine engine,
         IConsentNoticeRepository notices,
         IFormConsentRecordRepository consentRecords,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -40,6 +42,12 @@ public static class GetPortalFormRequestHandler
             ct
         );
 
-        return Result.Success(PortalFormRequestDetailMapper.Map(found.Value, version.Value, protector, consents));
+        var officeZone = await zones.ResolveAsync(query.TenantId, ct);
+        return Result.Success(
+            PortalFormRequestDetailMapper.Map(found.Value, version.Value, protector, consents) with
+            {
+                OfficeTimeZoneId = officeZone.Id,
+            }
+        );
     }
 }

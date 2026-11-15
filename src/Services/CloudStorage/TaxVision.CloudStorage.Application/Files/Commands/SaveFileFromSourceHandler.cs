@@ -51,7 +51,10 @@ public static class SaveFileFromSourceHandler
             // CloudStorage: solo se importan y eliminan objetos del bucket temporal.
             if (!string.Equals(evt.SourceBucket, options.Value.TempBucket, StringComparison.Ordinal))
             {
-                logger.LogWarning("SaveFileRequested {FileId} rejected: source bucket is not the configured temp bucket.", evt.FileId);
+                logger.LogWarning(
+                    "SaveFileRequested {FileId} rejected: source bucket is not the configured temp bucket.",
+                    evt.FileId
+                );
                 await Reject("InvalidSourceBucket", deleteSource: false);
                 return;
             }

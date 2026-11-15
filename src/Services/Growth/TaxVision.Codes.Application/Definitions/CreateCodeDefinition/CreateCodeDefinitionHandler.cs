@@ -46,6 +46,7 @@ public static class CreateCodeDefinitionHandler
         if (minimumPurchaseResult.IsFailure)
             return Result.Failure<CreateCodeDefinitionResponse>(minimumPurchaseResult.Error);
 
+        var expiresAtUtc = command.ExpiresOn is { } day ? CommercialTimeZone.EndOfDayUtc(day) : command.ExpiresAtUtc;
         var canonicalScopes = string.Join(
             ",",
             (command.Scopes ?? [])
@@ -67,7 +68,7 @@ public static class CreateCodeDefinitionHandler
             command.MinimumPurchaseCurrency?.Trim().ToUpperInvariant(),
             command.AllowStacking,
             command.StartsAtUtc,
-            command.ExpiresAtUtc,
+            expiresAtUtc,
             command.MaxRedemptions,
             command.MaxRedemptionsPerTenant,
             command.MaxRedemptionsPerSubject,
@@ -93,7 +94,7 @@ public static class CreateCodeDefinitionHandler
                     hashResult.Value,
                     displayResult.Value,
                     command.StartsAtUtc,
-                    command.ExpiresAtUtc,
+                    expiresAtUtc,
                     command.MaxRedemptions,
                     command.MaxRedemptionsPerTenant,
                     command.MaxRedemptionsPerSubject,

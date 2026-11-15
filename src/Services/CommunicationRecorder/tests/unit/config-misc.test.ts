@@ -61,6 +61,19 @@ describe('contratos y utilidades', () => {
     expect(trackFileName('u1', 't1')).toBe('Track_u1_t1.webm');
   });
 
+  // P25 (TZ03-H10): la fecha del nombre es la local de la oficina, enviada por Communication; sin ella, la UTC.
+  it('el nombre del archivo compuesto usa la fecha local de la grabación', () => {
+    expect(composedFileName('Meeting', '2026-11-13T01:00:00Z', 'mp4', '2026-11-12')).toBe('Meeting_Recording_2026-11-12.mp4');
+    expect(composedFileName('Meeting', '2026-11-13T01:00:00Z', 'mp4')).toBe('Meeting_Recording_2026-11-13.mp4');
+    const body = {
+      sessionId: 's1', tenantId: 't1', scope: 'Meeting', scopeId: 'm1', startedAtUtc: '2026-11-13T01:00:00Z',
+      maxDurationSeconds: 60, tracksRetentionDays: 1, captureVideo: false,
+      composition: { width: 1280, height: 720, fps: 30, videoKbps: 1500, audioKbps: 64, format: 'mp4' },
+    };
+    expect(createSessionSchema.parse({ ...body, recordingLocalDate: '2026-11-12' }).recordingLocalDate).toBe('2026-11-12');
+    expect(createSessionSchema.safeParse({ ...body, recordingLocalDate: '12/11/2026' }).success).toBe(false);
+  });
+
   it('validación de cuerpos', () => {
     expect(createSessionSchema.safeParse({}).success).toBe(false);
     const track = {

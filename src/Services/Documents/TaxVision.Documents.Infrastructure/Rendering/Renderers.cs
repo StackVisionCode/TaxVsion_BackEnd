@@ -75,6 +75,9 @@ public sealed class TemplateDocumentRenderer(ILogger<TemplateDocumentRenderer> l
 /// </summary>
 public sealed class PlaywrightHtmlToPdfConverter : IHtmlToPdfConverter, IAsyncDisposable
 {
+    /// <summary>Zona e idioma fijos: el PDF no depende del contenedor (las fechas ya llegan formateadas).</summary>
+    public static BrowserNewPageOptions PageOptions => new() { TimezoneId = "UTC", Locale = "en-US" };
+
     private readonly SemaphoreSlim _concurrency;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private readonly ILogger<PlaywrightHtmlToPdfConverter> _logger;
@@ -97,7 +100,7 @@ public sealed class PlaywrightHtmlToPdfConverter : IHtmlToPdfConverter, IAsyncDi
         try
         {
             var browser = await GetBrowserAsync(ct);
-            var page = await browser.NewPageAsync();
+            var page = await browser.NewPageAsync(PageOptions);
             try
             {
                 await page.SetContentAsync(html, new PageSetContentOptions { WaitUntil = WaitUntilState.NetworkIdle });

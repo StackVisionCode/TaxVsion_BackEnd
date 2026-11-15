@@ -64,12 +64,13 @@ public static class MeetingCancelledConsumer
                     new Dictionary<string, object?>
                     {
                         ["meeting_title"] = meetingTitle,
-                        ["start_local"] = MeetingNotifications.LocalTime(evt.ScheduledForUtc, evt.TimeZone),
+                        ["start_local"] = ScribeDates.Instant(evt.ScheduledForUtc),
                         ["time_zone"] = MeetingNotifications.TimeZoneLabel(evt.TimeZone),
                         ["host_name"] = evt.HostDisplayName,
                         ["reason"] = string.IsNullOrWhiteSpace(evt.Reason) ? null : evt.Reason,
                     },
                     ScribeRenderAudience.Client,
+                    ScribeReader.From(null, evt.TimeZone),
                     ct
                 )
             ).EnsureRendered(EventKey);

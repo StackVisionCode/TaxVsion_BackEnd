@@ -259,16 +259,14 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskReopenedIntegrationEvent',
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskUnblockedIntegrationEvent',
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskWaitingOnClientIntegrationEvent',
-  // Tenant — Alta, estado y perfil de la oficina: Auth, Notification y proyecciones .NET. Communication resuelve
-  // host y zona horaria por Auth (caché corta) y el acceso por entitlements_changed.
-  'BuildingBlocks.Messaging.TenantCreatedIntegrationEvent',
+  // Tenant — Estado y perfil de la oficina: Auth, Notification y proyecciones .NET. Communication resuelve el host
+  // por Auth (caché corta) y el acceso por entitlements_changed; la zona la proyecta de TenantCreated/TenantUpdated.
   'BuildingBlocks.Messaging.TenantIntegrationEvents.OfficeSecurityCoordinatorVacatedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.OfficeWispReviewDueIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantLogoRemovedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantLogoUpdatedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantProfileChangedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantRecordRetentionChangedIntegrationEvent',
-  'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantUpdatedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantStatusChangedIntegrationEvent',
   // Wallet — Recarga pendiente: Notification.
   'BuildingBlocks.Messaging.WalletIntegrationEvents.WalletTopUpDueIntegrationEvent',

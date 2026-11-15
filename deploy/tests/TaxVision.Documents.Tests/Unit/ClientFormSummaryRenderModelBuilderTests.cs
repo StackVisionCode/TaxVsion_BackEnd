@@ -51,7 +51,8 @@ public sealed class ClientFormSummaryRenderModelBuilderTests
     private static async Task<IReadOnlyDictionary<string, object?>> RenderedDataAsync(
         SubmissionSummarySnapshot snapshot,
         DocumentBranding? branding,
-        SignatureCopyRequest? signatureCopy = null
+        SignatureCopyRequest? signatureCopy = null,
+        string zone = "Etc/UTC"
     )
     {
         var generation = NewRequested(
@@ -102,6 +103,7 @@ public sealed class ClientFormSummaryRenderModelBuilderTests
             TestPlatform.Settings,
             TimeProvider.System,
             NullLogger<ProcessClientFormSummaryGenerationCommand>.Instance,
+            new ProcessClientFormSummaryGenerationHandlerTests.OfficeZone(zone),
             CancellationToken.None
         );
 
@@ -117,7 +119,7 @@ public sealed class ClientFormSummaryRenderModelBuilderTests
 
         Assert.Equal(
             FullSnapshot.ReplaceLineEndings(),
-            Snapshot(await RenderedDataAsync(Full(), branding)).ReplaceLineEndings()
+            WithoutNow(Snapshot(await RenderedDataAsync(Full(), branding))).ReplaceLineEndings()
         );
     }
 
@@ -126,23 +128,42 @@ public sealed class ClientFormSummaryRenderModelBuilderTests
     {
         var snapshot = Snapshot(await RenderedDataAsync(Minimal(), null));
 
-        // generatedOn sale del reloj cuando el formulario no tiene fecha de cierre.
-        var generatedOn = System.Text.RegularExpressions.Regex.Replace(
+        // generatedOn es la hora real de generación.
+        Assert.Equal(MinimalSnapshot.ReplaceLineEndings(), WithoutNow(snapshot).ReplaceLineEndings());
+    }
+
+    /// <summary>TZ08-H3: el resumen dice las horas en la zona de la oficina (si se firma, queda sellado así).</summary>
+    [Fact]
+    public async Task The_summary_dates_are_in_the_office_zone()
+    {
+        var snapshot = Snapshot(await RenderedDataAsync(Full(), null, zone: "America/New_York"));
+
+        Assert.Contains("\"submittedAt\": \"Wed, Oct 28, 2026, 7:07 PM · New York time, GMT-4\"", snapshot);
+        Assert.Contains("\"completedAt\": \"Wed, Oct 28, 2026, 7:09 PM · New York time, GMT-4\"", snapshot);
+    }
+
+    private static string WithoutNow(string snapshot) =>
+        System.Text.RegularExpressions.Regex.Replace(
             snapshot,
-            "\"generatedOn\": \"\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2} UTC\"",
+            "\"generatedOn\": \"[^\"]+\"",
             "\"generatedOn\": \"<now>\""
         );
-        Assert.Equal(MinimalSnapshot.ReplaceLineEndings(), generatedOn.ReplaceLineEndings());
-    }
 
     [Fact]
     public void Build_CalledDirectly_UsesTheGivenClockWithoutACompletionDate()
     {
         var now = new DateTime(2026, 11, 6, 8, 30, 0, DateTimeKind.Utc);
 
-        var data = ClientFormSummaryRenderModelBuilder.Build(Minimal(), null, "TaxOffix", false, now);
+        var data = ClientFormSummaryRenderModelBuilder.Build(
+            Minimal(),
+            null,
+            "TaxOffix",
+            false,
+            now,
+            BuildingBlocks.TimeZones.ResolvedTimeZone.Utc
+        );
 
-        Assert.Contains("\"generatedOn\": \"2026-11-06 08:30 UTC\"", Snapshot(data));
+        Assert.Contains("\"generatedOn\": \"Fri, Nov 6, 2026, 8:30 AM · UTC\"", Snapshot(data));
     }
 
     private const string FullSnapshot = """
@@ -152,9 +173,9 @@ public sealed class ClientFormSummaryRenderModelBuilderTests
             "customerName": "Client Name",
             "versionNumber": 1,
             "revisionNumber": 2,
-            "submittedAt": "2026-10-28 23:07 UTC",
-            "completedAt": "2026-10-28 23:09 UTC",
-            "generatedOn": "2026-10-28 23:09 UTC",
+            "submittedAt": "Wed, Oct 28, 2026, 11:07 PM · UTC",
+            "completedAt": "Wed, Oct 28, 2026, 11:09 PM · UTC",
+            "generatedOn": "<now>",
             "pages": [
               {
                 "title": "Income",

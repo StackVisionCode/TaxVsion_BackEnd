@@ -46,6 +46,7 @@ public sealed record NotificationTemplateSeed(
     // v29 (por plantilla): subscription.renewal_upcoming muestra el total (plan + extras) y el ciclo; aviso de 30 días al anual.
     // v30 (por plantilla): 6 plantillas nuevas de la demo pública del landing (PublicDemoVersion).
     // v31 (por plantilla): demo.confirmed con "Add to calendar" principal y demo.already_booked nueva (PublicDemoCtaVersion).
+    // v32 (por plantilla): fechas tipadas (Fase 5): sin "UTC" escrito; Scribe imprime la fecha en la zona de quien lee (TypedDatesVersion).
     int ContentVersion = 1,
     /// <summary>
     /// Layout sobre el que se publica. <c>system-base</c> para lo que manda la plataforma;
@@ -555,6 +556,9 @@ public static partial class NotificationTemplateSeedSource
     // Plantilla nueva del retiro con acuse: versión explícita propia, por encima de las anteriores.
     private const int OffboardingIncompleteVersion = 25;
 
+    /// <summary>Fase 5: plantillas que reciben fechas tipadas y ya no escriben "UTC" a mano.</summary>
+    private const int TypedDatesVersion = 32;
+
     /// <summary>Un retiro no recibió el acuse de todas las partes en el plazo (Auth, barrido del retiro).</summary>
     private static NotificationTemplateSeed OffboardingIncomplete { get; } =
         new(
@@ -822,7 +826,7 @@ public static partial class NotificationTemplateSeedSource
                 </td>
               </tr>
               <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ invite_link }}</span></td></tr></table></td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This link expires on {{ expires_at }} UTC. If you weren't expecting this invitation, you can ignore this email.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This link expires {{ expires_at | office_deadline }}. If you weren't expecting this invitation, you can ignore this email.</td></tr>
             </table>
             """,
             Variables:
@@ -830,7 +834,13 @@ public static partial class NotificationTemplateSeedSource
                 ("office", VariableType.String, true, null, "Nombre del tenant o del producto si no hay tenant."),
                 ("inviter", VariableType.String, true, null, "Nombre de quien invita."),
                 ("invite_link", VariableType.Url, true, null, "URL de aceptación de la invitación."),
-                ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Instante tipado: Scribe lo imprime como plazo en la zona de quien lee."
+                ),
                 ("is_resend", VariableType.Bool, true, "false", "true si es un reenvío del mismo invite."),
                 (
                     "product_name",
@@ -847,13 +857,13 @@ public static partial class NotificationTemplateSeedSource
                     "portal o workspace: la cuenta que crea la invitación."
                 ),
             ],
-            ContentVersion: 10
+            ContentVersion: TypedDatesVersion
         );
 
     // Bloque de datos de la reunión compartido por las cuatro plantillas de meeting (F6): fecha local con
     // la zona de la oficina, duración, host y código. Cada fila se pinta solo si la variable viene.
     private const string MeetingDetailsRows = """
-                  {% if start_local != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">When:</strong> {{ start_local }} ({{ time_zone }}){% if duration_minutes != blank %} &middot; {{ duration_minutes }} min{% endif %}</td></tr>{% endif %}
+                  {% if start_local != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">When:</strong> {{ start_local }}{% if duration_minutes != blank %} &middot; {{ duration_minutes }} min{% endif %}</td></tr>{% endif %}
                   {% if host_name != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">Host:</strong> {{ host_name }}</td></tr>{% endif %}
                   {% if meeting_code != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">Meeting code:</strong> {{ meeting_code }}</td></tr>{% endif %}
         """;
@@ -872,12 +882,12 @@ public static partial class NotificationTemplateSeedSource
             ("meeting_title", VariableType.String, true, null, "Título de la reunión."),
             (
                 "start_local",
-                VariableType.String,
+                VariableType.Date,
                 false,
                 null,
-                "Hora de inicio ya formateada en la zona de la oficina (vacía si no hay fecha)."
+                "Inicio tipado: Scribe lo imprime en la zona de la reunión, con su rótulo (vacío si no hay fecha)."
             ),
-            ("time_zone", VariableType.String, false, "UTC", "Zona IANA en la que está escrita start_local."),
+            ("time_zone", VariableType.String, false, "UTC", "Zona IANA de la reunión (para plantillas propias)."),
             ("duration_minutes", VariableType.Number, false, null, "Duración en minutos, si la reunión la declaró."),
             ("host_name", VariableType.String, false, null, "Nombre del host de la reunión."),
             ("meeting_code", VariableType.String, false, null, "Código corto para entrar por código."),
@@ -916,7 +926,7 @@ public static partial class NotificationTemplateSeedSource
                 """
                 + RsvpButtonsRows
                 + """
-                  <tr><td style="padding-top:14px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This invitation expires on {{ expires_at }} UTC. If you weren't expecting it, you can ignore this email.</td></tr>
+                  <tr><td style="padding-top:14px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This invitation expires {{ expires_at | office_deadline }}. If you weren't expecting it, you can ignore this email.</td></tr>
                 </table>
                 """,
             Variables:
@@ -937,10 +947,10 @@ public static partial class NotificationTemplateSeedSource
                 ),
                 (
                     "expires_at",
-                    VariableType.String,
+                    VariableType.Date,
                     true,
                     null,
-                    "Fecha de expiración de la invitación ya formateada (UTC)."
+                    "Instante tipado: Scribe lo imprime como plazo en la zona de la reunión."
                 ),
                 .. MeetingDetailsVariables,
                 (
@@ -953,7 +963,7 @@ public static partial class NotificationTemplateSeedSource
                 .. RsvpButtonsVariables,
                 ProductName,
             ],
-            ContentVersion: RsvpButtonsVersion
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed MeetingCancelled { get; } =
@@ -967,7 +977,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Meeting</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">The meeting was cancelled</td></tr>
-              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ meeting_title }}</strong>{% if start_local != blank %}, scheduled for {{ start_local }} ({{ time_zone }}),{% endif %} was cancelled{% if host_name != blank %} by {{ host_name }}{% endif %}.</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ meeting_title }}</strong>{% if start_local != blank %}, scheduled for {{ start_local }},{% endif %} was cancelled{% if host_name != blank %} by {{ host_name }}{% endif %}.</td></tr>
               {% if reason != blank %}<tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FDEEEE" style="background-color:#FDEEEE;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #D65B5B;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;mso-line-height-rule:exactly;">{{ reason }}</td></tr></table></td></tr>{% endif %}
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">No action is needed.{% if start_local != blank %} The attached calendar update removes it from your calendar.{% endif %}</td></tr>
             </table>
@@ -975,19 +985,13 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("meeting_title", VariableType.String, true, null, "Título de la reunión."),
-                (
-                    "start_local",
-                    VariableType.String,
-                    false,
-                    null,
-                    "Hora que tenía la reunión, en la zona de la oficina."
-                ),
+                ("start_local", VariableType.Date, false, null, "Hora que tenía la reunión, en la zona de la oficina."),
                 ("time_zone", VariableType.String, false, "UTC", "Zona IANA de start_local."),
                 ("host_name", VariableType.String, false, null, "Nombre del host de la reunión."),
                 ("reason", VariableType.String, false, null, "Motivo, si el host lo escribió."),
                 ProductName,
             ],
-            ContentVersion: 1
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed MeetingRescheduled { get; } =
@@ -1003,8 +1007,8 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">The meeting was rescheduled</td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">{{ meeting_title }}</strong> has a new time{% if host_name != blank %}, set by {{ host_name }}{% endif %}.</td></tr>
               <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:12px 18px;border-left:3px solid #67BAF4;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              {% if previous_local != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#70869A;mso-line-height-rule:exactly;"><strong>Previously:</strong> <span style="text-decoration:line-through;">{{ previous_local }}</span> ({{ time_zone }})</td></tr>{% endif %}
-              {% if new_local != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">New time:</strong> {{ new_local }} ({{ time_zone }}){% if duration_minutes != blank %} &middot; {{ duration_minutes }} min{% endif %}</td></tr>{% else %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">The new time has not been set yet.</td></tr>{% endif %}
+              {% if previous_local != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#70869A;mso-line-height-rule:exactly;"><strong>Previously:</strong> <span style="text-decoration:line-through;">{{ previous_local }}</span></td></tr>{% endif %}
+              {% if new_local != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">New time:</strong> {{ new_local }}{% if duration_minutes != blank %} &middot; {{ duration_minutes }} min{% endif %}</td></tr>{% else %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">The new time has not been set yet.</td></tr>{% endif %}
               {% if meeting_code != blank %}<tr><td style="padding:2px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">Meeting code:</strong> {{ meeting_code }}</td></tr>{% endif %}
               </table></td></tr></table></td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">Your invitation link still works.{% if new_local != blank %} The attached calendar update moves it in your calendar.{% endif %}</td></tr>
@@ -1013,10 +1017,10 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("meeting_title", VariableType.String, true, null, "Título de la reunión."),
-                ("previous_local", VariableType.String, false, null, "Hora anterior, en la zona de la oficina."),
+                ("previous_local", VariableType.Date, false, null, "Hora anterior, en la zona de la oficina."),
                 (
                     "new_local",
-                    VariableType.String,
+                    VariableType.Date,
                     false,
                     null,
                     "Hora nueva, en la zona de la oficina (vacía si aún no hay)."
@@ -1033,7 +1037,7 @@ public static partial class NotificationTemplateSeedSource
                 ("meeting_code", VariableType.String, false, null, "Código corto para entrar por código."),
                 ProductName,
             ],
-            ContentVersion: 1
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed MeetingReminder { get; } =
@@ -1062,7 +1066,7 @@ public static partial class NotificationTemplateSeedSource
                 ("minutes_before", VariableType.Number, true, null, "Minutos que faltan para la reunión."),
                 ProductName,
             ],
-            ContentVersion: 1
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed PasswordReset { get; } =
@@ -1088,13 +1092,19 @@ public static partial class NotificationTemplateSeedSource
                 </td>
               </tr>
               <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ reset_link }}</span></td></tr></table></td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This link expires on {{ expires_at }} UTC. If you didn't request this, ignore this email: your current password stays valid.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This link expires {{ expires_at | office_deadline }}. If you didn't request this, ignore this email: your current password stays valid.</td></tr>
             </table>
             """,
             Variables:
             [
                 ("reset_link", VariableType.Url, true, null, "URL de restablecimiento de contraseña."),
-                ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Instante tipado: Scribe lo imprime como plazo en la zona de quien lee."
+                ),
                 (
                     "product_name",
                     VariableType.String,
@@ -1111,7 +1121,7 @@ public static partial class NotificationTemplateSeedSource
                 ),
                 ("office", VariableType.String, false, "your office", "Nombre de la oficina de esa cuenta."),
             ],
-            ContentVersion: 10
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed OtpCode { get; } =
@@ -1166,13 +1176,19 @@ public static partial class NotificationTemplateSeedSource
                   <!--<![endif]-->
                 </td>
               </tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This link expires on {{ expires_at }} UTC. If you didn't request this change, contact your office administrator.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This link expires {{ expires_at | office_deadline }}. If you didn't request this change, contact your office administrator.</td></tr>
             </table>
             """,
             Variables:
             [
                 ("confirm_link", VariableType.Url, true, null, "URL de confirmación del nuevo email."),
-                ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Instante tipado: Scribe lo imprime como plazo en la zona de quien lee."
+                ),
                 (
                     "product_name",
                     VariableType.String,
@@ -1189,7 +1205,7 @@ public static partial class NotificationTemplateSeedSource
                 ),
                 ("office", VariableType.String, false, "your office", "Nombre de la oficina de esa cuenta."),
             ],
-            ContentVersion: 10
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SecurityAlert { get; } =
@@ -1317,7 +1333,7 @@ public static partial class NotificationTemplateSeedSource
                   <!--<![endif]-->
                 </td>
               </tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if expires_at %}{% if language == 'Es' %}El enlace vence el {{ expires_at }} UTC.{% else %}The link expires on {{ expires_at }} UTC.{% endif %}{% else %}{% if language == 'Es' %}Este enlace no vence.{% else %}This link does not expire.{% endif %}{% endif %}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if expires_at %}{% if language == 'Es' %}El enlace vence {{ expires_at | office_deadline }}.{% else %}The link expires {{ expires_at | office_deadline }}.{% endif %}{% else %}{% if language == 'Es' %}Este enlace no vence.{% else %}This link does not expire.{% endif %}{% endif %}</td></tr>
             </table>
             """,
             Variables:
@@ -1326,14 +1342,15 @@ public static partial class NotificationTemplateSeedSource
                 ("invite_link", VariableType.Url, true, null, "URL pública de firma."),
                 (
                     "expires_at",
-                    VariableType.String,
+                    VariableType.Date,
                     false,
                     null,
-                    "Fecha de expiración ya formateada (UTC); vacío si la request no expira."
+                    "Instante tipado (Scribe lo imprime como plazo en la zona de quien lee); vacío si la request no expira."
                 ),
                 ("requires_consent", VariableType.Bool, true, "false", "true si requiere aceptar consent antes."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SharedFileInvited { get; } =
@@ -1363,17 +1380,24 @@ public static partial class NotificationTemplateSeedSource
                   <!--<![endif]-->
                 </td>
               </tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}El enlace vence el {{ expires_at }} UTC y es solo para ti.{% else %}The link expires on {{ expires_at }} UTC and is meant only for you.{% endif %}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}El enlace vence {{ expires_at | office_deadline }} y es solo para ti.{% else %}The link expires {{ expires_at | office_deadline }} and is meant only for you.{% endif %}</td></tr>
             </table>
             """,
             Variables:
             [
                 ("file_name", VariableType.String, true, null, "Nombre del archivo compartido."),
                 ("open_link", VariableType.Url, true, null, "URL de la página pública branded (/s/{token}?email=)."),
-                ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Fecha de expiración ya formateada (tipada: Scribe la imprime en la zona de quien lee)."
+                ),
                 ("permission", VariableType.String, true, "Download", "'View' o 'Download'."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SignatureReminder { get; } =
@@ -1388,10 +1412,10 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tu firma sigue pendiente</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, este es un recordatorio ({{ reminders_sent }} de 3) de que tu firma sigue pendiente en {{ product_name }}. El enlace vence el {{ expires_at }} UTC.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, este es un recordatorio ({{ reminders_sent }} de 3) de que tu firma sigue pendiente en {{ product_name }}. El enlace vence {{ expires_at | office_deadline }}.</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your signature is still pending</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, this is reminder {{ reminders_sent }} of 3 that your signature is still pending on {{ product_name }}. The link expires on {{ expires_at }} UTC.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, this is reminder {{ reminders_sent }} of 3 that your signature is still pending on {{ product_name }}. The link expires {{ expires_at | office_deadline }}.</td></tr>
               {% endif %}
               <tr>
                 <td align="left" style="padding:26px 0 4px 0;">
@@ -1409,10 +1433,17 @@ public static partial class NotificationTemplateSeedSource
             [
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
                 ("invite_link", VariableType.Url, true, null, "URL pública de firma."),
-                ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Fecha de expiración ya formateada (tipada: Scribe la imprime en la zona de quien lee)."
+                ),
                 ("reminders_sent", VariableType.Number, true, null, "Número de recordatorio (1..3)."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SignatureCompleted { get; } =
@@ -1427,10 +1458,10 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Firma completada</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, {% if is_reissue %}este es tu nuevo enlace para descargar los documentos firmados; el anterior ya no funciona.{% else %}el proceso de firma se completó exitosamente el {{ completed_at }} UTC. Puedes descargar los documentos firmados aquí abajo.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, {% if is_reissue %}este es tu nuevo enlace para descargar los documentos firmados; el anterior ya no funciona.{% else %}el proceso de firma se completó exitosamente el {{ completed_at }}. Puedes descargar los documentos firmados aquí abajo.{% endif %}</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Signature completed</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, {% if is_reissue %}here is your new link to download the signed documents; the previous one no longer works.{% else %}the signature process was completed successfully on {{ completed_at }} UTC. You can download the signed documents below.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, {% if is_reissue %}here is your new link to download the signed documents; the previous one no longer works.{% else %}the signature process was completed successfully on {{ completed_at }}. You can download the signed documents below.{% endif %}</td></tr>
               {% endif %}
               {% if download_links and download_links.size > 0 %}
               <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Documentos disponibles ({{ document_count }}):{% else %}Available documents ({{ document_count }}):{% endif %}</td></tr>
@@ -1453,7 +1484,13 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
-                ("completed_at", VariableType.String, true, null, "Fecha de finalización ya formateada (UTC)."),
+                (
+                    "completed_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Fecha de finalización ya formateada (tipada: Scribe la imprime en la zona de quien lee)."
+                ),
                 ("download_links", VariableType.String, false, null, "Lista de objetos { title, url } por documento."),
                 ("document_count", VariableType.Number, true, "1", "Cantidad de documentos sellados."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
@@ -1464,7 +1501,7 @@ public static partial class NotificationTemplateSeedSource
                     null,
                     "Página de entrega de Signature con todos los archivos."
                 ),
-                ("expires_at", VariableType.String, false, null, "Fecha (UTC) hasta la que vale el enlace."),
+                ("expires_at", VariableType.Date, false, null, "Instante tipado hasta el que vale el enlace."),
                 (
                     "can_request_new_link",
                     VariableType.Bool,
@@ -1482,7 +1519,7 @@ public static partial class NotificationTemplateSeedSource
                 ("is_reissue", VariableType.Bool, false, "false", "Es un enlace nuevo que reemplaza al anterior."),
                 ("has_attachments", VariableType.Bool, false, "false", "Los archivos también van adjuntos."),
             ],
-            ContentVersion: 16
+            ContentVersion: TypedDatesVersion
         );
 
     // F7 — copia inmediata: cada firmante recibe lo que firmó cuando firma él, aunque los demás
@@ -1499,7 +1536,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tu copia de lo que firmaste</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, gracias por completar {{ document_count }} documento(s) el {{ signed_at }} UTC.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, gracias por completar {{ document_count }} documento(s) el {{ signed_at }}.</td></tr>
               {% if total_signers and total_signers > 1 %}
               {% if send_sealed_to_signers %}
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Adjuntamos{% else %}Aquí tienes{% endif %} tu copia con las firmas recogidas hasta ahora. <em>Todavía faltan firmantes</em>; cuando el documento quede completo, recibirás el PDF final sellado.</td></tr>
@@ -1515,7 +1552,7 @@ public static partial class NotificationTemplateSeedSource
               {% endif %}
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your copy of what you signed</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, thanks for completing {{ document_count }} document(s) on {{ signed_at }} UTC.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, thanks for completing {{ document_count }} document(s) on {{ signed_at }}.</td></tr>
               {% if total_signers and total_signers > 1 %}
               {% if send_sealed_to_signers %}
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if has_attachments %}Attached is{% else %}Here is{% endif %} your copy with the signatures collected so far. <em>Other signers haven't finished yet</em>; when the document is complete, you'll receive the final sealed PDF.</td></tr>
@@ -1550,7 +1587,13 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("full_name", VariableType.String, true, null, "Nombre del firmante destinatario."),
-                ("signed_at", VariableType.String, true, null, "Fecha de firma del destinatario (UTC)."),
+                (
+                    "signed_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Fecha de firma del destinatario (tipada: Scribe la imprime en la zona de quien lee)."
+                ),
                 ("download_links", VariableType.String, false, null, "Lista de objetos { title, url } por documento."),
                 ("document_count", VariableType.Number, true, "1", "Cantidad de documentos firmados."),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
@@ -1569,7 +1612,7 @@ public static partial class NotificationTemplateSeedSource
                     null,
                     "Página de entrega de Signature con todos los archivos."
                 ),
-                ("expires_at", VariableType.String, false, null, "Fecha (UTC) hasta la que vale el enlace."),
+                ("expires_at", VariableType.Date, false, null, "Instante tipado hasta el que vale el enlace."),
                 (
                     "can_request_new_link",
                     VariableType.Bool,
@@ -1587,7 +1630,7 @@ public static partial class NotificationTemplateSeedSource
                 ("is_reissue", VariableType.Bool, false, "false", "Es un enlace nuevo que reemplaza al anterior."),
                 ("has_attachments", VariableType.Bool, false, "false", "Los archivos también van adjuntos."),
             ],
-            ContentVersion: 18
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SignatureCertificateReady { get; } =
@@ -1602,10 +1645,10 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Tu certificado de firma</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, el certificado de finalización{% if document_title %} de <strong style="color:#23384B;">{{ document_title }}</strong>{% endif %} del {{ completed_at }} UTC ya está disponible.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, el certificado de finalización{% if document_title %} de <strong style="color:#23384B;">{{ document_title }}</strong>{% endif %} del {{ completed_at }} ya está disponible.</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your signature certificate</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the certificate of completion{% if document_title %} for <strong style="color:#23384B;">{{ document_title }}</strong>{% endif %} from {{ completed_at }} UTC is now available.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the certificate of completion{% if document_title %} for <strong style="color:#23384B;">{{ document_title }}</strong>{% endif %} from {{ completed_at }} is now available.</td></tr>
               {% endif %}
               {% if download_link %}
               <tr>
@@ -1624,7 +1667,13 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
-                ("completed_at", VariableType.String, true, null, "Fecha de finalización ya formateada (UTC)."),
+                (
+                    "completed_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Fecha de finalización ya formateada (tipada: Scribe la imprime en la zona de quien lee)."
+                ),
                 ("download_link", VariableType.Url, false, null, "URL pública de descarga del certificado (opcional)."),
                 (
                     "document_title",
@@ -1635,7 +1684,7 @@ public static partial class NotificationTemplateSeedSource
                 ),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
             ],
-            ContentVersion: 18
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SignatureExpired { get; } =
@@ -1650,19 +1699,26 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               {% if language == 'Es' %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Solicitud de firma expirada</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, la solicitud de firma venció el {{ expired_at }} UTC sin completarse. Si todavía necesitas firmar, contacta a quien te la envió para que genere una nueva solicitud.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hola <strong style="color:#23384B;">{{ full_name }}</strong>, la solicitud de firma venció el {{ expired_at }} sin completarse. Si todavía necesitas firmar, contacta a quien te la envió para que genere una nueva solicitud.</td></tr>
               {% else %}
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Signature request expired</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the signature request expired on {{ expired_at }} UTC without being completed. If you still need to sign, contact the sender to issue a new request.</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, the signature request expired on {{ expired_at }} without being completed. If you still need to sign, contact the sender to issue a new request.</td></tr>
               {% endif %}
             </table>
             """,
             Variables:
             [
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
-                ("expired_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
+                (
+                    "expired_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Fecha de expiración ya formateada (tipada: Scribe la imprime en la zona de quien lee)."
+                ),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SignatureDeclined { get; } =
@@ -1709,16 +1765,23 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ full_name }}</strong>, your {{ product_name }} verification code is:</td></tr>
               {% endif %}
               <tr><td style="padding:14px 0 18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:12px;"><tr><td align="center" style="padding:22px 16px;font-family:Arial,Helvetica,sans-serif;font-size:34px;line-height:40px;letter-spacing:10px;font-weight:bold;color:#1E466B;mso-line-height-rule:exactly;">{{ code }}</td></tr></table></td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Vence el {{ expires_at }} UTC. Si no solicitaste este código, ignora este correo.{% else %}Expires on {{ expires_at }} UTC. If you did not request this code, please ignore this email.{% endif %}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Vence {{ expires_at | office_deadline }}. Si no solicitaste este código, ignora este correo.{% else %}Expires {{ expires_at | office_deadline }}. If you did not request this code, please ignore this email.{% endif %}</td></tr>
             </table>
             """,
             Variables:
             [
                 ("full_name", VariableType.String, true, null, "Nombre completo del firmante."),
                 ("code", VariableType.String, true, null, "Código de verificación de un solo uso."),
-                ("expires_at", VariableType.String, true, null, "Fecha de expiración ya formateada (UTC)."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Fecha de expiración ya formateada (tipada: Scribe la imprime en la zona de quien lee)."
+                ),
                 ("language", VariableType.String, true, "En", "'Es' o 'En'."),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     // PayFlow — Auth publica estos 2 eventos pre-tenant (TenantId=Guid.Empty) durante el flujo
@@ -1826,7 +1889,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Welcome</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Complete your account</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we confirmed your payment of <strong style="color:#1E466B;">{{ price_formatted }}</strong> on {{ paid_at }} for the {{ plan_name }} plan. You can now complete your account:</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we confirmed your payment of <strong style="color:#1E466B;">{{ price_formatted }}</strong> on {{ paid_at | office_date }} for the {{ plan_name }} plan. You can now complete your account:</td></tr>
               <tr>
                 <td align="left" style="padding:26px 0 18px 0;">
                   <!--[if mso]>
@@ -1854,7 +1917,13 @@ public static partial class NotificationTemplateSeedSource
                     "Nombre del plan (con fallback ya resuelto por el consumer)."
                 ),
                 ("price_formatted", VariableType.String, true, null, "Monto ya formateado (p. ej. '49.00 USD')."),
-                ("paid_at", VariableType.String, true, null, "Fecha de pago ya formateada (UTC)."),
+                (
+                    "paid_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Instante tipado del pago: Scribe imprime la fecha en la zona de quien lee."
+                ),
                 (
                     "registration_url",
                     VariableType.Url,
@@ -1876,7 +1945,8 @@ public static partial class NotificationTemplateSeedSource
                     "TaxOffix",
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed OnboardingReceiptReady { get; } =
@@ -2086,13 +2156,13 @@ public static partial class NotificationTemplateSeedSource
             EventKey: "subscription.access_ending.v1",
             TemplateKey: "subscription.access_ending",
             Name: "Suscripción — El acceso termina pronto",
-            Subject: "Your {{ product_name }} access ends on {{ access_ends_date }}",
+            Subject: "Your {{ product_name }} access ends on {{ access_ends_date | office_date }}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your access ends soon</td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, you cancelled your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan and it ends on <strong style="color:#1E466B;">{{ access_ends_date }}</strong>. That's in {{ days_until_end }} day(s). If you'd like to stay, you can undo the cancellation before then and nothing will have changed.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, you cancelled your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan and it ends on <strong style="color:#1E466B;">{{ access_ends_date | office_date }}</strong>. That's in {{ days_until_end }} day(s). If you'd like to stay, you can undo the cancellation before then and nothing will have changed.</td></tr>
               <tr>
                 <td align="left" style="padding:26px 0 18px 0;">
                   <!--[if mso]>
@@ -2111,7 +2181,7 @@ public static partial class NotificationTemplateSeedSource
             [
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
-                ("access_ends_date", VariableType.String, true, null, "Fecha en la que termina el acceso."),
+                ("access_ends_date", VariableType.Date, true, null, "Fecha en la que termina el acceso."),
                 ("days_until_end", VariableType.String, true, "0", "Días que faltan para esa fecha."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para deshacer la cancelación."),
                 (
@@ -2121,7 +2191,8 @@ public static partial class NotificationTemplateSeedSource
                     "TaxOffix",
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SubscriptionCancellationScheduled { get; } =
@@ -2129,13 +2200,13 @@ public static partial class NotificationTemplateSeedSource
             EventKey: "subscription.cancellation_scheduled.v1",
             TemplateKey: "subscription.cancellation_scheduled",
             Name: "Suscripción — Cancelación programada",
-            Subject: "Your {{ product_name }} subscription ends on {{ access_ends_date }}",
+            Subject: "Your {{ product_name }} subscription ends on {{ access_ends_date | office_date }}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your subscription will end</td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we've scheduled the cancellation of your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan. Nothing changes today: you keep full access until <strong style="color:#1E466B;">{{ access_ends_date }}</strong>, the end of the period you already paid for. We won't charge you again.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we've scheduled the cancellation of your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan. Nothing changes today: you keep full access until <strong style="color:#1E466B;">{{ access_ends_date | office_date }}</strong>, the end of the period you already paid for. We won't charge you again.</td></tr>
               <tr>
                 <td align="left" style="padding:26px 0 18px 0;">
                   <!--[if mso]>
@@ -2147,14 +2218,14 @@ public static partial class NotificationTemplateSeedSource
                 </td>
               </tr>
               <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ renew_url }}</span></td></tr></table></td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Changed your mind? You can undo this any time before {{ access_ends_date }} and nothing will have happened. After that date your data stays safe — you can come back whenever you want.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Changed your mind? You can undo this any time before {{ access_ends_date | office_date }} and nothing will have happened. After that date your data stays safe — you can come back whenever you want.</td></tr>
             </table>
             """,
             Variables:
             [
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
-                ("access_ends_date", VariableType.String, true, null, "Fecha hasta la que llega el acceso pagado."),
+                ("access_ends_date", VariableType.Date, true, null, "Fecha hasta la que llega el acceso pagado."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para deshacer la cancelación."),
                 (
                     "product_name",
@@ -2163,7 +2234,8 @@ public static partial class NotificationTemplateSeedSource
                     "TaxOffix",
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     // D11 del plan único: una migración agenda otra edición del plan para la oficina.
@@ -2172,13 +2244,13 @@ public static partial class NotificationTemplateSeedSource
             EventKey: "subscription.version_change_scheduled.v1",
             TemplateKey: "subscription.version_change_scheduled",
             Name: "Suscripción — Cambio de condiciones del plan",
-            Subject: "Your {{ product_name }} plan terms change on {{ change_date }}",
+            Subject: "Your {{ product_name }} plan terms change on {{ change_date | office_date }}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your plan terms will change</td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we're updating the terms of your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan. Nothing changes today: the new terms start with your renewal on <strong style="color:#1E466B;">{{ change_date }}</strong>.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we're updating the terms of your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan. Nothing changes today: the new terms start with your renewal on <strong style="color:#1E466B;">{{ change_date | office_date }}</strong>.</td></tr>
               <tr><td style="padding:18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>What changes:</strong> {{ change_summary }}</td></tr></table></td></tr>
               <tr>
                 <td align="left" style="padding:8px 0 18px 0;">
@@ -2191,14 +2263,14 @@ public static partial class NotificationTemplateSeedSource
                 </td>
               </tr>
               <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#496174;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ manage_url }}</span></td></tr></table></td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Until {{ change_date }} you keep your current terms. If you'd rather change plans or cancel before then, you can do it from Manage subscription.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Until {{ change_date | office_date }} you keep your current terms. If you'd rather change plans or cancel before then, you can do it from Manage subscription.</td></tr>
             </table>
             """,
             Variables:
             [
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
-                ("change_date", VariableType.String, true, null, "Fecha en que entran las condiciones nuevas."),
+                ("change_date", VariableType.Date, true, null, "Fecha en que entran las condiciones nuevas."),
                 (
                     "change_summary",
                     VariableType.String,
@@ -2214,7 +2286,8 @@ public static partial class NotificationTemplateSeedSource
                     "TaxOffix",
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SubscriptionBillingCycleChanged { get; } =
@@ -2229,11 +2302,11 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
               {% if date_charged != "" %}
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">You're now on {{ cadence }}ly billing</td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan, add-ons and extra seats are now billed every {{ cadence }}. We charged <strong style="color:#1E466B;">${{ amount }}</strong> on {{ date_charged }}; your receipt lists each item.</td></tr>
-              <tr><td style="padding:18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>Next renewal:</strong> {{ next_charge_date }}</td></tr></table></td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan, add-ons and extra seats are now billed every {{ cadence }}. We charged <strong style="color:#1E466B;">${{ amount }}</strong> on {{ date_charged | office_date }}; your receipt lists each item.</td></tr>
+              <tr><td style="padding:18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>Next renewal:</strong> {{ next_charge_date | office_date }}</td></tr></table></td></tr>
               {% else %}
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your billing will change to every {{ cadence }}</td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, nothing changes today. Starting <strong style="color:#1E466B;">{{ next_charge_date }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan, add-ons and extra seats will be billed every {{ cadence }} at the current prices.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, nothing changes today. Starting <strong style="color:#1E466B;">{{ next_charge_date | office_date }}</strong>, your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan, add-ons and extra seats will be billed every {{ cadence }} at the current prices.</td></tr>
               {% endif %}
               <tr>
                 <td align="left" style="padding:8px 0 18px 0;">
@@ -2260,16 +2333,10 @@ public static partial class NotificationTemplateSeedSource
                     "",
                     "Total cobrado al pasar a anual (vacío al pasar a mensual)."
                 ),
-                (
-                    "date_charged",
-                    VariableType.String,
-                    false,
-                    "",
-                    "Fecha del cobro (vacía si el cambio solo se agendó)."
-                ),
+                ("date_charged", VariableType.Date, false, "", "Fecha del cobro (vacía si el cambio solo se agendó)."),
                 (
                     "next_charge_date",
-                    VariableType.String,
+                    VariableType.Date,
                     true,
                     null,
                     "Próxima renovación, o desde cuándo rige el ciclo nuevo."
@@ -2283,7 +2350,7 @@ public static partial class NotificationTemplateSeedSource
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
             ],
-            ContentVersion: 28
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SubscriptionExpired { get; } =
@@ -2338,7 +2405,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;">Billing</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" cellpadding="0" cellspacing="0" border="0" width="40"><tr><td height="3" bgcolor="#67BAF4" style="font-size:0;line-height:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:bold;color:#23384B;padding-bottom:14px;">Your subscription renews soon</td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, just a heads up — your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan renews on <strong style="color:#1E466B;">{{ renewal_date }}</strong> ({{ days_until_renewal }} day(s) from now). Nothing to do: we'll charge your card on file automatically.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:23px;color:#496174;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, just a heads up — your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan renews on <strong style="color:#1E466B;">{{ renewal_date | office_date }}</strong> ({{ days_until_renewal }} day(s) from now). Nothing to do: we'll charge your card on file automatically.</td></tr>
               {% if amount != "" %}
               <tr><td style="padding:18px 0 0 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF"><tr><td style="padding:12px 14px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;"><strong>Amount:</strong> ${{ amount }} every {{ cadence }}, including your add-ons and extra seats.</td></tr></table></td></tr>
               {% endif %}
@@ -2361,7 +2428,7 @@ public static partial class NotificationTemplateSeedSource
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("days_until_renewal", VariableType.String, true, null, "Días que faltan para la renovación."),
-                ("renewal_date", VariableType.String, true, null, "Fecha de la próxima renovación."),
+                ("renewal_date", VariableType.Date, true, null, "Fecha de la próxima renovación."),
                 ("amount", VariableType.String, false, "", "Total de la renovación: plan más add-ons y asientos (E4)."),
                 ("cadence", VariableType.String, false, "month", "Ciclo: month o year."),
                 ("renew_url", VariableType.Url, true, null, "Login de la oficina para gestionar la suscripción."),
@@ -2373,7 +2440,7 @@ public static partial class NotificationTemplateSeedSource
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
             ],
-            ContentVersion: 29
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed SubscriptionReactivated { get; } =
@@ -2428,7 +2495,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Payment received</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we charged <strong style="color:#1E466B;">${{ amount }}</strong> to your {{ card_brand }} ending {{ card_last4 }} for your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan.{% if next_charge_date != blank %} The next charge is scheduled for <strong style="color:#23384B;">{{ next_charge_date }}</strong>.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we charged <strong style="color:#1E466B;">${{ amount }}</strong> to your {{ card_brand }} ending {{ card_last4 }} for your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan.{% if next_charge_date != blank %} The next charge is scheduled for <strong style="color:#23384B;">{{ next_charge_date | office_date }}</strong>.{% endif %}</td></tr>
               <tr>
                 <td align="left" style="padding:22px 0 4px 0;">
                   {% if receipt_url != blank %}
@@ -2445,11 +2512,11 @@ public static partial class NotificationTemplateSeedSource
                 ("first_name", VariableType.String, true, null, "Nombre del admin/owner del tenant."),
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 ("amount", VariableType.String, true, null, "Importe cobrado ya formateado."),
-                ("date_charged", VariableType.String, false, null, "Fecha del cobro ya formateada."),
+                ("date_charged", VariableType.Date, false, null, "Fecha del cobro ya formateada."),
                 ("card_brand", VariableType.String, true, "card", "Marca del método guardado."),
                 ("card_last4", VariableType.String, true, "----", "Últimos 4 del método guardado."),
                 ("receipt_url", VariableType.Url, false, null, "URL del recibo del proveedor (opcional)."),
-                ("next_charge_date", VariableType.String, false, null, "Fecha del próximo cobro ya formateada."),
+                ("next_charge_date", VariableType.Date, false, null, "Fecha del próximo cobro ya formateada."),
                 ("manage_url", VariableType.Url, true, null, "URL a Manage Subscription."),
                 (
                     "product_name",
@@ -2458,7 +2525,8 @@ public static partial class NotificationTemplateSeedSource
                     "TaxOffix",
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     /// <summary>
@@ -2505,13 +2573,13 @@ public static partial class NotificationTemplateSeedSource
                     {% unless is_final %}
                     <tr>
                       <td style="padding:12px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Next attempt</td>
-                      <td align="right" style="padding:12px 18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:bold;color:#1E466B;mso-line-height-rule:exactly;">{{ next_retry_date }}</td>
+                      <td align="right" style="padding:12px 18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:20px;font-weight:bold;color:#1E466B;mso-line-height-rule:exactly;">{{ next_retry_date | office_date }}</td>
                     </tr>
                     {% endunless %}
                   </table>
                 </td>
               </tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if is_final %}Your data is safe and nothing has been deleted. To restore access right away, complete the payment in Manage subscription.{% else %}<strong style="color:#23384B;">What happens next:</strong> we'll automatically try again on {{ next_retry_date }}. To keep your team's access uninterrupted, please review your payment method or complete the payment now.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if is_final %}Your data is safe and nothing has been deleted. To restore access right away, complete the payment in Manage subscription.{% else %}<strong style="color:#23384B;">What happens next:</strong> we'll automatically try again on {{ next_retry_date | office_date }}. To keep your team's access uninterrupted, please review your payment method or complete the payment now.{% endif %}</td></tr>
               <tr>
                 <td align="left" style="padding:22px 0 4px 0;">
                   <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ manage_url }}" target="_blank" style="display:inline-block;padding:13px 26px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Go to Manage subscription</a></td></tr></table>
@@ -2539,7 +2607,7 @@ public static partial class NotificationTemplateSeedSource
                 ("is_final", VariableType.Bool, true, "false", "true si fue el último intento (sin reintentos)."),
                 (
                     "next_retry_date",
-                    VariableType.String,
+                    VariableType.Date,
                     false,
                     null,
                     "Fecha del próximo intento; vacía si es el último."
@@ -2567,7 +2635,7 @@ public static partial class NotificationTemplateSeedSource
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
             ],
-            ContentVersion: 18
+            ContentVersion: TypedDatesVersion
         );
 
     /// <summary>Confirmación del cambio Auto↔Manual.</summary>
@@ -2720,7 +2788,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ customer_name }}</strong>, to continue with <strong style="color:#1E466B;">{{ task_title }}</strong>{% if tax_year %} (tax year {{ tax_year }}){% endif %} we need you to send us:</td></tr>
               <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;mso-line-height-rule:exactly;">{{ expected_items }}</td></tr></table></td></tr>
               {% if client_due_at_utc %}
-              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">Please send it before <strong style="color:#23384B;">{{ client_due_at_utc }}</strong>.</td></tr>
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">Please send it by <strong style="color:#23384B;">{{ client_due_at_utc }}</strong>.</td></tr>
               {% endif %}
               <tr>
                 <td align="left" style="padding:24px 0 4px 0;">
@@ -2747,7 +2815,7 @@ public static partial class NotificationTemplateSeedSource
                 ),
                 (
                     "client_due_at_utc",
-                    VariableType.String,
+                    VariableType.Date,
                     false,
                     null,
                     "Para cuándo se le pide; distinta del vencimiento de la tarea."
@@ -2755,7 +2823,8 @@ public static partial class NotificationTemplateSeedSource
                 ("tax_year", VariableType.Number, false, null, "Año fiscal de la tarea, si tiene."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     // Plantilla propia de "te sumaron a una cita": versión explícita por encima de las anteriores.
@@ -2803,7 +2872,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You're on the guest list</td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">The office added you to <strong style="color:#1E466B;">{{ appointment_title }}</strong>.</td></tr>
-              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ start_local }}</strong> <span style="color:#70869A;">({{ time_zone }})</span></td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ start_local }}</strong></td></tr></table></td></tr>
               {% if is_recurring %}<tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">It repeats: check the calendar for all dates.</td></tr>{% endif %}
               {% if is_virtual %}<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">It's a video meeting; the link is in the appointment.</td></tr>{% endif %}
               <tr><td style="padding-top:14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">Someone at the office added you to this appointment after it was booked.</td></tr>
@@ -2815,7 +2884,7 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("appointment_title", VariableType.String, true, null, "Titulo de la cita."),
-                ("start_local", VariableType.String, true, null, "Inicio en la zona de la cita, ya formateado."),
+                ("start_local", VariableType.Date, true, null, "Inicio en la zona de la cita, ya formateado."),
                 ("time_zone", VariableType.String, true, null, "Zona de la cita, escrita al lado de la hora."),
                 ("is_recurring", VariableType.Bool, false, null, "Si la cita se repite."),
                 ("is_virtual", VariableType.Bool, false, null, "Si es una reunion por video."),
@@ -2823,7 +2892,7 @@ public static partial class NotificationTemplateSeedSource
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
                 .. RsvpButtonsVariables,
             ],
-            ContentVersion: RsvpButtonsVersion
+            ContentVersion: TypedDatesVersion
         );
 
     /// <summary>
@@ -2842,7 +2911,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">You have a new appointment</td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">You've been scheduled for: <strong style="color:#1E466B;">{{ appointment_title }}</strong>.</td></tr>
-              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ start_local }}</strong> <span style="color:#70869A;">({{ time_zone }})</span></td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ start_local }}</strong></td></tr></table></td></tr>
               {% if is_recurring %}<tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">It repeats: check the calendar for all dates.</td></tr>{% endif %}
               {% if is_virtual %}<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">It's a video meeting; the link is in the appointment.</td></tr>{% endif %}
             """
@@ -2853,7 +2922,7 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("appointment_title", VariableType.String, true, null, "Titulo de la cita."),
-                ("start_local", VariableType.String, true, null, "Inicio en la zona de la cita, ya formateado."),
+                ("start_local", VariableType.Date, true, null, "Inicio en la zona de la cita, ya formateado."),
                 ("time_zone", VariableType.String, true, null, "Zona de la cita, escrita al lado de la hora."),
                 ("is_recurring", VariableType.Bool, false, null, "Si la cita se repite."),
                 ("is_virtual", VariableType.Bool, false, null, "Si es una reunion por video."),
@@ -2861,7 +2930,7 @@ public static partial class NotificationTemplateSeedSource
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
                 .. RsvpButtonsVariables,
             ],
-            ContentVersion: RsvpButtonsVersion
+            ContentVersion: TypedDatesVersion
         );
 
     /// <summary>
@@ -2880,7 +2949,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your appointment moved</td></tr>
               {% if previous_local %}<tr><td style="padding-bottom:10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#70869A;mso-line-height-rule:exactly;">Before: <s>{{ previous_local }}</s></td></tr>{% endif %}
-              <tr><td style="padding-bottom:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;">Now: <strong>{{ new_local }}</strong> <span style="color:#70869A;">({{ time_zone }})</span></td></tr></table></td></tr>
+              <tr><td style="padding-bottom:4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;">Now: <strong>{{ new_local }}</strong></td></tr></table></td></tr>
             """
                 + RsvpButtonsRows
                 + """
@@ -2889,14 +2958,14 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("scope", VariableType.String, false, null, "Si se movio una ocurrencia o la serie."),
-                ("previous_local", VariableType.String, false, null, "La hora vieja, para no obligar a recordarla."),
-                ("new_local", VariableType.String, true, null, "La hora nueva, en la zona de la cita."),
+                ("previous_local", VariableType.Date, false, null, "La hora vieja, para no obligar a recordarla."),
+                ("new_local", VariableType.Date, true, null, "La hora nueva, en la zona de la cita."),
                 ("time_zone", VariableType.String, true, null, "Zona de la cita."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
                 .. RsvpButtonsVariables,
             ],
-            ContentVersion: RsvpButtonsVersion
+            ContentVersion: TypedDatesVersion
         );
 
     // v28: calendar.appointment_updated.v1 nueva ("Edit details": título, descripción o lugar).
@@ -2918,7 +2987,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your appointment was updated</td></tr>
               {% if title_changed %}<tr><td style="padding-bottom:10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#70869A;mso-line-height-rule:exactly;">Before: <s>{{ previous_title }}</s></td></tr>{% endif %}
-              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ appointment_title }}</strong><br /><span style="color:#496174;">{{ start_local }} <span style="color:#70869A;">({{ time_zone }})</span></span>{% if location != blank %}<br /><span style="color:#496174;">{% if location_changed %}New place: {% endif %}{{ location }}</span>{% endif %}</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ appointment_title }}</strong><br /><span style="color:#496174;">{{ start_local }}</span>{% if location != blank %}<br /><span style="color:#496174;">{% if location_changed %}New place: {% endif %}{{ location }}</span>{% endif %}</td></tr></table></td></tr>
               {% if description_changed and description != blank %}<tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;white-space:pre-line;"><strong style="color:#23384B;">Notes:</strong> {{ description }}</td></tr>{% endif %}
               <tr><td style="padding-top:10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">The time didn't change, and your answer still stands.</td></tr>
             </table>
@@ -2932,12 +3001,12 @@ public static partial class NotificationTemplateSeedSource
                 ("location_changed", VariableType.Bool, false, null, "Si cambio el lugar."),
                 ("description", VariableType.String, false, null, "Notas actuales de la cita."),
                 ("description_changed", VariableType.Bool, false, null, "Si cambiaron las notas."),
-                ("start_local", VariableType.String, true, null, "Inicio en la zona de la cita, ya formateado."),
+                ("start_local", VariableType.Date, true, null, "Inicio en la zona de la cita, ya formateado."),
                 ("time_zone", VariableType.String, true, null, "Zona de la cita."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
             ],
-            ContentVersion: AppointmentUpdatedVersion
+            ContentVersion: TypedDatesVersion
         );
 
     // v29: calendar.booking_declined.v1 nueva (la oficina rechaza una solicitud del portal).
@@ -2958,7 +3027,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Appointment request</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">We couldn't confirm your appointment</td></tr>
-              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ appointment_title }}</strong>{% if start_local != blank %}<br /><span style="color:#496174;"><s>{{ start_local }}</s> <span style="color:#70869A;">({{ time_zone }})</span></span>{% endif %}</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:22px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ appointment_title }}</strong>{% if start_local != blank %}<br /><span style="color:#496174;"><s>{{ start_local }}</s></span>{% endif %}</td></tr></table></td></tr>
               {% if reason != blank %}<tr><td style="padding-bottom:10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">From your office:</strong> {{ reason }}</td></tr>{% endif %}
               <tr><td style="padding-top:6px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">You can pick another time from your portal: <a href="{{ portal_link }}" style="color:#1E466B;font-weight:bold;">Book another time</a></td></tr>
             </table>
@@ -2966,13 +3035,13 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("appointment_title", VariableType.String, true, null, "Titulo de la cita pedida."),
-                ("start_local", VariableType.String, false, null, "Hora pedida, en la zona de la cita."),
+                ("start_local", VariableType.Date, false, null, "Hora pedida, en la zona de la cita."),
                 ("time_zone", VariableType.String, true, null, "Zona de la cita."),
                 ("reason", VariableType.String, false, null, "Motivo de la oficina (opcional)."),
                 ("portal_link", VariableType.Url, true, null, "URL del portal del cliente."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
             ],
-            ContentVersion: BookingDeclinedVersion
+            ContentVersion: TypedDatesVersion
         );
 
     /// <summary>El aviso que más importa: no mandarlo deja a alguien presentándose a algo que no existe.</summary>
@@ -2987,7 +3056,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Appointment</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your appointment was cancelled</td></tr>
-              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">An appointment you had scheduled was cancelled.</td></tr>
+              {% if start_local != blank %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Your appointment on <strong style="color:#23384B;">{{ start_local }}</strong> was cancelled.</td></tr>{% else %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">An appointment you had scheduled was cancelled.</td></tr>{% endif %}
               {% if reason %}<tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FDEEEE" style="background-color:#FDEEEE;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #D65B5B;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;mso-line-height-rule:exactly;">{{ reason }}</td></tr></table></td></tr>{% endif %}
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">No action is needed.</td></tr>
             </table>
@@ -2996,9 +3065,18 @@ public static partial class NotificationTemplateSeedSource
             [
                 ("scope", VariableType.String, false, null, "Si se cancelo una ocurrencia o la serie."),
                 ("reason", VariableType.String, false, null, "Motivo, si el organizador lo escribio."),
+                (
+                    "start_local",
+                    VariableType.Date,
+                    false,
+                    null,
+                    "Inicio tipado de lo cancelado (ocurrencia o cita); vacío al cancelar una serie entera."
+                ),
+                ("time_zone", VariableType.String, false, null, "Zona de la cita (para plantillas propias)."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed ClientRequestCreated { get; } =
@@ -3015,7 +3093,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ customer_name }}</strong>, your accountant needs you to send:</td></tr>
               <tr><td style="padding-bottom:12px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#23384B;mso-line-height-rule:exactly;"><strong>{{ request_title }}</strong>{% if request_details %}<br />{{ request_details }}{% endif %}</td></tr></table></td></tr>
               {% if due_at_utc %}
-              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">Please send it before <strong style="color:#23384B;">{{ due_at_utc }}</strong>.</td></tr>
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#496174;mso-line-height-rule:exactly;">Please send it by <strong style="color:#23384B;">{{ due_at_utc }}</strong>.</td></tr>
               {% endif %}
               <tr>
                 <td align="left" style="padding:24px 0 4px 0;">
@@ -3034,10 +3112,11 @@ public static partial class NotificationTemplateSeedSource
                 ("customer_name", VariableType.String, true, null, "Nombre del cliente, del directorio local."),
                 ("request_title", VariableType.String, true, null, "Qué se le pide, en el idioma del cliente."),
                 ("request_details", VariableType.String, false, null, "Detalle opcional del pedido."),
-                ("due_at_utc", VariableType.String, false, null, "La fecha que se le dio al cliente."),
+                ("due_at_utc", VariableType.Date, false, null, "La fecha que se le dio al cliente."),
                 ("portal_link", VariableType.Url, true, null, "URL base del portal del cliente."),
                 ("product_name", VariableType.String, true, null, "Nombre del producto en el asunto."),
-            ]
+            ],
+            ContentVersion: TypedDatesVersion
         );
 
     /// <summary>
@@ -3098,7 +3177,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Tu formulario seguro está listo{% else %}A secure form is ready{% endif %}</td></tr>
               {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Tu oficina de impuestos te pidió completar <strong>{{ form_title }}</strong>. Antes de mostrarte cualquier información, verificaremos tu identidad por correo.{% else %}Your tax office asked you to complete <strong>{{ form_title }}</strong>. You will verify your identity by email before any information is shown.{% endif %}</td></tr>
-              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Este enlace vence el {{ expires_at }} UTC.{% else %}This link expires on {{ expires_at }} UTC.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Este enlace vence {{ expires_at | office_deadline }}.{% else %}This link expires {{ expires_at | office_deadline }}.{% endif %}</td></tr>
               <tr><td style="padding-top:16px;"><a href="{{ access_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Abrir formulario seguro{% else %}Open secure form{% endif %}</a></td></tr>
             </table>
             """,
@@ -3107,10 +3186,16 @@ public static partial class NotificationTemplateSeedSource
                 ("participant_name", VariableType.String, false, null, "Optional participant name."),
                 ("form_title", VariableType.String, true, null, "Form request title."),
                 ("access_link", VariableType.Url, true, null, "Public form access URL."),
-                ("expires_at", VariableType.String, true, null, "Access link expiry in UTC."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Instante tipado: Scribe lo imprime como plazo en la zona de la oficina y el idioma del participante."
+                ),
                 Language,
             ],
-            ContentVersion: ClientFormsBilingualVersion
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed FormAccessCode { get; } =
@@ -3124,17 +3209,23 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Verifica tu identidad{% else %}Verify your identity{% endif %}</td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Usa este código de un solo uso para continuar con{% else %}Use this one-time code to continue with{% endif %} <strong>{{ form_title }}</strong>.</td></tr>
               <tr><td style="padding:18px 0;font-family:Arial,Helvetica,sans-serif;font-size:32px;line-height:38px;font-weight:bold;letter-spacing:6px;color:#1E466B;">{{ code }}</td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}El código vence el {{ expires_at }} UTC. Si no lo pediste, puedes ignorar este correo.{% else %}The code expires on {{ expires_at }} UTC. If you did not request it, you can ignore this email.{% endif %}</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}El código vence {{ expires_at | office_deadline }}. Si no lo pediste, puedes ignorar este correo.{% else %}The code expires {{ expires_at | office_deadline }}. If you did not request it, you can ignore this email.{% endif %}</td></tr>
             </table>
             """,
             Variables:
             [
                 ("code", VariableType.String, true, null, "Six-digit verification code."),
                 ("form_title", VariableType.String, true, null, "Form request title."),
-                ("expires_at", VariableType.String, true, null, "Code expiry in UTC."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Instante tipado: plazo corto, Scribe lo dice relativo (P14)."
+                ),
                 Language,
             ],
-            ContentVersion: ClientFormsBilingualVersion
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed FormRequestAssigned { get; } =
@@ -3161,7 +3252,7 @@ public static partial class NotificationTemplateSeedSource
                 ("portal_link", VariableType.Url, true, null, "Client form URL."),
                 Language,
             ],
-            ContentVersion: ClientFormsBilingualVersion
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed FormRequestReturned { get; } =
@@ -3186,7 +3277,7 @@ public static partial class NotificationTemplateSeedSource
                 ("portal_link", VariableType.Url, true, null, "Client form URL."),
                 Language,
             ],
-            ContentVersion: ClientFormsBilingualVersion
+            ContentVersion: TypedDatesVersion
         );
 
     private static NotificationTemplateSeed FormRequestCompleted { get; } =
@@ -3262,7 +3353,7 @@ public static partial class NotificationTemplateSeedSource
                 ("portal_link", VariableType.Url, true, null, "Client form URL."),
                 Language,
             ],
-            ContentVersion: ClientFormsBilingualVersion
+            ContentVersion: TypedDatesVersion
         );
 
     // Avisos a un participante externo sin vincular (P-14.7). No hay portal ni enlace: el token se guarda
@@ -3462,7 +3553,7 @@ public static partial class NotificationTemplateSeedSource
                     {% if due_date %}
                     <tr>
                       <td style="padding:0 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;">Due date</td>
-                      <td align="right" style="padding:0 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#496174;">{{ due_date }}</td>
+                      <td align="right" style="padding:0 18px 16px 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#496174;">{{ due_date | office_date }}</td>
                     </tr>
                     {% endif %}
                   </table>
@@ -3491,7 +3582,7 @@ public static partial class NotificationTemplateSeedSource
                 ("amount_due", VariableType.String, true, null, "Importe pendiente ya formateado con su moneda."),
                 (
                     "due_date",
-                    VariableType.String,
+                    VariableType.Date,
                     false,
                     null,
                     "Fecha de vencimiento ya formateada. Vacia = no se muestra."
@@ -3500,6 +3591,7 @@ public static partial class NotificationTemplateSeedSource
                 ("has_pdf", VariableType.Bool, false, null, "Falso = no se promete un adjunto que no va."),
                 ("preheader", VariableType.String, false, "Your invoice is ready.", "Linea de vista previa."),
             ],
-            LayoutKey: "tenant-base"
+            LayoutKey: "tenant-base",
+            ContentVersion: TypedDatesVersion
         );
 }

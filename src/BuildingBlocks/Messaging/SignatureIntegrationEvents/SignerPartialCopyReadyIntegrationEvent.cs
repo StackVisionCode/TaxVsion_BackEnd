@@ -22,4 +22,7 @@ public sealed record SignerPartialCopyReadyIntegrationEvent : IntegrationEvent
 
     /// <summary>F7 — true si el preparador también va a enviar el PDF sellado; el template evita prometerlo cuando es false.</summary>
     public required bool SendSealedToSigners { get; init; }
+
+    /// <summary>Cuándo firmó este destinatario (copia en curso); null en eventos de antes de la Fase 5.</summary>
+    public DateTime? SignedAtUtc { get; init; }
 }

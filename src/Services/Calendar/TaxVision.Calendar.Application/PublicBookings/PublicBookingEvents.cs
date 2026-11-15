@@ -28,6 +28,33 @@ internal static class PublicBookingEvents
     /// El anfitrión de la página. Si ya no está en ella (lo quitaron después), sale sin enlace: el correo lo dice
     /// y el equipo reasigna.
     /// </summary>
+    /// <summary>
+    /// P23 (TZ02-H15): la zona del anfitrión de la página; sin ella, la de su primera regla activa (la más vieja, así
+    /// la elección no cambia entre lecturas); sin disponibilidad, la del visitante.
+    /// </summary>
+    public static async Task<string> HostTimeZoneAsync(
+        BookingPage page,
+        Guid hostUserId,
+        string visitorTimeZone,
+        IAvailabilityRepository availability,
+        CancellationToken ct
+    )
+    {
+        foreach (var candidate in page.Hosts)
+        {
+            if (candidate.UserId == hostUserId && candidate.TimeZoneId is { } explicitZone)
+                return explicitZone;
+        }
+
+        var rules = await availability.ListRulesAsync(page.TenantId, hostUserId, ct);
+        var first = rules
+            .Where(rule => rule.IsActive)
+            .OrderBy(rule => rule.CreatedAtUtc)
+            .ThenBy(rule => rule.Id)
+            .FirstOrDefault();
+        return first?.TimeZone.Id ?? visitorTimeZone;
+    }
+
     public static async Task<PublicBookingHost> HostAsync(
         BookingPage page,
         Guid hostUserId,
@@ -43,15 +70,7 @@ internal static class PublicBookingEvents
                 host = candidate;
         }
 
-        var timeZone = visitorTimeZone;
-        foreach (var rule in await availability.ListRulesAsync(page.TenantId, hostUserId, ct))
-        {
-            if (rule.IsActive)
-            {
-                timeZone = rule.TimeZone.Id;
-                break;
-            }
-        }
+        var timeZone = await HostTimeZoneAsync(page, hostUserId, visitorTimeZone, availability, ct);
 
         return new PublicBookingHost(
             hostUserId,

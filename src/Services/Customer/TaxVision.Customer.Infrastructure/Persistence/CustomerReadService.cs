@@ -1,4 +1,6 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.TenantTimeZones;
+using BuildingBlocks.TimeZones;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers;
@@ -12,7 +14,8 @@ namespace TaxVision.Customer.Infrastructure.Persistence;
 public sealed class CustomerReadService(
     CustomerDbContext db,
     ISensitiveDataProtector protector,
-    TimeProvider? time = null
+    TimeProvider? time = null,
+    ITenantTimeZoneResolver? zones = null
 ) : ICustomerReadService
 {
     private readonly TimeProvider _time = time ?? TimeProvider.System;
@@ -149,9 +152,10 @@ public sealed class CustomerReadService(
     )
     {
         months = Math.Clamp(months, 1, 24);
-        var now = DateTime.UtcNow;
-        // Primer día (UTC) del primer mes de la ventana; los meses previos no cuentan para el desglose.
-        var since = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-(months - 1));
+        // Meses de la oficina, no UTC: un alta de la noche del último día cuenta en ese mes.
+        var zone = zones is null ? ResolvedTimeZone.Utc : await zones.ResolveAsync(tenantId, ct);
+        var today = CivilDate.Of(_time.GetUtcNow().UtcDateTime, zone);
+        var since = LocalDay.StartUtc(new DateOnly(today.Year, today.Month, 1).AddMonths(-(months - 1)), zone);
 
         // Mismo aislamiento que SearchAsync (IgnoreQueryFilters + filtro explícito de tenant).
         var scoped = db.Customers.AsNoTracking().IgnoreQueryFilters().Where(c => c.TenantId == tenantId);
@@ -165,11 +169,16 @@ public sealed class CustomerReadService(
 
         var totalCount = await scoped.CountAsync(ct);
 
-        var monthly = await scoped
+        // Solo fechas de la ventana: el mes de la oficina se calcula aquí (SQL no conoce zonas IANA).
+        var createdInWindow = await scoped
             .Where(c => c.CreatedAtUtc >= since)
-            .GroupBy(c => new { c.CreatedAtUtc.Year, c.CreatedAtUtc.Month })
-            .Select(g => new MonthlyNewCustomers(g.Key.Year, g.Key.Month, g.Count()))
+            .Select(c => c.CreatedAtUtc)
             .ToListAsync(ct);
+        var monthly = createdInWindow
+            .Select(created => CivilDate.Of(created, zone))
+            .GroupBy(day => (day.Year, day.Month))
+            .Select(g => new MonthlyNewCustomers(g.Key.Year, g.Key.Month, g.Count()))
+            .ToList();
 
         var recentRows = await scoped
             .OrderByDescending(c => c.CreatedAtUtc)

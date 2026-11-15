@@ -151,6 +151,7 @@ internal static class TestRunFlow
                     runs,
                     schedules,
                     unitOfWork,
+                    UnknownOfficeZone.Instance,
                     CancellationToken.None
                 ),
                 ApplyCampaignRunFundingCommand apply => await ApplyCampaignRunFundingHandler.Handle(
@@ -163,14 +164,30 @@ internal static class TestRunFlow
                     NullLogger<CampaignRun>.Instance,
                     CancellationToken.None
                 ),
-                SkipScheduledSlotCommand skip => await SkipScheduledSlotHandler.Handle(
-                    skip,
+                DeferScheduledSlotCommand defer => await DeferScheduledSlotHandler.Handle(
+                    defer,
                     schedules,
                     unitOfWork,
                     CancellationToken.None
                 ),
+                SkipScheduledSlotCommand skip => await SkipScheduledSlotHandler.Handle(
+                    skip,
+                    schedules,
+                    unitOfWork,
+                    UnknownOfficeZone.Instance,
+                    CancellationToken.None
+                ),
                 _ => throw new NotSupportedException(message.GetType().Name),
             };
+}
+
+/// <summary>Oficina sin zona conocida: los agendados no se anclan (comportamiento de antes).</summary>
+internal sealed class UnknownOfficeZone : TaxVision.Campaigns.Application.Scheduling.Abstractions.IOfficeTimeZone
+{
+    public static readonly UnknownOfficeZone Instance = new();
+
+    public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+        Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(null));
 }
 
 internal sealed class FakeSenderProfileRepository : ISenderProfileRepository

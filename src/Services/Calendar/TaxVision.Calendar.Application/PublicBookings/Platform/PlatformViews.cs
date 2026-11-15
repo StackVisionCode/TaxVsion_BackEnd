@@ -16,7 +16,8 @@ internal static class PlatformViews
                     host.NotificationEmail,
                     host.MeetingUrl,
                     host.SortOrder,
-                    host.IsActive
+                    host.IsActive,
+                    host.TimeZoneId
                 )
             );
         hosts.Sort(

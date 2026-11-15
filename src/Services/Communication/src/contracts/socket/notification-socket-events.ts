@@ -88,4 +88,6 @@ export const NotificationSocketEvents = {
   SessionRevoked: 'session.revoked',
   // s -> c (ACCESO — mismo criterio: canal propio, sin datos de negocio en el payload)
   AccessChanged: 'access.changed',
+  // s -> c (OFICINA — P27: la zona cambió; payload { timeZoneId } y cada sesión recarga su perfil)
+  OfficeTimeZoneChanged: 'office.time_zone.changed',
 } as const;

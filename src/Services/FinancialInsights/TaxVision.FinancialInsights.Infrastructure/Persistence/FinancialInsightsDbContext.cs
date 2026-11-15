@@ -1,8 +1,10 @@
 using System.Linq.Expressions;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.FinancialInsights.Domain.Imports;
@@ -28,7 +30,8 @@ public sealed class FinancialInsightsDbContext(
     // Cierra sobre esta instancia: EF cachea el modelo por tipo y una constante externa quedaría congelada.
     private Guid EffectiveTenantId => tenantContext.HasTenant ? tenantContext.TenantId : Guid.Empty;
 
-    public static bool IsUniqueViolation(DbUpdateException ex) => ex.InnerException is SqlException { Number: 2601 or 2627 };
+    public static bool IsUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is SqlException { Number: 2601 or 2627 };
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,7 +40,12 @@ public sealed class FinancialInsightsDbContext(
             b.ToTable("ImportBatches");
             b.HasKey(x => x.Id);
             b.Property(x => x.Id).ValueGeneratedNever();
-            b.HasIndex(x => new { x.TenantId, x.CustomerId, x.CreatedAtUtc });
+            b.HasIndex(x => new
+            {
+                x.TenantId,
+                x.CustomerId,
+                x.CreatedAtUtc,
+            });
             b.Property(x => x.Source).HasConversion<string>().HasMaxLength(16);
             b.HasMany(x => x.Documents).WithOne().HasForeignKey(x => x.BatchId);
             b.Navigation(x => x.Documents).HasField("_documents").UsePropertyAccessMode(PropertyAccessMode.Field);
@@ -57,7 +65,12 @@ public sealed class FinancialInsightsDbContext(
             b.ToTable("FinancialMovements");
             b.HasKey(x => x.Id);
             b.Property(x => x.Id).ValueGeneratedNever();
-            b.HasIndex(x => new { x.TenantId, x.CustomerId, x.TransactionDate });
+            b.HasIndex(x => new
+            {
+                x.TenantId,
+                x.CustomerId,
+                x.TransactionDate,
+            });
             b.HasIndex(x => new { x.TenantId, x.ImportDocumentId });
             b.Property(x => x.Description).HasMaxLength(FinancialMovement.MaxDescriptionLength);
             b.Property(x => x.Amount).HasPrecision(19, 4);
@@ -96,6 +109,7 @@ public sealed class FinancialInsightsDbContext(
             b.ToTable("TenantEntitlementsProjections");
             b.HasKey(x => x.Id);
             b.Property(x => x.PlanCode).HasMaxLength(100);
+            b.Property(x => x.UsagePeriodAnchorUtc).HasColumnType("datetime2");
             b.Property(x => x.EnabledModulesJson).HasColumnType("nvarchar(max)");
             b.Ignore(x => x.EnabledModules);
         });
@@ -115,8 +129,12 @@ public sealed class FinancialInsightsDbContext(
         });
         // Visibilidad por asignación (kit compartido con Notes/Tasks).
         modelBuilder.ApplyCustomerAssignmentProjection();
+        // Zona de cada oficina (kit compartido): corta el período del cupo de IA.
+        modelBuilder.ApplyTenantTimeZoneProjection();
 
         ApplyFailClosedTenantFilter(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     // Red de seguridad: sin tenant en contexto no se ve nada. Los repositorios filtran además por tenant explícito.

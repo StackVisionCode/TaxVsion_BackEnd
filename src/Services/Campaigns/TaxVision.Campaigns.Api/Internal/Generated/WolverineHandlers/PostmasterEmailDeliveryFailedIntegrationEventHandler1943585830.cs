@@ -25,12 +25,12 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Campaigns.Infrastructure.Persistence.CampaignsDbContext campaignsDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Campaigns.Infrastructure.Persistence.CampaignsDbContext.");
             var campaignRunRepository = new TaxVision.Campaigns.Infrastructure.Persistence.Repositories.CampaignRunRepository(campaignsDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var postmasterEmailDeliveryFailedIntegrationEvent = (BuildingBlocks.Messaging.EmailIntegrationEvents.PostmasterEmailDeliveryFailedIntegrationEvent)context.Envelope.Message;
 

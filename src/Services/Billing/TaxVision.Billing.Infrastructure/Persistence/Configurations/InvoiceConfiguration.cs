@@ -18,6 +18,7 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
 
         b.Property(i => i.TenantId).IsRequired();
         b.Property(i => i.InvoiceNumber).HasMaxLength(64);
+        b.Property(i => i.IssueTimeZoneId).HasMaxLength(64);
         b.Property(i => i.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
         b.Property(i => i.Currency).HasMaxLength(3).IsRequired();
         b.Property(i => i.PoNumber).HasMaxLength(128);

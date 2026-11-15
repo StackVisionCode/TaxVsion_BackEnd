@@ -14,6 +14,7 @@ public static class ChangeFormRequestDueDateHandler
         IFormRequestVisibilityFilter visibility,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -30,7 +31,8 @@ public static class ChangeFormRequestDueDateHandler
             return Result.Failure<FormRequestResponse>(found.Error);
         if (!FormRequestApplicationSupport.RowVersionMatches(found.Value, command.RowVersion))
             return Result.Failure<FormRequestResponse>(FormRequestErrors.ConcurrencyConflict);
-        var changed = found.Value.ChangeDueDate(command.DueAtUtc, command.ByUserId, command.NowUtc);
+        var dueAtUtc = await FormDueDates.ResolveAsync(command.TenantId, command.DueOn, command.DueAtUtc, zones, ct);
+        var changed = found.Value.ChangeDueDate(dueAtUtc, command.ByUserId, command.NowUtc, command.DueOn);
         return await ReviewSupport.Save(
             changed,
             found.Value,

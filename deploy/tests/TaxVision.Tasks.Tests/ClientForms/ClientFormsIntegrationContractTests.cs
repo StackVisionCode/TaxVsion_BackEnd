@@ -27,6 +27,7 @@ public sealed class ClientFormsIntegrationContractTests
             "Title",
             "HasMessage",
             "DueAtUtc",
+            "DueOn",
             "TaxYear",
             "RequestedByUserId",
             "FormTemplateId",
@@ -53,6 +54,7 @@ public sealed class ClientFormsIntegrationContractTests
             "FieldCommentCount",
             "ReturnedByUserId",
             "DueAtUtc",
+            "DueOn",
         ],
         [typeof(FormRequestCompletedIntegrationEvent)] =
         [
@@ -90,6 +92,7 @@ public sealed class ClientFormsIntegrationContractTests
             "Participant",
             "Title",
             "DueAtUtc",
+            "DueOn",
             "IsOverdue",
             "ReminderNumber",
             "IsManual",

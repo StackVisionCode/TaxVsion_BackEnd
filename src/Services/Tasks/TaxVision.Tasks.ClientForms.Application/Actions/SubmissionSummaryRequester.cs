@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.DataCollection.Engine;
 using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.Tasks.ClientForms.Application.Common;
@@ -23,7 +24,8 @@ public sealed class SubmissionSummaryRequester(
     IAnswersProtector protector,
     IProtectedPayloadCodec codec,
     IFormRequestStaffReadRepository staffRead,
-    ICorrelationContext correlation
+    ICorrelationContext correlation,
+    IOfficeTimeZone zones
 )
 {
     private const string SignatureOwnerType = "Signature";
@@ -80,7 +82,13 @@ public sealed class SubmissionSummaryRequester(
 
         // P-18: si la plantilla tiene un signatureStep, Documents genera también la copia para firma
         // (owner/carpeta de firma) y devuelve Copies + ancla.
-        var signatureCopy = ResolveSignatureCopy(request, revisionNumber, definition.Value);
+        var officeZone = await zones.ResolveAsync(request.TenantId, ct);
+        var signatureCopy = ResolveSignatureCopy(
+            request,
+            revisionNumber,
+            definition.Value,
+            DefaultTaxYear(request.TaxYear, nowUtc, officeZone)
+        );
 
         var message = SubmissionSummaryCommandFactory.Create(
             request,
@@ -101,7 +109,8 @@ public sealed class SubmissionSummaryRequester(
     private static SignatureCopyRequest? ResolveSignatureCopy(
         FormRequest request,
         int revisionNumber,
-        FormDefinition definition
+        FormDefinition definition,
+        int taxYear
     )
     {
         if (!DefinitionHasSignatureStep(definition) || !request.Summary.RevisionAwaitsSignature(revisionNumber))
@@ -110,10 +119,14 @@ public sealed class SubmissionSummaryRequester(
         {
             OwnerType = SignatureOwnerType,
             FolderType = SignatureFolderType,
-            // FolderType.Signatures exige año; si la request no lo tiene, cae al año en curso.
-            TaxYear = request.TaxYear ?? DateTime.UtcNow.Year,
+            // FolderType.Signatures exige año; si la request no lo tiene, cae al año en curso de la oficina.
+            TaxYear = taxYear,
         };
     }
+
+    /// <summary>Año fiscal de la request o, sin él, el año en curso de la oficina (no el UTC).</summary>
+    public static int DefaultTaxYear(int? taxYear, DateTime nowUtc, ResolvedTimeZone officeZone) =>
+        taxYear ?? CivilDate.Of(nowUtc, officeZone).Year;
 
     private static bool DefinitionHasSignatureStep(FormDefinition definition) =>
         definition.Pages.Any(page =>

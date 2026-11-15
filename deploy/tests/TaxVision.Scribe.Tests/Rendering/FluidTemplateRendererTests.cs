@@ -86,7 +86,10 @@ public sealed class FluidTemplateRendererTests
 
     private static readonly LogoAsset SystemLogo = new(Guid.NewGuid(), "image/png", 1024, IsFallback: false);
 
-    private FluidTemplateRenderer BuildRenderer(IMemoryCache l1Cache) =>
+    private FluidTemplateRenderer BuildRenderer(
+        IMemoryCache l1Cache,
+        BuildingBlocks.TenantTimeZones.ITenantTimeZoneResolver? zones = null
+    ) =>
         new(
             new EventTemplateResolver(new FakeEventTemplateMappingRepository(TestTemplateKey)),
             new FakeEmailTemplateRepository(_template),
@@ -101,7 +104,8 @@ public sealed class FluidTemplateRendererTests
             TestPlatform.Settings,
             l1Cache,
             _l2Cache,
-            NullLogger<FluidTemplateRenderer>.Instance
+            NullLogger<FluidTemplateRenderer>.Instance,
+            zones
         );
 
     private static RenderRequest BuildRequest() =>
@@ -646,5 +650,197 @@ public sealed class FluidTemplateRendererTests
         }
 
         public Task<bool> RemoveAsync(Guid id, CancellationToken ct = default) => throw new NotImplementedException();
+    }
+
+    // ---------- Fechas tipadas (P18): se imprimen en la zona de quien lee, sin tocar la plantilla ----------
+
+    /// <summary>
+    /// Aceptación de la Fase 5: toda plantilla sembrada que declara fechas, renderizada con instantes tipados para una
+    /// oficina en Nueva York y otra en Tokio, sale sin marcador, sin ISO crudo y sin "UTC" escrito.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(SeedsWithDates))]
+    public async Task Every_seeded_template_with_dates_prints_them_readably_in_new_york_and_tokyo(
+        string templateKey,
+        string zone
+    )
+    {
+        var seed = TaxVision.Scribe.Application.Templates.Seed.NotificationTemplateSeedSource.All.Single(s =>
+            s.TemplateKey == templateKey
+        );
+        _cloudStorage.Seed(_htmlFileId, seed.Html);
+        _cloudStorage.Seed(_textFileId, seed.Subject);
+        var variables = seed.Variables.ToDictionary(
+            v => v.Name,
+            v =>
+                v.Type switch
+                {
+                    VariableType.Date => Marker("$instant", "2026-11-18T14:00:00Z"),
+                    // false: las ramas "es el último intento" o "vencido" esconden la fecha.
+                    VariableType.Bool => (object?)false,
+                    VariableType.Number => 3,
+                    VariableType.Url => "https://office.example.com/x",
+                    _ => "Sample",
+                }
+        );
+        var renderer = BuildRenderer(new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }));
+
+        var result = await renderer.RenderAsync(
+            new RenderRequest(TestEventKey, null, null, variables, TimeZoneId: zone)
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : "");
+        foreach (var output in new[] { result.Value.Html, result.Value.Text ?? string.Empty })
+        {
+            Assert.DoesNotContain("$instant", output);
+            Assert.DoesNotContain("2026-11-18T14", output);
+            Assert.DoesNotContain(" UTC", output);
+        }
+        // Lo que sí se imprime: 14:00Z del 18 es el 18 en Nueva York (9:00) y en Tokio (23:00).
+        // task.form_request_returned.v1 declara due_date pero no la imprime (así estaba antes de la Fase 5).
+        if (templateKey != "task.form_request_returned.v1")
+            Assert.Contains("Nov 18", result.Value.Html + result.Value.Text);
+    }
+
+    public static IEnumerable<object[]> SeedsWithDates() =>
+        TaxVision
+            .Scribe.Application.Templates.Seed.NotificationTemplateSeedSource.All.Where(s =>
+                !string.IsNullOrWhiteSpace(s.Html) && s.Variables.Any(v => v.Type == VariableType.Date)
+            )
+            .SelectMany(s =>
+                new[]
+                {
+                    new object[] { s.TemplateKey, "America/New_York" },
+                    new object[] { s.TemplateKey, "Asia/Tokyo" },
+                }
+            );
+
+    private static object Marker(string kind, string value) =>
+        System.Text.Json.JsonDocument.Parse($"{{\"{kind}\":\"{value}\"}}").RootElement.Clone();
+
+    private async Task<string?> RenderTextAsync(
+        string text,
+        object? when,
+        string? zone = null,
+        Guid? tenantId = null,
+        string? locale = null,
+        BuildingBlocks.TenantTimeZones.ITenantTimeZoneResolver? zones = null
+    )
+    {
+        _cloudStorage.Seed(_textFileId, text);
+        var renderer = BuildRenderer(new MemoryCache(new MemoryCacheOptions { SizeLimit = 1000 }), zones);
+        var result = await renderer.RenderAsync(
+            new RenderRequest(
+                TestEventKey,
+                tenantId,
+                locale is null ? null : TaxVision.Scribe.Domain.ValueObjects.Locale.Create(locale).Value,
+                new Dictionary<string, object?>
+                {
+                    ["name"] = "Ana",
+                    ["link"] = "https://x",
+                    ["when"] = when,
+                },
+                TimeZoneId: zone
+            )
+        );
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : "");
+        return result.Value.Text;
+    }
+
+    [Theory]
+    [InlineData("America/New_York", "Wed, Nov 18, 2026, 9:00 AM · New York time, GMT-5")]
+    [InlineData("Asia/Tokyo", "Wed, Nov 18, 2026, 11:00 PM · Tokyo time, GMT+9")]
+    public async Task A_typed_instant_prints_in_the_reader_time_zone(string zone, string expected)
+    {
+        Assert.Equal(expected, await RenderTextAsync("{{ when }}", Marker("$instant", "2026-11-18T14:00:00Z"), zone));
+    }
+
+    [Fact]
+    public async Task A_typed_civil_date_prints_as_is_whatever_the_zone()
+    {
+        Assert.Equal("Nov 15, 2026", await RenderTextAsync("{{ when }}", Marker("$date", "2026-11-15"), "Asia/Tokyo"));
+    }
+
+    [Fact]
+    public async Task The_office_filters_give_the_date_or_the_time_alone()
+    {
+        Assert.Equal(
+            "Nov 18, 2026 / 9:00 AM",
+            await RenderTextAsync(
+                "{{ when | office_date }} / {{ when | office_time }}",
+                Marker("$instant", "2026-11-18T14:00:00Z"),
+                "America/New_York"
+            )
+        );
+    }
+
+    /// <summary>Las plantillas de cobros preguntan por "" o blank: una fecha tipada cuenta como presente.</summary>
+    [Fact]
+    public async Task A_typed_date_counts_as_present_in_template_conditions()
+    {
+        Assert.Equal(
+            "yes|yes",
+            await RenderTextAsync(
+                "{% if when != \"\" %}yes{% endif %}|{% if when != blank %}yes{% endif %}",
+                Marker("$instant", "2026-11-18T14:00:00Z"),
+                "America/New_York"
+            )
+        );
+    }
+
+    /// <summary>Tolerante: un emisor viejo que manda texto sigue saliendo igual.</summary>
+    [Fact]
+    public async Task A_date_sent_as_text_prints_unchanged()
+    {
+        Assert.Equal(
+            "Nov 18, 2026 at 9 AM",
+            await RenderTextAsync("{{ when }}", "Nov 18, 2026 at 9 AM", "America/New_York")
+        );
+    }
+
+    [Fact]
+    public async Task Without_a_zone_the_instant_is_labelled_utc()
+    {
+        Assert.Equal(
+            "Wed, Nov 18, 2026, 2:00 PM · UTC",
+            await RenderTextAsync("{{ when }}", Marker("$instant", "2026-11-18T14:00:00Z"))
+        );
+    }
+
+    [Fact]
+    public async Task Without_a_requested_zone_the_office_zone_is_used()
+    {
+        var text = await RenderTextAsync(
+            "{{ when }}",
+            Marker("$instant", "2026-11-18T14:00:00Z"),
+            tenantId: Guid.NewGuid(),
+            zones: new FixedZones("America/Chicago")
+        );
+
+        Assert.Equal("Wed, Nov 18, 2026, 8:00 AM · Chicago time, GMT-6", text);
+    }
+
+    [Fact]
+    public async Task The_language_of_the_send_picks_the_format()
+    {
+        Assert.Equal(
+            "18 de noviembre de 2026, 9:00 · hora de New York, GMT-5",
+            await RenderTextAsync(
+                "{{ when }}",
+                Marker("$instant", "2026-11-18T14:00:00Z"),
+                "America/New_York",
+                locale: "es"
+            )
+        );
+    }
+
+    private sealed class FixedZones(string timeZoneId) : BuildingBlocks.TenantTimeZones.ITenantTimeZoneResolver
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(timeZoneId));
+
+        public void Forget(Guid tenantId) { }
     }
 }

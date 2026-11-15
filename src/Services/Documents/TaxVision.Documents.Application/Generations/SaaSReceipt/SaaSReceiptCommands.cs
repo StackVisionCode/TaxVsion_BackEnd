@@ -26,7 +26,9 @@ public sealed record SaaSReceiptPayload(
     string? BilledToAddress = null,
     /// <summary>Una fila por cosa cobrada cuando el cobro tiene varias (p. ej. pasar a anual). Opcional al final por
     /// la misma razón que "Billed to"; sin líneas, el recibo muestra la fila única de siempre.</summary>
-    IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null
+    IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null,
+    /// <summary>Zona de la oficina que paga (P7). Opcional al final: un comando viejo sale en UTC rotulado.</summary>
+    string? TimeZoneId = null
 );
 
 /// <summary>Registra la generación del recibo de una compra SaaS. Responde 202: el PDF se produce después.</summary>

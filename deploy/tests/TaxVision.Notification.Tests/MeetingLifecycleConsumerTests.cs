@@ -62,7 +62,8 @@ public sealed class MeetingLifecycleConsumerTests
         var email = Assert.Single(harness.Gateway.Queued);
         Assert.Equal("externo@example.com", email.To);
         Assert.Equal("communication.meeting.cancelled.v1", harness.Render.LastEventKey);
-        Assert.Equal("2026-11-05 14:00", harness.Render.LastVariables["start_local"]);
+        Assert.Equal("2026-11-05T18:00:00.0000000Z", TypedDates.Instant(harness.Render.LastVariables["start_local"]));
+        Assert.Equal("America/Santo_Domingo", harness.Render.LastReader?.TimeZoneId);
         Assert.Equal("Client asked to move it", harness.Render.LastVariables["reason"]);
         var ics = InlineAttachmentReader.Text(Assert.Single(email.InlineAttachments!));
         Assert.Contains("METHOD:CANCEL", ics);
@@ -112,8 +113,21 @@ public sealed class MeetingLifecycleConsumerTests
             CancellationToken.None
         );
 
-        Assert.Equal("2026-11-05 14:00", harness.Render.LastVariables["previous_local"]);
-        Assert.Equal("2026-11-05 16:00", harness.Render.LastVariables["new_local"]);
+        Assert.Equal(
+            "2026-11-05T18:00:00.0000000Z",
+            TypedDates.Instant(harness.Render.LastVariables["previous_local"])
+        );
+        Assert.Equal("2026-11-05T20:00:00.0000000Z", TypedDates.Instant(harness.Render.LastVariables["new_local"]));
+        Assert.Equal("America/Santo_Domingo", harness.Render.LastReader?.TimeZoneId);
+        var bells = harness
+            .Dispatcher.Publisher.Published.OfType<BuildingBlocks.Messaging.NotificationIntegrationEvents.InAppNotificationRequestedIntegrationEvent>()
+            .ToList();
+        Assert.NotEmpty(bells);
+        Assert.All(
+            bells,
+            inApp =>
+                Assert.Equal("New time: Thu, Nov 5, 2026, 4:00 PM · Santo Domingo time, GMT-4.", inApp.FallbackBody)
+        );
         var email = Assert.Single(harness.Gateway.Queued);
         var ics = InlineAttachmentReader.Text(Assert.Single(email.InlineAttachments!));
         Assert.Contains("METHOD:PUBLISH", ics);
@@ -193,7 +207,17 @@ public sealed class MeetingLifecycleConsumerTests
         Assert.Equal("externo@example.com", email.To);
         Assert.Equal("communication.meeting.reminder.v1", email.TemplateKey);
         Assert.Equal(15, harness.Render.LastVariables["minutes_before"]);
-        Assert.Equal("2026-11-05 14:00", harness.Render.LastVariables["start_local"]);
+        Assert.Equal("2026-11-05T18:00:00.0000000Z", TypedDates.Instant(harness.Render.LastVariables["start_local"]));
+        Assert.Equal("America/Santo_Domingo", harness.Render.LastReader?.TimeZoneId);
+        // La campana lleva el mismo formato que el correo (antes: "2026-11-05 14:00 (America/Santo_Domingo).").
+        var bells = harness
+            .Dispatcher.Publisher.Published.OfType<BuildingBlocks.Messaging.NotificationIntegrationEvents.InAppNotificationRequestedIntegrationEvent>()
+            .ToList();
+        Assert.NotEmpty(bells);
+        Assert.All(
+            bells,
+            inApp => Assert.Equal("Thu, Nov 5, 2026, 2:00 PM · Santo Domingo time, GMT-4.", inApp.FallbackBody)
+        );
         Assert.Null(email.InlineAttachments);
         // El recordatorio no tiene actor: el host también lo recibe.
         Assert.Equal(2, harness.Logs.Logs.Count(log => log.Channel == NotificationChannel.InApp));

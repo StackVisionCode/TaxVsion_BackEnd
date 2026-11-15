@@ -56,6 +56,25 @@ public sealed class RequestOnboardingReceiptHandlerTests
         Assert.Equal($"onb-receipt:{onboardingId:N}", req.IdempotencyKey);
     }
 
+    /// <summary>P7: el recibo del onboarding va en la zona del navegador; Documents cae a UTC rotulado sin ella.</summary>
+    [Fact]
+    public async Task Passes_the_payer_zone_through()
+    {
+        var client = new FakeReceiptDocumentClient(Result.Success());
+
+        await RequestOnboardingReceiptHandler.Handle(
+            Command(Guid.NewGuid(), "pi_test_ABCD") with
+            {
+                TimeZoneId = "America/Chicago",
+            },
+            client,
+            NullLogger<RequestOnboardingReceiptCommand>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal("America/Chicago", client.LastRequest!.TimeZoneId);
+    }
+
     [Fact]
     public async Task Passes_the_office_name_through_when_it_is_known()
     {

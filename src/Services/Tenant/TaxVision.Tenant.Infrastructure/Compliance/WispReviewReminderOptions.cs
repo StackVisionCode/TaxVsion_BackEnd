@@ -10,8 +10,11 @@ public sealed class WispReviewReminderOptions
 
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Cada cuánto corre. Correr más de una vez al día no repite avisos (el agregado lo anota).</summary>
-    public int IntervalMinutes { get; set; } = 1440;
+    /// <summary>
+    /// Cada cuánto corre. Cada hora, para que cada oficina reciba el aviso cerca de sus 9:00 (P28); correr más de una
+    /// vez al día no repite avisos (el agregado lo anota).
+    /// </summary>
+    public int IntervalMinutes { get; set; } = 60;
 
     public int BatchSize { get; set; } = 100;
 

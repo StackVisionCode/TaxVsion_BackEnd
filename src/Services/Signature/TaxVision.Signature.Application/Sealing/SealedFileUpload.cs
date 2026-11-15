@@ -20,7 +20,7 @@ internal static class SealedFileUpload
             OwnerType: ownerType,
             OwnerId: ownerId,
             FolderType: "Signatures",
-            TaxYear: (request.CompletedAtUtc ?? request.CreatedAtUtc).Year,
+            TaxYear: request.OfficeYearOf(request.CompletedAtUtc ?? request.CreatedAtUtc),
             ActorId: request.CreatedByUserId
         );
     }

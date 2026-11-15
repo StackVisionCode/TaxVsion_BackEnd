@@ -44,9 +44,9 @@ namespace Internal.Generated.WolverineHandlers
             var documentStorageClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Documents.Application.Abstractions.IDocumentStorageClient>(serviceScope.ServiceProvider);
             var documentTemplateRenderer = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Documents.Application.Abstractions.IDocumentTemplateRenderer>(serviceScope.ServiceProvider);
             var documentGenerationRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Documents.Application.Abstractions.IDocumentGenerationRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var processOnboardingReceiptGenerationCommand = (TaxVision.Documents.Application.Generations.OnboardingReceipt.ProcessOnboardingReceiptGenerationCommand)context.Envelope.Message;
 

@@ -61,6 +61,7 @@ builder
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddAuthOnboardingInfrastructure(builder.Configuration);

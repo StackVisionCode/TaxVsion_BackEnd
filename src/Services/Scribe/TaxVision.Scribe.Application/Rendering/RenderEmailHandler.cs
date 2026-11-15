@@ -19,7 +19,8 @@ public sealed record RenderEmailQuery(
     IReadOnlyDictionary<string, object?> Variables,
     LogoScope LogoScope = LogoScope.System,
     TemplateChannel Channel = TemplateChannel.Email,
-    RenderAudience Audience = RenderAudience.Staff
+    RenderAudience Audience = RenderAudience.Staff,
+    string? TimeZoneId = null
 );
 
 public static class RenderEmailHandler
@@ -50,7 +51,8 @@ public static class RenderEmailHandler
             query.Variables,
             query.LogoScope,
             query.Channel,
-            query.Audience
+            query.Audience,
+            query.TimeZoneId
         );
         return await renderer.RenderAsync(request, ct);
     }

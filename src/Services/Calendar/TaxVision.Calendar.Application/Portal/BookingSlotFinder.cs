@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Availability.Abstractions;
 using TaxVision.Calendar.Application.Availability.Queries;
@@ -103,7 +104,7 @@ internal static class BookingSlotFinder
         return Result.Success(new Bookable(policy, type.Value, zone, preparers));
     }
 
-    /// <summary>Zona para rotular: la de la oficina, la del horario del preparador o UTC.</summary>
+    /// <summary>Zona para rotular: la de la oficina (desde Tenant), la del horario del preparador o UTC.</summary>
     public static async Task<string> TimeZoneAsync(
         Guid tenantId,
         Guid preparerUserId,
@@ -112,11 +113,11 @@ internal static class BookingSlotFinder
         CancellationToken ct
     )
     {
-        var office = await offices.GetAsync(tenantId, ct);
-        if (!string.IsNullOrWhiteSpace(office?.TimeZoneId))
-            return office.TimeZoneId;
+        var office = await offices.GetTimeZoneIdAsync(tenantId, ct);
+        if (!string.IsNullOrWhiteSpace(office))
+            return office;
         var rules = await availability.ListRulesAsync(tenantId, preparerUserId, ct);
-        return rules.Count > 0 ? rules[0].TimeZone.Id : "UTC";
+        return rules.Count > 0 ? rules[0].TimeZone.Id : IanaTimeZone.UtcId;
     }
 
     /// <summary>Los horarios reservables del rango con cualquiera de los preparadores, sin repetir.</summary>
@@ -213,7 +214,9 @@ internal static class BookingSlotFinder
     {
         var now = DateTime.UtcNow;
         var from = Max(fromUtc, now.AddMinutes(bookable.Policy.MinNoticeMinutes));
-        var to = Min(toUtc, now.AddDays(bookable.Policy.MaxDaysAhead));
+        // P23: el último día reservable llega a la medianoche local, no a la hora de ahora.
+        var zone = await TimeZoneAsync(tenantId, preparerUserId, availability, offices, ct);
+        var to = Min(toUtc, BookingHorizon.EndUtc(now, bookable.Policy.MaxDaysAhead, zone));
         if (to <= from)
             return Result.Success<IReadOnlyList<TimeSlot>>([]);
 

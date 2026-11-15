@@ -20,11 +20,6 @@ public sealed record StandardTaxTemplate(
 /// </summary>
 public static class StandardTaxTemplates
 {
-    /// <summary>Nueva York por defecto: los vencimientos del IRS se cuentan en hora del este.</summary>
-    private const string DefaultTimeZoneId = "America/New_York";
-
-    public static string TimeZoneId => DefaultTimeZoneId;
-
     public static IReadOnlyList<StandardTaxTemplate> All => [Individual1040, EstimatedTax1040Es, Payroll941];
 
     /// <summary>
@@ -73,7 +68,7 @@ public static class StandardTaxTemplates
         new(
             "941 — Quarterly Payroll Return",
             "The 941 for each quarter, due the last day of the month after the quarter closes.",
-            "FREQ=YEARLY;BYMONTH=1,4,7,10;BYMONTHDAY=31",
+            "FREQ=YEARLY;BYMONTH=1,4,7,10;BYMONTHDAY=-1",
             RecurrenceMode.FixedSchedule,
             [Step(1, "Prepare and transmit the 941", 0, TaskPriority.High, statutory: true, estimated: 2m)]
         );

@@ -254,7 +254,7 @@ export async function sendDueMeetingReminders(
       // Los Removed (p.ej. un empleado retirado) ya no reciben el recordatorio.
       const participantUserIds = meeting.notifiableUserIds();
       const host = (await deps.tenantHostResolver?.resolveHost(meeting.tenantId)) ?? null;
-      const timeZone = (await deps.tenantHostResolver?.resolveTimeZone?.(meeting.tenantId)) ?? null;
+      const timeZone = meeting.toSnapshot().timeZoneId ?? (await deps.tenantHostResolver?.resolveTimeZone?.(meeting.tenantId)) ?? null;
       const urls = buildMeetingListUrls({
         host,
         fallbackBaseUrl: config.meetingInvitations.frontendBaseUrl,

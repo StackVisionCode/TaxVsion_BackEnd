@@ -337,6 +337,7 @@ public sealed class RunCustomerImportHandlerFlowTests
             services.AddSingleton<ICustomerImportReaderFactory>(new FixedRows(Rows));
             services.AddSingleton<ICorrelationContext>(Correlation);
             services.AddSingleton<IUnitOfWork>(new NoUnitOfWork());
+            services.AddSingleton<IOfficeTimeZone>(new UtcOfficeZone());
             services.AddSingleton<IConfiguration>(
                 new ConfigurationBuilder()
                     .AddInMemoryCollection(
@@ -609,5 +610,11 @@ public sealed class RunCustomerImportHandlerFlowTests
         {
             public void Dispose() { }
         }
+    }
+
+    private sealed class UtcOfficeZone : IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(null));
     }
 }

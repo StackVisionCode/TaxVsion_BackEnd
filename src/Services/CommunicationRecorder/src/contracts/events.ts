@@ -148,9 +148,14 @@ export function buildSaveFileRequested(input: SaveFileRequestedInput): Record<st
   };
 }
 
-/** `Meeting_Recording_2026-10-30.mp4` / `Call_Recording_…` (§9.2). */
-export function composedFileName(scope: 'Meeting' | 'Call', startedAtUtc: string, format: 'mp4' | 'webm'): string {
-  return `${scope}_Recording_${new Date(startedAtUtc).toISOString().slice(0, 10)}.${format}`;
+/** `Meeting_Recording_2026-10-30.mp4` / `Call_Recording_…` (§9.2). P25: fecha local si llega; si no, la UTC. */
+export function composedFileName(
+  scope: 'Meeting' | 'Call',
+  startedAtUtc: string,
+  format: 'mp4' | 'webm',
+  recordingLocalDate?: string,
+): string {
+  return `${scope}_Recording_${recordingLocalDate ?? new Date(startedAtUtc).toISOString().slice(0, 10)}.${format}`;
 }
 
 export function trackFileName(userId: string, trackId: string): string {

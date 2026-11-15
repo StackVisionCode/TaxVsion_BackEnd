@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Infrastructure.Scribe;
 
 namespace TaxVision.Notification.Tests;
@@ -212,5 +213,33 @@ public sealed class ScribeRenderClientTests
 
         Assert.True(result.IsSuccess);
         Assert.Contains($"\"audience\":\"{expected}\"", handler.LastBody);
+    }
+
+    /// <summary>Fase 5: quien lee viaja en el pedido; Scribe imprime las fechas tipadas en su idioma y zona.</summary>
+    [Fact]
+    public async Task RenderAsync_sends_the_reader_language_and_time_zone()
+    {
+        var handler = new CapturingHandler();
+        var client = new ScribeRenderClient(
+            new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5205/") },
+            new FakeTokenAcquirer(),
+            NullLogger<ScribeRenderClient>.Instance
+        );
+
+        var result = await client.RenderAsync(
+            "billing.invoice_sent.v1",
+            Guid.NewGuid(),
+            new Dictionary<string, object?>
+            {
+                ["due"] = ScribeDates.Instant(new DateTime(2026, 11, 18, 14, 0, 0, DateTimeKind.Utc)),
+            },
+            ScribeRenderAudience.Client,
+            ScribeReader.From("Spanish", "America/New_York")
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains("\"locale\":\"es\"", handler.LastBody);
+        Assert.Contains("\"timeZoneId\":\"America/New_York\"", handler.LastBody);
+        Assert.Contains("\"due\":{\"$instant\":\"2026-11-18T14:00:00.0000000Z\"}", handler.LastBody);
     }
 }

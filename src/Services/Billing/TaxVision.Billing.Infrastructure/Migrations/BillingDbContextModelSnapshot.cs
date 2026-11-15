@@ -51,6 +51,27 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                     b.ToTable("CustomerAssignmentProjections", "billing");
                 });
 
+            modelBuilder.Entity("BuildingBlocks.TenantTimeZones.TenantTimeZoneProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("SourceVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantTimeZoneProjections", "billing");
+                });
+
             modelBuilder.Entity("TaxVision.Billing.Domain.Invoices.Invoice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -98,6 +119,9 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date");
+
                     b.Property<DateTime>("DueDateUtc")
                         .HasColumnType("datetime2");
 
@@ -109,8 +133,15 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<DateOnly?>("IssueDate")
+                        .HasColumnType("date");
+
                     b.Property<DateTime>("IssueDateUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("IssueTimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("Issuer")
                         .HasColumnType("nvarchar(max)");
@@ -124,6 +155,9 @@ namespace TaxVision.Billing.Infrastructure.Migrations
 
                     b.Property<DateTime?>("PaidAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateOnly?>("PaidDate")
+                        .HasColumnType("date");
 
                     b.Property<Guid?>("PaidPdfFileId")
                         .HasColumnType("uniqueidentifier");

@@ -33,44 +33,10 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             
             /*
-            * Concrete type TaxVision.Tasks.Infrastructure.Persistence.Repositories.ClientRequestRepository is not public, so requires service location
-            */
-            var clientRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.ClientRequests.Abstractions.IClientRequestRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            var taskSeriesRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Series.Abstractions.ITaskSeriesRepository>(serviceScope.ServiceProvider);
-            
-            /*
-            * The service registration for TaxVision.Tasks.Application.Permissions.Abstractions.IUserPermissionsProjectionRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            */
-            var userPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Permissions.Abstractions.IUserPermissionsProjectionRepository>(serviceScope.ServiceProvider);
-            
-            /*
-            * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormRequestRepository is not public, so requires service location
-            */
-            var formRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.Abstractions.IFormRequestRepository>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var taskRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Tasks.Abstractions.ITaskRepository>(serviceScope.ServiceProvider);
-            
-            /*
-            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            */
-            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
-            
-            /*
-            * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Audit.FormAuditLog is not public, so requires service location
-            */
-            var formAuditLog = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IFormAuditLog>(serviceScope.ServiceProvider);
-            
-            /*
             * Dependency: Descriptor: ServiceType: TaxVision.Tasks.ClientForms.Application.Participants.Abstractions.IFormResponsibleUserValidator Lifetime: Scoped ImplementationType: TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormResponsibleUserValidator
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormResponsibleUserValidator is not public, so requires service location
             */
             var formActionAuthorizer = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Actions.Abstractions.IFormActionAuthorizer>(serviceScope.ServiceProvider);
-            
-            /*
-            * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormResponsibleUserValidator is not public, so requires service location
-            */
-            var formResponsibleUserValidator = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Participants.Abstractions.IFormResponsibleUserValidator>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormTemplateVersionRepository is not public, so requires service location
@@ -81,6 +47,40 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormIntakeLinkRepository is not public, so requires service location
             */
             var formIntakeLinkRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Participants.Abstractions.IFormIntakeLinkRepository>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.Persistence.Repositories.ClientRequestRepository is not public, so requires service location
+            */
+            var clientRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.ClientRequests.Abstractions.IClientRequestRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var taskSeriesRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Series.Abstractions.ITaskSeriesRepository>(serviceScope.ServiceProvider);
+            var taskRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Tasks.Abstractions.ITaskRepository>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Audit.FormAuditLog is not public, so requires service location
+            */
+            var formAuditLog = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IFormAuditLog>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormResponsibleUserValidator is not public, so requires service location
+            */
+            var formResponsibleUserValidator = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Participants.Abstractions.IFormResponsibleUserValidator>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormRequestRepository is not public, so requires service location
+            */
+            var formRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.Abstractions.IFormRequestRepository>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for TaxVision.Tasks.Application.Permissions.Abstractions.IUserPermissionsProjectionRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var userPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Permissions.Abstractions.IUserPermissionsProjectionRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
@@ -103,11 +103,7 @@ namespace Internal.Generated.WolverineHandlers
                 BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
                 
                 // The actual message execution
-                await TaxVision.Tasks.Application.ClientRequests.Consumers.ClientRequestsUserOffboardedConsumer.Handle(userOffboardedIntegrationEvent, clientRequestRepository, taskRepository, userPermissionsProjectionRepository, unitOfWork, correlationContext, _loggerOfClientRequest, cancellation).ConfigureAwait(false);
-
-                
-                // The actual message execution
-                await TaxVision.Tasks.Application.Permissions.Consumers.UserLifecyclePermissionsProjectionConsumer.Handle(userOffboardedIntegrationEvent, userPermissionsProjectionRepository, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
+                await TaxVision.Tasks.Application.Timers.Consumers.TaskTimersUserOffboardedConsumer.Handle(userOffboardedIntegrationEvent, taskRepository, unitOfWork, correlationContext, _loggerOfTaskTimer, cancellation).ConfigureAwait(false);
 
                 
                 // The actual message execution
@@ -115,7 +111,11 @@ namespace Internal.Generated.WolverineHandlers
 
                 
                 // The actual message execution
-                await TaxVision.Tasks.Application.Timers.Consumers.TaskTimersUserOffboardedConsumer.Handle(userOffboardedIntegrationEvent, taskRepository, unitOfWork, correlationContext, _loggerOfTaskTimer, cancellation).ConfigureAwait(false);
+                await TaxVision.Tasks.Application.Permissions.Consumers.UserLifecyclePermissionsProjectionConsumer.Handle(userOffboardedIntegrationEvent, userPermissionsProjectionRepository, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
+
+                
+                // The actual message execution
+                await TaxVision.Tasks.Application.ClientRequests.Consumers.ClientRequestsUserOffboardedConsumer.Handle(userOffboardedIntegrationEvent, clientRequestRepository, taskRepository, userPermissionsProjectionRepository, unitOfWork, correlationContext, _loggerOfClientRequest, cancellation).ConfigureAwait(false);
 
                 
                 // The actual message execution

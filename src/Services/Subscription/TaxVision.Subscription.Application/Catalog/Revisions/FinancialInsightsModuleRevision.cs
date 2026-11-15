@@ -72,7 +72,12 @@ public sealed class FinancialInsightsModuleRevision : ICatalogRevision
         if (module.IsSellableAsAddon)
             return Result.Success("add-on already priced");
 
-        var before = new { module.Category, module.AddonPriceMonthlyUsd, module.AddonPriceYearlyUsd };
+        var before = new
+        {
+            module.Category,
+            module.AddonPriceMonthlyUsd,
+            module.AddonPriceYearlyUsd,
+        };
         var commercial = module.MarkAsCommercial();
         if (commercial.IsFailure)
             return Result.Failure<string>(commercial.Error);
@@ -86,7 +91,12 @@ public sealed class FinancialInsightsModuleRevision : ICatalogRevision
             "module.addon_price",
             new CatalogAuditTarget(nameof(Module), module.Id, module.Code),
             before,
-            new { module.Category, module.AddonPriceMonthlyUsd, module.AddonPriceYearlyUsd },
+            new
+            {
+                module.Category,
+                module.AddonPriceMonthlyUsd,
+                module.AddonPriceYearlyUsd,
+            },
             reason: context.CorrelationId,
             context.CorrelationId,
             context.NowUtc,

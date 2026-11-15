@@ -1,3 +1,4 @@
+using BuildingBlocks.TimeZones;
 using TaxVision.Tasks.Application.Templates;
 using TaxVision.Tasks.Application.Templates.Abstractions;
 using TaxVision.Tasks.Application.Templates.Commands;
@@ -43,7 +44,8 @@ public sealed class TaskTemplateInstantiatorTests
         var first = result.Value.Tasks.Single(t => t.Title.Value == FirstStepTitle());
         var last = result.Value.Tasks.Single(t => t.Title.Value == LastStepTitle());
 
-        Assert.Equal(DueAtUtc.AddDays(-60), first.Due!.DueAtUtc);
+        // Días civiles con la misma hora de pared: 12:00 del 15-abr (EDT) → 12:00 del 14-feb (EST) = 17:00Z.
+        Assert.Equal(new DateTime(2026, 2, 14, 17, 0, 0, DateTimeKind.Utc), first.Due!.DueAtUtc);
         Assert.Equal(DueAtUtc, last.Due!.DueAtUtc);
     }
 
@@ -88,6 +90,31 @@ public sealed class TaskTemplateInstantiatorTests
 
         Assert.Equal(2, quarterly.Count);
         Assert.All(quarterly, t => Assert.Single(t.Steps));
+    }
+
+    /// <summary>
+    /// Los pasos se corren en días civiles: el primero del 1040 (60 días antes del 15-abr) vence al final
+    /// del 14-feb en la oficina, aunque entre medio cambie el horario de verano.
+    /// </summary>
+    [Fact]
+    public void Step_offsets_are_civil_days_across_the_daylight_saving_change()
+    {
+        var newYork = ResolvedTimeZone.Resolve("America/New_York");
+        var application = new TemplateApplication(
+            UserId,
+            UserId,
+            CustomerId,
+            2025,
+            LocalDay.EndUtc(new DateOnly(2026, 4, 15), newYork),
+            "America/New_York",
+            DateTime.UtcNow
+        );
+
+        var result = Instantiator().Instantiate(Template1040(), application);
+
+        var first = result.Value.Tasks.Single(t => t.Title.Value == FirstStepTitle());
+        Assert.Equal(LocalDay.EndUtc(new DateOnly(2026, 2, 14), newYork), first.Due!.DueAtUtc);
+        Assert.Equal(new DateOnly(2026, 2, 14), first.Due.DueOn);
     }
 
     private static TaskTemplateInstantiator Instantiator() =>

@@ -269,6 +269,7 @@ public sealed class ConsentRuntimeTests
             new FakeMessageBus(),
             new FixedCorrelation(),
             new RecordingClientFormsMetrics(),
+            new FixedFormsOfficeZone(),
             default
         );
 
@@ -326,6 +327,7 @@ public sealed class ConsentRuntimeTests
             new FakeMessageBus(),
             new FixedCorrelation(),
             new RecordingClientFormsMetrics(),
+            new FixedFormsOfficeZone(),
             default
         );
 

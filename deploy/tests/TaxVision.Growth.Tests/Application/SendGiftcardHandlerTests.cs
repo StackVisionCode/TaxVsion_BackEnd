@@ -71,6 +71,8 @@ public sealed class SendGiftcardHandlerTests
         Assert.Equal("friend@example.com", result.Value.RecipientEmail);
         Assert.Equal("Enjoy!", result.Value.PersonalMessage);
         Assert.Equal(card.ExpiresAtUtc, result.Value.ExpiresAtUtc);
+        // P30: el correo escribe la zona comercial en la que vence.
+        Assert.Equal(card.ExpiresAtUtc is null ? null : "America/New_York", result.Value.ExpiresTimeZoneId);
     }
 
     [Fact]

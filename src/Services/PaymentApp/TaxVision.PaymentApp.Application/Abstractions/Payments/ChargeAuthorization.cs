@@ -80,7 +80,9 @@ public sealed record WebhookEventPayload(
     // aplica igual (compat). Cuando viene, el handler exige que coincida con el cargo esperado antes
     // de marcar el pago Succeeded (defense-in-depth: bloquea capturas parciales / misconfig).
     long? PaidAmountCents = null,
-    string? PaidCurrency = null
+    string? PaidCurrency = null,
+    // Cuándo ocurrió según el proveedor (P29): la fecha de negocio del pago; null si el adapter no la da.
+    DateTime? ProviderOccurredAtUtc = null
 );
 
 /// <summary>Metadata autoritativa de un método de pago tal como el provider la confirma —

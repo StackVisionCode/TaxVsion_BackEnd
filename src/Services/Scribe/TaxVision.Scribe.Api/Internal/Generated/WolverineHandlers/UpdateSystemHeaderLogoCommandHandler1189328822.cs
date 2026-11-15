@@ -26,13 +26,13 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Scribe.Application.Abstractions.ICloudStorageClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
             * The service registration for TaxVision.Scribe.Application.Abstractions.ICloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var templateStorageService = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Scribe.Application.Templates.Storage.ITemplateStorageService>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var updateSystemHeaderLogoCommand = (TaxVision.Scribe.Application.SystemAssets.Commands.UpdateSystemHeaderLogoCommand)context.Envelope.Message;
 

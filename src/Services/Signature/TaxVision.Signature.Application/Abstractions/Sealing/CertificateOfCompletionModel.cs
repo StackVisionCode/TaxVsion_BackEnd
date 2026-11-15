@@ -14,5 +14,7 @@ public sealed record CertificateOfCompletionModel(
     byte[]? TenantLogo = null,
     CertificatePreparerEntry? Preparer = null,
     // Cert que selló los documentos (null si el sellado CMS está degradado): alimenta el panel "Digital seal".
-    CertificateSealInfo? Seal = null
+    CertificateSealInfo? Seal = null,
+    // Zona de los campos Date (P8), solo en solicitudes con zona congelada: "Chicago time, GMT-6".
+    string? DateFieldsZone = null
 );

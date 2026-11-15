@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using Ical.Net.CalendarComponents;
 using Ical.Net.DataTypes;
 using TaxVision.Calendar.Domain.Appointments;
@@ -65,8 +66,8 @@ public static class OccurrenceExpander
         DateTime rangeEndUtc
     )
     {
-        var timing = appointment.Timing;
-        if (timing.StartUtc is not { } startUtc || timing.EndUtc is not { } endUtc)
+        var (start, end) = Bounds(appointment.Timing);
+        if (start is not { } startUtc || end is not { } endUtc)
             return Result.Success<IReadOnlyList<Occurrence>>([]);
 
         if (endUtc <= rangeStartUtc || startUtc >= rangeEndUtc)
@@ -83,6 +84,18 @@ public static class OccurrenceExpander
                 appointment.Location?.Value
             ),
         ]);
+    }
+
+    /// <summary>
+    /// P23 (H9): un día completo ocupa sus fechas civiles en la zona de la cita, de medianoche a medianoche; una cita
+    /// puntual, sus instantes.
+    /// </summary>
+    private static (DateTime? StartUtc, DateTime? EndUtc) Bounds(EventTiming timing)
+    {
+        if (timing.StartDate is not { } startDate || timing.EndDate is not { } endDate)
+            return (timing.StartUtc, timing.EndUtc);
+        var zone = ResolvedTimeZone.Resolve(timing.TimeZone.Id);
+        return (LocalDay.StartUtc(startDate, zone), LocalDay.StartUtc(endDate.AddDays(1), zone));
     }
 
     private static Result<IReadOnlyList<Occurrence>> ExpandSeries(

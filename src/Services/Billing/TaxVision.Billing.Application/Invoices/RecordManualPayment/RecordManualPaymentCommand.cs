@@ -59,7 +59,8 @@ public static class RecordManualPaymentHandler
         var amount = Money.Create(amountCents, invoice.Currency);
         if (amount.IsFailure)
             return Result.Failure<RecordManualPaymentResult>(amount.Error);
-        var paidAtUtc = command.PaidAtUtc ?? clock.GetUtcNow().UtcDateTime;
+        // Una fecha sin zona se toma como UTC: el día del recibo y su hash no dependen del Kind (TZ05-H8).
+        var paidAtUtc = command.PaidAtUtc is { } given ? AsUtc(given) : clock.GetUtcNow().UtcDateTime;
         var sourceReference = string.IsNullOrWhiteSpace(command.ClientRequestId)
             ? Guid.NewGuid().ToString()
             : command.ClientRequestId.Trim();
@@ -87,4 +88,12 @@ public static class RecordManualPaymentHandler
 
         return Result.Success(new RecordManualPaymentResult(invoice.Id, invoice.Status.ToString()));
     }
+
+    private static DateTime AsUtc(DateTime value) =>
+        value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+        };
 }

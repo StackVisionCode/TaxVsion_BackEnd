@@ -76,7 +76,8 @@ public sealed class FormIntakeLinksController(IMessageBus bus) : ControllerBase
                 request.ExpiresAtUtc,
                 request.MaxSubmissions,
                 request.ResponsibleUserId,
-                DateTime.UtcNow
+                DateTime.UtcNow,
+                request.ExpiresOn
             ),
             ct
         );

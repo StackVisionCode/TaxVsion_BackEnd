@@ -21,13 +21,48 @@ public sealed class FinancialInsightsControllerArchitectureTests
     public static TheoryData<string, string, string, ActorType> ExpectedActions =>
         new()
         {
-            { "ImportBatchesController.Create", "financial.i.import_batch_create", FinancialInsightsPermissions.Import, ActorType.TenantEmployee },
-            { "ImportBatchesController.List", "financial.f.import_batch_read", FinancialInsightsPermissions.View, ActorType.TenantEmployee },
-            { "ImportBatchesController.Get", "financial.f.import_batch_read", FinancialInsightsPermissions.View, ActorType.TenantEmployee },
-            { "ImportBatchesController.Retry", "financial.i.import_document_retry", FinancialInsightsPermissions.Import, ActorType.TenantEmployee },
-            { "PortalImportBatchesController.Create", "financial.i.portal_import_batch_create", FinancialInsightsPermissions.PortalImport, ActorType.CustomerPortal },
-            { "PortalImportBatchesController.List", "financial.f.import_batch_read", FinancialInsightsPermissions.PortalImport, ActorType.CustomerPortal },
-            { "PortalImportBatchesController.Get", "financial.f.import_batch_read", FinancialInsightsPermissions.PortalImport, ActorType.CustomerPortal },
+            {
+                "ImportBatchesController.Create",
+                "financial.i.import_batch_create",
+                FinancialInsightsPermissions.Import,
+                ActorType.TenantEmployee
+            },
+            {
+                "ImportBatchesController.List",
+                "financial.f.import_batch_read",
+                FinancialInsightsPermissions.View,
+                ActorType.TenantEmployee
+            },
+            {
+                "ImportBatchesController.Get",
+                "financial.f.import_batch_read",
+                FinancialInsightsPermissions.View,
+                ActorType.TenantEmployee
+            },
+            {
+                "ImportBatchesController.Retry",
+                "financial.i.import_document_retry",
+                FinancialInsightsPermissions.Import,
+                ActorType.TenantEmployee
+            },
+            {
+                "PortalImportBatchesController.Create",
+                "financial.i.portal_import_batch_create",
+                FinancialInsightsPermissions.PortalImport,
+                ActorType.CustomerPortal
+            },
+            {
+                "PortalImportBatchesController.List",
+                "financial.f.import_batch_read",
+                FinancialInsightsPermissions.PortalImport,
+                ActorType.CustomerPortal
+            },
+            {
+                "PortalImportBatchesController.Get",
+                "financial.f.import_batch_read",
+                FinancialInsightsPermissions.PortalImport,
+                ActorType.CustomerPortal
+            },
         };
 
     [Theory]
@@ -42,16 +77,20 @@ public sealed class FinancialInsightsControllerArchitectureTests
         var method = FindAction(action);
         var controller = method.DeclaringType!;
 
-        var rateLimit = method.GetCustomAttribute<RateLimitAttribute>() ?? controller.GetCustomAttribute<RateLimitAttribute>();
+        var rateLimit =
+            method.GetCustomAttribute<RateLimitAttribute>() ?? controller.GetCustomAttribute<RateLimitAttribute>();
         Assert.Equal(policy, rateLimit?.PolicyName);
         Assert.Equal(policy, RateLimitPolicyCatalog.GetByName(policy).Name.Value);
 
-        var permissions = method.GetCustomAttributes<HasPermissionAttribute>()
+        var permissions = method
+            .GetCustomAttributes<HasPermissionAttribute>()
             .Concat(controller.GetCustomAttributes<HasPermissionAttribute>())
             .Select(p => p.Policy);
         Assert.Contains(permissions, p => p?.EndsWith(permission, StringComparison.Ordinal) == true);
 
-        var actors = method.GetCustomAttribute<AllowActorTypesAttribute>() ?? controller.GetCustomAttribute<AllowActorTypesAttribute>();
+        var actors =
+            method.GetCustomAttribute<AllowActorTypesAttribute>()
+            ?? controller.GetCustomAttribute<AllowActorTypesAttribute>();
         Assert.NotNull(actors);
         Assert.Contains(actor, actors!.ActorTypes);
     }
@@ -63,7 +102,11 @@ public sealed class FinancialInsightsControllerArchitectureTests
             .SelectMany(c => c.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             .Where(m => m.GetCustomAttributes().OfType<HttpMethodAttribute>().Any())
             .Where(m =>
-                (m.GetCustomAttribute<AllowActorTypesAttribute>() ?? m.DeclaringType!.GetCustomAttribute<AllowActorTypesAttribute>()) is null
+                (
+                    m.GetCustomAttribute<AllowActorTypesAttribute>()
+                    ?? m.DeclaringType!.GetCustomAttribute<AllowActorTypesAttribute>()
+                )
+                    is null
                 || (
                     m.GetCustomAttribute<RateLimitAttribute>() is null
                     && m.GetCustomAttribute<RateLimitExemptAttribute>() is null
@@ -83,7 +126,8 @@ public sealed class FinancialInsightsControllerArchitectureTests
                 c.GetConstructors()
                     .SelectMany(ctor => ctor.GetParameters())
                     .Any(p =>
-                        p.ParameterType.Namespace?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal) == true
+                        p.ParameterType.Namespace?.StartsWith("Microsoft.EntityFrameworkCore", StringComparison.Ordinal)
+                            == true
                         || p.ParameterType.Namespace?.Contains(".Infrastructure", StringComparison.Ordinal) == true
                         || p.ParameterType == typeof(HttpClient)
                         || p.ParameterType == typeof(IHttpClientFactory)

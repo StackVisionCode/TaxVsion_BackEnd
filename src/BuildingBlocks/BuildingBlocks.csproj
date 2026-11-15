@@ -25,6 +25,10 @@
     <Compile Remove="Authorization\**\*.cs" />
     <!-- BB-3: unidad transaccional para jobs; ensamblado propio porque usa EF Core y el outbox. -->
     <Compile Remove="Jobs\**\*.cs" />
+    <!-- Proyección opcional de la zona de la oficina; ensamblado propio porque usa EF Core y Messaging. -->
+    <Compile Remove="TenantTimeZones\**\*.cs" />
+    <!-- Convención Kind=Utc para EF Core; ensamblado propio para que Domain no dependa de EF. -->
+    <Compile Remove="EfCore\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>

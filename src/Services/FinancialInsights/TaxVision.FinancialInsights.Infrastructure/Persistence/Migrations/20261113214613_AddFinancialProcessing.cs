@@ -23,12 +23,13 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
                     InputTokens = table.Column<int>(type: "int", nullable: false),
                     OutputTokens = table.Column<int>(type: "int", nullable: false),
                     ReservedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    CompletedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    CompletedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: true),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_AiProcessingReservations", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "FinancialMovements",
@@ -46,43 +47,46 @@ namespace TaxVision.FinancialInsights.Infrastructure.Persistence.Migrations
                     SuggestedCategory = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: false),
                     SourcePage = table.Column<int>(type: "int", nullable: false),
                     RequiresReview = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    CreatedAtUtc = table.Column<DateTime>(type: "datetime2", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_FinancialMovements", x => x.Id);
-                });
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_AiProcessingReservations_TenantId_ImportDocumentId",
                 table: "AiProcessingReservations",
                 columns: new[] { "TenantId", "ImportDocumentId" },
-                unique: true);
+                unique: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_AiProcessingReservations_TenantId_MonthStartUtc",
                 table: "AiProcessingReservations",
-                columns: new[] { "TenantId", "MonthStartUtc" });
+                columns: new[] { "TenantId", "MonthStartUtc" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FinancialMovements_TenantId_CustomerId_TransactionDate",
                 table: "FinancialMovements",
-                columns: new[] { "TenantId", "CustomerId", "TransactionDate" });
+                columns: new[] { "TenantId", "CustomerId", "TransactionDate" }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_FinancialMovements_TenantId_ImportDocumentId",
                 table: "FinancialMovements",
-                columns: new[] { "TenantId", "ImportDocumentId" });
+                columns: new[] { "TenantId", "ImportDocumentId" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "AiProcessingReservations");
+            migrationBuilder.DropTable(name: "AiProcessingReservations");
 
-            migrationBuilder.DropTable(
-                name: "FinancialMovements");
+            migrationBuilder.DropTable(name: "FinancialMovements");
         }
     }
 }

@@ -50,7 +50,8 @@ public static class ResendOnboardingReceiptAdminHandler
                 // el recibo re-generado no lo muestra, lo demás queda idéntico.
                 null,
                 $"resend-receipt:{onboarding.Id:N}",
-                onboarding.OfficeName
+                onboarding.OfficeName,
+                onboarding.TimeZoneId
             )
         );
 

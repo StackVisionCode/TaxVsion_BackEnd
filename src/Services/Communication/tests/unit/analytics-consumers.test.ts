@@ -13,6 +13,7 @@ function setup(options: { timeZone?: string; planCode?: string | null; live?: { 
     listForRange: vi.fn(),
     listAllForRange: vi.fn(),
     purgeBefore: vi.fn(),
+    hasAnyDay: vi.fn(),
   } satisfies AnalyticsRepository;
   const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
   const live = options.live;

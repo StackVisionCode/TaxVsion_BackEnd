@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Reminders;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
@@ -21,7 +22,8 @@ public sealed record ChangeTaskDueCommand(
     DateTime? DueAtUtc,
     string? TimeZoneId,
     bool IsStatutory,
-    string? StatutoryChangeReason
+    string? StatutoryChangeReason,
+    DateOnly? DueOn = null
 );
 
 public static class ChangeTaskDueHandler
@@ -32,10 +34,11 @@ public static class ChangeTaskDueHandler
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
-        var due = BuildDue(command);
+        var due = await BuildDueAsync(command, zones, ct);
         if (due is { IsFailure: true })
             return Result.Failure<TaskResponse>(due.Error);
 
@@ -64,9 +67,16 @@ public static class ChangeTaskDueHandler
         return Result.Success(TaskResponse.From(task));
     }
 
-    /// <summary>Sin fecha es «quitar el vencimiento», no un valor inválido.</summary>
-    private static Result<DueDate>? BuildDue(ChangeTaskDueCommand command) =>
-        command.DueAtUtc is { } dueAtUtc ? DueDate.Create(dueAtUtc, command.TimeZoneId, command.IsStatutory) : null;
+    // Sin fecha es «quitar el vencimiento»; la zona de la oficina solo hace falta para una fecha civil.
+    private static async Task<Result<DueDate>?> BuildDueAsync(
+        ChangeTaskDueCommand command,
+        IOfficeTimeZone zones,
+        CancellationToken ct
+    )
+    {
+        var officeZone = command.DueOn is null ? null : await zones.ResolveAsync(command.TenantId, ct);
+        return TaskDraft.BuildDue(command.DueAtUtc, command.TimeZoneId, command.IsStatutory, command.DueOn, officeZone);
+    }
 
     private static TaskDueChangedIntegrationEvent BuildEvent(
         TaskItem task,
@@ -81,5 +91,6 @@ public static class ChangeTaskDueHandler
             PreviousDueAtUtc = previousDueAtUtc,
             NewDueAtUtc = task.Due?.DueAtUtc,
             TimeZoneId = task.Due?.TimeZoneId,
+            NewDueOn = task.Due?.DueOn,
         };
 }

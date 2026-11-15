@@ -128,6 +128,7 @@ function extractLimitsSnapshot(env: IncomingEnvelope): TenantCommunicationLimits
     transcriptEnabled: bool('communication.transcript_enabled'),
     callsEnabled: bool('communication.calls_enabled'),
     maxCallMinutes: num('communication.max_call_minutes'),
+    usagePeriodAnchorUtc: getUtcDate(env.payload, 'currentPeriodStartUtc', 'CurrentPeriodStartUtc'),
     revisionNumber: getNumber(env.payload, 'revisionNumber', 'RevisionNumber'),
     updatedAtUtc: new Date(),
   };
@@ -173,6 +174,14 @@ function getEntitlementBool(entitlementValues: Record<string, string>, key: stri
   if (raw === 'True' || raw === 'true') return true;
   if (raw === 'False' || raw === 'false') return false;
   return undefined;
+}
+
+// .NET puede serializar un DateTime sin zona: se lee como UTC.
+function getUtcDate(src: Record<string, unknown>, ...keys: string[]): Date | null {
+  const raw = getString(src, ...keys);
+  if (!raw) return null;
+  const date = new Date(/[zZ]|[+-]\d{2}:\d{2}$/.test(raw) ? raw : `${raw}Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function getString(src: Record<string, unknown>, ...keys: string[]): string | undefined {

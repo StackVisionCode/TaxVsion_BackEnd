@@ -20,7 +20,10 @@ public sealed class ImportProcessingQueueTests
         Assert.Empty(await queue.ListClaimCandidatesAsync(10, CancellationToken.None));
 
         await h.SeedTenantAsync();
-        Assert.Equal(batch.Documents[0].Id, Assert.Single(await queue.ListClaimCandidatesAsync(10, CancellationToken.None)).DocumentId);
+        Assert.Equal(
+            batch.Documents[0].Id,
+            Assert.Single(await queue.ListClaimCandidatesAsync(10, CancellationToken.None)).DocumentId
+        );
     }
 
     [Fact]

@@ -2,9 +2,11 @@ using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Notification.Domain.Authorization;
@@ -92,8 +94,11 @@ public sealed class NotificationDbContext(DbContextOptions<NotificationDbContext
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         modelBuilder.ApplyCustomerAssignmentProjection();
+        modelBuilder.ApplyTenantTimeZoneProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     /// <summary>

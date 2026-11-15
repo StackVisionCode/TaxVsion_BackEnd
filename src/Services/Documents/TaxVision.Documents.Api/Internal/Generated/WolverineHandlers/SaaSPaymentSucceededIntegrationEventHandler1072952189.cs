@@ -25,6 +25,11 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             
             /*
+            * Concrete type TaxVision.Documents.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Documents.Application.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
+            
+            /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
@@ -35,7 +40,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Documents.Application.Generations.SaaSReceipt.SaaSPaymentSucceededReceiptConsumer");
             
             // The actual message execution
-            await TaxVision.Documents.Application.Generations.SaaSReceipt.SaaSPaymentSucceededReceiptConsumer.Handle(saaSPaymentSucceededIntegrationEvent, context, correlationContext, _loggerOfGenerateSaaSReceiptDocumentResult, cancellation).ConfigureAwait(false);
+            await TaxVision.Documents.Application.Generations.SaaSReceipt.SaaSPaymentSucceededReceiptConsumer.Handle(saaSPaymentSucceededIntegrationEvent, context, correlationContext, _loggerOfGenerateSaaSReceiptDocumentResult, officeTimeZone, cancellation).ConfigureAwait(false);
 
         }
 

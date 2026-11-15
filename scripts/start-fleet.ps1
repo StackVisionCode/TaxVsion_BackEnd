@@ -3,18 +3,21 @@
 # La raiz del repo es la carpeta padre de scripts/: sirve en cualquier maquina sin editar la ruta.
 $root = Split-Path -Parent $PSScriptRoot
 $gap  = 3
+# Codigo de Wolverine pregenerado, igual que en produccion (doble guion bajo: Wolverine:CodeGeneration:TypeLoadMode).
+$env:Wolverine__CodeGeneration__TypeLoadMode = "Static"
 $fleet = @(
   @{ n = "Auth";           d = "src\Services\Auth\Api";                                p = 5124 },
   @{ n = "Tenant";         d = "src\Services\Tenant\TaxVision.Tenant.Api";             p = 5217 },
   @{ n = "Customer";       d = "src\Services\Customer\TaxVision.Customer.Api";         p = 5263 },
   @{ n = "Wallet";         d = "src\Services\Wallet\TaxVision.Wallet.Api";             p = 5270 },
-  @{ n = "Notification";   d = "src\Services\Notification\TaxVision.Notification.Api"; p = 5320 },
   @{ n = "CloudStorage";   d = "src\Services\CloudStorage\TaxVision.CloudStorage.Api"; p = 5330 },
   @{ n = "Signature";      d = "src\Services\Signature\TaxVision.Signature.Api";       p = 5340 },
   @{ n = "Subscription";   d = "src\Services\Subscription\TaxVision.Subscription.Api"; p = 5360 },
   @{ n = "FinancialInsights"; d = "src\Services\FinancialInsights\TaxVision.FinancialInsights.Api"; p = 5276 },
   @{ n = "Postmaster";     d = "src\Services\Postmaster\TaxVision.Postmaster.Api";     p = 5370 },
   @{ n = "Scribe";         d = "src\Services\Scribe\TaxVision.Scribe.Api";             p = 5380 },
+  # Notification después de Scribe y esperando su puerto (w): manda fechas tipadas que solo Scribe imprime.
+  @{ n = "Notification";   d = "src\Services\Notification\TaxVision.Notification.Api"; p = 5320; w = 5380 },
   @{ n = "Connectors";     d = "src\Services\Connectors\TaxVision.Connectors.Api";     p = 5390 },
   # IMAP IDLE listener (worker, own process). Only reads the DB and publishes to taxvision-events.
   @{ n = "Connectors.MailboxListener"; d = "src\Services\Connectors\TaxVision.Connectors.MailboxListener"; p = 5395;
@@ -89,6 +92,10 @@ else { Write-Host "Auth did not listen in 45s (check logs\Auth.err.log) - contin
 
 # 2) The rest, staggered.
 foreach ($s in $fleet[1..($fleet.Count-1)]) {
+  if ($s.w) {
+    if (Wait-Port $s.w 60) { Write-Host "$($s.n) waits for :$($s.w) - listening" }
+    else { Write-Host "$($s.n): :$($s.w) did not listen in 60s - starting anyway" }
+  }
   Start-One $s
   Start-Sleep -Seconds $gap
 }

@@ -14,7 +14,5 @@ public static class FinancialInsightsEntitlementCatalog
     public static IReadOnlyList<string> Keys { get; } = [DocumentsPerMonth];
 
     public static IReadOnlyCollection<EntitlementSeed> Defaults { get; } =
-    [
-        new(DocumentsPerMonth, EntitlementValueType.Int, 200.ToString(CultureInfo.InvariantCulture)),
-    ];
+    [new(DocumentsPerMonth, EntitlementValueType.Int, 200.ToString(CultureInfo.InvariantCulture))];
 }

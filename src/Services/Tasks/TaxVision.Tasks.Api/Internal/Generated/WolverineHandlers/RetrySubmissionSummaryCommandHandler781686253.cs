@@ -20,8 +20,8 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Audit.FormAuditLog is not public, so requires service location
@@ -37,6 +37,9 @@ namespace Internal.Generated.WolverineHandlers
             * 
             * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IOfficeTimeZone Lifetime: Scoped ImplementationType: TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone
+            * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
             */
             var submissionSummaryRequester = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Actions.SubmissionSummaryRequester>(serviceScope.ServiceProvider);
             

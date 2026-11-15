@@ -29,7 +29,12 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -103,7 +108,7 @@ namespace Internal.Generated.WolverineHandlers
             var clientFormsCustomerEmailDirectory = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.Abstractions.IClientFormsCustomerEmailDirectory>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var assignExternalFormRequestCommand = (TaxVision.Tasks.ClientForms.Application.Participants.Commands.AssignExternalFormRequestCommand)context.Envelope.Message;
 
@@ -125,7 +130,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.ClientForms.Application.Participants.Commands.AssignExternalFormRequestHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Tasks.ClientForms.Application.Participants.Commands.AssignExternalFormRequestHandler.Handle(assignExternalFormRequestCommand, clientFormsCustomerEmailDirectory, formRequestVisibilityFilter, formParticipantRepository, formAccessGrantRepository, clientFormsPublicCapabilityEvaluator, _formExternalAccessSecurity, formTemplateRepository, formTemplateVersionRepository, consentNoticeRepository, formRequestRepository, formActionAuthorizer, _protectedPayloadCodec, formAuditLog, unitOfWork, context, correlationContext, _clientFormsMetrics, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Tasks.ClientForms.Application.Participants.Commands.AssignExternalFormRequestHandler.Handle(assignExternalFormRequestCommand, clientFormsCustomerEmailDirectory, formRequestVisibilityFilter, formParticipantRepository, formAccessGrantRepository, clientFormsPublicCapabilityEvaluator, _formExternalAccessSecurity, formTemplateRepository, formTemplateVersionRepository, consentNoticeRepository, formRequestRepository, formActionAuthorizer, _protectedPayloadCodec, formAuditLog, unitOfWork, context, correlationContext, _clientFormsMetrics, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

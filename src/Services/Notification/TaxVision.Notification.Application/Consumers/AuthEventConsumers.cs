@@ -70,7 +70,7 @@ public static class InvitationCreatedConsumer
                         ["inviter"] = string.IsNullOrWhiteSpace(evt.InviterName) ? office : evt.InviterName,
                         ["account_kind"] = AuthAccountCopy.Kind(evt.ActorType),
                         ["invite_link"] = inviteLink,
-                        ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
                         ["is_resend"] = evt.IsResend,
                     },
                     AuthAccountCopy.Audience(evt.ActorType),
@@ -137,7 +137,7 @@ public static class PasswordResetRequestedConsumer
                     new Dictionary<string, object?>
                     {
                         ["reset_link"] = resetLink,
-                        ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
                         ["account_kind"] = AuthAccountCopy.Kind(evt.ActorType),
                         ["office"] = string.IsNullOrWhiteSpace(evt.TenantName)
                             ? platform.Current.BrandName
@@ -325,7 +325,7 @@ public static class EmailChangeRequestedConsumer
                     new Dictionary<string, object?>
                     {
                         ["confirm_link"] = confirmLink,
-                        ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
                         ["account_kind"] = AuthAccountCopy.Kind(evt.ActorType),
                         ["office"] = office,
                     },

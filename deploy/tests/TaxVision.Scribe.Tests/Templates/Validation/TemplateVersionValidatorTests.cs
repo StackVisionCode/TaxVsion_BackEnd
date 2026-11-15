@@ -116,6 +116,61 @@ public sealed class TemplateVersionValidatorTests
         Assert.Empty(result.Value.Errors);
     }
 
+    /// <summary>
+    /// P18: Scribe ya imprime las fechas en la zona de quien lee, con su rótulo. Un "UTC" escrito a mano o el filtro
+    /// <c>date</c> (que formatea en UTC) dejan la fecha mal: se avisa sin bloquear la publicación.
+    /// </summary>
+    [Fact]
+    public async Task ValidateAsync_warns_about_hand_written_utc_and_the_date_filter_without_blocking()
+    {
+        var version = BuildVersion(
+            "Expires {{ expires_at | date: '%b %d' }}",
+            "<p>The link expires on {{ expires_at }} UTC.</p>",
+            null,
+            [("expires_at", VariableType.Date, true, null, null)]
+        );
+
+        var result = await TemplateVersionValidator.ValidateAsync(
+            version,
+            TemplateChannel.Email,
+            null,
+            _storage,
+            _htmlSafetyValidator,
+            default
+        );
+
+        Assert.True(result.Value.IsValid);
+        Assert.Contains(result.Value.Warnings, w => w.Code == "EmailTemplateVersion.HandWrittenUtc");
+        Assert.Contains(result.Value.Warnings, w => w.Code == "EmailTemplateVersion.DateFilterInUtc");
+    }
+
+    [Fact]
+    public async Task ValidateAsync_does_not_warn_about_the_office_date_filters()
+    {
+        var version = BuildVersion(
+            "Due {{ due | office_date }}",
+            "<p>Expires {{ expires_at | office_deadline }} at {{ expires_at | office_time }}.</p>",
+            null,
+            [("due", VariableType.Date, true, null, null), ("expires_at", VariableType.Date, true, null, null)]
+        );
+
+        var result = await TemplateVersionValidator.ValidateAsync(
+            version,
+            TemplateChannel.Email,
+            null,
+            _storage,
+            _htmlSafetyValidator,
+            default
+        );
+
+        Assert.DoesNotContain(
+            result.Value.Warnings,
+            w =>
+                w.Code.StartsWith("EmailTemplateVersion.HandWrittenUtc")
+                || w.Code == "EmailTemplateVersion.DateFilterInUtc"
+        );
+    }
+
     [Fact]
     public async Task ValidateAsync_reports_an_undeclared_variable_used_in_the_html()
     {

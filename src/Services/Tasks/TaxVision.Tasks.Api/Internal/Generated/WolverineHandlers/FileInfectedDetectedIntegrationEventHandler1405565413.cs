@@ -30,9 +30,12 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.Persistence.Repositories.ClientRequestRepository is not public, so requires service location
+            */
+            var clientRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.ClientRequests.Abstractions.IClientRequestRepository>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var taskRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Tasks.Abstractions.ITaskRepository>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.ClientFormsCustomerReader is not public, so requires service location
@@ -53,11 +56,8 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
-            
-            /*
-            * Concrete type TaxVision.Tasks.Infrastructure.Persistence.Repositories.ClientRequestRepository is not public, so requires service location
-            */
-            var clientRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.ClientRequests.Abstractions.IClientRequestRepository>(serviceScope.ServiceProvider);
+            var taskRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Tasks.Abstractions.ITaskRepository>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
@@ -80,11 +80,11 @@ namespace Internal.Generated.WolverineHandlers
                 BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
                 
                 // The actual message execution
-                await TaxVision.Tasks.Application.Attachments.Consumers.TaskFileScanResultConsumer.Handle(fileInfectedDetectedIntegrationEvent, taskRepository, unitOfWork, context, correlationContext, _loggerOfTaskItem, cancellation).ConfigureAwait(false);
+                await TaxVision.Tasks.Application.ClientRequests.Consumers.ClientDocumentScanResultConsumer.Handle(fileInfectedDetectedIntegrationEvent, clientRequestRepository, unitOfWork, context, correlationContext, _loggerOfClientRequest, cancellation).ConfigureAwait(false);
 
                 
                 // The actual message execution
-                await TaxVision.Tasks.Application.ClientRequests.Consumers.ClientDocumentScanResultConsumer.Handle(fileInfectedDetectedIntegrationEvent, clientRequestRepository, unitOfWork, context, correlationContext, _loggerOfClientRequest, cancellation).ConfigureAwait(false);
+                await TaxVision.Tasks.Application.Attachments.Consumers.TaskFileScanResultConsumer.Handle(fileInfectedDetectedIntegrationEvent, taskRepository, unitOfWork, context, correlationContext, _loggerOfTaskItem, cancellation).ConfigureAwait(false);
 
                 
                 // The actual message execution

@@ -31,9 +31,9 @@ namespace Internal.Generated.WolverineHandlers
             var appointmentRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Appointments.Abstractions.IAppointmentRepository>(serviceScope.ServiceProvider);
             var bookingPageRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.Abstractions.IBookingPageRepository>(serviceScope.ServiceProvider);
             var publicBookingRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.Abstractions.IPublicBookingRepository>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var staffReschedulePublicBookingCommand = (TaxVision.Calendar.Application.PublicBookings.Platform.StaffReschedulePublicBookingCommand)context.Envelope.Message;
 

@@ -6,6 +6,7 @@ using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Security;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -76,6 +77,10 @@ public static class DependencyInjection
         // PlatformTenant) + flag (default OFF hasta sembrar). El consumer se engancha en Program.cs.
         services.AddCustomerVisibilityProjection<CalendarDbContext>();
         services.AddCustomerVisibilityReconciliation<Reconciliation.CalendarPlatformTokenProvider>(configuration);
+
+        // Zona de cada oficina: eventos de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<CalendarDbContext>();
+        services.AddTenantTimeZoneReconciliation<Reconciliation.CalendarTenantTimeZoneTokenProvider>(configuration);
         services
             .AddOptions<CalendarVisibilityOptions>()
             .Bind(configuration.GetSection(CalendarVisibilityOptions.SectionName));
@@ -85,6 +90,14 @@ public static class DependencyInjection
         services.AddScoped<IAppointmentTypeRepository, AppointmentTypeRepository>();
         services.AddScoped<IAvailabilityRepository, AvailabilityRepository>();
         services.AddScoped<IOfficeScheduleRepository, OfficeScheduleRepository>();
+        services.AddScoped<
+            TaxVision.Calendar.Application.Office.TimeZoneChanges.IOfficeTimeZoneChangeRepository,
+            OfficeTimeZoneChangeRepository
+        >();
+        services.AddScoped<
+            TaxVision.Calendar.Application.Office.TimeZoneChanges.IOfficeTimeZoneCandidates,
+            OfficeTimeZoneCandidates
+        >();
         services.AddScoped<IBookingPolicyRepository, BookingPolicyRepository>();
         services.AddScoped<IBookingPageRepository, BookingPageRepository>();
         services.AddScoped<IPublicBookingRepository, PublicBookingRepository>();

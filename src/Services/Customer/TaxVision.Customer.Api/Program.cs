@@ -48,6 +48,7 @@ builder.Services.AddSwaggerGen();
 
 // ---------- BuildingBlocks + Infrastructure + Auth + OTEL ----------
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddCustomerInfrastructure(builder.Configuration);
 
 // Flag de visibilidad por asignación (default false = todos ven todo hasta el backfill).
@@ -134,6 +135,8 @@ builder.Host.UseWolverine(options =>
 {
     options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(CreateCustomerHandler).Assembly);
+    // Zona de cada oficina: consumer compartido de TenantTimeZones, vive fuera de Application.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

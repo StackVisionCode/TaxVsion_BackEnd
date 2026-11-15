@@ -17,7 +17,8 @@ public static class FinancialErrorHttpMapping
             or "Import.InvalidTransition"
             or "Import.TenantImmutable" => StatusCodes.Status409Conflict,
             "Import.FileNotEligible" => StatusCodes.Status422UnprocessableEntity,
-            "Import.FileStatusUnavailable" or "Import.EntitlementsUnavailable" => StatusCodes.Status503ServiceUnavailable,
+            "Import.FileStatusUnavailable" or "Import.EntitlementsUnavailable" =>
+                StatusCodes.Status503ServiceUnavailable,
             "Tenant.Inactive" or "Financial.ModuleUnavailable" or "Financial.PermissionDenied" =>
                 StatusCodes.Status403Forbidden,
             _ => error.ToHttpStatusCode(),

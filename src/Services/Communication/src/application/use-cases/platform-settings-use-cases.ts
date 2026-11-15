@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Result } from '../../domain/shared/result.js';
+import { makeError, Result } from '../../domain/shared/result.js';
 import {
   type PlatformCommunicationSettingsPatch,
   type PlatformCommunicationSettingsSnapshot,
@@ -11,6 +11,7 @@ import type { ConfigurationAuditRepository } from '../ports/configuration-audit-
 import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { PlatformTenantProvider } from '../ports/platform-tenant-provider.js';
+import type { AnalyticsRepository } from '../ports/analytics-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import { SettingsEventTypes, type PlatformSettingsChangedEvent } from '../../contracts/events/settings-events.js';
 import { SettingsSocketEvents, type SettingsChangedDto } from '../../contracts/socket/settings-socket-events.js';
@@ -28,6 +29,7 @@ export interface PlatformSettingsDeps {
   readonly effectiveSettings: EffectiveSettingsResolver;
   readonly publisher: IntegrationEventPublisher;
   readonly platform: PlatformTenantProvider;
+  readonly analytics: Pick<AnalyticsRepository, 'hasAnyDay'>;
   readonly emitter?: RealtimeEmitter | undefined;
 }
 
@@ -51,6 +53,13 @@ export async function updatePlatformSettings(
   deps: PlatformSettingsDeps,
 ): Promise<Result<PlatformSettingsView>> {
   const settings = await deps.platformSettings.get();
+  // P21: con días guardados la zona de analítica queda fija; cambiarla mezclaría días cortados en dos zonas.
+  const zone = cmd.patch.analyticsTimeZone;
+  if (zone !== undefined && zone !== settings.toSnapshot().analyticsTimeZone && (await deps.analytics.hasAnyDay())) {
+    return Result.fail(
+      makeError('Settings.AnalyticsTimeZoneLocked', 'analyticsTimeZone cannot change once analytics days have been recorded.'),
+    );
+  }
   const now = new Date();
   const applied = settings.update(cmd.patch, { userId: cmd.actorUserId, now });
   if (!applied.isSuccess) return Result.fail(applied.error);

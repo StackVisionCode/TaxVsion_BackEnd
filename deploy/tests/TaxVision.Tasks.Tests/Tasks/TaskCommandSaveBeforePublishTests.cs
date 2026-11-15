@@ -153,6 +153,9 @@ public sealed class TaskCommandSaveBeforePublishTests
                 .AddSingleton<ICorrelationContext>(new NoOpCorrelationContext())
                 .AddSingleton(unitOfWork)
                 .AddSingleton<ITaskMetrics>(new RecordingTaskMetrics())
+                .AddSingleton<TaxVision.Tasks.Application.Common.Abstractions.IOfficeTimeZone>(
+                    new FixedOfficeZone("Etc/UTC")
+                )
                 .AddSingleton<ITaskHierarchyService>(new NoOpHierarchy())
                 .AddSingleton<IClientRequestRepository>(new InMemoryClientRequestRepository(_request))
                 .AddSingleton<ITaskSeriesMaterializer>(new TaskSeriesMaterializer(tasks, series))

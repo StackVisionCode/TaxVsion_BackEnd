@@ -70,6 +70,8 @@ RUN npm run build
 
 # ---------- Stage 3: runtime ----------
 FROM node:24.22.2-bookworm-slim AS runtime
+# Contenedor en UTC declarado; la zona de negocio es la de la oficina, no la del proceso.
+ENV TZ=Etc/UTC
 WORKDIR /app
 
 # ffmpeg: preprocesado + transcode a WAV 16 kHz mono (el de Debian trae libsoxr,

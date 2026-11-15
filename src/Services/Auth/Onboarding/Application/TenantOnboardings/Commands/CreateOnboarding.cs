@@ -13,7 +13,8 @@ public sealed record CreateOnboardingCommand(
     Guid PlanId,
     Guid EmailVerificationChallengeId,
     string? BillingCycle = null,
-    bool AutoRenew = false
+    bool AutoRenew = false,
+    string? TimeZoneId = null
 );
 
 public sealed record CreateOnboardingResponse(Guid OnboardingId, string Email, Guid PlanId);
@@ -63,7 +64,8 @@ public static class CreateOnboardingHandler
             command.Phone,
             nowUtc,
             command.BillingCycle,
-            command.AutoRenew
+            command.AutoRenew,
+            command.TimeZoneId
         );
         if (result.IsFailure)
             return Result.Failure<CreateOnboardingResponse>(result.Error);

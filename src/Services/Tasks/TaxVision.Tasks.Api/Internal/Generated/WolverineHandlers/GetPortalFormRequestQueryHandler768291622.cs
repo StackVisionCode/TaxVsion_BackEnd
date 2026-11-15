@@ -26,6 +26,11 @@ namespace Internal.Generated.WolverineHandlers
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
+            * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
+            
+            /*
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormConsentRecordRepository is not public, so requires service location
             */
             var formConsentRecordRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Consents.Abstractions.IFormConsentRecordRepository>(serviceScope.ServiceProvider);
@@ -53,7 +58,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.ClientForms.Application.Requests.Queries.GetPortalFormRequestHandler");
             
             // The actual message execution
-            var outgoing1 = await TaxVision.Tasks.ClientForms.Application.Requests.Queries.GetPortalFormRequestHandler.Handle(getPortalFormRequestQuery, formRequestRepository, formTemplateVersionRepository, answersProtector, _formEngine, consentNoticeRepository, formConsentRecordRepository, cancellation).ConfigureAwait(false);
+            var outgoing1 = await TaxVision.Tasks.ClientForms.Application.Requests.Queries.GetPortalFormRequestHandler.Handle(getPortalFormRequestQuery, formRequestRepository, formTemplateVersionRepository, answersProtector, _formEngine, consentNoticeRepository, formConsentRecordRepository, officeTimeZone, cancellation).ConfigureAwait(false);
 
             
             // Outgoing, cascaded message

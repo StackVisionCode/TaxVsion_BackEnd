@@ -44,6 +44,9 @@ namespace Internal.Generated.WolverineHandlers
             * 
             * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IOfficeTimeZone Lifetime: Scoped ImplementationType: TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone
+            * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
             */
             var submissionSummaryRequester = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Actions.SubmissionSummaryRequester>(serviceScope.ServiceProvider);
             
@@ -87,9 +90,9 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormRequestRepository is not public, so requires service location
             */
             var formRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.Abstractions.IFormRequestRepository>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var completeFormRequestCommand = (TaxVision.Tasks.ClientForms.Application.Requests.Commands.CompleteFormRequestCommand)context.Envelope.Message;
 

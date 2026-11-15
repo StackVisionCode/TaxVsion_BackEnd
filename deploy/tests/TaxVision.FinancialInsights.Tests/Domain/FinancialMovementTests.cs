@@ -64,8 +64,14 @@ public sealed class FinancialMovementTests
     {
         var now = new DateTime(2026, 3, 18, 10, 0, 0, DateTimeKind.Utc);
 
-        Assert.Equal("Import.Reservation.ModelRequired", AiProcessingReservation.Create(Tenant, Document, " ", now).Error.Code);
-        Assert.Equal("Import.DocumentRequired", AiProcessingReservation.Create(Tenant, Guid.Empty, "m", now).Error.Code);
+        Assert.Equal(
+            "Import.Reservation.ModelRequired",
+            AiProcessingReservation.Create(Tenant, Document, " ", now).Error.Code
+        );
+        Assert.Equal(
+            "Import.DocumentRequired",
+            AiProcessingReservation.Create(Tenant, Guid.Empty, "m", now).Error.Code
+        );
 
         var reservation = AiProcessingReservation.Create(Tenant, Document, "gpt-5.4-mini", now).Value;
         Assert.Equal(new DateTime(2026, 3, 1, 0, 0, 0, DateTimeKind.Utc), reservation.MonthStartUtc);
@@ -78,6 +84,29 @@ public sealed class FinancialMovementTests
     public void Monthly_document_limit_comes_from_the_plan_and_falls_back_to_configuration()
     {
         var withPlan = TenantEntitlementsProjection.Create(Tenant, "enterprise", 1, ["financial_insights"], 200);
+        // P11: el cupo de IA se reinicia el día de alta a medianoche de la oficina (el 15 en Nueva York).
+        var anchored = TenantEntitlementsProjection.Create(
+            Tenant,
+            "enterprise",
+            1,
+            ["financial_insights"],
+            200,
+            new DateTime(2026, 3, 15, 14, 0, 0, DateTimeKind.Utc)
+        );
+        Assert.Equal(
+            new DateTime(2026, 10, 15, 4, 0, 0, DateTimeKind.Utc),
+            anchored.UsagePeriodStartUtc(
+                new DateTime(2026, 11, 14, 12, 0, 0, DateTimeKind.Utc),
+                BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/New_York")
+            )
+        );
+        var periodStart = new DateTime(2026, 10, 15, 4, 0, 0, DateTimeKind.Utc);
+        Assert.Equal(
+            periodStart,
+            AiProcessingReservation
+                .Create(Tenant, Document, "m", periodStart.AddDays(30), periodStart)
+                .Value.MonthStartUtc
+        );
         var withoutKey = TenantEntitlementsProjection.Create(Tenant, "enterprise", 1, ["financial_insights"], null);
 
         Assert.Equal(200, withPlan.MonthlyDocumentLimit(10));

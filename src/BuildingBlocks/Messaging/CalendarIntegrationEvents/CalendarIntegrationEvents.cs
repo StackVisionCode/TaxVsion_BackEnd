@@ -82,6 +82,12 @@ public sealed record AppointmentCancelledIntegrationEvent : IntegrationEvent
     public DateTime? OriginalStartUtc { get; init; }
     public string? Reason { get; init; }
 
+    /// <summary>Qué se canceló (aditivo): la ocurrencia o la cita; null al cancelar una serie entera.</summary>
+    public DateTime? StartUtc { get; init; }
+
+    /// <summary>Zona de la cita (aditivo): el correo dice la hora cancelada en ella.</summary>
+    public string? TimeZoneId { get; init; }
+
     /// <summary>La sala, si la cita es virtual: Communication la cancela sin buscarla por la cita.</summary>
     public Guid? MeetingId { get; init; }
 

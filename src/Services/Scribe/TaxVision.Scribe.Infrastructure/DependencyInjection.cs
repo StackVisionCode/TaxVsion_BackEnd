@@ -2,6 +2,7 @@
 using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -181,6 +182,10 @@ public static class DependencyInjection
         services.AddHttpClient<ITenantDirectoryClient, TenantDirectoryClient>(http =>
             http.Timeout = TimeSpan.FromSeconds(30)
         );
+
+        // Zona de cada oficina (TenantTimeZones): eventos de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<ScribeDbContext>();
+        services.AddTenantTimeZoneReconciliation<ScribeTenantTimeZoneTokenProvider>(configuration);
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

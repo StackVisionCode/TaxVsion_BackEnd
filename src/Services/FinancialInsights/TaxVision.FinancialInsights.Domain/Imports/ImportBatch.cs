@@ -94,7 +94,8 @@ public sealed class ImportBatch : AggregateRoot, ITenantOwned
     public Result CompleteDocument(Guid documentId, bool needsReview) =>
         Finishing(OnDocument(documentId, d => d.Complete(needsReview)));
 
-    public Result FailDocument(Guid documentId, string reason) => Finishing(OnDocument(documentId, d => d.Fail(reason)));
+    public Result FailDocument(Guid documentId, string reason) =>
+        Finishing(OnDocument(documentId, d => d.Fail(reason)));
 
     public Result HoldDocumentForReview(Guid documentId, string reason) =>
         Finishing(OnDocument(documentId, d => d.HoldForReview(reason)));

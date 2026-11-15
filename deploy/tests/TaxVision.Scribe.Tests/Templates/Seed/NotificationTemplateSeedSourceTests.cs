@@ -508,7 +508,9 @@ public sealed class NotificationTemplateSeedSourceTests
         else
         {
             Assert.StartsWith("Invitation:", subject);
-            Assert.Contains("2026-11-05 14:00 (America/Santo_Domingo)", html);
+            // La hora tipada ya trae su zona rotulada: el id IANA crudo no se repite al lado.
+            Assert.Contains("When:</strong> 2026-11-05 14:00", html);
+            Assert.DoesNotContain("(America/Santo_Domingo)", html);
             Assert.Contains("45 min", html);
             Assert.Contains("calendar invitation is attached", html);
             Assert.DoesNotContain("happening right now", html);

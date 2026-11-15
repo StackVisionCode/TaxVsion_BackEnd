@@ -99,6 +99,7 @@ export class SessionManager {
           scope: req.scope,
           scopeId: req.scopeId,
           startedAtUtc: new Date(req.startedAtUtc).toISOString(),
+          ...(req.recordingLocalDate ? { recordingLocalDate: req.recordingLocalDate } : {}),
           maxDurationSeconds: req.maxDurationSeconds,
           toleranceSeconds: req.toleranceSeconds,
           tracksRetentionDays: req.tracksRetentionDays,

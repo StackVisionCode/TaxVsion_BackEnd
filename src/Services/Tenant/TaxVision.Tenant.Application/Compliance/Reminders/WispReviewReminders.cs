@@ -19,6 +19,10 @@ public static class WispReviewReminders
         CancellationToken ct
     )
     {
+        // P28: antes de las 9:00 de la oficina no se avisa; una pasada posterior del mismo día lo hace.
+        if (WispReviewSchedule.IsBeforeSendHour(nowUtc, candidate.TimeZoneId))
+            return null;
+
         var compliance = await compliances.GetAsync(candidate.TenantId, ct);
         if (compliance is null)
             return null;

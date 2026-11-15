@@ -32,7 +32,8 @@ public sealed record AssignExternalFormRequestCommand(
     DateTime? DueAtUtc,
     int? TaxYear,
     DateTime NowUtc,
-    bool CanViewAll = false
+    bool CanViewAll = false,
+    DateOnly? DueOn = null
 );
 
 // ExistingCustomerId solo viaja si quien envía puede ver a ese cliente (ABAC).
@@ -74,9 +75,14 @@ public static class AssignExternalFormRequestHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         IClientFormsMetrics metrics,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
+        command = command with
+        {
+            DueAtUtc = await FormDueDates.ResolveAsync(command.TenantId, command.DueOn, command.DueAtUtc, zones, ct),
+        };
         var inputs = await LoadAndValidateAsync(command, capabilities, templates, versions, notices, authorizer, ct);
         if (inputs.IsFailure)
             return Failure(inputs.Error);
@@ -313,7 +319,8 @@ public static class AssignExternalFormRequestHandler
             null,
             command.ByUserId,
             command.ByUserId,
-            command.NowUtc
+            command.NowUtc,
+            dueOn: command.DueOn
         );
 
     private static Result<FormAccessGrant> CreateGrant(

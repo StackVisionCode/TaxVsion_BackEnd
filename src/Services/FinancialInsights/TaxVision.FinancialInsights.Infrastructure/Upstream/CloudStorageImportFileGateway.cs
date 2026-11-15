@@ -13,7 +13,15 @@ namespace TaxVision.FinancialInsights.Infrastructure.Upstream;
 /// </summary>
 public sealed class CloudStorageImportFileGateway(HttpClient http, IHttpContextAccessor context) : IImportFileGateway
 {
-    private static readonly string[] OwnerTypes = ["Tenant", "Customer", "User", "Signature", "Invoice", "Communication"];
+    private static readonly string[] OwnerTypes =
+    [
+        "Tenant",
+        "Customer",
+        "User",
+        "Signature",
+        "Invoice",
+        "Communication",
+    ];
 
     private static readonly string[] FileStatuses =
     [
@@ -44,16 +52,22 @@ public sealed class CloudStorageImportFileGateway(HttpClient http, IHttpContextA
             if (!response.IsSuccessStatusCode)
                 return ImportFileState.Unavailable;
 
-            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            using var json = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(ct),
+                cancellationToken: ct
+            );
             var file = json.RootElement;
             if (!file.TryGetProperty("id", out var id) || !id.TryGetGuid(out var received) || received != fileId)
                 return ImportFileState.Ineligible;
 
             var owner = ReadEnum(file, "ownerType", OwnerTypes);
             var status = ReadEnum(file, "status", FileStatuses);
-            var ownerId = file.TryGetProperty("ownerId", out var o) && o.ValueKind == JsonValueKind.String && o.TryGetGuid(out var parsed)
-                ? parsed
-                : (Guid?)null;
+            var ownerId =
+                file.TryGetProperty("ownerId", out var o)
+                && o.ValueKind == JsonValueKind.String
+                && o.TryGetGuid(out var parsed)
+                    ? parsed
+                    : (Guid?)null;
             var detected = ReadString(file, "detectedContentType");
             var declared = ReadString(file, "declaredContentType");
             var size = file.TryGetProperty("sizeBytes", out var bytes) && bytes.TryGetInt64(out var value) ? value : 0;
@@ -64,15 +78,19 @@ public sealed class CloudStorageImportFileGateway(HttpClient http, IHttpContextA
                 ? ImportFileState.AwaitingScan
                 : ImportFileState.Ineligible;
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException
-            || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        catch (Exception ex)
+            when (ex is HttpRequestException or JsonException or InvalidOperationException
+                || (ex is TaskCanceledException && !ct.IsCancellationRequested)
+            )
         {
             return ImportFileState.Unavailable;
         }
     }
 
     private static string? ReadString(JsonElement parent, string name) =>
-        parent.TryGetProperty(name, out var element) && element.ValueKind == JsonValueKind.String ? element.GetString() : null;
+        parent.TryGetProperty(name, out var element) && element.ValueKind == JsonValueKind.String
+            ? element.GetString()
+            : null;
 
     // CloudStorage puede serializar el enum como texto o como número.
     private static string? ReadEnum(JsonElement parent, string name, string[] values)
@@ -81,7 +99,11 @@ public sealed class CloudStorageImportFileGateway(HttpClient http, IHttpContextA
             return null;
         if (element.ValueKind == JsonValueKind.String)
             return element.GetString();
-        return element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out var index) && index >= 0 && index < values.Length
+        return
+            element.ValueKind == JsonValueKind.Number
+            && element.TryGetInt32(out var index)
+            && index >= 0
+            && index < values.Length
             ? values[index]
             : null;
     }

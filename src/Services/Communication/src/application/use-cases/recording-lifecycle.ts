@@ -54,6 +54,8 @@ import {
 import type { RecordingComposedPayload, RecordingCompositionFailedPayload } from '../../contracts/events/recording-events.js';
 import { findRecordingTranscript } from '../services/recording-transcript-lookup.js';
 import { recordingStateOf } from '../services/meeting-recording-state.js';
+import { recordingLocalDate } from '../services/recording-local-date.js';
+import type { TenantTimeZoneStore } from '../ports/tenant-time-zone-store.js';
 
 /**
  * F7: transiciones de la grabacion que dispara el SISTEMA (captura server-side, limite, fin de la
@@ -72,6 +74,8 @@ export interface RecordingLifecycleDeps extends MeetingEventLogDeps {
   readonly sfu?: Pick<SfuService, 'getRouterRtpCapabilities' | 'closeMeeting'> | undefined;
   /** Idioma de voz de cada participante para su pista (INV-T01). */
   readonly userPreferences?: Pick<UserCommunicationPreferencesRepository, 'find'> | undefined;
+  /** P25: zona de la oficina para la fecha local de los archivos nuevos. */
+  readonly tenantTimeZones?: Pick<TenantTimeZoneStore, 'find'> | undefined;
 }
 
 const envelope = <T>(correlationId: string, payload: T) => ({
@@ -370,8 +374,10 @@ export async function requestTranscript(session: RecordingSession, deps: Recordi
       : null;
   const audioTracks = await audioTrackRefs(session, deps, meetingLanguage);
   const startedAtUtc = new Date().toISOString();
+  const localDate = await recordingLocalDate(deps.tenantTimeZones, s.tenantId, s.startedAtUtc ?? new Date());
   const extra = {
     ...(audioTracks.length > 0 ? { audioTracks } : {}),
+    ...(localDate ? { recordingLocalDate: localDate } : {}),
     language: meetingLanguage ?? effective.recording.transcriptLanguage,
     prompt: effective.recording.transcriptPrompt,
     ...(s.maxDurationSeconds ? { maxDurationSeconds: s.maxDurationSeconds } : {}),
@@ -596,6 +602,7 @@ export interface RecordingLifecycleOptionalDeps extends MeetingEventLogDeps {
   readonly transcripts?: TranscriptArtifactRepository | undefined;
   readonly sfu?: Pick<SfuService, 'getRouterRtpCapabilities' | 'closeMeeting'> | undefined;
   readonly userPreferences?: Pick<UserCommunicationPreferencesRepository, 'find'> | undefined;
+  readonly tenantTimeZones?: Pick<TenantTimeZoneStore, 'find'> | undefined;
 }
 
 /** Arma las deps del ciclo de vida si estan completas; sin resolver/repositorios = comportamiento previo a F7. */
@@ -619,6 +626,7 @@ export function lifecycleFrom(
     sfu: deps.sfu,
     meetingEvents: deps.meetingEvents,
     userPreferences: deps.userPreferences,
+    tenantTimeZones: deps.tenantTimeZones,
   };
 }
 

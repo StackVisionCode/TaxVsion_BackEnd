@@ -5,6 +5,7 @@ using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -132,6 +133,7 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         modelBuilder.ApplyCustomerAssignmentProjection();
+        modelBuilder.ApplyTenantTimeZoneProjection();
         ApplyGlobalTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }
