@@ -48,6 +48,8 @@ export interface SessionManifest {
   readonly scope: 'Meeting' | 'Call';
   readonly scopeId: string;
   readonly startedAtUtc: string;
+  /** P25: fecha local de la grabación (`yyyy-MM-dd`); ausente en sesiones viejas. */
+  readonly recordingLocalDate?: string;
   readonly maxDurationSeconds: number;
   readonly toleranceSeconds: number;
   readonly tracksRetentionDays: number;

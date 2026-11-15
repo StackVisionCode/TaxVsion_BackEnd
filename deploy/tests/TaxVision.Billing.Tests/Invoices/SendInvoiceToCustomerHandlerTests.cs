@@ -39,6 +39,25 @@ public sealed class SendInvoiceToCustomerHandlerTests
         Assert.Equal(10000, evt.AmountDueCents);
     }
 
+    /// <summary>P6: el correo dice el vencimiento congelado (fecha civil de la oficina).</summary>
+    [Fact]
+    public async Task The_event_carries_the_frozen_due_date()
+    {
+        var invoice = Draft("client@example.com");
+        invoice.Issue(
+            InvoiceNumber.Create("INV-2026-00006").Value,
+            new DateTime(2027, 1, 1, 1, 0, 0, DateTimeKind.Utc),
+            BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/New_York"),
+            Actor
+        );
+        var bus = new FakeMessageBus();
+
+        await HandleAsync(invoice, bus);
+
+        var evt = Assert.IsType<InvoiceSentToCustomerIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(new DateOnly(2027, 1, 30), evt.DueOn);
+    }
+
     [Fact]
     public async Task A_draft_is_not_sent()
     {
@@ -128,12 +147,6 @@ public sealed class SendInvoiceToCustomerHandlerTests
             AskedFor = assignedToUserId;
             return Task.FromResult(invoice);
         }
-
-        public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
-            throw new NotSupportedException();
-
-        public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
-            Task.FromResult<Invoice?>(null);
 
         public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
             Guid tenantId,

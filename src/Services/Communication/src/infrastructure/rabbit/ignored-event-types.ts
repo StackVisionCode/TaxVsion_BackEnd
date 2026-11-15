@@ -52,6 +52,13 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   // Solicitudes de reserva del portal: las atiende Notification; la sala se crea recién al aprobar.
   'calendar.booking_requested.v1',
   'calendar.booking_declined.v1',
+  // Demo pública del landing: la cita no es virtual (sin sala); los correos los manda Notification.
+  'calendar.public_booking_code_requested.v1',
+  'calendar.public_booking_confirmed.v1',
+  'calendar.public_booking_rescheduled.v1',
+  'calendar.public_booking_cancelled.v1',
+  'calendar.public_booking_reminder_due.v1',
+  'calendar.public_booking_already_booked.v1',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentStartingSoonIntegrationEvent',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.CalendarSeriesSplitIntegrationEvent',
   'BuildingBlocks.Messaging.CalendarIntegrationEvents.OccurrenceCancelledIntegrationEvent',
@@ -124,6 +131,8 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   // Wallet — solicitud y respuesta de crédito/reversa por referencia opaca: Growth (premios de referidos) y Wallet.
   'wallet.credit.requested.v1',
   'wallet.credit.applied.v1',
+  // Financial Insights — lote terminado: lo consume Notification (avisos); Communication no hace nada con él.
+  'financial.import_batch.completed.v1',
   // Giftcards por correo y aviso de referido: los consume Notification; Communication no hace nada con ellos.
   'growth.giftcards.share_requested',
   'growth.giftcards.share_requested.v1',
@@ -132,6 +141,9 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   // Referido declarado en el alta: lo consume Growth (atribución); Communication no hace nada con él.
   'auth.onboarding.referral_declared',
   'auth.onboarding.referral_declared.v1',
+  // Vínculo de un alta reenviado por Auth: lo consume PaymentApp; Communication no hace nada con él.
+  'auth.onboarding.payment_link_replayed',
+  'auth.onboarding.payment_link_replayed.v1',
   // Notes — Notas: Customer y CloudStorage.
   'BuildingBlocks.Messaging.NotesIntegrationEvents.NoteAttachmentDetachedIntegrationEvent',
   'BuildingBlocks.Messaging.NotesIntegrationEvents.NoteCreatedIntegrationEvent',
@@ -247,16 +259,14 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskReopenedIntegrationEvent',
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskUnblockedIntegrationEvent',
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskWaitingOnClientIntegrationEvent',
-  // Tenant — Alta, estado y perfil de la oficina: Auth, Notification y proyecciones .NET. Communication resuelve
-  // host y zona horaria por Auth (caché corta) y el acceso por entitlements_changed.
-  'BuildingBlocks.Messaging.TenantCreatedIntegrationEvent',
+  // Tenant — Estado y perfil de la oficina: Auth, Notification y proyecciones .NET. Communication resuelve el host
+  // por Auth (caché corta) y el acceso por entitlements_changed; la zona la proyecta de TenantCreated/TenantUpdated.
   'BuildingBlocks.Messaging.TenantIntegrationEvents.OfficeSecurityCoordinatorVacatedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.OfficeWispReviewDueIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantLogoRemovedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantLogoUpdatedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantProfileChangedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantRecordRetentionChangedIntegrationEvent',
-  'BuildingBlocks.Messaging.TenantIntegrationEvents.TenantUpdatedIntegrationEvent',
   'BuildingBlocks.Messaging.TenantStatusChangedIntegrationEvent',
   // Wallet — Recarga pendiente: Notification.
   'BuildingBlocks.Messaging.WalletIntegrationEvents.WalletTopUpDueIntegrationEvent',

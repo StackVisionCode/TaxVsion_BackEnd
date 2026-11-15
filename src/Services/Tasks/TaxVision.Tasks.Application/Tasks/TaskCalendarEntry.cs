@@ -16,7 +16,9 @@ public sealed record TaskCalendarEntry(
     TaskPriority Priority,
     Guid? AssigneeUserId,
     Guid? CustomerId,
-    bool IsBlocked
+    bool IsBlocked,
+    // Fecha civil: el instante (fin del día de la oficina) cae al día siguiente en UTC.
+    DateOnly? DueOn = null
 )
 {
     /// <summary>Sólo entran las que tienen vencimiento: sin fecha no hay dónde pintarla.</summary>
@@ -31,6 +33,7 @@ public sealed record TaskCalendarEntry(
             task.Priority,
             task.AssigneeUserId,
             task.Reference.CustomerId,
-            task.IsBlocked
+            task.IsBlocked,
+            task.Due.DueOn
         );
 }

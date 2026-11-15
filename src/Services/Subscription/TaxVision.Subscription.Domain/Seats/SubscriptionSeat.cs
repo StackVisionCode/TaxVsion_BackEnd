@@ -106,6 +106,62 @@ public sealed class SubscriptionSeat : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Hay una renovación o reactivación pedida o en cobro: cambiar el período ahora la pisaría.</summary>
+    public bool HasRenewalInProgress =>
+        _renewals.Any(renewal =>
+            renewal.Status is RenewalStatus.Scheduled or RenewalStatus.Processing or RenewalStatus.RetryScheduled
+        );
+
+    /// <summary>
+    /// Cambio de ciclo de la suscripción: el asiento pasa al ciclo nuevo, a su precio vigente y al mismo período que
+    /// la base. Solo un asiento activo y sin renovación en curso.
+    /// </summary>
+    public Result SwitchCycle(
+        BillingCycle billingCycle,
+        Money unitPrice,
+        DateTime periodStartUtc,
+        DateTime periodEndUtc,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        if (Status != SeatStatus.Active)
+            return Result.Failure(
+                new Error("Seat.CycleSwitchNotActive", "Only an active seat can change its billing cycle.")
+            );
+
+        if (HasRenewalInProgress)
+            return Result.Failure(new Error("Seat.RenewalInProgress", "The seat is finishing a renewal."));
+
+        if (periodEndUtc <= periodStartUtc)
+            return Result.Failure(new Error("Seat.InvalidPeriod", "The period end must be after its start."));
+
+        BillingCycle = billingCycle;
+        // Copia propia: Money es owned type y EF no comparte una instancia entre filas.
+        UnitPrice = Money.Create(unitPrice.Amount, unitPrice.Currency).Value;
+        CurrentPeriodStartUtc = periodStartUtc;
+        CurrentPeriodEndUtc = periodEndUtc;
+        NextRenewalAtUtc = periodEndUtc;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Paso a otro ciclo al fin del período (p. ej. anual → mensual): toma el ciclo y el precio vigente para su próxima
+    /// renovación. No mueve el período: lo que ya pagó sigue vigente hasta su fin.
+    /// </summary>
+    public Result RepriceForNextRenewal(BillingCycle billingCycle, Money unitPrice, Guid actorUserId, DateTime nowUtc)
+    {
+        if (HasRenewalInProgress)
+            return Result.Failure(new Error("Seat.RenewalInProgress", "The seat is finishing a renewal."));
+
+        BillingCycle = billingCycle;
+        // Copia propia: Money es owned type y EF no comparte una instancia entre filas.
+        UnitPrice = Money.Create(unitPrice.Amount, unitPrice.Currency).Value;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result MarkPastDueBecauseRenewalFailed(string failureCode, Guid actorUserId, DateTime nowUtc)
     {
         if (Status != SeatStatus.Active)

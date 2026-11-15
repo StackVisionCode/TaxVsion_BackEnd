@@ -51,6 +51,9 @@ public sealed class PlanChangeDowngradeGuardTests
                     correlation,
                     audit,
                     logger,
+                    new FakeTenantAddOnRepo(),
+                    new FakeAddOnDefinitionRepository(),
+                    new FakeSeatPricingRepository(null),
                     token
                 ),
                 AttachUpgradeCheckoutCommand attach => await AttachUpgradeCheckoutHandler.Handle(
@@ -325,6 +328,9 @@ public sealed class PlanChangeDowngradeGuardTests
             fixture.Plans,
             new FakeSeatRepo(),
             UserCounts(activeUsers),
+            new FakeTenantAddOnRepo(),
+            new FakeAddOnDefinitionRepository(),
+            new FakeSeatPricingRepository(null),
             CancellationToken.None
         );
 

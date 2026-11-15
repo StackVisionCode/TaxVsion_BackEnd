@@ -1,5 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.GrowthIntegrationEvents;
+using BuildingBlocks.TimeZones;
+using BuildingBlocks.TimeZones.Formatting;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 
@@ -25,9 +27,11 @@ public static class GiftcardShareConsumer
             var name = string.IsNullOrWhiteSpace(evt.RecipientName)
                 ? evt.RecipientEmail.Split('@')[0]
                 : evt.RecipientName!;
-            var expires = evt.ExpiresAtUtc is { } until
-                ? $"Valid until {until.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)}"
-                : "No expiry";
+            var expires =
+                evt.ExpiresAtUtc is not { } until ? "No expiry"
+                // P30: vence al final del día en la zona comercial, escrita ("Expires Dec 31, 2026 (New York time, GMT-5)").
+                : evt.ExpiresTimeZoneId is { } zoneId ? CommercialExpiry(until, ResolvedTimeZone.Resolve(zoneId))
+                : $"Valid until {until.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)}";
 
             var render = (
                 await scribeClient.RenderAsync(
@@ -58,4 +62,7 @@ public static class GiftcardShareConsumer
             );
         }
     }
+
+    private static string CommercialExpiry(DateTime untilUtc, ResolvedTimeZone zone) =>
+        $"Expires {ZonedTimeFormatter.Date(untilUtc, zone)} ({ZonedTimeFormatter.ZoneLabel(zone, untilUtc)})";
 }

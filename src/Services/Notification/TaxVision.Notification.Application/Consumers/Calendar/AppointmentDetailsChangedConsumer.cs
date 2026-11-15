@@ -82,9 +82,7 @@ public static class AppointmentDetailsChangedConsumer
                     ["location_changed"] = evt.ChangedFields.Contains("Location"),
                     ["description"] = evt.Description,
                     ["description_changed"] = evt.ChangedFields.Contains("Description"),
-                    ["start_local"] = evt.StartUtc is { } start
-                        ? CalendarTimeFormatting.InZone(start, evt.TimeZoneId)
-                        : "Follows the series schedule",
+                    ["start_local"] = (object?)ScribeDates.Instant(evt.StartUtc) ?? "Follows the series schedule",
                     ["time_zone"] = evt.TimeZoneId,
                     ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
                 },
@@ -92,7 +90,8 @@ public static class AppointmentDetailsChangedConsumer
                 gateway,
                 evt.EventId,
                 correlation.CorrelationId,
-                ct
+                ct,
+                timeZoneId: evt.TimeZoneId
             );
         }
     }

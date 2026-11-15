@@ -34,7 +34,9 @@ public sealed class RenderController(IMessageBus bus) : ControllerBase
         LogoScope LogoScope = LogoScope.System,
         TemplateChannel Channel = TemplateChannel.Email,
         // Quién lee el correo: Client usa el logo del portal de la oficina. Ausente = Staff.
-        RenderAudience Audience = RenderAudience.Staff
+        RenderAudience Audience = RenderAudience.Staff,
+        // Zona de quien lee (P18). Ausente = la de la oficina.
+        string? TimeZoneId = null
     );
 
     [HttpPost]
@@ -50,7 +52,8 @@ public sealed class RenderController(IMessageBus bus) : ControllerBase
             request.Variables,
             request.LogoScope,
             request.Channel,
-            request.Audience
+            request.Audience,
+            request.TimeZoneId
         );
         var result = await bus.InvokeAsync<Result<RenderedContent>>(query, ct);
         return result.IsSuccess ? Ok(result.Value) : StatusCode(ToRenderStatusCode(result.Error), result.Error);

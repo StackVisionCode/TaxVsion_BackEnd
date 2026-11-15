@@ -25,6 +25,7 @@ public sealed class CalendarMetrics : ICalendarMetrics, IDisposable
     private readonly Counter<long> _conflictDetectedTotal;
     private readonly Counter<long> _icsFeedRequestsTotal;
     private readonly Counter<long> _icsFeedStaleTotal;
+    private readonly Counter<long> _publicBookingTotal;
     private readonly Histogram<double> _expansionDuration;
     private readonly Histogram<int> _seriesPerQuery;
 
@@ -59,6 +60,10 @@ public sealed class CalendarMetrics : ICalendarMetrics, IDisposable
             "ics_feed_stale_total",
             description: "Feed responses served from the last good copy after a live read failed"
         );
+        _publicBookingTotal = _meter.CreateCounter<long>(
+            "public_booking_total",
+            description: "Steps of the public demo booking flow, by outcome"
+        );
         _expansionDuration = _meter.CreateHistogram<double>(
             "occurrence_expansion_duration_ms",
             description: "Wall clock spent expanding series for a range query, in milliseconds"
@@ -91,6 +96,13 @@ public sealed class CalendarMetrics : ICalendarMetrics, IDisposable
         _icsFeedRequestsTotal.Add(1, new KeyValuePair<string, object?>("found", found));
 
     public void RecordIcsFeedStale() => _icsFeedStaleTotal.Add(1);
+
+    public void RecordPublicBooking(string step, string outcome) =>
+        _publicBookingTotal.Add(
+            1,
+            new KeyValuePair<string, object?>("step", step),
+            new KeyValuePair<string, object?>("outcome", outcome)
+        );
 
     public void Dispose() => _meter.Dispose();
 }

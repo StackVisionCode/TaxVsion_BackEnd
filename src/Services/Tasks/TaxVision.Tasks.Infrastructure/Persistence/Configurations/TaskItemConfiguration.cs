@@ -125,6 +125,8 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
             .HasMaxLength(ClientRequestNote.MaxLength);
 
         builder.Property(t => t.ClientDueAtUtc);
+        builder.Property(t => t.ClientDueOn);
+        builder.Ignore(t => t.ClientDueCivilDate);
         builder.Property(t => t.ClientRequestedByUserId);
         builder.Property(t => t.ClientRequestedAtUtc);
     }

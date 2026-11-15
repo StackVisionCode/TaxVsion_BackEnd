@@ -6,6 +6,7 @@ using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Notifications;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
@@ -100,10 +101,11 @@ public static class SignerVerificationChallengeIssuedConsumer
                     {
                         ["full_name"] = evt.SignerFullName,
                         ["code"] = evt.PlaintextAnswer,
-                        ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
                         ["language"] = evt.SignerLanguage,
                     },
                     ScribeRenderAudience.Client,
+                    ScribeReader.From(evt.SignerLanguage),
                     ct
                 )
             ).EnsureRendered("sig.verification_challenge_issued.v1");
@@ -261,10 +263,12 @@ public static class SignerVerificationChallengeIssuedConsumer
         CancellationToken ct
     )
     {
+        // P14: un código de minutos se dice relativo; la hora con "UTC" obligaba a convertir.
+        var minutes = Math.Max(1, (int)Math.Ceiling((evt.ExpiresAtUtc - DateTime.UtcNow).TotalMinutes));
         var body =
             evt.SignerLanguage == "Es"
-                ? $"Tu codigo {brand}: {evt.PlaintextAnswer}. Vence a las {evt.ExpiresAtUtc:HH:mm} UTC."
-                : $"Your {brand} code: {evt.PlaintextAnswer}. Expires at {evt.ExpiresAtUtc:HH:mm} UTC.";
+                ? $"Tu codigo {brand}: {evt.PlaintextAnswer}. Vence en {minutes} {(minutes == 1 ? "minuto" : "minutos")}."
+                : $"Your {brand} code: {evt.PlaintextAnswer}. Expires in {minutes} {(minutes == 1 ? "minute" : "minutes")}.";
         // El EventId es estable por reintento y no depende del codigo plain-text.
         return smsSender.SendAsync(
             evt.DeliveryAddress,

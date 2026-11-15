@@ -122,7 +122,7 @@ public static class ProcessSaaSReceiptGenerationHandler
                     GenerateSaaSReceiptDocumentHandler.OwnerTypeSaaSPayment,
                     command.SaaSPaymentId,
                     FolderTypeSaaSReceipts,
-                    command.Receipt.PaidAtUtc.Year,
+                    ReceiptRenderData.PaidDay(command.Receipt.PaidAtUtc, command.Receipt.TimeZoneId).Year,
                     command.TenantId,
                     correlation.CorrelationId
                 )
@@ -155,7 +155,7 @@ public static class ProcessSaaSReceiptGenerationHandler
                 ["description"] = receipt.Description,
                 ["price"] = ReceiptRenderData.Money(receipt.AmountPaidCents),
                 ["currency"] = receipt.Currency,
-                ["paidAt"] = ReceiptRenderData.PaidAt(receipt.PaidAtUtc),
+                ["paidAt"] = ReceiptRenderData.PaidAt(receipt.PaidAtUtc, receipt.TimeZoneId),
                 ["transactionReferenceMask"] = receipt.TransactionReferenceMask,
                 // Vacíos cuando el cobro no tiene unidades que contar; la plantilla omite la línea de desglose.
                 ["quantity"] = receipt.Quantity?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
@@ -163,6 +163,17 @@ public static class ProcessSaaSReceiptGenerationHandler
                 // Subtítulo opcional por tipo de cobro (seats/add-on/wallet-top-up); vacío cae al
                 // fallback "{{ issuer.name }} subscription" de la plantilla.
                 ["secondaryDescription"] = receipt.SecondaryDescription ?? string.Empty,
+                // Una fila por cosa cobrada; sin líneas la plantilla muestra la fila única de siempre.
+                ["hasLines"] = receipt.Lines is { Count: > 0 },
+                ["lines"] = (receipt.Lines ?? [])
+                    .Select(line => new Dictionary<string, object>
+                    {
+                        ["description"] = line.Description,
+                        ["quantity"] = line.Quantity.ToString(CultureInfo.InvariantCulture),
+                        ["unitPrice"] = ReceiptRenderData.Money(line.UnitAmountCents),
+                        ["amount"] = ReceiptRenderData.Money(line.Quantity * line.UnitAmountCents),
+                    })
+                    .ToList(),
                 ["issuer"] = ReceiptRenderData.Issuer(issuer, brandLogoDataUri),
                 // Vacíos cuando la oficina no tiene perfil: la plantilla cae al nombre de la oficina.
                 ["billedTo"] = new Dictionary<string, object>

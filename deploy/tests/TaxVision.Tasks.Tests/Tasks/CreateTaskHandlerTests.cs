@@ -28,6 +28,45 @@ public sealed class CreateTaskHandlerTests
         Assert.Single(bus.Published.OfType<TaskCreatedIntegrationEvent>());
     }
 
+    /// <summary>P4: con solo la fecha civil, el vencimiento es el último segundo de ese día en la oficina.</summary>
+    [Fact]
+    public async Task CreateWithCivilDueDate_EndsAtTheEndOfTheOfficeDay()
+    {
+        var bus = new FakeMessageBus();
+        var tasks = new InMemoryTaskRepository();
+
+        var result = await CreateTaskHandler.Handle(
+            new CreateTaskCommand(
+                TenantId,
+                Creator,
+                "Prepare return",
+                null,
+                TaskPriority.Normal,
+                null,
+                null,
+                null,
+                DueAtUtc: null,
+                DueTimeZoneId: null,
+                DueIsStatutory: false,
+                EstimatedHours: null,
+                DueOn: new DateOnly(2026, 11, 15)
+            ),
+            tasks,
+            new RecordingUnitOfWork(),
+            new RecordingTaskMetrics(),
+            new FixedOfficeZone("America/New_York"),
+            CancellationToken.None
+        );
+        await DomainEventReplay.DispatchIntoAsync(bus, tasks);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(new DateTime(2026, 11, 16, 4, 59, 59, DateTimeKind.Utc), result.Value.DueAtUtc);
+        Assert.Equal(new DateOnly(2026, 11, 15), result.Value.DueOn);
+        Assert.Equal("America/New_York", result.Value.DueTimeZoneId);
+        var created = Assert.Single(bus.Published.OfType<TaskCreatedIntegrationEvent>());
+        Assert.Equal(new DateOnly(2026, 11, 15), created.DueOn);
+    }
+
     [Fact]
     public async Task CreateWithoutAssignee_DoesNotPublishTaskAssigned()
     {
@@ -64,6 +103,7 @@ public sealed class CreateTaskHandlerTests
             tasks,
             new RecordingUnitOfWork(),
             new RecordingTaskMetrics(),
+            new FixedOfficeZone("America/New_York"),
             CancellationToken.None
         );
         await DomainEventReplay.DispatchIntoAsync(bus, tasks);

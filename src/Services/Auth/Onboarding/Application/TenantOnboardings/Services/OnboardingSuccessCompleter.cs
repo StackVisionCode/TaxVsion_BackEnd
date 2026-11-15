@@ -173,7 +173,8 @@ public sealed class OnboardingSuccessCompleter(
                 paidAtUtc,
                 providerPaymentReference,
                 paymentMethodMasked,
-                correlationId
+                correlationId,
+                TimeZoneId: onboarding.TimeZoneId
             )
         );
 

@@ -155,6 +155,7 @@ public static class ChargeSaaSPaymentHandler
                 command.PromotionSnapshotHash,
                 ChargeBreakdowns.FromRequest(command.Quantity, command.UnitAmountCents, amountResult.Value.AmountCents)
             )
-            .WithConceptFor(command.Type, command.Quantity);
+            .WithConceptFor(command.Type, command.Quantity, command.ConceptDisplayName)
+            .WithLines(command.Lines);
     }
 }

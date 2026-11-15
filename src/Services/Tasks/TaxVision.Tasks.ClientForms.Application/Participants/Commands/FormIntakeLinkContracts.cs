@@ -12,7 +12,8 @@ public sealed record CreateFormIntakeLinkCommand(
     DateTime? ExpiresAtUtc,
     int? MaxSubmissions,
     Guid ResponsibleUserId,
-    DateTime NowUtc
+    DateTime NowUtc,
+    DateOnly? ExpiresOn = null
 );
 
 public enum FormIntakeLinkAction

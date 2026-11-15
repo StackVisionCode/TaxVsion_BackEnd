@@ -9,6 +9,7 @@ function repo() {
     listForRange: vi.fn(),
     listAllForRange: vi.fn(),
     purgeBefore: vi.fn(),
+    hasAnyDay: vi.fn(),
   } satisfies AnalyticsRepository;
 }
 

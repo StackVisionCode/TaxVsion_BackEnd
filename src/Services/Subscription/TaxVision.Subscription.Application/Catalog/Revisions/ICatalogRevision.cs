@@ -31,6 +31,9 @@ public sealed record CatalogRevisionContext(
     DateTime NowUtc
 )
 {
+    /// <summary>Catálogo de módulos, para las revisiones que tocan módulos o add-ons.</summary>
+    public IModuleRepository? Modules { get; init; }
+
     /// <summary>Actor de los cambios hechos al desplegar.</summary>
     public static readonly Guid DeployActor = Guid.Empty;
 
@@ -42,5 +45,11 @@ public sealed record CatalogRevisionContext(
 public static class CatalogRevisionCatalog
 {
     public static IReadOnlyList<ICatalogRevision> All { get; } =
-    [new R1RebaselineRevision(), new R2SingleEnterpriseRevision(), new R3PlanDescriptionsRevision()];
+    [
+        new R1RebaselineRevision(),
+        new R2SingleEnterpriseRevision(),
+        new R3PlanDescriptionsRevision(),
+        new FinancialInsightsModuleRevision(),
+        new FinancialInsightsLegacyEditionsRevision(),
+    ];
 }

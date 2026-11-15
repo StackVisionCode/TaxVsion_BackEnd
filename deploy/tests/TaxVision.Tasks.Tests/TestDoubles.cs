@@ -542,3 +542,10 @@ internal sealed class InMemoryTaskSeriesRepository(params TaskSeries[] seed) : I
             Stored.Where(s => s.Status == SeriesStatus.Active && s.OpenInstanceId == null).Take(take).ToList()
         );
 }
+
+/// <summary>Zona fija de la oficina para las pruebas que dependen del día civil.</summary>
+internal sealed class FixedOfficeZone(string timeZoneId) : IOfficeTimeZone
+{
+    public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+        Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(timeZoneId));
+}

@@ -54,7 +54,7 @@ public static class AttachSignatureImageHandler
             FolderType: "Signatures",
             // La carpeta "Signatures" de CloudStorage EXIGE año fiscal (File.YearRequired) — igual que el
             // sellado. Se usa el año de creación de la solicitud (la firma se captura dentro de ese ciclo).
-            TaxYear: request.CreatedAtUtc.Year,
+            TaxYear: request.OfficeYearOf(request.CreatedAtUtc),
             ActorId: request.CreatedByUserId
         );
 

@@ -972,6 +972,39 @@ public static class NotificationCatalog
             NotificationAction.Review,
             InAppEmail
         ),
+        Entry(
+            // Lote subido por el staff: solo a quien lo creó.
+            NotificationKinds.FinancialImportBatchCompleted,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "financial_import_batch",
+            NotificationAction.Review
+        ),
+        Entry(
+            // Lote subido desde el portal: acuse al cliente, sin detalle técnico.
+            NotificationKinds.FinancialPortalImportBatchCompleted,
+            NotificationCatalogCategory.Portal,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.CustomerPortal,
+            InApp,
+            false,
+            "financial_import_batch",
+            NotificationAction.Open
+        ),
+        Entry(
+            // Lote subido desde el portal: staff asignado al cliente (owner si no hay asignados).
+            NotificationKinds.FinancialPortalImportBatchSubmitted,
+            NotificationCatalogCategory.Clients,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.Participants,
+            InApp,
+            false,
+            "financial_import_batch",
+            NotificationAction.Review
+        ),
     }.ToFrozenDictionary(entry => entry.Kind, StringComparer.Ordinal);
 
     public static IReadOnlyCollection<NotificationCatalogEntry> All { get; } = Entries.Values.ToArray();

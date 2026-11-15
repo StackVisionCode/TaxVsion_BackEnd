@@ -33,8 +33,7 @@ public static class MeetingRescheduledConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var meetingTitle = MeetingNotifications.Title(evt.MeetingTitle);
-            var newLocal = MeetingNotifications.LocalTime(evt.NewScheduledForUtc, evt.TimeZone);
-            var timeZone = MeetingNotifications.TimeZoneLabel(evt.TimeZone);
+            var newWhen = MeetingNotifications.Describe(evt.NewScheduledForUtc, evt.TimeZone);
 
             var context = new Dictionary<string, string>();
             if (evt.NewScheduledForUtc is { } newUtc)
@@ -51,7 +50,7 @@ public static class MeetingRescheduledConsumer
                 EventKey,
                 evt.OccurredOn,
                 $"\"{meetingTitle}\" was rescheduled",
-                newLocal is null ? null : $"New time: {newLocal} ({timeZone}).",
+                newWhen is null ? null : $"New time: {newWhen}.",
                 correlation.CorrelationId,
                 context,
                 ct
@@ -71,14 +70,15 @@ public static class MeetingRescheduledConsumer
                     new Dictionary<string, object?>
                     {
                         ["meeting_title"] = meetingTitle,
-                        ["previous_local"] = MeetingNotifications.LocalTime(evt.PreviousScheduledForUtc, evt.TimeZone),
-                        ["new_local"] = newLocal,
-                        ["time_zone"] = timeZone,
+                        ["previous_local"] = ScribeDates.Instant(evt.PreviousScheduledForUtc),
+                        ["new_local"] = ScribeDates.Instant(evt.NewScheduledForUtc),
+                        ["time_zone"] = MeetingNotifications.TimeZoneLabel(evt.TimeZone),
                         ["duration_minutes"] = evt.DurationMinutes,
                         ["host_name"] = evt.HostDisplayName,
                         ["meeting_code"] = evt.ShortCode,
                     },
                     ScribeRenderAudience.Client,
+                    ScribeReader.From(null, evt.TimeZone),
                     ct
                 )
             ).EnsureRendered(EventKey);

@@ -60,6 +60,14 @@ public static class RenewalUpcomingEmailConsumer
                     PlanName = evt.PlanName ?? evt.PlanCode,
                     DaysUntilRenewal = evt.DaysUntilDue,
                     NextRenewalAtUtc = evt.DueAtUtc,
+                    // E4: total de la renovación (plan más extras) y cada cuánto se cobra.
+                    Amount = evt.AmountCents is { } cents
+                        ? (cents / 100m).ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+                        : null,
+                    Cadence =
+                        string.Equals(evt.BillingCycle, "Yearly", StringComparison.OrdinalIgnoreCase) ? "year"
+                        : evt.BillingCycle is null ? null
+                        : "month",
                     RenewUrl = renewUrl,
                     CorrelationId = correlationId,
                 }

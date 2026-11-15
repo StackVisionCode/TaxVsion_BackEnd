@@ -39,7 +39,8 @@ public sealed class ClientRequestsController(IMessageBus bus) : ControllerBase
                 request.TaskId,
                 request.Title,
                 request.Details,
-                request.DueAtUtc
+                request.DueAtUtc,
+                request.DueOn
             ),
             ct
         );

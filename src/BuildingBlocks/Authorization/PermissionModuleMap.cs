@@ -48,6 +48,7 @@ public static class PermissionModuleMap
     private static readonly (string Prefix, string Module)[] PrefixToModule =
     [
         ("customers.", "customers"),
+        ("financial.", "financial_insights"),
         ("signature.", "signatures"),
         ("documents.", "documents"),
         ("cloudstorage.", "documents"),

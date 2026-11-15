@@ -55,6 +55,11 @@ export function isConnectionQuality(value: string): value is ConnectionQuality {
   );
 }
 
+/** Hay medios fluyendo: cualquier nivel medido, no `Unknown` ni `Disconnected`. */
+export function isConnectedQuality(value: ConnectionQuality): boolean {
+  return value === 'Excellent' || value === 'Good' || value === 'Fair' || value === 'Poor';
+}
+
 export function makeConnectionQuality(input: string): Result<ConnectionQuality> {
   if (!isConnectionQuality(input)) {
     return Result.fail(makeError('Call.InvalidQuality', `Unknown ConnectionQuality '${input}'.`));

@@ -124,4 +124,22 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
 
         return (items, totalCount);
     }
+
+    public async Task<IReadOnlyList<OnboardingPaymentLink>> ListPaymentLinksAsync(
+        int skip,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .TenantOnboardings.AsNoTracking()
+            .Where(onboarding => onboarding.PaymentId != null && onboarding.TenantId != null)
+            .OrderBy(onboarding => onboarding.Id)
+            .Skip(skip)
+            .Take(take)
+            .Select(onboarding => new OnboardingPaymentLink(
+                onboarding.Id,
+                onboarding.TenantId!.Value,
+                onboarding.ReceiptFileId
+            ))
+            .ToListAsync(ct);
 }

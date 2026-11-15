@@ -61,24 +61,28 @@ public sealed class MeetingInvitationCreatedConsumerTests
 
         var variables = harness.Render.LastVariables;
         Assert.Equal("Revisión de la 1040", variables["meeting_title"]);
-        Assert.Equal("2026-11-05 14:00", variables["start_local"]);
+        // Scribe imprime la hora en la zona de la reunión, con su rótulo.
+        Assert.Equal("2026-11-05T18:00:00.0000000Z", TypedDates.Instant(variables["start_local"]));
+        Assert.Equal("America/Santo_Domingo", harness.Render.LastReader?.TimeZoneId);
         Assert.Equal("America/Santo_Domingo", variables["time_zone"]);
+        // El vencimiento ya no dice "UTC": va tipado, en la misma zona que "When".
+        Assert.NotNull(TypedDates.Instant(variables["expires_at"]));
         Assert.Equal(45, variables["duration_minutes"]);
         Assert.Equal("María Pérez", variables["host_name"]);
         Assert.Equal("ABC-123", variables["meeting_code"]);
         Assert.Equal(false, variables["in_progress"]);
     }
 
-    /// <summary>Sin zona la hora no se inventa: sale en UTC y lo dice, que es lo que evita el correo ambiguo.</summary>
+    /// <summary>Sin zona de la reunión, Scribe usa la de la oficina (y sin oficina, UTC rotulado).</summary>
     [Fact]
-    public async Task Sin_zona_la_hora_sale_en_utc()
+    public async Task Without_a_meeting_zone_scribe_prints_it_in_the_office_zone()
     {
         var harness = new Harness();
 
         await Handle(harness, Invitation("cliente@example.com") with { TimeZone = null });
 
-        Assert.Equal("2026-11-05 18:00 UTC", harness.Render.LastVariables["start_local"]);
-        Assert.Equal("UTC", harness.Render.LastVariables["time_zone"]);
+        Assert.Equal("2026-11-05T18:00:00.0000000Z", TypedDates.Instant(harness.Render.LastVariables["start_local"]));
+        Assert.Null(harness.Render.LastReader?.TimeZoneId);
     }
 
     [Fact]

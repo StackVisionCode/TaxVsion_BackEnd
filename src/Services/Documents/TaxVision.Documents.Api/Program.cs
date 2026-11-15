@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.DocumentsIntegrationEvents;
@@ -45,6 +46,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddDocumentsInfrastructure(builder.Configuration);
 
 // BB-09 — Documents usaba IConnectionMultiplexer a pelo para IRateCounter y se quedaba sin
@@ -88,11 +90,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // Rate limiting tiered (Fase 4.16 del plan). Documents no tenía ningún rate limiting propio antes
 // de esta fase — se agrega IConnectionMultiplexer/IRateCounter desde cero, mismo patrón que
 // Growth/PaymentClient/Tenant/etc.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 
@@ -124,9 +124,12 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
     options.ListenForPlatformSettings();
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Documents.Application"));
+    // Zona de cada oficina: consumer compartido de TenantTimeZones, vive fuera de Application.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConnection =

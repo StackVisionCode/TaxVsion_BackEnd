@@ -8,6 +8,12 @@ export interface CallUsageRepository {
   getSeconds(input: { tenantId: string; yearMonth: string }): Promise<number>;
 }
 
+/** Uso por período del cupo (P11): el llamador da el instante y el medidor resuelve el período de la oficina. */
+export interface CallUsageMeter {
+  addSeconds(input: { tenantId: string; at: Date; seconds: number }): Promise<void>;
+  secondsThisPeriod(input: { tenantId: string; at: Date }): Promise<number>;
+}
+
 export function yearMonthUtc(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 }

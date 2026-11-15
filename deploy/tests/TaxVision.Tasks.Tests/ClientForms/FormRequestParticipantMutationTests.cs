@@ -191,6 +191,7 @@ public sealed class FormRequestParticipantMutationTests
             ConsentGate(),
             new RowVersionBumpingUnitOfWork(request),
             metrics,
+            new FixedFormsOfficeZone(),
             default
         );
 
@@ -222,6 +223,7 @@ public sealed class FormRequestParticipantMutationTests
             ConsentGate(),
             new RowVersionBumpingUnitOfWork(request),
             new RecordingClientFormsMetrics(),
+            new FixedFormsOfficeZone(),
             default
         );
 

@@ -69,6 +69,14 @@ public static class SubscriptionModuleCatalogSeeder
             "Wallet",
             "Tenant wallet balance, top-ups and spend audit."
         ),
+        Commercial(
+            "b2000000-0000-0000-0000-00000000000a",
+            "financial_insights",
+            "Financial Insights",
+            "Client bank statement imports with AI-assisted financial analysis.",
+            29m,
+            290m
+        ),
     ];
 
     public static async Task SeedAsync(

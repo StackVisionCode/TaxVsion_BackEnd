@@ -1,6 +1,7 @@
 using TaxVision.Tasks.Application.Templates.Commands;
 using TaxVision.Tasks.Application.Templates.Seed;
 using TaxVision.Tasks.Domain.Series;
+using TaxVision.Tasks.Domain.ValueObjects;
 
 namespace TaxVision.Tasks.Tests.Templates;
 
@@ -81,5 +82,18 @@ public sealed class StandardTaxTemplatesTests
                 Assert.True(t.Steps[0].IsStatutory);
             }
         );
+    }
+
+    /// <summary>El 941 vence el último día del mes siguiente al trimestre: con BYMONTHDAY=31, RFC 5545 se salta abril.</summary>
+    [Fact]
+    public void The_941_falls_due_on_the_last_day_of_april_too()
+    {
+        var rule = RecurrenceRule
+            .Create(StandardTaxTemplates.All.Single(t => t.Name.StartsWith("941")).RecurrenceRule, "America/New_York")
+            .Value;
+
+        var next = rule.NextAfter(new DateTime(2026, 2, 1, 4, 59, 59, DateTimeKind.Utc)); // fin del 31-ene
+
+        Assert.Equal(new DateTime(2026, 5, 1, 3, 59, 59, DateTimeKind.Utc), next.Value); // fin del 30-abr
     }
 }

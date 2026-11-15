@@ -20,8 +20,23 @@ internal sealed class RecordingEmailGateway : IEmailDispatchGateway
     }
 }
 
-internal sealed class RecordingScribeRenderClient : IScribeRenderClient
+internal sealed class RecordingScribeRenderClient : IScribeRenderClient, IScribeReaderRenderClient
 {
+    public ScribeReader? LastReader { get; private set; }
+
+    public Task<Result<ScribeRenderedEmail>> RenderForReaderAsync(
+        string eventKey,
+        Guid tenantId,
+        IReadOnlyDictionary<string, object?> variables,
+        ScribeRenderAudience audience,
+        ScribeReader reader,
+        CancellationToken ct = default
+    )
+    {
+        LastReader = reader;
+        return RenderAsync(eventKey, tenantId, variables, audience, ct);
+    }
+
     public Task<Result<ScribeRenderedEmail>> RenderAsync(
         string eventKey,
         Guid tenantId,

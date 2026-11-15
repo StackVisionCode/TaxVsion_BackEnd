@@ -267,7 +267,7 @@ public sealed class PdfSharpCertificateRenderer(IPlatformSettings platform) : IC
         WriteSectionHeader(ctx, "Envelope summary");
 
         var standard = model.Seal is { } seal ? $"PAdES-B · {seal.SignatureAlgorithm}" : "SHA-256 integrity hashing";
-        var pairs = new (string Label, string Value)[]
+        var pairs = new List<(string Label, string Value)>
         {
             ("Reference", ShortReference(model.SignatureRequestId)),
             ("Status", "Completed"),
@@ -278,7 +278,10 @@ public sealed class PdfSharpCertificateRenderer(IPlatformSettings platform) : IC
             ("Created (UTC)", FormatUtc(model.CreatedAtUtc)),
             ("Completed (UTC)", FormatUtc(model.CompletedAtUtc)),
         };
-        DrawTwoColumnGrid(ctx, pairs);
+        // P8: solo en las nuevas; los sellos y tiempos de arriba siguen en UTC.
+        if (model.DateFieldsZone is { } zone)
+            pairs.Add(("Date fields shown in", zone));
+        DrawTwoColumnGrid(ctx, pairs.ToArray());
         ctx.CursorY += 8;
     }
 
@@ -987,7 +990,8 @@ public sealed class PdfSharpCertificateRenderer(IPlatformSettings platform) : IC
 
     private static string ShortReference(Guid id) => id.ToString("N")[..12].ToUpperInvariant();
 
-    private static string FormatUtc(DateTime dt) => dt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'");
+    private static string FormatUtc(DateTime dt) =>
+        dt.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'", System.Globalization.CultureInfo.InvariantCulture);
 
     private static string FormatHashChunked(string hex)
     {

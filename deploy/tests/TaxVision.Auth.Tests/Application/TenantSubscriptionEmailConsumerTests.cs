@@ -248,6 +248,70 @@ public sealed class TenantSubscriptionEmailConsumerTests
         Assert.Equal(migrationId, request.MigrationId);
     }
 
+    // Cambio de ciclo: no es una transición, pero el admin recibe lo cobrado, el ciclo y las fechas.
+    [Fact]
+    public async Task A_billing_cycle_change_notifies_the_admin_with_amount_cadence_and_dates()
+    {
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            StatusEvent(tenantId, "Active", nameof(SubscriptionChangeReason.BillingCycleChanged)) with
+            {
+                Amount = "1589.00",
+                Cadence = "year",
+                DateCharged = "November 12, 2026",
+                NextChargeDate = "November 12, 2027",
+            },
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var request = Assert.IsType<TenantSubscriptionEmailRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(nameof(SubscriptionChangeReason.BillingCycleChanged), request.Reason);
+        Assert.Equal(("1589.00", "year"), (request.Amount, request.Cadence));
+        Assert.Equal(("November 12, 2026", "November 12, 2027"), (request.DateCharged, request.NextChargeDate));
+    }
+
+    // E4: el aviso de la renovación anual dice cuánto se cobrará (plan más extras) y cada cuánto.
+    [Fact]
+    public async Task The_yearly_renewal_reminder_carries_the_total_and_the_cadence()
+    {
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await RenewalUpcomingEmailConsumer.Handle(
+            new SubscriptionRenewalUpcomingIntegrationEvent
+            {
+                TenantId = tenantId,
+                TenantSubscriptionId = Guid.NewGuid(),
+                DueAtUtc = DateTime.UtcNow.AddDays(30),
+                DaysUntilDue = 30,
+                PlanCode = "enterprise",
+                PlanName = "Enterprise",
+                AmountCents = 158_900,
+                Currency = "USD",
+                BillingCycle = "Yearly",
+            },
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var request = Assert.IsType<TenantSubscriptionEmailRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(("1589.00", "year"), (request.Amount, request.Cadence));
+        Assert.Equal(30, request.DaysUntilRenewal);
+    }
+
     // Análisis 2026-11-11: el aviso de renovación mostraba el código del plan ("enterprise") como nombre.
     [Fact]
     public async Task The_renewal_reminder_names_the_plan_and_not_its_code()

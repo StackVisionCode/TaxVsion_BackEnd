@@ -61,5 +61,6 @@ services:
       - catalog-api
       - campaigns-api
       - wallet-api
+      - financial-insights-api
       - inventory-api
       - otel-collector

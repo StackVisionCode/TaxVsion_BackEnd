@@ -45,7 +45,8 @@ public sealed record ChangeFormRequestDueDateCommand(
     Guid RequestId,
     DateTime? DueAtUtc,
     byte[] RowVersion,
-    DateTime NowUtc
+    DateTime NowUtc,
+    DateOnly? DueOn = null
 );
 
 internal static class ReviewSupport

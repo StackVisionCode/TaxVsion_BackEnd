@@ -33,7 +33,9 @@ public sealed record TaskResponse(
     string? ExpectedItems,
     DateTime? ClientDueAtUtc,
     Guid? ClientRequestedByUserId,
-    DateTime? ClientRequestedAtUtc
+    DateTime? ClientRequestedAtUtc,
+    DateOnly? DueOn = null,
+    DateOnly? ClientDueOn = null
 )
 {
     public static TaskResponse From(TaskItem task) =>
@@ -63,7 +65,9 @@ public sealed record TaskResponse(
             task.ExpectedItems?.Value,
             task.ClientDueAtUtc,
             task.ClientRequestedByUserId,
-            task.ClientRequestedAtUtc
+            task.ClientRequestedAtUtc,
+            task.Due?.DueOn,
+            task.ClientDueCivilDate
         );
 
     public static PagedResult<TaskResponse> FromPage(PagedResult<TaskItem> page) =>

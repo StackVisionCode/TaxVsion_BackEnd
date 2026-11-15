@@ -17,7 +17,8 @@ public sealed record CreateTaskRequest(
     DateTime? DueAtUtc,
     string? DueTimeZoneId,
     bool DueIsStatutory,
-    decimal? EstimatedHours
+    decimal? EstimatedHours,
+    DateOnly? DueOn = null
 );
 
 /// <summary>Sin cliente ni año fiscal: los hereda del padre.</summary>
@@ -29,7 +30,8 @@ public sealed record CreateSubtaskRequest(
     DateTime? DueAtUtc,
     string? DueTimeZoneId,
     bool DueIsStatutory,
-    decimal? EstimatedHours
+    decimal? EstimatedHours,
+    DateOnly? DueOn = null
 );
 
 public sealed record UpdateTaskDetailsRequest(string? Title, string? Description);
@@ -37,18 +39,20 @@ public sealed record UpdateTaskDetailsRequest(string? Title, string? Description
 public sealed record ChangeTaskPriorityRequest(TaskPriority Priority);
 
 /// <param name="StatutoryChangeReason">Obligatoria sólo si se afloja un vencimiento estatutario.</param>
+/// <param name="DueOn">Fecha civil: si viene, manda sobre el instante y vence al final de ese día en la oficina.</param>
 public sealed record ChangeTaskDueRequest(
     DateTime? DueAtUtc,
     string? TimeZoneId,
     bool IsStatutory,
-    string? StatutoryChangeReason
+    string? StatutoryChangeReason,
+    DateOnly? DueOn = null
 );
 
 public sealed record CancelTaskRequest(string? Reason);
 
 public sealed record AssignTaskRequest(Guid AssigneeUserId);
 
-public sealed record WaitOnClientRequest(string? ExpectedItems, DateTime? ClientDueAtUtc);
+public sealed record WaitOnClientRequest(string? ExpectedItems, DateTime? ClientDueAtUtc, DateOnly? ClientDueOn = null);
 
 public sealed record AddDependencyRequest(Guid DependsOnTaskId);
 
@@ -63,6 +67,7 @@ public sealed record UpsertTaskLabelRequest(
 );
 
 /// <param name="AnchorUtc">La primera ocurrencia: la serie no la calcula, la respeta.</param>
+/// <param name="AnchorOn">Fecha civil: si viene, manda; vence al final de ese día en la zona de la oficina.</param>
 public sealed record CreateTaskSeriesRequest(
     string? Title,
     string? Description,
@@ -77,7 +82,8 @@ public sealed record CreateTaskSeriesRequest(
     RecurrenceMode Mode,
     DateTime AnchorUtc,
     DateTime? EndsAtUtc,
-    int? MaxOccurrences
+    int? MaxOccurrences,
+    DateOnly? AnchorOn = null
 );
 
 public sealed record SaveTaskTemplateStepRequest(
@@ -110,7 +116,8 @@ public sealed record ApplyTaskTemplateRequest(
     int? TaxYear,
     DateTime DueAtUtc,
     string? TimeZoneId,
-    bool AllowDuplicate
+    bool AllowDuplicate,
+    DateOnly? DueOn = null
 );
 
 /// <param name="SizeBytes">Lo informa CloudStorage; sirve para mostrarlo, no para validar el byte.</param>
@@ -133,7 +140,8 @@ public sealed record CreateClientRequestRequest(
     Guid? TaskId,
     string? Title,
     string? Details,
-    DateTime? DueAtUtc
+    DateTime? DueAtUtc,
+    DateOnly? DueOn = null
 );
 
 public sealed record ResolveClientRequestRequest(ClientRequestResolution Resolution, string? Note);

@@ -41,7 +41,7 @@ public sealed class CustomerPortalCopier(
             );
 
         var copied = 0;
-        var taxYear = (request.CompletedAtUtc ?? request.CreatedAtUtc).Year;
+        var taxYear = request.OfficeYearOf(request.CompletedAtUtc ?? request.CreatedAtUtc);
         foreach (var pending in request.PendingCustomerCopies())
         {
             if (

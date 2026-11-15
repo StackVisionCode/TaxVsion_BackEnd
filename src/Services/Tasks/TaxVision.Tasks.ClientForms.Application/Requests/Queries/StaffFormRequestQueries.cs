@@ -51,7 +51,9 @@ public sealed record FormRequestListItemResponse(
     IReadOnlyList<FormActionRunResponse> ActionRuns,
     FormRequestOrigin Origin,
     // P-18 — estado de la firma de la última revisión, para el chip de la bandeja.
-    FormRevisionSignatureStatus LatestSignatureStatus
+    FormRevisionSignatureStatus LatestSignatureStatus,
+    // Fecha civil de la fecha límite: su instante (fin del día de la oficina) cae al día siguiente en UTC.
+    DateOnly? DueOn = null
 );
 
 public sealed record GetFormRequestQuery(Guid TenantId, Guid ActorUserId, bool CanViewAll, Guid RequestId);

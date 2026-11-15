@@ -1,10 +1,12 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.TimeZones;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Analytics;
 using Wolverine;
 
@@ -25,7 +27,7 @@ namespace TaxVision.Signature.Api.Controllers;
 [Route("signature/analytics")]
 [Authorize]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class SignatureAnalyticsController(IMessageBus bus) : ControllerBase
+public sealed class SignatureAnalyticsController(IMessageBus bus, IOfficeTimeZone zones) : ControllerBase
 {
     // ---------- GET /signature/analytics/summary ----------
     [HttpGet("summary")]
@@ -41,7 +43,7 @@ public sealed class SignatureAnalyticsController(IMessageBus bus) : ControllerBa
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var (fromDay, toDay) = ResolveDefaultRange(from, to);
+        var (fromDay, toDay) = await ResolveDefaultRangeAsync(tenantId, from, to, ct);
         var result = await bus.InvokeAsync<SignatureAnalyticsSummary>(
             new SignatureAnalyticsSummaryQuery(tenantId, fromDay, toDay),
             ct
@@ -63,7 +65,7 @@ public sealed class SignatureAnalyticsController(IMessageBus bus) : ControllerBa
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var (fromDay, toDay) = ResolveDefaultRange(from, to);
+        var (fromDay, toDay) = await ResolveDefaultRangeAsync(tenantId, from, to, ct);
         var result = await bus.InvokeAsync<SignatureAnalyticsTimeline>(
             new SignatureAnalyticsTimelineQuery(tenantId, fromDay, toDay),
             ct
@@ -85,7 +87,7 @@ public sealed class SignatureAnalyticsController(IMessageBus bus) : ControllerBa
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var (fromDay, toDay) = ResolveDefaultRange(from, to);
+        var (fromDay, toDay) = await ResolveDefaultRangeAsync(tenantId, from, to, ct);
         var result = await bus.InvokeAsync<SignatureAnalyticsByCategory>(
             new SignatureAnalyticsByCategoryQuery(tenantId, fromDay, toDay),
             ct
@@ -97,9 +99,15 @@ public sealed class SignatureAnalyticsController(IMessageBus bus) : ControllerBa
     // Métodos privados: cada uno una única responsabilidad
     // ------------------------------------------------------------------
 
-    private static (DateOnly From, DateOnly To) ResolveDefaultRange(DateOnly? from, DateOnly? to)
+    // P21: "hoy" es el día de la oficina, no el UTC.
+    private async Task<(DateOnly From, DateOnly To)> ResolveDefaultRangeAsync(
+        Guid tenantId,
+        DateOnly? from,
+        DateOnly? to,
+        CancellationToken ct
+    )
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = CivilDate.Of(DateTime.UtcNow, await zones.ResolveAsync(tenantId, ct));
         var effectiveTo = to ?? today;
         var effectiveFrom = from ?? effectiveTo.AddDays(-29); // 30 días por defecto
         return (effectiveFrom, effectiveTo);

@@ -44,7 +44,8 @@ public sealed class ClientFormCustomerCreationFitnessTests
     [InlineData("first.last+tag@sub.example.org")]
     public void No_lock_name_contains_the_email_in_clear(string email)
     {
-        var resource = CustomerCreationLockResource.For(Guid.NewGuid(), email);
+        // Tenant fijo: con uno al azar, sus dígitos hex a veces forman "ada" y la prueba fallaba sin motivo.
+        var resource = CustomerCreationLockResource.For(Guid.Parse("11111111-2222-3333-4444-555555555555"), email);
 
         Assert.DoesNotContain(email, resource, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(email.Split('@')[0], resource, StringComparison.OrdinalIgnoreCase);

@@ -146,6 +146,11 @@ public sealed class FakeSeatRepo(IReadOnlyList<SubscriptionSeat>? seats = null) 
     public Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(_seats);
 
+    public Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdForUpdateAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => Task.FromResult(_seats);
+
     public Task<SubscriptionSeat?> GetByIdAsync(Guid id, Guid t, CancellationToken ct = default) =>
         throw new NotSupportedException();
 

@@ -235,7 +235,11 @@ public sealed class SealingCertificateBuilder(
             TenantLogo: tenantLogo,
             // Referencia del preparador (ERO): solo si firmó internamente. Identificador enmascarado, sin imagen.
             Preparer: BuildPreparerEntry(request),
-            Seal: seal
+            Seal: seal,
+            DateFieldsZone: SealedFieldDates.CertificateZone(
+                request.DisplayTimeZoneId,
+                request.CompletedAtUtc ?? DateTime.UtcNow
+            )
         );
     }
 

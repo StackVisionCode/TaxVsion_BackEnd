@@ -14,7 +14,8 @@ public static class SubscriptionStatusChangedPublishing
     public static TenantSubscriptionStatusChangedIntegrationEvent Reannouncement(
         TenantSubscription subscription,
         SubscriptionChangeReason reason,
-        string? correlationId = null
+        string? correlationId = null,
+        int? noticeDaysBefore = null
     ) =>
         new()
         {
@@ -27,5 +28,6 @@ public static class SubscriptionStatusChangedPublishing
             // La cancelación programada necesita decir hasta cuándo llega el acceso ya pagado.
             AccessEndsAtUtc = subscription.CancelAtPeriodEnd ? subscription.CurrentPeriodEndUtc : null,
             CorrelationId = correlationId ?? string.Empty,
+            NoticeDaysBefore = noticeDaysBefore,
         };
 }

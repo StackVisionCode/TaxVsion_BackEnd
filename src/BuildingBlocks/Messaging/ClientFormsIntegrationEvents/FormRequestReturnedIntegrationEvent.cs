@@ -13,4 +13,7 @@ public sealed record FormRequestReturnedIntegrationEvent : IntegrationEvent
     public required int FieldCommentCount { get; init; }
     public required Guid ReturnedByUserId { get; init; }
     public DateTime? DueAtUtc { get; init; }
+
+    /// <summary>Fecha civil del vencimiento (aditivo): el instante es el fin de ese día en la oficina.</summary>
+    public DateOnly? DueOn { get; init; }
 }

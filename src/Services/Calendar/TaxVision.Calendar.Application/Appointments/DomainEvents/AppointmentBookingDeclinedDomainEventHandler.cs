@@ -35,7 +35,7 @@ public static class AppointmentBookingDeclinedDomainEventHandler
             CorrelationId = envelope.CorrelationId ?? string.Empty,
             AppointmentId = appointment.Id,
             Title = appointment.Title.Value,
-            StartUtc = AppointmentEvents.FirstStartOf(appointment),
+            StartUtc = AppointmentEvents.UpcomingStartOf(appointment, DateTime.UtcNow),
             TimeZoneId = appointment.Timing.TimeZone.Id,
             Reason = declined.Reason,
             CustomerId = appointment.CustomerId,

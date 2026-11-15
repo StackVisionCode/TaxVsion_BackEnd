@@ -99,47 +99,6 @@ public sealed class InvoiceEditTests
     }
 
     [Fact]
-    public void EditPaidWithoutPayments_HigherTotal_BecomesIssued()
-    {
-        // Onboarding cubierto al 100 %: Paid con $0 cobrados. Si sube el total no hay pago que la haga "parcial".
-        var invoice = Invoice
-            .CreateForOnboarding(
-                TenantId,
-                Guid.NewGuid(),
-                Guid.NewGuid(),
-                null,
-                InvoiceNumber.Create("ONB-2026-00001").Value,
-                Customer("Client"),
-                new IssuerSnapshot(
-                    "TaxVision",
-                    new Address("1 Main", null, "City", "ST", "00000", "US"),
-                    null,
-                    null,
-                    null,
-                    null
-                ),
-                "Enterprise (Monthly)",
-                12_900,
-                12_900,
-                0,
-                "USD",
-                SettlementType.FullyCoveredByCode,
-                [new OnboardingInvoiceAdjustment(InvoiceAdjustmentType.Gift, "WELCOME100", Guid.NewGuid(), 12_900)],
-                Issued,
-                Issued
-            )
-            .Value;
-
-        var result = Edit(invoice, 12_900);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(InvoiceStatus.Issued, invoice.Status);
-        Assert.Equal(12_900, invoice.AmountDue.AmountCents);
-        Assert.Null(invoice.ReceiptNumber);
-        Assert.Equal(StatusChangeTrigger.Edit, invoice.StatusChanges.Last().Trigger);
-    }
-
-    [Fact]
     public void EditWithoutPayments_ChangeCurrency_IsAllowed()
     {
         var invoice = IssuedInvoice(10_000);

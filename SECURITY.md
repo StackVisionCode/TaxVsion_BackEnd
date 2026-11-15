@@ -1,8 +1,8 @@
 # Politica de Seguridad
 
-TaxVision es un backend SaaS multitenant construido con microservicios en .NET 10.
-Esta politica describe las versiones soportadas, como reportar vulnerabilidades y las
-practicas de seguridad ya implementadas en el repositorio.
+TaxVision es una plataforma SaaS multitenant con servicios en .NET 10 y Node.js.
+Esta politica describe las versiones soportadas, como reportar vulnerabilidades,
+la superficie de ataque y las areas que requieren verificacion de seguridad.
 
 **Contacto de seguridad:** <stackvisionsoftware@gmail.com>
 **Mantenedor:** Jorge Turbi
@@ -14,7 +14,7 @@ version de la rama principal recibe correcciones de seguridad.
 
 | Componente | Version | Soportado |
 | --- | --- | --- |
-| Backend TaxVision (rama `main`) | ultima | :white_check_mark: |
+| Servicios TaxVision (rama `main`) | ultima | :white_check_mark: |
 | Ramas de desarrollo (`Develop`, feature branches) | actual | :white_check_mark: (esfuerzo razonable) |
 | Versiones/tags anteriores | < ultima | :x: |
 | .NET SDK / Runtime | 10.0.x | :white_check_mark: |
@@ -36,8 +36,8 @@ privada:
 Incluya en el reporte:
 
 - descripcion del problema y su impacto (confidencialidad, integridad o disponibilidad);
-- componente afectado (Gateway, Auth, Tenant, Customer, Subscription, Notification,
-  CloudStorage o BuildingBlocks);
+- componente afectado (por ejemplo, Gateway, Auth, CloudStorage, Communication,
+  Connectors o un worker);
 - pasos de reproduccion o prueba de concepto;
 - version, commit o rama afectada;
 - cualquier `CorrelationId` relevante si observo el problema en ejecucion.
@@ -58,13 +58,69 @@ comportamiento esperado o fuera de alcance).
 Le pedimos no divulgar publicamente la vulnerabilidad hasta que exista una correccion
 o mitigacion acordada.
 
+## Contexto de seguridad y arquitectura
+
+### Stack tecnologico
+
+| Capa | Componentes relevantes |
+| --- | --- |
+| Cliente | Angular |
+| APIs y servicios | .NET 10 con Entity Framework Core; Node.js/TypeScript con Fastify y Prisma en Communication |
+| Datos y archivos | SQL Server para datos y metadatos; MinIO, compatible con S3, para objetos |
+| Mensajeria y tiempo real | RabbitMQ, Socket.IO y Mediasoup (SFU WebRTC) |
+| Ingesta y procesamiento | IMAP IDLE, ClamAV y transcripcion de audio mediante `whisper.cpp` |
+| Infraestructura | Docker |
+
+### Fronteras de confianza y puntos de entrada
+
+1. **Cliente a servicios:** las peticiones HTTP/REST procedentes de Angular y
+   los eventos de Socket.IO son entradas no confiables. Autenticar la conexion
+   no sustituye la autorizacion de cada operacion sobre recursos concretos.
+2. **Cliente a medios:** la senalizacion para Mediasoup y el trafico WebRTC
+   atraviesan la frontera de Internet. La pertenencia a una sala y los permisos
+   para crear transportes, productores y consumidores deben verificarse en el
+   servidor, junto con los limites de recursos.
+3. **Correo externo a servicios internos:** mensajes, cabeceras y adjuntos
+   recibidos por IMAP IDLE proceden de remitentes no confiables, aunque la
+   conexion al buzon este autenticada.
+4. **Archivos a almacenamiento y procesamiento:** documentos, imagenes y audio
+   pueden llegar a un area temporal de MinIO antes del escaneo. La frontera
+   critica es su paso a un estado disponible, compartible o procesable tras la
+   decision de ClamAV y las politicas de contenido. Los objetos rechazados o
+   pendientes de revision requieren aislamiento y acceso restringido.
+5. **Entre servicios:** mensajes de RabbitMQ y llamadas internas transportan
+   datos entre procesos con privilegios distintos. Cada consumidor debe validar
+   el contrato, la identidad o procedencia esperada y el `TenantId` antes de
+   actuar. Las consultas de Entity Framework Core y Prisma acceden a SQL Server;
+   el aislamiento multitenant debe mantenerse en cada lectura y escritura.
+6. **Procesamiento de grabaciones:** el worker de transcripcion recibe trabajo
+   y archivos derivados de sesiones de Communication. El acceso a grabaciones
+   y transcripciones debe seguir los permisos del tenant y de los participantes.
+
+### Prioridades de auditoria y pruebas
+
+| Riesgo | Comprobacion prioritaria |
+| --- | --- |
+| Acceso indebido entre usuarios o tenants (IDOR/BOLA) | Probar identificadores ajenos en APIs, enlaces de MinIO, salas, grabaciones, transcripciones y consultas; verificar autorizacion del recurso en el servidor. |
+| Inyeccion y datos manipulados | Revisar SQL dinamico o consultas sin parametros en EF Core/Prisma, contratos de RabbitMQ, eventos Socket.IO y parsing de cabeceras y adjuntos IMAP. |
+| Subidas y antivirus | Comprobar que un objeto temporal no pueda descargarse, compartirse ni procesarse antes de una decision valida de escaneo; probar archivos infectados, fallos y tiempos de espera de ClamAV. |
+| Tiempo real y denegacion de servicio | Probar autenticacion del handshake, revocacion y autorizacion por evento; limitar salas, transportes, productores, consumidores, ancho de banda y conexiones por usuario o tenant. |
+| Workers y tareas asincronas | Probar reentregas, mensajes malformados, referencias cruzadas de tenant y fallos parciales sin publicar resultados no autorizados. |
+
+Estas son **hipotesis y casos de prueba**, no vulnerabilidades confirmadas ni una
+afirmacion de que todos los controles esten implementados. Un hallazgo debe
+acompanarse de una ruta reproducible y del impacto observado.
+
 ## Alcance
 
 **Dentro de alcance:**
 
-- servicios del backend en `src/` (Gateway, Auth, Tenant, Customer, Subscription,
-  Notification, CloudStorage) y `BuildingBlocks`;
+- servicios y workers en `src/` (incluidos Gateway, Auth, Tenant, Customer,
+  Subscription, Notification, CloudStorage, Connectors y Communication) y
+  `BuildingBlocks`;
 - autenticacion, autorizacion y aislamiento multitenant;
+- API HTTP, Socket.IO, senalizacion y medios WebRTC, colas RabbitMQ e ingesta IMAP;
+- subida, escaneo, almacenamiento, acceso y transcripcion de archivos;
 - manejo de tokens (JWT, refresh tokens, tokens de invitacion, bootstrap);
 - exposicion de secretos, credenciales o datos entre tenants;
 - configuracion de despliegue en `deploy/`.
@@ -129,8 +185,8 @@ TaxVision ya incorpora los siguientes controles (ver README, seccion 14):
 
 ## Consideraciones de despliegue (pendientes conocidos)
 
-Los siguientes puntos son limitaciones conocidas para entornos productivos y **no**
-deben considerarse vulnerabilidades reportables mientras esten documentados:
+Los siguientes puntos requieren revision antes de un despliegue productivo.
+Si alguno permite una explotacion concreta, reportelo mediante el canal privado:
 
 - reemplazar credenciales locales por un secret manager en produccion;
 - mover el bootstrap de `PlatformAdmin` a un secret manager o Job de provisioning;
@@ -147,4 +203,4 @@ alla de lo necesario para demostrar el problema.
 ---
 
 **Licencia del codigo:** propietaria; consulte [LICENSE](LICENSE).
-**Ultima actualizacion:** 2026-07-04
+**Ultima actualizacion:** 2026-11-13

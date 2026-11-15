@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Tasks.Domain.ValueObjects;
 
 namespace TaxVision.Tasks.Application.Tasks;
@@ -23,7 +24,9 @@ public sealed record TaskDraft(
         bool dueIsStatutory,
         decimal? estimatedHours,
         Guid? customerId,
-        int? taxYear
+        int? taxYear,
+        DateOnly? dueOn = null,
+        ResolvedTimeZone? officeZone = null
     )
     {
         var parsedTitle = TaskTitle.Create(title);
@@ -34,7 +37,7 @@ public sealed record TaskDraft(
         if (parsedDescription.IsFailure)
             return Result.Failure<TaskDraft>(parsedDescription.Error);
 
-        var parsedDue = dueAtUtc is { } due ? DueDate.Create(due, dueTimeZoneId, dueIsStatutory) : null;
+        var parsedDue = BuildDue(dueAtUtc, dueTimeZoneId, dueIsStatutory, dueOn, officeZone);
         if (parsedDue is { IsFailure: true })
             return Result.Failure<TaskDraft>(parsedDue.Error);
 
@@ -56,6 +59,18 @@ public sealed record TaskDraft(
             )
         );
     }
+
+    /// <summary>La fecha civil manda sobre el instante (P4): vence al final de ese día en la oficina.</summary>
+    internal static Result<DueDate>? BuildDue(
+        DateTime? dueAtUtc,
+        string? dueTimeZoneId,
+        bool isStatutory,
+        DateOnly? dueOn,
+        ResolvedTimeZone? officeZone
+    ) =>
+        dueOn is { } civil ? DueDate.EndOfCivilDay(civil, officeZone ?? ResolvedTimeZone.Utc, isStatutory)
+        : dueAtUtc is { } due ? DueDate.Create(due, dueTimeZoneId, isStatutory)
+        : null;
 
     /// <summary>Vacío significa «sin valor», no «valor inválido».</summary>
     private static Result<TaskDescription?> Optional(string? value, Func<string?, Result<TaskDescription>> create)

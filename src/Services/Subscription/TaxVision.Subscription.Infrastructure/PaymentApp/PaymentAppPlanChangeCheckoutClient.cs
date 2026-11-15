@@ -72,6 +72,8 @@ internal sealed class PaymentAppPlanChangeCheckoutClient(
                         provider = request.Provider,
                         method = request.Method,
                         amountSignature,
+                        lines = request.Lines,
+                        conceptDisplayName = request.ConceptDisplayName,
                     },
                     options: Json
                 ),

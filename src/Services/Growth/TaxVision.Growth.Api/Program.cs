@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.GrowthIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -43,6 +44,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddGrowthInfrastructure(builder.Configuration);
 
 // Red de seguridad: barre reservas de código vencidas (checkout abandonado) → Expired + libera el hold,
@@ -85,11 +87,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // IRateCounter no estaban registrados por ninguna fase previa de Growth (a diferencia de
 // PaymentApp/Auth), así que se agregan acá — mismo patrón que Tenant/Billing/Correspondence/
 // Notification/Customer/CloudStorage/Subscription/Scribe/Signature/PaymentClient.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 
@@ -122,6 +122,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Codes.Application"));
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Referrals.Application"));

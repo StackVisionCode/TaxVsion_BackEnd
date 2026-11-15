@@ -29,6 +29,7 @@ public sealed class AppointmentConfiguration : IEntityTypeConfiguration<Appointm
         builder.Property(a => a.CustomerId);
         builder.Property(a => a.TaxYear);
         builder.Property(a => a.IsVirtual).IsRequired();
+        builder.Property(a => a.BookingPageId);
         builder.Property(a => a.MeetingId);
         builder.Property(a => a.MeetingShortCode).HasMaxLength(64);
         builder.Property(a => a.ReminderLeadMinutes);
@@ -73,6 +74,7 @@ public sealed class AppointmentConfiguration : IEntityTypeConfiguration<Appointm
             a.CustomerId,
             a.TaxYear,
         });
+        builder.HasIndex(a => a.BookingPageId).HasFilter("[BookingPageId] IS NOT NULL");
 
         // Los dos índices de rango llevan columnas del owned type y del filtro de la raíz a la vez,
         // así que no se pueden declarar acá: viven en la migración, en SQL, y se verifican en

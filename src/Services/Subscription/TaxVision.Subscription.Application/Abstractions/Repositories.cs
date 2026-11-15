@@ -133,6 +133,9 @@ public interface ISubscriptionSeatRepository
 {
     Task<SubscriptionSeat?> GetByIdAsync(Guid seatId, Guid tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Los asientos del tenant con sus renovaciones, rastreados para guardar un cambio (p. ej. de ciclo).</summary>
+    Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdForUpdateAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default);
 
     /// <summary>Batch job queries — cross-tenant by design, only the scheduler calls these.</summary>

@@ -37,6 +37,8 @@ export interface RecordingReadyEvent {
   readonly prompt?: string | null | undefined;
   readonly maxDurationSeconds?: number | undefined;
   readonly timeoutFactorPct?: number | undefined;
+  /** P25: fecha local de la grabación (`yyyy-MM-dd`) para el nombre de los archivos. */
+  readonly recordingLocalDate?: string | undefined;
 }
 
 /**
@@ -251,7 +253,9 @@ export function toRecordingReadyEvent(
   const tenantId = str(raw['tenantId']);
   const recordingFileId = str(raw[mapping.recordingFileIdField]);
   const targetId = str(raw[mapping.targetIdField]);
-  if (!eventId || !tenantId || !recordingFileId || !targetId) return undefined;
+  // eventId nombra un directorio que el pipeline borra recursivamente; targetId
+  // forma parte de un nombre de archivo. Ambos deben ser un solo segmento seguro.
+  if (!isSafeFileSegment(eventId) || !tenantId || !recordingFileId || !isSafeFileSegment(targetId)) return undefined;
 
   const passthrough: Record<string, PassthroughValue> = {};
   for (const field of mapping.passthroughFields) {
@@ -277,7 +281,12 @@ export function toRecordingReadyEvent(
     prompt: typeof prompt === 'string' ? prompt : prompt === null ? null : undefined,
     maxDurationSeconds: positiveNumber(raw['maxDurationSeconds']),
     timeoutFactorPct: positiveNumber(raw['timeoutFactorPct']),
+    recordingLocalDate: /^\d{4}-\d{2}-\d{2}$/.test(str(raw['recordingLocalDate']) ?? '') ? str(raw['recordingLocalDate']) : undefined,
   };
+}
+
+function isSafeFileSegment(value: string | undefined): value is string {
+  return value !== undefined && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value);
 }
 
 /** Pistas invalidas (sin fileId/userId) se descartan; el resto sigue. */

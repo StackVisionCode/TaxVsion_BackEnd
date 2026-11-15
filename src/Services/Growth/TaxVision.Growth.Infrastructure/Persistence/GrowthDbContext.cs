@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
@@ -71,6 +72,8 @@ public sealed class GrowthDbContext(DbContextOptions<GrowthDbContext> options, I
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         ApplyFailClosedTenantFilters(modelBuilder);
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

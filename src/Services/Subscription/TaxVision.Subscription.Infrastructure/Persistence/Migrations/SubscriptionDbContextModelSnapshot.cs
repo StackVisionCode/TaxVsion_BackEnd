@@ -22,6 +22,27 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BuildingBlocks.TenantTimeZones.TenantTimeZoneProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("SourceVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantTimeZoneProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.AddOns.AddOnDefinition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2707,6 +2728,50 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasForeignKey("TenantSubscriptionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.OwnsMany("TaxVision.Subscription.Domain.Subscriptions.PlanChangeLine", "Lines", b1 =>
+                        {
+                            b1.Property<Guid>("Id")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Code")
+                                .IsRequired()
+                                .HasMaxLength(64)
+                                .HasColumnType("nvarchar(64)");
+
+                            b1.Property<string>("Description")
+                                .IsRequired()
+                                .HasMaxLength(200)
+                                .HasColumnType("nvarchar(200)");
+
+                            b1.Property<string>("Kind")
+                                .IsRequired()
+                                .HasMaxLength(20)
+                                .HasColumnType("nvarchar(20)");
+
+                            b1.Property<Guid>("PlanChangeRequestId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<int>("Quantity")
+                                .HasColumnType("int");
+
+                            b1.Property<Guid?>("ReferenceId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<long>("UnitAmountCents")
+                                .HasColumnType("bigint");
+
+                            b1.HasKey("Id");
+
+                            b1.HasIndex("PlanChangeRequestId");
+
+                            b1.ToTable("PlanChangeRequestLines", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("PlanChangeRequestId");
+                        });
+
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.TenantSubscription", b =>

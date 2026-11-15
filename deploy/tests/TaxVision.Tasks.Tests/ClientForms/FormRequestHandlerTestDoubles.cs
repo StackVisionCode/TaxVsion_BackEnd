@@ -264,3 +264,11 @@ internal sealed class TestCorrelationContext : ICorrelationContext
 
     public IDisposable Push(string correlationId) => new MemoryStream();
 }
+
+/// <summary>Zona fija de la oficina para los handlers de Client Forms.</summary>
+internal sealed class FixedFormsOfficeZone(string timeZoneId = "Etc/UTC")
+    : TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IOfficeTimeZone
+{
+    public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+        Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(timeZoneId));
+}

@@ -119,6 +119,20 @@ public sealed class RecalculateEntitlementsHandlerTests
         Assert.Single(bus.Published.OfType<TenantEntitlementsChangedIntegrationEvent>());
     }
 
+    // P11: los cupos mensuales de los consumidores se reinician el día de alta; el evento lleva el inicio del período.
+    [Fact]
+    public async Task The_event_carries_the_current_period_start()
+    {
+        var plan = AddOnTestCatalog.PlanWith("starter", ["customers"]);
+        var subscription = AddOnTestCatalog.ActiveSubscription(Tenant, plan);
+        var bus = new CapturingMessageBus();
+
+        await RecalculateAsync(subscription, plan, [], new FakeSnapshotRepo(), bus);
+
+        var published = Assert.Single(bus.Published.OfType<TenantEntitlementsChangedIntegrationEvent>());
+        Assert.Equal(subscription.CurrentPeriodStartUtc, published.CurrentPeriodStartUtc);
+    }
+
     // Sin la marca (compras, admin, reposición de SUB-BB2) siempre sube la revisión y avisa, como hasta hoy.
     [Fact]
     public async Task WithoutOnlyIfChanged_AlwaysPublishes()

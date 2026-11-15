@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { logger } from '../../infrastructure/logger/logger.js';
 import type { Call } from '../../domain/calls/call.js';
 import type { CallRepository } from '../ports/call-repository.js';
-import type { CallUsageRepository } from '../ports/call-usage-repository.js';
-import { yearMonthUtc } from '../ports/call-usage-repository.js';
+import type { CallUsageMeter } from '../ports/call-usage-repository.js';
 import type { CallEmptinessClock, CallRoomPresence } from '../ports/abandoned-call-ports.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { PresenceService } from '../ports/presence-service.js';
@@ -21,7 +20,7 @@ export interface AbandonedCallSweepDeps extends RecordingLifecycleOptionalDeps {
   readonly publisher: IntegrationEventPublisher;
   readonly emitter: RealtimeEmitter;
   readonly presence: PresenceService;
-  readonly callUsage?: CallUsageRepository | undefined;
+  readonly callUsage?: CallUsageMeter | undefined;
 }
 
 export interface AbandonedCallSweepReport {
@@ -95,7 +94,7 @@ async function abandonOne(
   await deps.publisher.enqueue(endedEvent);
   if (after.durationSeconds) {
     await deps.callUsage
-      ?.addSeconds({ tenantId: after.tenantId, yearMonth: yearMonthUtc(endedAt), seconds: after.durationSeconds })
+      ?.addSeconds({ tenantId: after.tenantId, at: endedAt, seconds: after.durationSeconds })
       .catch(() => undefined);
   }
   const state: CallStateDto = {

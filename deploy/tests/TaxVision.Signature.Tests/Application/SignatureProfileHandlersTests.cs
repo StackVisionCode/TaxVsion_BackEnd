@@ -74,6 +74,7 @@ public sealed class SignatureProfileHandlersTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             bus,
+            new UtcOfficeZone(),
             CancellationToken.None
         );
 
@@ -107,6 +108,7 @@ public sealed class SignatureProfileHandlersTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new CapturingBus(),
+            new UtcOfficeZone(),
             CancellationToken.None
         );
 
@@ -137,6 +139,7 @@ public sealed class SignatureProfileHandlersTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new CapturingBus(),
+            new UtcOfficeZone(),
             CancellationToken.None
         );
 
@@ -163,6 +166,7 @@ public sealed class SignatureProfileHandlersTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new CapturingBus(),
+            new UtcOfficeZone(),
             CancellationToken.None
         );
 
@@ -189,6 +193,7 @@ public sealed class SignatureProfileHandlersTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new CapturingBus(),
+            new UtcOfficeZone(),
             CancellationToken.None
         );
 
@@ -286,6 +291,7 @@ public sealed class SignatureProfileHandlersTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new CapturingBus(),
+            new UtcOfficeZone(),
             CancellationToken.None
         );
 
@@ -314,6 +320,7 @@ public sealed class SignatureProfileHandlersTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new CapturingBus(),
+            new UtcOfficeZone(),
             CancellationToken.None
         );
 
@@ -342,6 +349,7 @@ public sealed class SignatureProfileHandlersTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new CapturingBus(),
+            new UtcOfficeZone(),
             CancellationToken.None
         );
 
@@ -556,5 +564,11 @@ public sealed class SignatureProfileHandlersTests
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
+    }
+
+    private sealed class UtcOfficeZone : IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(null));
     }
 }

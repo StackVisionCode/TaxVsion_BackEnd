@@ -13,6 +13,7 @@ namespace TaxVision.BuildingBlocks.Tests.Messaging;
 /// BB-7. <see cref="DependencyNotReadyException"/> se reintenta con esperas largas y después va a la
 /// cola de errores; el resto de la política estándar no cambia. Host real de Wolverine con transportes anulados.
 /// </summary>
+[Collection(nameof(WolverineFailurePoliciesTests))]
 public sealed class WolverineFailurePoliciesTests
 {
     private static readonly TimeSpan[] ShortDelays =
@@ -131,6 +132,13 @@ public sealed class WolverineFailurePoliciesTests
         return host;
     }
 }
+
+/// <summary>
+/// Aislada: mide esperas de 1 s entre intentos; con decenas de hosts arrancando en paralelo el primer intento no
+/// llegaba dentro del plazo según el orden en que xUnit repartía las clases.
+/// </summary>
+[CollectionDefinition(nameof(WolverineFailurePoliciesTests), DisableParallelization = true)]
+public sealed class WolverineFailurePoliciesCollection;
 
 public sealed record NotReadyProbe(Guid Id);
 

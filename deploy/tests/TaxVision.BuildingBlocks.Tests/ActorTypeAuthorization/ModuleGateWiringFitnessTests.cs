@@ -116,7 +116,8 @@ public sealed class ModuleGateWiringFitnessTests
             )
             .ToList();
 
-        Assert.Equal(14, wired.Count);
+        // 15 desde Financial Insights (módulo financial_insights, 2026-11-13).
+        Assert.Equal(15, wired.Count);
     }
 
     [Fact]

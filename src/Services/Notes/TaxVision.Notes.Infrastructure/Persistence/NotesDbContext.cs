@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
@@ -48,6 +49,8 @@ public sealed class NotesDbContext(DbContextOptions<NotesDbContext> options, ITe
         modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     /// <summary>

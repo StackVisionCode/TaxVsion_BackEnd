@@ -1,6 +1,7 @@
 using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Serialization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging;
@@ -25,7 +26,16 @@ public sealed record CreateTenantResponse(
     DateTime AdminInvitationExpiresAtUtc
 );
 
-public sealed record TenantResponse(Guid Id, string Name, string Subdomain, string DefaultTimeZoneId);
+// Estado y versión solo los llena el directorio M2M; en las demás respuestas no se serializan.
+public sealed record TenantResponse(
+    Guid Id,
+    string Name,
+    string Subdomain,
+    string DefaultTimeZoneId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Status = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] bool? IsActive = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? Version = null
+);
 
 public static class CreateTenantHandler
 {

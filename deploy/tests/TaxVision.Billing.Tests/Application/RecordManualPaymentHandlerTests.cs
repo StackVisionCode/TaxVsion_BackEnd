@@ -126,6 +126,18 @@ public sealed class RecordManualPaymentHandlerTests
         Assert.Empty(bus.Published.OfType<InvoicePaidIntegrationEvent>());
     }
 
+    /// <summary>TZ05-H8: una fecha sin zona se toma como UTC; el hash del recibo no depende del Kind.</summary>
+    [Fact]
+    public async Task A_payment_date_without_a_zone_is_stored_as_utc()
+    {
+        var invoice = IssuedInvoice(10_000);
+
+        await RecordAsync(invoice, null, paidAtUtc: new DateTime(2026, 11, 4, 12, 0, 0, DateTimeKind.Unspecified));
+
+        Assert.Equal(DateTimeKind.Utc, invoice.PaidAtUtc!.Value.Kind);
+        Assert.Equal(new DateTime(2026, 11, 4, 12, 0, 0, DateTimeKind.Utc), invoice.PaidAtUtc);
+    }
+
     private static Invoice IssuedInvoice(long totalCents)
     {
         var invoice = Invoice
@@ -149,7 +161,8 @@ public sealed class RecordManualPaymentHandlerTests
         Invoice invoice,
         long? amountCents,
         string? clientRequestId = null,
-        FakeMessageBus? bus = null
+        FakeMessageBus? bus = null,
+        DateTime? paidAtUtc = null
     ) =>
         RecordManualPaymentHandler.Handle(
             new RecordManualPaymentCommand(
@@ -157,7 +170,7 @@ public sealed class RecordManualPaymentHandlerTests
                 invoice.Id,
                 PaymentMethod.Cash.ToString(),
                 amountCents,
-                Now,
+                paidAtUtc ?? Now,
                 ActorUserId,
                 CanViewAll: true,
                 clientRequestId
@@ -178,12 +191,6 @@ public sealed class RecordManualPaymentHandlerTests
             CancellationToken ct = default,
             Guid? assignedToUserId = null
         ) => Task.FromResult<Invoice?>(invoice.Id == invoiceId ? invoice : null);
-
-        public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
-            Task.FromResult<Invoice?>(null);
-
-        public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
-            Task.FromResult<Invoice?>(null);
 
         public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
             Guid tenantId,

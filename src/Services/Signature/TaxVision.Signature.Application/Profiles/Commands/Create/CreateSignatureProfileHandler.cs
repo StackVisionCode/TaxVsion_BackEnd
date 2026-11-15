@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
 using TaxVision.Signature.Application.Platform;
@@ -20,6 +21,7 @@ public static class CreateSignatureProfileHandler
         ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -58,7 +60,8 @@ public static class CreateSignatureProfileHandler
         var (width, height) = SignatureImageValidator.ReadDimensions(cmd.Content);
 
         // La imagen se guarda en la carpeta Signatures del dueño (usuario u oficina), reusando la
-        // ruta IAM-scoped de Signature. La carpeta exige año fiscal → año en curso (la firma no es fiscal).
+        // ruta IAM-scoped de Signature. La carpeta exige año fiscal → año en curso de la oficina (la firma no es fiscal).
+        var officeYear = CivilDate.Of(DateTime.UtcNow, await zones.ResolveAsync(cmd.TenantId, ct)).Year;
         var upload = new SignatureFileUpload(
             Content: cmd.Content,
             FileName: "preparer-signature.png",
@@ -66,7 +69,7 @@ public static class CreateSignatureProfileHandler
             OwnerType: "Signature",
             OwnerId: cmd.OwnerUserId ?? cmd.TenantId,
             FolderType: "Signatures",
-            TaxYear: DateTime.UtcNow.Year,
+            TaxYear: officeYear,
             ActorId: cmd.ActorUserId
         );
         var staged = await storage.StageAsync(cmd.TenantId, upload, ct);

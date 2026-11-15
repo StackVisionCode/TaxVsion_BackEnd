@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
@@ -57,6 +58,7 @@ builder.Services.AddOpenApi();
 
 // 2) Services Shared plus Services's Infrastructure
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 
 //  Added Cache's Services
 builder.Services.AddRedisCache(builder.Configuration);
@@ -114,11 +116,9 @@ builder
 // "tenant-registration" (IP, 5/min sobre POST /tenants) sigue sin existir acá — Fase 0.5 la dejó
 // solo en el Gateway (RateLimitingRegistration.cs), ver el [RateLimitExempt] de
 // TenantController.Create.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 
@@ -151,6 +151,7 @@ builder
 // 3)
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(CreateTenantHandler).Assembly);
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
@@ -171,6 +172,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantStatusChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Renombre / cambio de zona horaria (PUT tenants/current): estado completo para las proyecciones.
     options.PublishMessage<TenantUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<TenantTimeZoneChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Perfil público de la oficina (PUT tenants/current/profile + importación desde Billing).
     options.PublishMessage<TenantProfileChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Cumplimiento (F4): años de retención (PUT tenants/current/compliance) y aviso anual del WISP (job diario).

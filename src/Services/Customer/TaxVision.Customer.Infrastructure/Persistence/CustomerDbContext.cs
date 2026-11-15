@@ -1,9 +1,11 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Customer.Domain.Addresses;
@@ -94,11 +96,14 @@ public sealed class CustomerDbContext(DbContextOptions<CustomerDbContext> option
         // Descubre y aplica las clases que implementan IEntityTypeConfiguration<T>
         // dentro de este ensamblado.
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyTenantTimeZoneProjection();
 
         ApplyFailClosedTenantFilter(modelBuilder);
 
         // Permite que DbContext complete la configuración definida por la clase base.
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     /// <summary>

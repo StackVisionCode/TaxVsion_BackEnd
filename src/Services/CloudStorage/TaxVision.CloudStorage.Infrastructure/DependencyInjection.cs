@@ -231,6 +231,7 @@ public static class DependencyInjection
         services.AddHostedService<ExpiredUploadCleanupService>();
         services.AddHostedService<RecycleBinPurgeService>();
         services.AddScoped<SqlStuckScanRescueLock>();
+        services.AddScoped<SqlTenantBackupLock>();
         services.AddHostedService<StuckScanRescueService>();
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
         // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma

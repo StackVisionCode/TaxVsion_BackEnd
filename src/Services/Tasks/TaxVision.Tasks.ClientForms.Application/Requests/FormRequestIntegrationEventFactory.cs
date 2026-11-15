@@ -16,6 +16,7 @@ public static class FormRequestIntegrationEventFactory
             Title = request.Title,
             HasMessage = !string.IsNullOrWhiteSpace(request.MessageToClient),
             DueAtUtc = request.DueAtUtc,
+            DueOn = request.DueOn,
             TaxYear = request.TaxYear,
             RequestedByUserId = request.RequestedByUserId,
             FormTemplateId = request.FormTemplateId,
@@ -61,6 +62,7 @@ public static class FormRequestIntegrationEventFactory
             FieldCommentCount = revision.FieldComments.Count,
             ReturnedByUserId = returnedByUserId,
             DueAtUtc = request.DueAtUtc,
+            DueOn = request.DueOn,
         };
 
     public static FormRequestCompletedIntegrationEvent Completed(
@@ -147,6 +149,7 @@ public static class FormRequestIntegrationEventFactory
             Participant = Participant(request),
             Title = request.Title,
             DueAtUtc = request.DueAtUtc,
+            DueOn = request.DueOn,
             IsOverdue = isOverdue,
             ReminderNumber = request.ReminderCount,
             IsManual = isManual,

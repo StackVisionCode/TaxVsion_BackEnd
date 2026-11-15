@@ -100,6 +100,18 @@ public sealed class OnboardingAdminController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Mantenimiento: completa en PaymentApp los pagos de alta viejos que quedaron sin oficina ni recibo.
+    /// Idempotente: se puede correr más de una vez.</summary>
+    [HttpPost("replay-payment-links")]
+    [RateLimit("auth.g.onboarding_admin_manage")]
+    public async Task<IActionResult> ReplayPaymentLinks(CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<int>>(new ReplayOnboardingPaymentLinksAdminCommand(), ct);
+        return result.IsSuccess
+            ? Ok(new { replayed = result.Value })
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record ReasonRequest(string Reason);
 
     /// <summary>OBF-3.1 — reemite el email "completa tu oficina" con un token nuevo de 7 días. Para

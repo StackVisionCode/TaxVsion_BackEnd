@@ -227,6 +227,49 @@ public sealed class SaaSReceiptRequestTests
         Assert.Null(requested.BilledTo);
     }
 
+    // Pasar a anual cobra plan, add-ons y asientos en un solo pago: el recibo detalla cada cosa.
+    [Fact]
+    public async Task A_charge_with_several_items_sends_each_line_for_the_receipt()
+    {
+        var payment = SaaSPayment
+            .Create(
+                TenantId,
+                IdempotencyKey.Create("key-plan-change-lines").Value,
+                Money.Create(1500, "USD").Value,
+                SaaSPaymentType.PlanChangeCharge,
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                Guid.Empty,
+                DateTime.UtcNow
+            )
+            .Value;
+        payment.AttachLines([
+            SaaSPaymentLine.Create("Enterprise — yearly", 1, 1000).Value,
+            SaaSPaymentLine.Create("Extra seats (Standard) — yearly", 2, 250).Value,
+        ]);
+        MarkPaid(payment);
+        var bus = new CapturingMessageBus();
+
+        bus.Published.AddRange(await SaaSPaymentEventReplay.DispatchAsync(payment, new FakeTenantRegistry("Acme Tax")));
+
+        var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
+        Assert.NotNull(requested.Lines);
+        Assert.Collection(
+            requested.Lines!,
+            plan =>
+                Assert.Equal(
+                    ("Enterprise — yearly", 1, 1000L),
+                    (plan.Description, plan.Quantity, plan.UnitAmountCents)
+                ),
+            seats =>
+                Assert.Equal(
+                    ("Extra seats (Standard) — yearly", 2, 250L),
+                    (seats.Description, seats.Quantity, seats.UnitAmountCents)
+                )
+        );
+    }
+
     private static SaaSPayment SucceededPayment(
         SaaSPaymentType type,
         int? quantity = null,

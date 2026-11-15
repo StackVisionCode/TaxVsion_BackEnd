@@ -139,6 +139,7 @@ public sealed class InvoicePaidPublishingTests
             new UnitOfWorkStub(),
             bus,
             TimeProvider.System,
+            new UtcOffice(),
             CancellationToken.None
         );
 
@@ -190,12 +191,6 @@ public sealed class InvoicePaidPublishingTests
             CancellationToken ct = default,
             Guid? assignedToUserId = null
         ) => Task.FromResult<Invoice?>(invoice.Id == invoiceId ? invoice : null);
-
-        public Task<Invoice?> GetByOnboardingIdAsync(Guid onboardingId, CancellationToken ct = default) =>
-            Task.FromResult<Invoice?>(null);
-
-        public Task<Invoice?> GetOnboardingInvoiceByIdAsync(Guid invoiceId, CancellationToken ct = default) =>
-            Task.FromResult<Invoice?>(null);
 
         public Task<IReadOnlyList<Invoice>> ListByTenantAsync(
             Guid tenantId,
@@ -265,5 +260,11 @@ public sealed class InvoicePaidPublishingTests
     private sealed class CallbackDisposable(Action callback) : IDisposable
     {
         public void Dispose() => callback();
+    }
+
+    private sealed class UtcOffice : IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Utc);
     }
 }

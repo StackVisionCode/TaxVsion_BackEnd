@@ -132,7 +132,8 @@ public sealed class TenantOnboarding : BaseEntity
         string? phone,
         DateTime nowUtc,
         string? billingCycle = null,
-        bool autoRenewRequested = false
+        bool autoRenewRequested = false,
+        string? browserTimeZoneId = null
     )
     {
         var normalizedEmail = email?.Trim().ToLowerInvariant() ?? string.Empty;
@@ -161,6 +162,8 @@ public sealed class TenantOnboarding : BaseEntity
                 Status = TenantOnboardingStatus.PendingPayment,
                 CurrentStep = TenantProvisioningStep.None,
                 CreatedAtUtc = nowUtc,
+                // P7: la zona del navegador desde el alta; el recibo del pago sale antes del registro.
+                TimeZoneId = IanaTimeZone.TryNormalize(browserTimeZoneId, out var browserZone) ? browserZone : null,
             }
         );
     }

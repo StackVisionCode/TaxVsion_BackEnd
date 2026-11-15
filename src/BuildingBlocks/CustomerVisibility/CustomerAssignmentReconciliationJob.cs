@@ -32,10 +32,10 @@ public sealed class CustomerAssignmentReconciliationJob(
         var interval = TimeSpan.FromHours(Math.Max(1, options.ReconciliationIntervalHours));
         while (!stoppingToken.IsCancellationRequested)
         {
-            await RunOnceSafeAsync(options.ReconciliationPageSize, stoppingToken);
+            var completed = await RunOnceSafeAsync(options.ReconciliationPageSize, stoppingToken);
             try
             {
-                await Task.Delay(interval, stoppingToken);
+                await Task.Delay(ReconciliationRetry.NextDelay(completed, interval), stoppingToken);
             }
             catch (TaskCanceledException)
             {
@@ -56,19 +56,21 @@ public sealed class CustomerAssignmentReconciliationJob(
         catch (OperationCanceledException) { }
     }
 
-    private async Task RunOnceSafeAsync(int pageSize, CancellationToken ct)
+    /// <summary>true si la pasada terminó; false si Customer no respondió o falló, para reintentar pronto.</summary>
+    private async Task<bool> RunOnceSafeAsync(int pageSize, CancellationToken ct)
     {
         try
         {
-            await RunOnceAsync(pageSize, ct);
+            return await RunOnceAsync(pageSize, ct);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "CustomerAssignmentReconciliationJob iteration failed.");
+            return false;
         }
     }
 
-    private async Task RunOnceAsync(int pageSize, CancellationToken ct)
+    private async Task<bool> RunOnceAsync(int pageSize, CancellationToken ct)
     {
         using var scope = serviceProvider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<ICustomerAssignmentsReconciliationClient>();
@@ -90,7 +92,7 @@ public sealed class CustomerAssignmentReconciliationJob(
                         "CustomerAssignmentReconciliationJob aborted on page {Page} (Customer.Api unreachable/unauthorized).",
                         page
                     );
-                    return;
+                    return false;
                 }
 
                 foreach (var item in result.Items)
@@ -114,6 +116,7 @@ public sealed class CustomerAssignmentReconciliationJob(
                     "CustomerAssignmentReconciliationJob applied {Count} customer assignment snapshot(s).",
                     applied
                 );
+            return true;
         }
     }
 }

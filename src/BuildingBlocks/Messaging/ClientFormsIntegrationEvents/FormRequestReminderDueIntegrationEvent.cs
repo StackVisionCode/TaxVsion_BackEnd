@@ -10,6 +10,9 @@ public sealed record FormRequestReminderDueIntegrationEvent : IntegrationEvent
     public required ClientFormParticipant Participant { get; init; }
     public required string Title { get; init; }
     public DateTime? DueAtUtc { get; init; }
+
+    /// <summary>Fecha civil del vencimiento (aditivo): el instante es el fin de ese día en la oficina.</summary>
+    public DateOnly? DueOn { get; init; }
     public required bool IsOverdue { get; init; }
     public required int ReminderNumber { get; init; }
     public required bool IsManual { get; init; }

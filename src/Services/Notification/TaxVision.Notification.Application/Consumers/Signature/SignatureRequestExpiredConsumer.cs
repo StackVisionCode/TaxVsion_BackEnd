@@ -53,10 +53,11 @@ public static class SignatureRequestExpiredConsumer
                         new Dictionary<string, object?>
                         {
                             ["full_name"] = signer.FullName,
-                            ["expired_at"] = evt.ExpiredAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                            ["expired_at"] = ScribeDates.Instant(evt.ExpiredAtUtc),
                             ["language"] = signer.Language,
                         },
                         ScribeRenderAudience.Client,
+                        ScribeReader.From(signer.Language),
                         ct
                     )
                 ).EnsureRendered("sig.request_expired.v1");

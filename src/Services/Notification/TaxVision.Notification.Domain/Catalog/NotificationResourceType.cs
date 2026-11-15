@@ -27,4 +27,5 @@ public enum NotificationResourceType
     Campaign,
     UserManagement,
     Referral,
+    FinancialImportBatch,
 }

@@ -310,6 +310,8 @@ export interface MeetingRecordingStoppedEvent extends IntegrationEvent {
  */
 export interface MeetingRecordingProcessingStartedEvent extends IntegrationEvent {
   readonly eventType: 'communication.meeting.recording_processing_started.v1';
+  /** P25: fecha local de la grabación en la zona de la oficina, para el nombre del transcript. */
+  readonly recordingLocalDate?: string;
   readonly meetingId: string;
   readonly recordingFileId: string;
   readonly startedAtUtc: string;

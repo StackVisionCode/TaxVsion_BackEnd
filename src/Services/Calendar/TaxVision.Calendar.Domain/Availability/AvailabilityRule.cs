@@ -74,4 +74,7 @@ public sealed class AvailabilityRule : AggregateRoot
     public bool AppliesTo(DayOfWeek day) => Days.Includes(day);
 
     public void Deactivate() => IsActive = false;
+
+    /// <summary>P9: la oficina cambió de zona; el horario queda a la misma hora local en la nueva.</summary>
+    public void MoveToZone(CalendarTimeZone timeZone) => TimeZone = timeZone;
 }

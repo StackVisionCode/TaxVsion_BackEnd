@@ -61,6 +61,7 @@ builder
 builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddAuthInfrastructure(builder.Configuration);
 builder.Services.AddAuthOnboardingInfrastructure(builder.Configuration);
@@ -496,6 +497,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(LoginHandler).Assembly);
     options.Discovery.IncludeAssembly(typeof(TenantOnboardingProcessManager).Assembly);
     options.ListenForPlatformSettings();
@@ -565,11 +567,9 @@ builder.Host.UseWolverine(options =>
     options
         .PublishMessage<OnboardingPaymentFailedNotificationRequestedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
-    // Gift/Referral — FINALIZE pide a Billing asentar la factura (fuente de verdad financiera).
-    options
-        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.OnboardingInvoiceRequestedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingReceiptReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Mantenimiento: completa en PaymentApp los pagos de alta viejos (oficina + recibo).
+    options.PublishMessage<OnboardingPaymentLinkReplayedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingProvisioningStartedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<OnboardingProvisioningStepFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantOnboardingCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");

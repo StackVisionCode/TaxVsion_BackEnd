@@ -3,6 +3,7 @@ using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,6 +45,10 @@ public static class DependencyInjection
         services.AddScoped<IContactRepository, ContactRepository>();
         services.AddScoped<IContactListRepository, ContactListRepository>();
         services.AddScoped<ISenderProfileRepository, SenderProfileRepository>();
+        services.AddScoped<
+            TaxVision.Campaigns.Application.Settings.SmsWindow.ICampaignSmsWindowRepository,
+            CampaignSmsWindowRepository
+        >();
         services.AddScoped<ICampaignTemplateRepository, CampaignTemplateRepository>();
         services.AddScoped<ICampaignScheduleRepository, CampaignScheduleRepository>();
         services.AddCampaignRunOrchestration();
@@ -112,6 +117,14 @@ public static class DependencyInjection
 
         AddRbacProjection(services, configuration);
         AddRateLimitTierQuotas(services, configuration);
+
+        // Zona de cada oficina: eventos de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<CampaignsDbContext>();
+        services.AddTenantTimeZoneReconciliation<Reconciliation.CampaignsTenantTimeZoneTokenProvider>(configuration);
+        services.AddScoped<
+            TaxVision.Campaigns.Application.Scheduling.Abstractions.IOfficeTimeZone,
+            TimeZones.OfficeTimeZone
+        >();
 
         return services;
     }

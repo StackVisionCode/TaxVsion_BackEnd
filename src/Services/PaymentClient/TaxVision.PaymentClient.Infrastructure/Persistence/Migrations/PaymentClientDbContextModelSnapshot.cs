@@ -559,6 +559,12 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateOnly?>("AnchorDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeOnly?>("AnchorLocalTime")
+                        .HasColumnType("time");
+
                     b.Property<string>("BillingCycle")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -624,6 +630,10 @@ namespace TaxVision.PaymentClient.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");

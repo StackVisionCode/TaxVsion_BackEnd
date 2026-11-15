@@ -1,5 +1,4 @@
 using BuildingBlocks.Results;
-using BuildingBlocks.TimeZones;
 using TaxVision.Calendar.Application.Types.Abstractions;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.Scheduling;
@@ -136,10 +135,9 @@ internal static class AppointmentFactory
             return start;
         if (command.SeriesStartDate is not { } date || command.LocalStartTime is not { } time)
             return null;
-        if (!IanaTimeZone.TryFindTimeZone(timing.TimeZone.Id, out var zone))
-            return null;
-        var local = DateTime.SpecifyKind(date.ToDateTime(time), DateTimeKind.Unspecified);
-        return zone.IsInvalidTime(local) ? null : TimeZoneInfo.ConvertTimeToUtc(local, zone);
+        // P23: la misma conversión que la serie (la hora ambigua es la primera); la que no existe la rechaza el dominio.
+        var seriesStart = WallClock.ToUtc(date, time, timing.TimeZone);
+        return seriesStart.IsSuccess ? seriesStart.Value : null;
     }
 
     /// <summary>Sin fin (o sin duración en una serie) se usa la duración del tipo.</summary>

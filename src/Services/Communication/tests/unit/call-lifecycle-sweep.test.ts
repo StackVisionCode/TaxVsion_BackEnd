@@ -74,7 +74,7 @@ describe('sweepActiveCalls (F4)', () => {
       publisher,
       emitter,
       presence: { clearBusy: async (i: { userId: string }) => { cleared.push(i.userId); } } as unknown as PresenceService,
-      callUsage: { addSeconds: async (i: { tenantId: string; seconds: number }) => { usage.push(i); }, getSeconds: async () => 0 },
+      callUsage: { addSeconds: async (i: { tenantId: string; seconds: number }) => { usage.push(i); }, secondsThisPeriod: async () => 0 },
     };
     return { calls, publisher, emitter, cleared, usage, deps };
   }

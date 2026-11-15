@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Application.Templates.Abstractions;
@@ -80,6 +81,19 @@ public sealed class TaskTemplateInstantiator(ITaskRepository tasks, ITaskDepende
         return Result.Success();
     }
 
+    /// <summary>
+    /// Corre el vencimiento en días civiles de la oficina, con la misma hora de pared: sumar bloques de
+    /// 24 h movía una hora los pasos que cruzan el cambio de horario (y el fin del día pasaba a las 22:59).
+    /// </summary>
+    private static DateTime ShiftCivilDays(DateTime dueAtUtc, int days, string? timeZoneId)
+    {
+        var zone = ResolvedTimeZone.Resolve(timeZoneId);
+        var local = TimeZoneInfo.ConvertTimeFromUtc(dueAtUtc, zone.Zone).AddDays(days);
+        return WallTime
+            .ToUtc(DateOnly.FromDateTime(local), TimeOnly.FromDateTime(local), zone, NonexistentTimePolicy.ShiftForward)
+            .Value;
+    }
+
     private static Result<TaskItem> BuildStep(
         TaskTemplate template,
         TaskTemplateStep step,
@@ -88,7 +102,7 @@ public sealed class TaskTemplateInstantiator(ITaskRepository tasks, ITaskDepende
     )
     {
         var due = DueDate.Create(
-            application.DueAtUtc.AddDays(step.DueOffsetDays),
+            ShiftCivilDays(application.DueAtUtc, step.DueOffsetDays, application.TimeZoneId),
             application.TimeZoneId,
             step.IsStatutory
         );

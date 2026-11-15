@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using BuildingBlocks.Caching;
 using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -44,16 +45,8 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddBillingInfrastructure(builder.Configuration);
-
-// Emisor de las facturas de onboarding (pre-tenant) = la plataforma. Config Billing:PlatformIssuer.
-builder
-    .Services.AddOptions<TaxVision.Billing.Application.Invoices.IntegrationEvents.PlatformIssuerOptions>()
-    .Bind(
-        builder.Configuration.GetSection(
-            TaxVision.Billing.Application.Invoices.IntegrationEvents.PlatformIssuerOptions.SectionName
-        )
-    );
 
 // RateLimit Fase 2 — CachedTenantPlanCodeReader (5 min TTL) y HttpPlanRateLimitReader (catálogo
 // de Subscription, cacheado 5 min) dependen de ICacheService. Billing ya requiere
@@ -93,11 +86,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // preservar (los 7 endpoints son todos staff-only autenticados, sin M2M/publico/webhook).
 // Mismo [RateLimit]/IRateCounter tiered que ya corre en el resto del monorepo desde Fase
 // 3/4.2, mismo patron de wiring que Correspondence Fase 4.9/Subscription Fase 4.10.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 builder.Services.AddSingleton<IRateCounter, RedisRateCounter>();
 
@@ -128,6 +119,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
     options.ListenForPlatformSettings();
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Billing.Application"));
@@ -135,6 +127,8 @@ builder.Host.UseWolverine(options =>
     // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el
     // snapshot CustomerAssignmentsChanged de Customer. Vive fuera del assembly del servicio → registro explícito.
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
+    // Zona de cada oficina: consumer compartido de TenantTimeZones, vive fuera de Application.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
 
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
@@ -195,18 +189,6 @@ builder.Host.UseWolverine(options =>
     // BIL-3b — enlace de cobro y sync de stock: reintentos largos y guardados (5 s … 1 h) antes de la cola
     // de errores. Es por cadena, así que los demás mensajes siguen con la política estándar.
     options.Policies.Add(TaxVision.Billing.Infrastructure.Messaging.LongRetryHandlerPolicy.ForSyncCommands());
-
-    // BIL-11 — la secuencia de onboarding es una sola fila: más intentos y espera al azar, solo para ese mensaje.
-    options.Policies.Add(
-        new TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryPolicy(
-            builder
-                .Configuration.GetSection(
-                    TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions.SectionName
-                )
-                .Get<TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions>()
-                ?? new TaxVision.Billing.Infrastructure.Messaging.OnboardingSequenceRetryOptions()
-        )
-    );
 
     options.UseTaxVisionConflictPolicy();
     options.ApplyStandardFailurePolicies();

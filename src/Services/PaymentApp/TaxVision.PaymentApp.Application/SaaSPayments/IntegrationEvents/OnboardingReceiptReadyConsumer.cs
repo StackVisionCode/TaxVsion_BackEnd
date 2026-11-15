@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
@@ -40,10 +41,11 @@ public static class OnboardingReceiptReadyConsumer
                 return;
             }
 
-            if (payment.ReceiptFileId == evt.ReceiptFileId)
+            if (payment.ReceiptFileId == evt.ReceiptFileId && payment.ReceiptOwnerTenantId == PlatformTenant.Id)
                 return; // Redelivery: ya colgado.
 
-            var attached = payment.AttachReceipt(evt.ReceiptFileId, DateTime.UtcNow);
+            // Auth genera el recibo antes de que exista la oficina: el archivo queda bajo la plataforma.
+            var attached = payment.AttachReceipt(evt.ReceiptFileId, DateTime.UtcNow, PlatformTenant.Id);
             if (attached.IsFailure)
             {
                 logger.LogWarning(

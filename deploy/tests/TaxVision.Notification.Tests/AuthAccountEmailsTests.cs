@@ -58,6 +58,11 @@ public sealed class AuthAccountEmailsTests
         Assert.Equal($"https://{Host}/portal/client/auth/reset-password/new?token=tok", variables["reset_link"]);
         Assert.Equal("portal", variables["account_kind"]);
         Assert.Equal("Acme Tax", variables["office"]);
+        // Fase 5: la expiración viaja tipada; Scribe la imprime en la zona de quien lee.
+        Assert.Contains(
+            "$instant",
+            Assert.IsAssignableFrom<IDictionary<string, object?>>(variables["expires_at"]).Keys
+        );
         // La cuenta de portal es del cliente: el correo lleva el logo del portal.
         Assert.Equal(ScribeRenderAudience.Client, scribe.Rendered.Single().Audience);
     }
@@ -125,6 +130,7 @@ public sealed class AuthAccountEmailsTests
         var confirm = scribe.Rendered.First(render => render.EventKey == "auth.email_change_requested.v1").Variables;
         Assert.Equal($"https://{Host}/portal/client/auth/confirm-email?token=tok", confirm["confirm_link"]);
         Assert.Equal("portal", confirm["account_kind"]);
+        Assert.Contains("$instant", Assert.IsAssignableFrom<IDictionary<string, object?>>(confirm["expires_at"]).Keys);
         var warning = scribe
             .Rendered.First(render => render.EventKey == "auth.email_change_security_alert.v1")
             .Variables;
@@ -162,6 +168,10 @@ public sealed class AuthAccountEmailsTests
         var variables = scribe.Rendered.Single().Variables;
         Assert.Equal("portal", variables["account_kind"]);
         Assert.Equal("Acme Tax", variables["inviter"]);
+        Assert.Contains(
+            "$instant",
+            Assert.IsAssignableFrom<IDictionary<string, object?>>(variables["expires_at"]).Keys
+        );
     }
 
     // NOT-04: el enlace con token no viaja por el fanout taxvision-events, va directo a la cola de Postmaster.

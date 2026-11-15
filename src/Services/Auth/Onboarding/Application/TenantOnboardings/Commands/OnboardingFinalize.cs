@@ -1,17 +1,15 @@
 using Microsoft.Extensions.Logging;
 using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
-using Wolverine;
 
 namespace TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
 
 /// <summary>
 /// Comando local (Wolverine) que ejecuta el FINALIZE de la operación comercial del onboarding: commit de
-/// las reservas de código en Growth + qualify del referido (si aplica) + pedir a Billing asentar la
-/// factura. Es AUTO-CONTENIDO — lleva el desglose y las reservas en el propio mensaje (tomados del
+/// las reservas de código en Growth. Es AUTO-CONTENIDO — lleva el desglose y las reservas en el propio mensaje (tomados del
 /// onboarding en memoria por el caller) — para NO depender de recargar el aggregate: el comando se
 /// publica dentro de la transacción del éxito y puede procesarse antes de que otro contexto vea el
 /// commit; recargar leería datos viejos (bug real: FINALIZE veía "0 code(s)"). Idempotente en Growth
-/// (commit por reserva) y en Billing (factura por OnboardingId).
+/// (commit por reserva). Los campos del desglose se conservan para no romper mensajes ya encolados.
 /// </summary>
 public sealed record OnboardingFinalizeCommand(
     Guid OnboardingId,
@@ -45,12 +43,11 @@ public static class OnboardingFinalizeHandler
     public static async Task Handle(
         OnboardingFinalizeCommand command,
         OnboardingFinalizer finalizer,
-        IMessageBus bus,
         ILogger<OnboardingFinalizeCommand> logger,
         CancellationToken ct
     )
     {
-        var result = await finalizer.FinalizeAsync(command, bus, ct);
+        var result = await finalizer.FinalizeAsync(command, ct);
         // Un fallo (Growth caído / commit fallido) lanza → Wolverine reintenta; el FINALIZE es idempotente.
         if (result.IsFailure)
             throw new InvalidOperationException(

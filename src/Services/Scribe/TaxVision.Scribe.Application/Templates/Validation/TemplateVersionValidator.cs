@@ -73,6 +73,7 @@ public static partial class TemplateVersionValidator
         var safetyOutcome = htmlSafetyValidator.Validate(htmlResult.Value);
         errors.AddRange(safetyOutcome.Errors.Select(e => new TemplateValidationIssue(e.Code, e.Message)));
         warnings.AddRange(safetyOutcome.Warnings.Select(w => new TemplateValidationIssue(w.Code, w.Message)));
+        CheckDateHabits([version.Subject, htmlResult.Value, textSource ?? string.Empty], warnings);
 
         return Result.Success(new TemplateValidationOutcome(errors.Count == 0, errors, warnings));
     }
@@ -130,6 +131,26 @@ public static partial class TemplateVersionValidator
             errors.Add(new("EmailTemplateVersion.PushUrl", "Push templates cannot contain URLs."));
     }
 
+    // P18: las fechas tipadas ya salen en la zona de quien lee; avisa (sin bloquear) lo que las deja mal.
+    private static void CheckDateHabits(IEnumerable<string> sources, List<TemplateValidationIssue> warnings)
+    {
+        var all = string.Join('\n', sources);
+        if (HandWrittenUtcPattern().IsMatch(all))
+            warnings.Add(
+                new(
+                    "EmailTemplateVersion.HandWrittenUtc",
+                    "Dates already print in the reader's time zone with its label. Remove the hand-written \"UTC\"."
+                )
+            );
+        if (DateFilterPattern().IsMatch(all))
+            warnings.Add(
+                new(
+                    "EmailTemplateVersion.DateFilterInUtc",
+                    "The date filter formats in UTC. Use office_date, office_time or office_deadline instead."
+                )
+            );
+    }
+
     private static void CheckUndeclaredPlaceholders(
         string source,
         string sourceName,
@@ -175,6 +196,13 @@ public static partial class TemplateVersionValidator
 
     [GeneratedRegex(@"https?://|www\.", RegexOptions.IgnoreCase)]
     private static partial Regex UrlPattern();
+
+    // "{{ expires_at }} UTC" o "{{ x }} (UTC)".
+    [GeneratedRegex(@"\}\}\s*\(?UTC\b")]
+    private static partial Regex HandWrittenUtcPattern();
+
+    [GeneratedRegex(@"\|\s*date\b", RegexOptions.IgnoreCase)]
+    private static partial Regex DateFilterPattern();
 
     // Con o sin espacios: "| raw", "|raw", "|  raw".
     [GeneratedRegex(@"\|\s*raw\b", RegexOptions.IgnoreCase)]

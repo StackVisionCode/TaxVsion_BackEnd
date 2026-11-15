@@ -109,7 +109,8 @@ public static class CreatePlanChangeCheckoutHandler
                         actorUserId: Guid.Empty,
                         nowUtc
                     )
-                    .WithConceptFor(SaaSPaymentType.PlanChangeCheckout),
+                    .WithConceptFor(SaaSPaymentType.PlanChangeCheckout, displayName: command.ConceptDisplayName)
+                    .WithLines(command.Lines),
             DecideOnExisting = DecideOnExisting,
             BuildMetadata = payment => new Dictionary<string, string>
             {

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
+using BuildingBlocks.TimeZones;
+using BuildingBlocks.TimeZones.Formatting;
 using TaxVision.Documents.Application.Generations.GenerateInvoiceDocument;
 
 namespace TaxVision.Documents.Application.Generations.ClientFormSummary;
@@ -9,17 +11,16 @@ namespace TaxVision.Documents.Application.Generations.ClientFormSummary;
 public static class ClientFormSummaryRenderModelBuilder
 {
     private const string DefaultBrandColor = "#0074d4";
-    private const string DateTimeFormat = "yyyy-MM-dd HH:mm 'UTC'";
 
     public static IReadOnlyDictionary<string, object?> Build(
         SubmissionSummarySnapshot snapshot,
         BrandingPayload? branding,
         string platformBrand,
         bool includeSignatureBox,
-        DateTime nowUtc
+        DateTime nowUtc,
+        ResolvedTimeZone officeZone
     )
     {
-        var culture = CultureInfo.InvariantCulture;
         var logo = BrandingRenderValues.EmbeddedLogo(branding?.LogoDataUri);
         var brandColor = BrandingRenderValues.IsHexColor(branding?.BrandColorHex)
             ? branding!.BrandColorHex!
@@ -62,7 +63,8 @@ public static class ClientFormSummaryRenderModelBuilder
             )
             .ToList();
 
-        var generatedOn = (snapshot.CompletedAtUtc ?? nowUtc).ToString(DateTimeFormat, culture);
+        // Horas en la zona de la oficina (TZ08-H3); "Generated on" es la hora real de generación, no el cierre.
+        string When(DateTime? utc) => utc is { } value ? ZonedTimeFormatter.DateTime(value, officeZone) : string.Empty;
 
         return new Dictionary<string, object?>
         {
@@ -72,9 +74,9 @@ public static class ClientFormSummaryRenderModelBuilder
                 ["customerName"] = snapshot.CustomerDisplayName ?? string.Empty,
                 ["versionNumber"] = snapshot.VersionNumber,
                 ["revisionNumber"] = snapshot.RevisionNumber,
-                ["submittedAt"] = snapshot.SubmittedAtUtc?.ToString(DateTimeFormat, culture) ?? string.Empty,
-                ["completedAt"] = snapshot.CompletedAtUtc?.ToString(DateTimeFormat, culture) ?? string.Empty,
-                ["generatedOn"] = generatedOn,
+                ["submittedAt"] = When(snapshot.SubmittedAtUtc),
+                ["completedAt"] = When(snapshot.CompletedAtUtc),
+                ["generatedOn"] = When(nowUtc),
                 ["pages"] = pages,
                 ["attachments"] = attachments,
                 ["hasAttachments"] = attachments.Count > 0,

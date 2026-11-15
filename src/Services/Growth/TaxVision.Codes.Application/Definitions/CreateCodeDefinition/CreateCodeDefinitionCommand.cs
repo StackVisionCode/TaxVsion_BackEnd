@@ -23,7 +23,9 @@ public sealed record CreateCodeDefinitionCommand(
     long? MaxRedemptionsPerSubject,
     IReadOnlyCollection<CreateCodeScopeInput>? Scopes,
     Guid ActorUserId,
-    string IdempotencyKey
+    string IdempotencyKey,
+    // Día elegido (P30): vence al final de ese día en la zona comercial. Gana sobre ExpiresAtUtc.
+    DateOnly? ExpiresOn = null
 )
 {
     public override string ToString() =>

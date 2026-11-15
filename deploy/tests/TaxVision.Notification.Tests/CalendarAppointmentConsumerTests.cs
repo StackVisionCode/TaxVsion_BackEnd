@@ -34,7 +34,9 @@ public sealed class CalendarAppointmentConsumerTests
         await Scheduled(harness, Invitation());
 
         Assert.Equal(2, harness.Gateway.Queued.Count);
-        Assert.Contains("2026-08-20 14:00", harness.Render.LastVariables["start_local"]?.ToString());
+        // Scribe imprime la hora en la zona de la cita, con su rótulo (ya no "2026-08-20 14:00 America/...").
+        Assert.Equal("2026-08-20T18:00:00.0000000Z", TypedDates.Instant(harness.Render.LastVariables["start_local"]));
+        Assert.Equal("America/Santo_Domingo", harness.Render.LastReader?.TimeZoneId);
         Assert.Equal("America/Santo_Domingo", harness.Render.LastVariables["time_zone"]);
     }
 
@@ -86,8 +88,12 @@ public sealed class CalendarAppointmentConsumerTests
             CancellationToken.None
         );
 
-        Assert.Equal("2026-08-20 14:00", harness.Render.LastVariables["previous_local"]);
-        Assert.Equal("2026-08-20 16:00", harness.Render.LastVariables["new_local"]);
+        Assert.Equal(
+            "2026-08-20T18:00:00.0000000Z",
+            TypedDates.Instant(harness.Render.LastVariables["previous_local"])
+        );
+        Assert.Equal("2026-08-20T20:00:00.0000000Z", TypedDates.Instant(harness.Render.LastVariables["new_local"]));
+        Assert.Equal("America/Santo_Domingo", harness.Render.LastReader?.TimeZoneId);
     }
 
     /// <summary>
@@ -252,7 +258,7 @@ public sealed class CalendarAppointmentConsumerTests
             "manfer.taxoffix.io/portal/client/calendar/book",
             harness.Render.LastVariables["portal_link"]?.ToString()
         );
-        Assert.Equal("2026-08-20 14:00", harness.Render.LastVariables["start_local"]?.ToString()?[..16]);
+        Assert.Equal("2026-08-20T18:00:00.0000000Z", TypedDates.Instant(harness.Render.LastVariables["start_local"]));
     }
 
     [Fact]
@@ -364,6 +370,36 @@ public sealed class CalendarAppointmentConsumerTests
         );
 
         Assert.Equal(["organizer@example.com"], harness.Gateway.Queued.Select(e => e.To));
+    }
+
+    /// <summary>Al cancelar una ocurrencia de una serie semanal, el correo dice cuál fue.</summary>
+    [Fact]
+    public async Task The_cancellation_email_says_which_appointment_was_cancelled()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+
+        await AppointmentCancelledConsumer.Handle(
+            new AppointmentCancelledIntegrationEvent
+            {
+                TenantId = TenantId,
+                CorrelationId = "test",
+                AppointmentId = Guid.NewGuid(),
+                Scope = "ThisOccurrence",
+                OriginalStartUtc = StartUtc,
+                StartUtc = StartUtc,
+                TimeZoneId = "America/Santo_Domingo",
+                Recipients = [new AppointmentRecipient("cliente@example.com", null)],
+            },
+            harness.Gateway,
+            harness.Render,
+            Options.Create(new PortalOptions()),
+            harness.Dispatcher,
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Equal("2026-08-20T18:00:00.0000000Z", TypedDates.Instant(harness.Render.LastVariables["start_local"]));
+        Assert.Equal("America/Santo_Domingo", harness.Render.LastReader?.TimeZoneId);
     }
 
     private static Task Scheduled(Harness harness, AppointmentScheduledIntegrationEvent evt) =>
@@ -500,8 +536,23 @@ public sealed class CalendarAppointmentConsumerTests
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
     }
 
-    private sealed class RecordingRenderClient : IScribeRenderClient
+    private sealed class RecordingRenderClient : IScribeRenderClient, IScribeReaderRenderClient
     {
+        public ScribeReader? LastReader { get; private set; }
+
+        public Task<Result<ScribeRenderedEmail>> RenderForReaderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            ScribeReader reader,
+            CancellationToken ct = default
+        )
+        {
+            LastReader = reader;
+            return RenderAsync(eventKey, tenantId, variables, audience, ct);
+        }
+
         public Task<Result<ScribeRenderedText>> RenderTextAsync(
             string eventKey,
             Guid tenantId,

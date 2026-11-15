@@ -84,10 +84,8 @@ public static class AppointmentRescheduledConsumer
                 new Dictionary<string, object?>
                 {
                     ["scope"] = evt.Scope,
-                    ["previous_local"] = evt.PreviousStartUtc is { } previous
-                        ? CalendarTimeFormatting.InZone(previous, evt.TimeZoneId)
-                        : null,
-                    ["new_local"] = CalendarTimeFormatting.InZone(evt.NewStartUtc, evt.TimeZoneId),
+                    ["previous_local"] = ScribeDates.Instant(evt.PreviousStartUtc),
+                    ["new_local"] = ScribeDates.Instant(evt.NewStartUtc),
                     ["time_zone"] = evt.TimeZoneId,
                     ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
                 },
@@ -97,7 +95,8 @@ public static class AppointmentRescheduledConsumer
                 correlation.CorrelationId,
                 ct,
                 TenantEmailLinks.StaffBase(await hosts.ResolveHostAsync(evt.TenantId, ct), portal.Value),
-                evt.OrganizerUserId
+                evt.OrganizerUserId,
+                timeZoneId: evt.TimeZoneId
             );
         }
     }

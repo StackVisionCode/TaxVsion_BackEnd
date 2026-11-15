@@ -100,7 +100,7 @@ public static class SignatureReadyForDownloadConsumer
                         new Dictionary<string, object?>
                         {
                             ["full_name"] = signer.FullName,
-                            ["completed_at"] = evt.CompletedAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                            ["completed_at"] = ScribeDates.Instant(evt.CompletedAtUtc),
                             ["download_links"] = downloads
                                 .Select(download => new Dictionary<string, object?>
                                 {
@@ -112,6 +112,7 @@ public static class SignatureReadyForDownloadConsumer
                             ["language"] = signer.Language,
                         },
                         ScribeRenderAudience.Client,
+                        ScribeReader.From(signer.Language),
                         ct
                     )
                 ).EnsureRendered("sig.request_completed.v1");

@@ -47,6 +47,7 @@ public static class SendInvoiceToCustomerHandler
                 AmountDueCents = invoice.AmountDue.AmountCents,
                 Currency = invoice.Currency,
                 DueDateUtc = invoice.DueDateUtc,
+                DueOn = invoice.DueDate,
                 PaymentLink = invoice.ActivePaymentLink?.CheckoutUrl,
                 PdfFileId = invoice.PdfFileId,
                 CustomerId = invoice.Customer.CustomerId,

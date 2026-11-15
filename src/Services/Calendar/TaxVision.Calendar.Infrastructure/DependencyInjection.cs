@@ -6,6 +6,7 @@ using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Security;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,7 @@ using TaxVision.Calendar.Application.Office.Abstractions;
 using TaxVision.Calendar.Application.Permissions.Abstractions;
 using TaxVision.Calendar.Application.Portal.Abstractions;
 using TaxVision.Calendar.Application.Projections.Abstractions;
+using TaxVision.Calendar.Application.PublicBookings.Abstractions;
 using TaxVision.Calendar.Application.RateLimiting.Abstractions;
 using TaxVision.Calendar.Application.Staff.Abstractions;
 using TaxVision.Calendar.Application.Types.Abstractions;
@@ -75,6 +77,10 @@ public static class DependencyInjection
         // PlatformTenant) + flag (default OFF hasta sembrar). El consumer se engancha en Program.cs.
         services.AddCustomerVisibilityProjection<CalendarDbContext>();
         services.AddCustomerVisibilityReconciliation<Reconciliation.CalendarPlatformTokenProvider>(configuration);
+
+        // Zona de cada oficina: eventos de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<CalendarDbContext>();
+        services.AddTenantTimeZoneReconciliation<Reconciliation.CalendarTenantTimeZoneTokenProvider>(configuration);
         services
             .AddOptions<CalendarVisibilityOptions>()
             .Bind(configuration.GetSection(CalendarVisibilityOptions.SectionName));
@@ -84,7 +90,46 @@ public static class DependencyInjection
         services.AddScoped<IAppointmentTypeRepository, AppointmentTypeRepository>();
         services.AddScoped<IAvailabilityRepository, AvailabilityRepository>();
         services.AddScoped<IOfficeScheduleRepository, OfficeScheduleRepository>();
+        services.AddScoped<
+            TaxVision.Calendar.Application.Office.TimeZoneChanges.IOfficeTimeZoneChangeRepository,
+            OfficeTimeZoneChangeRepository
+        >();
+        services.AddScoped<
+            TaxVision.Calendar.Application.Office.TimeZoneChanges.IOfficeTimeZoneCandidates,
+            OfficeTimeZoneCandidates
+        >();
         services.AddScoped<IBookingPolicyRepository, BookingPolicyRepository>();
+        services.AddScoped<IBookingPageRepository, BookingPageRepository>();
+        services.AddScoped<IPublicBookingRepository, PublicBookingRepository>();
+        services.AddScoped<TaxVision.Calendar.Application.PublicBookings.PublicBookingScheduler>();
+        services.AddScoped<TaxVision.Calendar.Application.PublicBookings.PublicBookingNotices>();
+        services.AddSingleton<IRequesterKeyHasher, PublicBookings.HmacRequesterKeyHasher>();
+        services
+            .AddOptions<TaxVision.Calendar.Application.PublicBookings.PublicBookingOptions>()
+            .Bind(
+                configuration.GetSection(TaxVision.Calendar.Application.PublicBookings.PublicBookingOptions.SectionName)
+            )
+            .Validate(o => o.HoldMinutes is >= 1 and <= 60, "Calendar:PublicBooking:HoldMinutes must be 1-60.")
+            .Validate(
+                o => o.MaxRequestsPerEmailPerHour is >= 1 and <= 20,
+                "Calendar:PublicBooking:MaxRequestsPerEmailPerHour must be 1-20."
+            )
+            .Validate(
+                o => o.MaxSlotRangeDays is >= 1 and <= 31,
+                "Calendar:PublicBooking:MaxSlotRangeDays must be 1-31."
+            )
+            .Validate(
+                o => o.UnverifiedRetentionHours is >= 1 and <= 720,
+                "Calendar:PublicBooking:UnverifiedRetentionHours must be 1-720."
+            )
+            .Validate(
+                o => o.ClosedRetentionMonths is >= 1 and <= 120,
+                "Calendar:PublicBooking:ClosedRetentionMonths must be 1-120."
+            )
+            .ValidateOnStart();
+        // Código y enlace de gestión de las reservas públicas: solo salen cifrados (clave compartida con
+        // Notification). Sin Encryption:MasterKey el envío falla cerrado, nunca en claro.
+        services.AddProtectedPayloadProtection(configuration);
         services.AddScoped<IPortalCalendarStore, PortalCalendarStore>();
         services.AddScoped<TaxVision.Calendar.Application.Appointments.Search.IAppointmentSearch, AppointmentSearch>();
         // La misma instancia sirve las dos interfaces: el repositorio para los consumers y el lector
@@ -216,6 +261,9 @@ public static class DependencyInjection
         services.AddHostedService<MeetingLinkReconciliationJob>();
         services.AddHostedService<StartingSoonJob>();
         services.AddHostedService<CalendarRetentionJob>();
+        services.AddHostedService<PublicBookingHoldExpiryJob>();
+        services.AddHostedService<PublicBookingReminderJob>();
+        services.AddHostedService<PublicBookingRetentionJob>();
 
         // Singleton: el Meter es uno por proceso y crear uno por scope multiplica instrumentos.
         services.AddSingleton<ICalendarMetrics, CalendarMetrics>();

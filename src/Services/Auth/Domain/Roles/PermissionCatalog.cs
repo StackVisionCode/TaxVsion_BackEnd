@@ -39,6 +39,9 @@ public static class PermissionCatalog
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
     public const string CustomersImport = CustomersPermissions.Import;
+    public const string FinancialImport = FinancialInsightsPermissions.Import;
+    public const string FinancialView = FinancialInsightsPermissions.View;
+    public const string FinancialPortalImport = FinancialInsightsPermissions.PortalImport;
     public const string DocumentsBrandingManage = DocumentsPermissions.BrandingManage;
     public const string CampaignsView = CampaignsPermissions.View;
     public const string CampaignsManage = CampaignsPermissions.Manage;
@@ -531,6 +534,28 @@ public static class PermissionCatalog
             "customers",
             "Bulk import clients (CSV/Excel)",
             false
+        ),
+        // Financial Insights es un módulo normal: entra al bundle del admin; el plan lo filtra por módulo.
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001a0"),
+            FinancialImport,
+            "financial_insights",
+            "Import client bank statements into Financial Insights",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001a1"),
+            FinancialView,
+            "financial_insights",
+            "View client Financial Insights imports and movements",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-0000000001a2"),
+            FinancialPortalImport,
+            "financial_insights",
+            "The client can submit bank statements for analysis",
+            true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-000000000152"),
@@ -2443,6 +2468,10 @@ public static class PermissionCatalog
                 CampaignsView,
                 CampaignsManage,
                 CampaignsSend,
+                // Financial Insights: el preparador importa y revisa los extractos de sus clientes.
+                // El módulo "financial_insights" lo filtra el gate por plan o add-on.
+                FinancialImport,
+                FinancialView,
                 // Notes: una nota es del propio autor (el handler lo impone con
                 // CreatedByUserId == actorUserId), igual que un recordatorio. Sin estos dos el
                 // empleado no podía ni escribirse una nota sobre el caso que está preparando — el
@@ -2468,6 +2497,7 @@ public static class PermissionCatalog
                 NotesPortalRead,
                 CloudStorageFileView,
                 CloudStorageFileUpload,
+                FinancialPortalImport,
                 CloudStorageFileDownload,
                 // Communication: mismo set que sembró la migración AddCommunicationPermissions
                 // para el rol "Customer Portal" — nunca moderate/host/record/settings.

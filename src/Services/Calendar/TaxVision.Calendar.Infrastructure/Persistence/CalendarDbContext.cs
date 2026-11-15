@@ -5,6 +5,7 @@ using BuildingBlocks.Domain;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -16,6 +17,7 @@ using TaxVision.Calendar.Domain.Feeds;
 using TaxVision.Calendar.Domain.Office;
 using TaxVision.Calendar.Domain.Permissions;
 using TaxVision.Calendar.Domain.Projections;
+using TaxVision.Calendar.Domain.PublicBookings;
 using TaxVision.Calendar.Domain.RateLimiting;
 using TaxVision.Calendar.Domain.Types;
 
@@ -62,10 +64,18 @@ public sealed class CalendarDbContext(DbContextOptions<CalendarDbContext> option
     /// <summary>Horario, cierres y zona de la oficina (proyección de Tenant).</summary>
     public DbSet<OfficeScheduleProjection> OfficeSchedules => Set<OfficeScheduleProjection>();
 
+    // P9: cambios de zona de la oficina con lo que se decidió mover.
+    public DbSet<OfficeTimeZoneChange> OfficeTimeZoneChanges => Set<OfficeTimeZoneChange>();
+
     /// <summary>Política de reserva del portal, una por oficina.</summary>
     public DbSet<BookingPolicy> BookingPolicies => Set<BookingPolicy>();
 
     public DbSet<BookingRequest> BookingRequests => Set<BookingRequest>();
+
+    /// <summary>Páginas públicas de reservas de la plataforma ("Book a live demo") y sus reservas.</summary>
+    public DbSet<BookingPage> BookingPages => Set<BookingPage>();
+
+    public DbSet<PublicBooking> PublicBookings => Set<PublicBooking>();
 
     // P2 — proyección compartida de asignaciones cliente↔staff (kit BuildingBlocks.CustomerVisibility),
     // mantenida por el snapshot CustomerAssignmentsChanged de Customer. Filtra la visibilidad por asignación.
@@ -97,6 +107,7 @@ public sealed class CalendarDbContext(DbContextOptions<CalendarDbContext> option
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         modelBuilder.ApplyCustomerAssignmentProjection();
+        modelBuilder.ApplyTenantTimeZoneProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
     }

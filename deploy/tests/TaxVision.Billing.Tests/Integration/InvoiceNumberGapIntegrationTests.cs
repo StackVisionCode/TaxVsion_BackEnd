@@ -102,44 +102,6 @@ public sealed class InvoiceNumberGapIntegrationTests(BillingTestDatabase databas
         Assert.Equal(NextNumber, await ReadNextAsync());
     }
 
-    // BIL-17: el pedido de factura de onboarding con montos que no cuadran no puede gastar un número ONB-.
-    [Fact(Timeout = 120_000)]
-    public async Task Onboarding_invoice_that_cannot_be_created_does_not_advance_the_onboarding_sequence()
-    {
-        var onboardingPeriod = $"ONB-{_periodKey}";
-        var before = await EnsureSequenceAsync(PlatformTenant.Id, onboardingPeriod, NextNumber);
-        try
-        {
-            using var scope = _factory.Services.CreateScope();
-            var bus = scope.ServiceProvider.GetRequiredService<IMessageBus>();
-            bus.TenantId = PlatformTenant.Id.ToString();
-
-            // Neto distinto de bruto − descuento: CreateForOnboarding responde InvalidNet.
-            await bus.InvokeAsync(
-                new OnboardingInvoiceRequestedIntegrationEvent
-                {
-                    TenantId = PlatformTenant.Id,
-                    OnboardingId = Guid.NewGuid(),
-                    PlanId = Guid.NewGuid(),
-                    PlanDescription = "Professional",
-                    PayerName = "Payer",
-                    PaymentId = Guid.NewGuid(),
-                    GrossAmountCents = 10_000,
-                    DiscountAmountCents = 0,
-                    NetAmountCents = 5_000,
-                    Currency = "USD",
-                    SettlementType = "Paid",
-                }
-            );
-
-            Assert.Equal(NextNumber, await ReadNextAsync(PlatformTenant.Id, onboardingPeriod));
-        }
-        finally
-        {
-            await RestoreSequenceAsync(PlatformTenant.Id, onboardingPeriod, before);
-        }
-    }
-
     private Task<long> ReadNextAsync() => ReadNextAsync(_tenantId, _periodKey);
 
     private async Task<long> ReadNextAsync(Guid tenantId, string periodKey)

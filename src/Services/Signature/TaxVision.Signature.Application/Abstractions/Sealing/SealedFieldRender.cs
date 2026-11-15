@@ -26,5 +26,7 @@ public sealed record SealedFieldRender(
     // campos de texto opcionales que dejó en blanco.
     string? Value = null,
     // Letra elegida por el preparador para iniciales/fecha/texto; null = automática según la caja.
-    int? FontSizePt = null
+    int? FontSizePt = null,
+    // Fecha civil del campo Date en la zona congelada (P8); null = día UTC de la firma.
+    DateOnly? DisplayDate = null
 );

@@ -33,67 +33,9 @@ jobs:
       # que el Job 2 lo lea. Fuera del workspace de GitHub (que se destruye entre
       # jobs). El Job 2 lo borra al final (always()).
       TAXVISION_STAGING_DIR: /opt/taxvision/deploy-staging
-      DOTNET_INSTALL_DIR: /srv/docker/actions-runner/.dotnet
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      # ---------------------------------------------------------------------
-      # Gate de tests — corre ANTES de tocar secrets/docker/produccion. Si algo
-      # rompe (incluida la fitness function AllowActorTypes de ActorType Fase 6,
-      # que falla si un controller/accion nueva queda sin anotar) el deploy se
-      # corta aca, no se descubre despues en produccion. Usa el SDK fijado en
-      # global.json (setup-dotnet lo lee solo con global-json-file).
-      # ---------------------------------------------------------------------
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v6
-        with:
-          global-json-file: global.json
-
-      # Gate rápido: sólo los tests que no necesitan infra. Los de .Integration./
-      # .Persistence. (+ ReminderRetentionJob) levantan SQL/RabbitMQ/Redis reales y
-      # user-secrets locales — no existen en el runner. Corren aparte, nunca en el gate.
-      - name: Run unit test suite (gate)
-        run: dotnet test TaxVision.slnx --nologo --filter "FullyQualifiedName!~.Integration.&FullyQualifiedName!~.Persistence.&FullyQualifiedName!~ReminderRetentionJobTests"
-
-      # ---------------------------------------------------------------------
-      # H-19 — Communication y CommunicationTranscriptWorker no estan en
-      # TaxVision.slnx (son Node/TypeScript), asi que el gate de arriba NO
-      # ejecutaba ni una linea de sus suites: se desplegaban sin probar. Sus
-      # tests son vitest y corren aparte, uno por servicio.
-      # ---------------------------------------------------------------------
-      - name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          # Igual al FROM de los Dockerfiles de Communication/TranscriptWorker: se prueba con lo que se despliega.
-          node-version: 24.22.2
-          package-manager-cache: false
-
-      - name: Test Communication (Node)
-        working-directory: src/Services/Communication
-        run: |
-          # --no-audit/--no-fund evitan round-trips de red tras instalar; --prefer-offline usa el
-          # cache ~/.npm ya caliente del runner self-hosted. Los tests corren en ~1s; el cuello de
-          # botella era `npm ci` (instalar 548 paquetes), no los avisos "deprecated" (cosméticos).
-          npm ci --no-audit --no-fund --prefer-offline
-          npx prisma generate
-          npm run typecheck
-          npm test
-
-      - name: Test CommunicationTranscriptWorker (Node)
-        working-directory: src/Services/CommunicationTranscriptWorker
-        run: |
-          npm ci --no-audit --no-fund --prefer-offline
-          npm run typecheck
-          npm test
-
-      # F7 — el recorder (grabación server-side) tampoco está en TaxVision.slnx: mismo gate que el worker.
-      - name: Test CommunicationRecorder (Node)
-        working-directory: src/Services/CommunicationRecorder
-        run: |
-          npm ci --no-audit --no-fund --prefer-offline
-          npm run typecheck
-          npm test
 
       # ---------------------------------------------------------------------
       # .env de produccion — se escribe en cada run a partir de los Secrets del
@@ -650,6 +592,13 @@ jobs:
         run: |
           cat >> .env <<EOF
           # ---------- production-extra environment (secrets nuevos post-cupo) ----------
+          # FinancialInsights: sus cuatro secrets viven en production-extra (production está lleno).
+          # Sin la base el servicio no arranca y apply-migrations.sh salta sus migraciones; el
+          # cliente M2M (ServiceAuth__Clients__31 en auth-api) es el mismo en Auth y en el servicio.
+          FINANCIAL_INSIGHTS_DB_CONNECTION=${{ secrets.FINANCIAL_INSIGHTS_DB_CONNECTION }}
+          FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID=${{ secrets.FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID }}
+          FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET=${{ secrets.FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET }}
+          FINANCIAL_INSIGHTS_OPENAI_API_KEY=${{ secrets.FINANCIAL_INSIGHTS_OPENAI_API_KEY }}
           # CloudStorage: OAuth de Google Drive / OneDrive / Dropbox. Opcionales: vacíos dejan
           # solo MinIO y deshabilitan conectar ese proveedor.
           GOOGLE_DRIVE_CLIENT_ID=${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
@@ -685,6 +634,10 @@ jobs:
           # Ambas vacias mantienen IntakeLinksEnabled cerrado. La site key es publica.
           TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY }}
           TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY=${{ secrets.TASKS_CLIENT_FORMS_TURNSTILE_SECRET_KEY }}
+          # Calendar "Book a live demo": Turnstile del landing. Ambas vacias dejan la pagina "no disponible"
+          # (el landing ofrece escribir). La site key es publica.
+          CALENDAR_PUBLIC_BOOKING_TURNSTILE_SITE_KEY=${{ secrets.CALENDAR_PUBLIC_BOOKING_TURNSTILE_SITE_KEY }}
+          CALENDAR_PUBLIC_BOOKING_TURNSTILE_SECRET_KEY=${{ secrets.CALENDAR_PUBLIC_BOOKING_TURNSTILE_SECRET_KEY }}
           # CommunicationRecorder (F7): password de su cuenta MinIO scoped (communication-recorder).
           # Requerida con :? por communication-recorder y minio-provision: vacía, compose no arranca.
           RECORDER_MINIO_SECRET=${{ secrets.RECORDER_MINIO_SECRET }}

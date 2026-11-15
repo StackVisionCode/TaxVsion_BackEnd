@@ -71,6 +71,24 @@ public sealed class OffboardingQueriesTranslationTests
         Assert.Equal(0, await requests.CountOpenByEffectiveResponsibleAsync(Guid.NewGuid(), Guid.NewGuid()));
     }
 
+    // P9: las consultas del recálculo por cambio de zona (vencimiento propio, del cliente, series y formularios).
+    [Fact]
+    public async Task Civil_due_rezone_queries_translate_to_sql()
+    {
+        await using var db = CreateContext();
+        var tasks = Internal<TaxVision.Tasks.Application.Tasks.TimeZones.ICivilDueRezoneStore>(
+            db,
+            "Persistence.Repositories.CivilDueRezoneStore"
+        );
+        var forms = (TaxVision.Tasks.ClientForms.Application.Requests.TimeZones.IFormRequestRezoneStore)tasks;
+        var tenant = Guid.NewGuid();
+
+        Assert.Empty(await tasks.OpenTasksWithCivilDuesAsync(tenant, "America/New_York", CancellationToken.None));
+        Assert.Empty(await tasks.OpenClientRequestsWithDueAsync(tenant, CancellationToken.None));
+        Assert.Empty(await tasks.ActiveSeriesInZoneAsync(tenant, "America/New_York", CancellationToken.None));
+        Assert.Empty(await forms.OpenWithDueAsync(tenant, CancellationToken.None));
+    }
+
     // Las implementaciones son internas; se instancian por su contrato público.
     private static T Internal<T>(TasksDbContext db, string typeSuffix) =>
         (T)

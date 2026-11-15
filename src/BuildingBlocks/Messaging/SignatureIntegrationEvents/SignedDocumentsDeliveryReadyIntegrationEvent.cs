@@ -37,6 +37,8 @@ public sealed record SignedDocumentsDeliveryReadyIntegrationEvent : IntegrationE
     public bool CanRequestNewLink { get; init; }
 
     public DateTime CompletedAtUtc { get; init; }
+    /// <summary>Cuándo firmó este destinatario (copia en curso); null en eventos de antes de la Fase 5.</summary>
+    public DateTime? SignedAtUtc { get; init; }
     public int TotalSignersCount { get; init; }
 
     /// <summary>Solo copia parcial: si al terminar la solicitud el firmante recibirá además el documento sellado.</summary>

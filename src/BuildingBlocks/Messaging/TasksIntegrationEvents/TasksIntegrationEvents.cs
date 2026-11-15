@@ -15,6 +15,9 @@ public sealed record TaskCreatedIntegrationEvent : IntegrationEvent
     public Guid? CustomerId { get; init; }
     public int? TaxYear { get; init; }
     public DateTime? DueAtUtc { get; init; }
+    /// <summary>Fecha civil del vencimiento y su zona: con el corte de fin del día, el prefijo UTC ya no es la fecha.</summary>
+    public DateOnly? DueOn { get; init; }
+    public string? DueTimeZoneId { get; init; }
     public Guid? ParentTaskId { get; init; }
 }
 
@@ -27,6 +30,9 @@ public sealed record TaskAssignedIntegrationEvent : IntegrationEvent
     public required Guid AssigneeUserId { get; init; }
     public Guid? PreviousAssigneeUserId { get; init; }
     public DateTime? DueAtUtc { get; init; }
+    /// <summary>Fecha civil del vencimiento y su zona: con el corte de fin del día, el prefijo UTC ya no es la fecha.</summary>
+    public DateOnly? DueOn { get; init; }
+    public string? DueTimeZoneId { get; init; }
 
     // Quien hizo la asignación. Permite al consumer de notificaciones excluir al
     // actor si se asigna la tarea a sí mismo. Nullable para eventos emitidos antes
@@ -72,6 +78,9 @@ public sealed record TaskDueChangedIntegrationEvent : IntegrationEvent
     public DateTime? PreviousDueAtUtc { get; init; }
     public DateTime? NewDueAtUtc { get; init; }
     public string? TimeZoneId { get; init; }
+
+    /// <summary>Fecha civil del nuevo vencimiento (en <see cref="TimeZoneId"/>).</summary>
+    public DateOnly? NewDueOn { get; init; }
 }
 
 /// <summary>
@@ -89,6 +98,9 @@ public sealed record TaskWaitingOnClientIntegrationEvent : IntegrationEvent
     public required DateTime RequestedAtUtc { get; init; }
     public int? TaxYear { get; init; }
     public DateTime? ClientDueAtUtc { get; init; }
+
+    /// <summary>Fecha civil pedida al cliente (en la zona de la oficina).</summary>
+    public DateOnly? ClientDueOn { get; init; }
 }
 
 /// <summary>
@@ -156,6 +168,9 @@ public sealed record ClientRequestCreatedIntegrationEvent : IntegrationEvent
     public required string Title { get; init; }
     public string? Details { get; init; }
     public DateTime? DueAtUtc { get; init; }
+
+    /// <summary>Fecha civil dada al cliente (en la zona de la oficina).</summary>
+    public DateOnly? DueOn { get; init; }
     public required Guid RequestedByUserId { get; init; }
 }
 
@@ -223,6 +238,9 @@ public sealed record TaskOverdueIntegrationEvent : IntegrationEvent
     public required string Title { get; init; }
     public required DateTime DueAtUtc { get; init; }
     public required bool IsStatutory { get; init; }
+    /// <summary>Fecha civil del vencimiento y su zona: con el corte de fin del día, el prefijo UTC ya no es la fecha.</summary>
+    public DateOnly? DueOn { get; init; }
+    public string? DueTimeZoneId { get; init; }
     public Guid? AssigneeUserId { get; init; }
     public Guid? CustomerId { get; init; }
     public int? TaxYear { get; init; }

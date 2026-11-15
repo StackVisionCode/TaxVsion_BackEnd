@@ -1,6 +1,7 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -115,6 +116,12 @@ public static class DependencyInjection
         });
 
         AddRateLimitTierQuotas(services, configuration);
+
+        // Zona de cada oficina: eventos de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<DocumentsDbContext>();
+        services.AddTenantTimeZoneReconciliation<Reconciliation.DocumentsTenantTimeZoneTokenProvider>(configuration);
+        services.AddScoped<IOfficeTimeZone, TimeZones.OfficeTimeZone>();
+
         return services;
     }
 

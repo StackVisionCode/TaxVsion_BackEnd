@@ -22,6 +22,7 @@ public sealed class FormEngine : IFormEngine
     private readonly ProgressCalculator _progress;
     private readonly MappingValidator _mappings;
     private readonly ComponentRegistry _registry;
+    private readonly TimeProvider _timeProvider;
 
     public FormEngine(DataCollectionLimits limits)
         : this(limits, TimeProvider.System) { }
@@ -31,6 +32,7 @@ public sealed class FormEngine : IFormEngine
     {
         ArgumentNullException.ThrowIfNull(timeProvider);
         _limits = limits;
+        _timeProvider = timeProvider;
         var registry = new ComponentRegistry();
         _registry = registry;
         _structure = new StructureValidator(limits, registry);
@@ -76,10 +78,21 @@ public sealed class FormEngine : IFormEngine
         FormDefinition definition,
         FormAnswers answers,
         AnswersValidationMode mode
+    ) => ValidateAnswers(definition, answers, mode, null);
+
+    /// <summary>Con la zona de la oficina, "today" es el día de la oficina (P13); sin ella, el día UTC.</summary>
+    public AnswersValidationReport ValidateAnswers(
+        FormDefinition definition,
+        FormAnswers answers,
+        AnswersValidationMode mode,
+        TimeZoneInfo? officeZone
     )
     {
         var visibility = EvaluateVisibility(definition, answers);
-        return _answers.Validate(definition, answers, visibility, mode);
+        var validator = officeZone is null
+            ? _answers
+            : new AnswersValidator(_limits, _registry, _timeProvider, officeZone);
+        return validator.Validate(definition, answers, visibility, mode);
     }
 
     public FormAnswers RemoveHiddenAnswers(FormDefinition definition, FormAnswers answers, VisibilityMap visibility) =>

@@ -528,6 +528,9 @@ public sealed class PortalCalendarTests
         public Task<OfficeScheduleProjection?> GetAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<OfficeScheduleProjection?>(null);
 
+        public Task<string?> GetTimeZoneIdAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult<string?>(null);
+
         public void Add(OfficeScheduleProjection projection) { }
     }
 

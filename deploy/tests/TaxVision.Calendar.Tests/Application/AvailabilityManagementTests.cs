@@ -165,10 +165,44 @@ public sealed class AvailabilityManagementTests
         Assert.Equal(new DateTime(2026, 11, 25, 19, 0, 0, DateTimeKind.Utc), slot.EndUtc); // 14:00 EST
     }
 
-    private sealed class OneOffice(OfficeScheduleProjection office) : IOfficeScheduleRepository
+    [Fact]
+    public async Task Office_hours_use_the_office_zone_even_if_it_never_changed()
+    {
+        // La fila del horario no tiene zona (nunca llegó un TenantUpdated); el preparador está en La Paz.
+        var rule = AvailabilityRule
+            .Create(Tenant, Me, DaysOfWeekMask.Weekdays, new(9, 0), new(17, 0), "America/La_Paz", DateTime.UtcNow)
+            .Value;
+        var office = OfficeScheduleProjection.Create(Tenant, DateTime.UtcNow);
+        office.ApplyProfile(1, [new OfficeHours(DayOfWeek.Wednesday, new(10, 0), new(14, 0))], [], DateTime.UtcNow);
+
+        var result = await GetAvailabilityHandler.Handle(
+            new GetAvailabilityQuery(
+                Tenant,
+                Me,
+                new DateTime(2026, 11, 25, 5, 0, 0, DateTimeKind.Utc),
+                new DateTime(2026, 11, 26, 5, 0, 0, DateTimeKind.Utc),
+                null
+            ),
+            new InMemoryAppointments(),
+            new RulesAndBlocks([rule]),
+            new SingleTypeRepository(null!),
+            new OneOffice(office, tenantZone: NewYork),
+            CancellationToken.None
+        );
+
+        var slot = Assert.Single(result.Value);
+        Assert.Equal(new DateTime(2026, 11, 25, 15, 0, 0, DateTimeKind.Utc), slot.StartUtc); // 10:00 en New York
+        Assert.Equal(new DateTime(2026, 11, 25, 19, 0, 0, DateTimeKind.Utc), slot.EndUtc);
+    }
+
+    private sealed class OneOffice(OfficeScheduleProjection office, string? tenantZone = null)
+        : IOfficeScheduleRepository
     {
         public Task<OfficeScheduleProjection?> GetAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<OfficeScheduleProjection?>(office);
+
+        public Task<string?> GetTimeZoneIdAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(tenantZone ?? office.TimeZoneId);
 
         public void Add(OfficeScheduleProjection projection) { }
     }

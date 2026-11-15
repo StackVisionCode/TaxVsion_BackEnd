@@ -62,7 +62,10 @@ public static class InvoiceSentConsumer
                             ["invoice_number"] = evt.InvoiceNumber,
                             ["customer_name"] = evt.CustomerName,
                             ["amount_due"] = FormatAmount(evt.AmountDueCents, evt.Currency),
-                            ["due_date"] = evt.DueDateUtc?.ToString("MMM d, yyyy"),
+                            // Con la fecha congelada (P6) va la civil; una factura vieja manda el instante.
+                            ["due_date"] = evt.DueOn is { } dueOn
+                                ? ScribeDates.Date(dueOn)
+                                : ScribeDates.Instant(evt.DueDateUtc),
                             ["payment_link"] = evt.PaymentLink,
                             ["has_pdf"] = evt.PdfFileId is not null,
                         },

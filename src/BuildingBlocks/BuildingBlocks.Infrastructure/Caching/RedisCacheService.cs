@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Caching;
 using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Logging;
+using StackExchange.Redis;
 
 namespace BuildingBlocks.Infrastructure.Caching;
 
@@ -22,8 +24,13 @@ namespace BuildingBlocks.Infrastructure.Caching;
 /// corregidos acá abajo, que era el objetivo real del hallazgo.
 /// </para>
 /// </summary>
-public sealed class RedisCacheService(IDistributedCache cache) : ICacheService
+public sealed class RedisCacheService(IDistributedCache cache, ILogger<RedisCacheService>? logger = null)
+    : ICacheService
 {
+    // Un aviso por minuto basta: con Redis caído cada petición pasaría por aquí.
+    private static readonly TimeSpan UnavailableLogInterval = TimeSpan.FromMinutes(1);
+    private long _lastUnavailableLogTicks;
+
     /// <summary>
     /// Explícitas a propósito: con las opciones default, un cambio de default en una versión futura
     /// de .NET reinterpretaría en silencio todo lo ya escrito en Redis. Estos valores son los que
@@ -61,6 +68,11 @@ public sealed class RedisCacheService(IDistributedCache cache) : ICacheService
 
     public Task RemoveAsync(string key, CancellationToken ct = default) => cache.RemoveAsync(key, ct);
 
+    /// <summary>
+    /// Caché como optimización: si Redis no responde, el valor sale del origen y la petición sigue. Solo aquí;
+    /// <see cref="GetAsync{T}"/>, <see cref="SetAsync{T}"/> y <see cref="RemoveAsync"/> propagan el fallo porque
+    /// la denylist de sesiones y las revocaciones necesitan saberlo (H-06).
+    /// </summary>
     public async Task<T> GetOrCreateAsync<T>(
         string key,
         Func<CancellationToken, Task<T>> factory,
@@ -68,7 +80,18 @@ public sealed class RedisCacheService(IDistributedCache cache) : ICacheService
         CancellationToken ct = default
     )
     {
-        var (found, cached) = await TryReadAsync<T>(key, ct);
+        bool found;
+        T? cached;
+        try
+        {
+            (found, cached) = await TryReadAsync<T>(key, ct);
+        }
+        catch (Exception ex) when (IsRedisUnavailable(ex))
+        {
+            // Como un miss: sigue al origen con el mismo coalescing, sin estampida.
+            LogUnavailable(ex, key);
+            (found, cached) = (false, default);
+        }
         if (found)
             return cached!;
 
@@ -96,8 +119,29 @@ public sealed class RedisCacheService(IDistributedCache cache) : ICacheService
     )
     {
         var value = await factory(ct);
-        await SetAsync(key, value, ttl, ct);
+        try
+        {
+            await SetAsync(key, value, ttl, ct);
+        }
+        catch (Exception ex) when (IsRedisUnavailable(ex))
+        {
+            // Sin guardar no pasa nada: la próxima lectura vuelve al origen.
+            LogUnavailable(ex, key);
+        }
         return value;
+    }
+
+    private static bool IsRedisUnavailable(Exception ex) => ex is RedisException or RedisTimeoutException;
+
+    private void LogUnavailable(Exception ex, string key)
+    {
+        var now = DateTime.UtcNow.Ticks;
+        var last = Interlocked.Read(ref _lastUnavailableLogTicks);
+        if (now - last < UnavailableLogInterval.Ticks)
+            return;
+        if (Interlocked.CompareExchange(ref _lastUnavailableLogTicks, now, last) != last)
+            return;
+        logger?.LogWarning(ex, "Redis is unavailable; cache key {CacheKey} was served from its source.", key);
     }
 
     /// <summary>

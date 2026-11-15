@@ -113,7 +113,10 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
                 );
                 break;
             case SignatureFieldKind.Date:
-                var date = field.SignedAtUtc.ToString(style.DatePattern, CultureInfo.InvariantCulture);
+                var date = (field.DisplayDate ?? DateOnly.FromDateTime(field.SignedAtUtc)).ToString(
+                    style.DatePattern,
+                    CultureInfo.InvariantCulture
+                );
                 DrawSingleLine(gfx, date, rect, field.FontSizePt, style, TextFont, center: false);
                 break;
             case SignatureFieldKind.Text:
@@ -270,7 +273,7 @@ public sealed class PdfSharpSealingEngine(IPlatformSettings platform, ICmsPdfSig
 
         var metaTop = inner.Bottom - band;
         gfx.DrawString(
-            $"{field.SignedAtUtc:yyyy-MM-dd HH:mm} UTC",
+            string.Create(CultureInfo.InvariantCulture, $"{field.SignedAtUtc:yyyy-MM-dd HH:mm} UTC"),
             metaFont,
             mutedBrush,
             new XRect(inner.X, metaTop, inner.Width, band),

@@ -1,3 +1,4 @@
+using BuildingBlocks.TimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -52,19 +53,8 @@ public sealed class CloudStorageBackupWorker(IServiceScopeFactory scopes, ILogge
 
         foreach (var item in scheduled)
         {
-            TimeZoneInfo zone;
-            try
-            {
-                zone = TimeZoneInfo.FindSystemTimeZoneById(item.BackupTimeZoneId!);
-            }
-            catch (TimeZoneNotFoundException)
-            {
+            if (!IanaTimeZone.TryFindTimeZone(item.BackupTimeZoneId, out var zone))
                 continue;
-            }
-            catch (InvalidTimeZoneException)
-            {
-                continue;
-            }
             if (
                 !TimeOnly.TryParseExact(
                     item.BackupTime,
@@ -83,6 +73,12 @@ public sealed class CloudStorageBackupWorker(IServiceScopeFactory scopes, ILogge
             try
             {
                 using var tenantScope = scopes.CreateScope();
+                // Una réplica por oficina: si otra ya corre este backup, esta pasada lo salta.
+                await using var held = await tenantScope
+                    .ServiceProvider.GetRequiredService<SqlTenantBackupLock>()
+                    .TryAcquireAsync(item.TenantId, ct);
+                if (held is null)
+                    continue;
                 await tenantScope
                     .ServiceProvider.GetRequiredService<StoragePolicyDispatcher>()
                     .BackupTenantAsync(item.TenantId, ct);

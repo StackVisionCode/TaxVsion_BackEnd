@@ -26,7 +26,8 @@ public sealed record RequestOnboardingReceiptCommand(
     string CorrelationId,
     // Nombre de la oficina del registro. El recibo del pago se pide antes del registro (null); un
     // reenvío posterior ya lo conoce.
-    string? OfficeName = null
+    string? OfficeName = null,
+    string? TimeZoneId = null
 );
 
 public static class RequestOnboardingReceiptHandler
@@ -56,7 +57,8 @@ public static class RequestOnboardingReceiptHandler
                 command.PaymentMethodMasked,
                 IdempotencyKey: $"onb-receipt:{command.OnboardingId:N}",
                 command.CorrelationId,
-                command.OfficeName
+                command.OfficeName,
+                command.TimeZoneId
             ),
             ct
         );

@@ -120,6 +120,7 @@ internal static class ImportChunkProcessor
 
         await LockChunkEmailsAsync(creationLock, info.TenantId, chunk, ct);
         var matchByRow = await BuildDuplicateMapAsync(detector, info.TenantId, chunk, ct);
+        var officeZone = await sp.GetRequiredService<IOfficeTimeZone>().ResolveAsync(info.TenantId, ct);
         var applier = new ImportRowApplier(
             attempt,
             info,
@@ -128,7 +129,8 @@ internal static class ImportChunkProcessor
             sp.GetRequiredService<ICustomerRepository>(),
             sp.GetRequiredService<ISensitiveDataProtector>(),
             sp.GetRequiredService<ICatalogResolver>(),
-            logger
+            logger,
+            ImportRowApplier.DefaultTaxYear(DateTime.UtcNow, officeZone)
         );
 
         var successIds = new List<Guid>();

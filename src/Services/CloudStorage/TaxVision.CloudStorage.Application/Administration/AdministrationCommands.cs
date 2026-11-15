@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Domain.Providers;
 using TaxVision.CloudStorage.Domain.Quotas;
@@ -73,28 +74,15 @@ public static class SetStorageProviderHandler
                         "Choose a backup frequency, local time, and time zone."
                     )
                 );
-            try
-            {
-                _ = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-            }
-            catch (TimeZoneNotFoundException)
-            {
+            // P23: solo IANA (un id de Windows depende del sistema que corra el job); se guarda normalizado.
+            if (!IanaTimeZone.TryNormalize(timeZoneId, out var normalizedZone))
                 return Result.Failure(
                     new BuildingBlocks.Results.Error(
                         "StoragePolicy.InvalidTimeZone",
                         "The selected time zone is not supported."
                     )
                 );
-            }
-            catch (InvalidTimeZoneException)
-            {
-                return Result.Failure(
-                    new BuildingBlocks.Results.Error(
-                        "StoragePolicy.InvalidTimeZone",
-                        "The selected time zone is not supported."
-                    )
-                );
-            }
+            timeZoneId = normalizedZone;
         }
         var policy = await policies.GetAsync(command.TenantId, ct);
         if (policy is null)

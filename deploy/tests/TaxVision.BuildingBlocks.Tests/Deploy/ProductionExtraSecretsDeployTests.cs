@@ -39,6 +39,10 @@ public sealed class ProductionExtraSecretsDeployTests
     [InlineData("RECORDER_MINIO_SECRET")]
     [InlineData("CONTENT_SCANNER_API_KEY")]
     [InlineData("CALENDAR_SERVICE_CLIENT_SECRET")]
+    [InlineData("FINANCIAL_INSIGHTS_DB_CONNECTION")]
+    [InlineData("FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID")]
+    [InlineData("FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET")]
+    [InlineData("FINANCIAL_INSIGHTS_OPENAI_API_KEY")]
     public void Secret_kept_in_production_extra_is_written_by_the_deploy_job(string variable)
     {
         var workflow = ReadRepoFile(".github/workflows/deploy.yml");

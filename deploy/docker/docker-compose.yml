@@ -10,7 +10,9 @@ services:
   rabbitmq:
     image: rabbitmq:4.3.2-management
     container_name: taxvision-rabbitmq
+    restart: unless-stopped
     environment:
+      TZ: Etc/UTC
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
     # 5672 (AMQP) solo loopback: los servicios de la app usan rabbitmq:5672 por DNS
@@ -32,7 +34,10 @@ services:
 
   redis:
     image: redis:7.2.12-alpine
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-redis
+    restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     # Solo loopback — para redis-cli via VPN+SSH, ningun servicio de la app lo
     # necesita publicado (usan redis:6379 por DNS interno).
@@ -55,8 +60,10 @@ services:
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: taxvision-minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
+      TZ: Etc/UTC
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
     # 9000 (API S3) solo loopback: los servicios .NET/Node corridos con `dotnet run`/
@@ -82,6 +89,7 @@ services:
   clamav:
     image: clamav/clamav:1.4.3
     container_name: taxvision-clamav
+    restart: unless-stopped
     # Límites de clamd subidos por las grabaciones server-side (F7): con los 100M por defecto, un MP4
     # de más de ~100 MB cortaba el INSTREAM y CloudStorage marcaba el archivo como scan_error. Se
     # reescriben en cada arranque (borrar + agregar, idempotente) y luego se cede a /init, el
@@ -100,6 +108,7 @@ services:
         } >> "$$conf"
         exec /init
     environment:
+      TZ: Etc/UTC
       CLAMD_STREAM_MAX_LENGTH: ${CLAMD_STREAM_MAX_LENGTH:-2100M}
       CLAMD_MAX_FILE_SIZE: ${CLAMD_MAX_FILE_SIZE:-2100M}
       CLAMD_MAX_SCAN_SIZE: ${CLAMD_MAX_SCAN_SIZE:-2100M}
@@ -130,6 +139,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ContentScanner__ApiKey: ${CONTENT_SCANNER_API_KEY:?Set CONTENT_SCANNER_API_KEY in .env}
     mem_limit: 768m
     cpus: 1.0
@@ -149,8 +159,9 @@ services:
   # La base ya no vive aca: SQL Server corre en su propio servidor Ubuntu. Este contenedor no la
   # reemplaza, solo espera a que responda antes de arrancar el resto — que es la garantia que daba el
   # `depends_on: sqlserver: service_healthy` de cuando era local. Sin algo asi, y como los servicios
-  # migran al arrancar, un despliegue con la base un segundo inalcanzable deja los contenedores
-  # muertos: ninguno declara `restart`.
+  # migran al arrancar, un despliegue con la base un segundo inalcanzable falla de entrada. Si una
+  # dependencia cae despues, `restart: unless-stopped` relanza los servicios; este no lo lleva porque
+  # termina a proposito (ver ComposeRestartPolicyWiringTests).
   #
   # Comprueba el puerto, no la sesion: no necesita credenciales y no hay password que montar.
   db-ready:
@@ -168,6 +179,7 @@ services:
         echo "SQL Server no respondio en 120s: $$SQLSERVER_HOST:$$SQLSERVER_PORT" >&2
         exit 1
     environment:
+      TZ: Etc/UTC
       SQLSERVER_HOST: ${SQLSERVER_HOST:?Set SQLSERVER_HOST in .env}
       SQLSERVER_PORT: ${SQLSERVER_PORT:-1433}
     networks:
@@ -206,7 +218,10 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.153.0
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-otel-collector
+    restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yml"]
     volumes:
       - ../observability/otel-collector.yml:/etc/otelcol/config.yml:ro
@@ -235,6 +250,8 @@ services:
     profiles:
       - observability
     image: gcr.io/cadvisor/cadvisor:v0.49.1
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-cadvisor
     restart: unless-stopped
     privileged: true
@@ -263,6 +280,8 @@ services:
     profiles:
       - observability
     image: prom/node-exporter:v1.8.2
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-node-exporter
     restart: unless-stopped
     pid: host
@@ -285,6 +304,8 @@ services:
     profiles:
       - observability
     image: prom/prometheus:v3.5.3
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-prometheus
     restart: unless-stopped
     command:
@@ -325,6 +346,7 @@ services:
         fi
         exec /run.sh
     environment:
+      TZ: Etc/UTC
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
       GF_USERS_ALLOW_SIGN_UP: "false"
@@ -346,12 +368,14 @@ services:
   tenant-api:
     image: taxvision/tenant-api:dev
     container_name: taxvision-tenant-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Tenant/TaxVision.Tenant.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
@@ -421,12 +445,14 @@ services:
     # /auth/login devuelve 404. En dev se fuerza a false (como appsettings.Development) para aceptar el
     # TenantId del body. En prod real (hosts de tenant reales) se quita este override.
     container_name: taxvision-auth-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Auth/Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -680,8 +706,14 @@ services:
       # de Subscription. Ambos ServiceOnly (solo actor_type=Service). Mismo caso que campaigns/subscription.
       ServiceAuth__Clients__29__ClientId: ${SMS_SERVICE_CLIENT_ID:-sms-worker}
       ServiceAuth__Clients__29__Secret: ${SMS_SERVICE_CLIENT_SECRET:-}
+      # Wallet: identidad existente para sus llamadas M2M.
       ServiceAuth__Clients__30__ClientId: ${WALLET_SERVICE_CLIENT_ID:-wallet-worker}
       ServiceAuth__Clients__30__Secret: ${WALLET_SERVICE_CLIENT_SECRET:-}
+      # FinancialInsights recupera permisos desde Auth y lee las cuotas por plan en Subscription.
+      ServiceAuth__Clients__31__ClientId: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID:-financial-insights-worker}
+      ServiceAuth__Clients__31__Secret: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET:-}
+      ServiceAuth__Clients__31__Permissions__0: cloudstorage.file.view
+      ServiceAuth__Clients__31__Permissions__1: cloudstorage.file.download
       # Bootstrap del primer PlatformAdmin (PlatformAdminBootstrapService.cs) — el token
       # llegaba a .env vía deploy.yml pero nunca se mapeaba acá, asi que no hacia nada.
       # Default Enabled=false a proposito: si esta en true pero Email/InvitationToken
@@ -747,14 +779,18 @@ services:
   customer-api:
     image: taxvision/customer-api:dev
     container_name: taxvision-customer-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Customer/TaxVision.Customer.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${CUSTOMER_DB_CONNECTION:?Set CUSTOMER_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -824,14 +860,18 @@ services:
   subscription-api:
     image: taxvision/subscription-api:dev
     container_name: taxvision-subscription-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Subscription/TaxVision.Subscription.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -879,12 +919,14 @@ services:
   notification-api:
     image: taxvision/notification-api:dev
     container_name: taxvision-notification-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Notification/TaxVision.Notification.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -996,18 +1038,23 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      # Scribe primero (o junto): un Scribe viejo imprimiría el marcador de fecha tipada como texto raro.
+      scribe-api:
+        condition: service_healthy
     networks:
       - taxvision-network
 
   postmaster-api:
     image: taxvision/postmaster-api:dev
     container_name: taxvision-postmaster-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Postmaster/TaxVision.Postmaster.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -1091,12 +1138,14 @@ services:
   scribe-api:
     image: taxvision/scribe-api:dev
     container_name: taxvision-scribe-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Scribe/TaxVision.Scribe.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -1136,6 +1185,14 @@ services:
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    # Notification manda las fechas tipadas ({"$instant": ...}) que solo un Scribe de la Fase 5 sabe imprimir:
+    # notification-api espera a este healthcheck. El deploy construye y levanta los dos en la misma corrida.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     depends_on:
       db-ready:
         condition: service_completed_successfully
@@ -1169,12 +1226,14 @@ services:
   connectors-api:
     image: taxvision/connectors-api:dev
     container_name: taxvision-connectors-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Connectors/TaxVision.Connectors.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -1266,6 +1325,7 @@ services:
     # Cierra las conexiones IMAP con LOGOUT y suelta los leases antes de morir.
     stop_grace_period: 30s
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CONNECTORS_DB_CONNECTION:?Set CONNECTORS_DB_CONNECTION in .env}
@@ -1297,15 +1357,19 @@ services:
   correspondence-api:
     image: taxvision/correspondence-api:dev
     container_name: taxvision-correspondence-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Correspondence/TaxVision.Correspondence.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CORRESPONDENCE_DB_CONNECTION:?Set CORRESPONDENCE_DB_CONNECTION in .env}
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
       # RS256: la clave publica alcanza para validar — la privada vive solo en auth-api.
@@ -1363,12 +1427,14 @@ services:
   notes-api:
     image: taxvision/notes-api:dev
     container_name: taxvision-notes-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Notes/TaxVision.Notes.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${NOTES_DB_CONNECTION:?Set NOTES_DB_CONNECTION in .env}
@@ -1426,12 +1492,14 @@ services:
   sms-api:
     image: taxvision/sms-api:dev
     container_name: taxvision-sms-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Sms/TaxVision.Sms.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${SMS_DB_CONNECTION:?Set SMS_DB_CONNECTION in .env}
@@ -1490,14 +1558,18 @@ services:
   campaigns-api:
     image: taxvision/campaigns-api:dev
     container_name: taxvision-campaigns-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Campaigns/TaxVision.Campaigns.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${CAMPAIGNS_DB_CONNECTION:?Set CAMPAIGNS_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -1551,15 +1623,74 @@ services:
     networks:
       - taxvision-network
 
+  financial-insights-api:
+    image: taxvision/financial-insights-api:dev
+    container_name: taxvision-financial-insights-api
+    restart: unless-stopped
+    build:
+      context: ../..
+      dockerfile: src/Services/FinancialInsights/TaxVision.FinancialInsights.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      TZ: Etc/UTC
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${FINANCIAL_INSIGHTS_DB_CONNECTION:-}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      Services__Auth__BaseUrl: http://auth-api:8080/
+      Services__Customer__BaseUrl: http://customer-api:8080/
+      Services__CloudStorage__BaseUrl: http://cloudstorage-api:8080/
+      Services__Tenant__BaseUrl: http://tenant-api:8080/
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
+      ServiceAuthClient__ClientId: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID:-financial-insights-worker}
+      ServiceAuthClient__ClientSecret: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET:-}
+      OpenAI__ApiKey: ${FINANCIAL_INSIGHTS_OPENAI_API_KEY:-}
+      OpenAI__Model: ${FINANCIAL_INSIGHTS_OPENAI_MODEL:-gpt-5.4-mini}
+      FinancialProcessing__AllowedDownloadHosts__0: ${MINIO_PUBLIC_ENDPOINT:-api.taxoffix.io}
+      RateLimit__EnforceTierQuotas: "true"
+      SubscriptionClient__BaseUrl: http://subscription-api:8080
+      Authorization__PermissionsSource: Projection
+      Authorization__ModuleGate__Enforce: "true"
+      Authorization__ModuleGate__EnforcedModules__0: financial_insights
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      db-ready:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-api:
+        condition: service_healthy
+      customer-api:
+        condition: service_started
+      cloudstorage-api:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   wallet-api:
     image: taxvision/wallet-api:dev
     container_name: taxvision-wallet-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Wallet/TaxVision.Wallet.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${WALLET_DB_CONNECTION:?Set WALLET_DB_CONNECTION in .env}
@@ -1604,12 +1735,14 @@ services:
   catalog-api:
     image: taxvision/catalog-api:dev
     container_name: taxvision-catalog-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Catalog/TaxVision.Catalog.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CATALOG_DB_CONNECTION:?Set CATALOG_DB_CONNECTION in .env}
@@ -1643,12 +1776,14 @@ services:
   inventory-api:
     image: taxvision/inventory-api:dev
     container_name: taxvision-inventory-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Inventory/TaxVision.Inventory.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${INVENTORY_DB_CONNECTION:?Set INVENTORY_DB_CONNECTION in .env}
@@ -1682,12 +1817,14 @@ services:
   reminder-api:
     image: taxvision/reminder-api:dev
     container_name: taxvision-reminder-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Reminder/TaxVision.Reminder.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${REMINDER_DB_CONNECTION:?Set REMINDER_DB_CONNECTION in .env}
@@ -1729,14 +1866,18 @@ services:
   calendar-api:
     image: taxvision/calendar-api:dev
     container_name: taxvision-calendar-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Calendar/TaxVision.Calendar.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${CALENDAR_DB_CONNECTION:?Set CALENDAR_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -1765,6 +1906,12 @@ services:
       # escalón completo en silencio. Así el único grado de libertad es el booleano.
       Authorization__ModuleGate__Enforce: ${CALENDAR_MODULE_GATE_ENFORCE:-false}
       Authorization__ModuleGate__EnforcedModules__0: planner
+      # Demo publica: cifra el codigo y el enlace de gestion con la misma clave que Notification (que los
+      # descifra). Turnstile vacio = pagina "no disponible"; el deploy no se rompe sin los secretos.
+      Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
+      Encryption__MasterKeyVersion: "1"
+      Calendar__PublicBooking__Turnstile__SiteKey: ${CALENDAR_PUBLIC_BOOKING_TURNSTILE_SITE_KEY:-}
+      Calendar__PublicBooking__Turnstile__SecretKey: ${CALENDAR_PUBLIC_BOOKING_TURNSTILE_SECRET_KEY:-}
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
@@ -1783,14 +1930,18 @@ services:
   tasks-api:
     image: taxvision/tasks-api:dev
     container_name: taxvision-tasks-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Tasks/TaxVision.Tasks.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${TASKS_DB_CONNECTION:?Set TASKS_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -1850,6 +2001,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
@@ -1961,12 +2113,14 @@ services:
   signature-api:
     image: taxvision/signature-api:dev
     container_name: taxvision-signature-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Signature/TaxVision.Signature.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2045,12 +2199,14 @@ services:
   payment-app-api:
     image: taxvision/payment-app-api:dev
     container_name: taxvision-payment-app-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/PaymentApp/TaxVision.PaymentApp.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2121,12 +2277,14 @@ services:
   payment-client-api:
     image: taxvision/payment-client-api:dev
     container_name: taxvision-payment-client-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/PaymentClient/TaxVision.PaymentClient.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2190,12 +2348,14 @@ services:
   growth-api:
     image: taxvision/growth-api:dev
     container_name: taxvision-growth-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Growth/TaxVision.Growth.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       # Enlace de la giftcard enviada por correo: alta del landing con el código precargado.
       Giftcards__RedeemBaseUrl: https://${TAXVISION_BASE_DOMAIN:-taxoffix.io}
       ASPNETCORE_ENVIRONMENT: Production
@@ -2241,12 +2401,14 @@ services:
   billing-api:
     image: taxvision/billing-api:dev
     container_name: taxvision-billing-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Billing/TaxVision.Billing.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2300,12 +2462,14 @@ services:
   documents-api:
     image: taxvision/documents-api:dev
     container_name: taxvision-documents-api
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Services/Documents/TaxVision.Documents.Api/Dockerfile
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2371,6 +2535,7 @@ services:
   communication-api:
     image: taxvision/communication-api:dev
     container_name: taxvision-communication-api
+    restart: unless-stopped
     build:
       context: ../../src/Services/Communication
       dockerfile: Dockerfile
@@ -2385,6 +2550,7 @@ services:
       - "${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}:${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}/udp"
       - "${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}:${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}/tcp"
     environment:
+      TZ: Etc/UTC
       NODE_ENV: production
       LOG_LEVEL: info
       SERVICE_NAME: communication-service
@@ -2510,6 +2676,7 @@ services:
   communication-transcript-worker:
     image: taxvision/communication-transcript-worker:dev
     container_name: taxvision-communication-transcript-worker
+    restart: unless-stopped
     build:
       context: ../../src/Services/CommunicationTranscriptWorker
       dockerfile: Dockerfile
@@ -2517,6 +2684,7 @@ services:
     # whisper corre con nice 10 (TRANSCRIPT_WORKER_WHISPER_NICE) para no quitarle CPU a lo que está en vivo.
     mem_limit: ${TRANSCRIPT_WORKER_MEM_LIMIT:-3g}
     environment:
+      TZ: Etc/UTC
       NODE_ENV: production
       LOG_LEVEL: info
       SERVICE_NAME: communication-transcript-worker
@@ -2579,6 +2747,7 @@ services:
   communication-recorder:
     image: taxvision/communication-recorder:dev
     container_name: taxvision-communication-recorder
+    restart: unless-stopped
     build:
       context: ../../src/Services/CommunicationRecorder
       dockerfile: Dockerfile
@@ -2587,6 +2756,7 @@ services:
     # ffmpeg componiendo 1080p consume RAM por hilo; el tope evita que una composición tumbe el host.
     mem_limit: 1536m
     environment:
+      TZ: Etc/UTC
       NODE_ENV: production
       LOG_LEVEL: info
       SERVICE_NAME: communication-recorder
@@ -2673,6 +2843,7 @@ services:
     image: minio/mc:latest
     entrypoint: ["sh", "/provision/provision-service-accounts.sh"]
     environment:
+      TZ: Etc/UTC
       MINIO_ALIAS: taxvision
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
@@ -2702,6 +2873,7 @@ services:
       context: ../..
       dockerfile: deploy/docker/migrations/Dockerfile
     environment:
+      TZ: Etc/UTC
       AUTH_DB_CONNECTION: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       TENANT_DB_CONNECTION: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
       CUSTOMER_DB_CONNECTION: ${CUSTOMER_DB_CONNECTION:?Set CUSTOMER_DB_CONNECTION in .env}
@@ -2733,6 +2905,7 @@ services:
       INVENTORY_DB_CONNECTION: ${INVENTORY_DB_CONNECTION:?Set INVENTORY_DB_CONNECTION in .env}
       CAMPAIGNS_DB_CONNECTION: ${CAMPAIGNS_DB_CONNECTION:?Set CAMPAIGNS_DB_CONNECTION in .env}
       WALLET_DB_CONNECTION: ${WALLET_DB_CONNECTION:?Set WALLET_DB_CONNECTION in .env}
+      FINANCIAL_INSIGHTS_DB_CONNECTION: ${FINANCIAL_INSIGHTS_DB_CONNECTION:-}
     depends_on:
       db-ready:
         condition: service_completed_successfully
@@ -2742,6 +2915,7 @@ services:
   gateway:
     image: taxvision/gateway:dev
     container_name: taxvision-gateway
+    restart: unless-stopped
     build:
       context: ../..
       dockerfile: src/Gateway/TaxVision.Gateway/Dockerfile
@@ -2753,6 +2927,7 @@ services:
     ports:
       - "127.0.0.1:5047:8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2792,6 +2967,7 @@ services:
       ReverseProxy__Clusters__auth__Destinations__auth1__Address: http://auth-api:8080/
       ReverseProxy__Clusters__tenant__Destinations__tenant1__Address: http://tenant-api:8080/
       ReverseProxy__Clusters__customer__Destinations__customer1__Address: http://customer-api:8080/
+      ReverseProxy__Clusters__financial__Destinations__financial1__Address: http://financial-insights-api:8080/
       ReverseProxy__Clusters__subscription__Destinations__subscription1__Address: http://subscription-api:8080/
       ReverseProxy__Clusters__notification__Destinations__notification1__Address: http://notification-api:8080/
       ReverseProxy__Clusters__postmaster__Destinations__postmaster1__Address: http://postmaster-api:8080/
@@ -2844,6 +3020,7 @@ services:
       - catalog-api
       - campaigns-api
       - wallet-api
+      - financial-insights-api
       - inventory-api
       - otel-collector
     networks:
@@ -2858,7 +3035,9 @@ services:
     build:
       context: ./caddy
     container_name: taxvision-caddy
+    restart: unless-stopped
     environment:
+      TZ: Etc/UTC
       # Host publico de la API. Cloudflare Tunnel lo entrega por HTTP al puerto
       # 80 del host; el Caddyfile lo envia a gateway:8080 sin redireccionarlo.
       TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxoffix.io}

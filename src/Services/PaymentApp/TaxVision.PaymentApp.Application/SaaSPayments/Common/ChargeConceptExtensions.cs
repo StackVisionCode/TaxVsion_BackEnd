@@ -28,6 +28,26 @@ public static class ChargeConceptExtensions
     // SubscriptionRenewalDueConsumer): cada tipo trae code + label genéricos que lee el recibo.
     // displayName (opcional) viene del caller cross-service cuando el SKU/plan tiene nombre comercial
     // (ej. "+10 GB Storage", "Professional"); si no viene, cae al label genérico por tipo.
+    /// <summary>
+    /// Detalle del cobro cuando tiene varias cosas. Si no suma el importe se descarta y el recibo cae a una sola línea:
+    /// el cobro no se frena por el detalle.
+    /// </summary>
+    public static Result<SaaSPayment> WithLines(
+        this Result<SaaSPayment> paymentResult,
+        IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? lines
+    )
+    {
+        if (paymentResult.IsFailure || lines is null || lines.Count == 0)
+            return paymentResult;
+
+        var created = lines
+            .Select(line => SaaSPaymentLine.Create(line.Description, line.Quantity, line.UnitAmountCents))
+            .ToList();
+        if (created.All(line => line.IsSuccess))
+            paymentResult.Value.AttachLines([.. created.Select(line => line.Value)]);
+        return paymentResult;
+    }
+
     public static Result<SaaSPayment> WithConceptFor(
         this Result<SaaSPayment> paymentResult,
         SaaSPaymentType type,
@@ -50,7 +70,8 @@ public static class ChargeConceptExtensions
             ),
             SaaSPaymentType.SubscriptionRenewal => ("subscription-renewal", "Subscription renewal"),
             SaaSPaymentType.SubscriptionRenewalCheckout => ("subscription-renewal", "Subscription renewal"),
-            SaaSPaymentType.PlanChangeCheckout => ("plan-upgrade", "Plan upgrade"),
+            SaaSPaymentType.PlanChangeCheckout => ("plan-upgrade", trimmed ?? "Plan upgrade"),
+            SaaSPaymentType.PlanChangeCharge => ("plan-upgrade", trimmed ?? "Plan upgrade"),
             SaaSPaymentType.OnboardingInitial => ("subscription-signup", trimmed ?? "Subscription signup"),
             _ => (string.Empty, string.Empty),
         };

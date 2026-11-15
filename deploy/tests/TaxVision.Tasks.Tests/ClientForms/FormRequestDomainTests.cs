@@ -246,13 +246,56 @@ public sealed class FormRequestDomainTests
         Assert.Equal(FormCancelReason.Archived, request.CancelReason);
     }
 
+    /// <summary>P4: la fecha civil dada al cliente se guarda; su instante (fin del día de la oficina) ya no la dice.</summary>
+    [Fact]
+    public void A_request_keeps_the_civil_due_date_given_to_the_client()
+    {
+        var request = Create(
+            FormParticipantRef.Customer(CustomerId),
+            dueAtUtc: new DateTime(2026, 11, 16, 4, 59, 59, DateTimeKind.Utc),
+            dueOn: new DateOnly(2026, 11, 15)
+        ).Value;
+
+        Assert.Equal(new DateOnly(2026, 11, 15), request.DueCivilDate);
+
+        request.ChangeDueDate(
+            new DateTime(2026, 11, 21, 4, 59, 59, DateTimeKind.Utc),
+            UserId,
+            Now,
+            dueOn: new DateOnly(2026, 11, 20)
+        );
+
+        Assert.Equal(new DateOnly(2026, 11, 20), request.DueCivilDate);
+    }
+
+    // P9: un formulario abierto con fecha civil vence al fin de ese día en la zona nueva; uno cerrado no se toca.
+    [Fact]
+    public void An_open_form_due_moves_to_the_end_of_the_same_day_in_the_new_zone()
+    {
+        var newYork = BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/New_York");
+        var chicago = BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/Chicago");
+        var day = new DateOnly(2026, 11, 20);
+        var request = Create(
+            FormParticipantRef.Customer(CustomerId),
+            dueAtUtc: BuildingBlocks.TimeZones.LocalDay.EndUtc(day, newYork),
+            dueOn: day
+        ).Value;
+
+        Assert.True(request.RezoneCivilDue("America/New_York", chicago));
+
+        Assert.Equal(BuildingBlocks.TimeZones.LocalDay.EndUtc(day, chicago), request.DueAtUtc);
+        Assert.Equal(day, request.DueOn);
+    }
+
     private static BuildingBlocks.Results.Result<FormRequest> Create(
         FormParticipantRef participant,
         Guid? responsibleUserId = null,
         Guid? taskId = null,
         FormRequestOrigin origin = FormRequestOrigin.Directed,
         Guid? intakeLinkId = null,
-        bool useDefaultResponsibleUser = true
+        bool useDefaultResponsibleUser = true,
+        DateTime? dueAtUtc = null,
+        DateOnly? dueOn = null
     ) =>
         FormRequest.Create(
             TenantId,
@@ -262,7 +305,7 @@ public sealed class FormRequestDomainTests
             null,
             2026,
             taskId,
-            Now.AddDays(7),
+            dueAtUtc ?? Now.AddDays(7),
             null,
             null,
             origin,
@@ -271,7 +314,8 @@ public sealed class FormRequestDomainTests
                 ? responsibleUserId ?? UserId
                 : responsibleUserId,
             UserId,
-            Now
+            Now,
+            dueOn: dueOn
         );
 
     private static FormTemplateVersion Version() =>

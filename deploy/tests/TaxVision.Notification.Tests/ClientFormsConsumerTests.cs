@@ -455,6 +455,12 @@ public sealed class ClientFormsConsumerTests
         Assert.Null(codec.Binding?.Participant);
         Assert.Equal("task.form_access_code.v1", render.EventKey);
         Assert.Equal("123456", render.Variables["code"]);
+        // Plazo tipado (P14 lo dice relativo: "in 10 minutes"), ya no "yyyy-MM-dd HH:mm" + "UTC".
+        Assert.Equal(
+            "$instant",
+            Assert.Single(Assert.IsAssignableFrom<IDictionary<string, object?>>(render.Variables["expires_at"]).Keys)
+        );
+        Assert.Equal("En", render.Reader?.Locale);
         Assert.True(Assert.Single(gateway.Queued).Confidential);
         Assert.Equal(ScribeRenderAudience.Client, render.Audience);
     }
@@ -1145,13 +1151,29 @@ public sealed class ClientFormsConsumerTests
         ReturnsFailure,
     }
 
-    private sealed class RenderClient : IScribeRenderClient
+    private sealed class RenderClient : IScribeRenderClient, IScribeReaderRenderClient
     {
         public PushRenderFailure PushFailure { get; init; }
         public int Calls { get; private set; }
         public int TextCalls { get; private set; }
         public string? EventKey { get; private set; }
         public IReadOnlyDictionary<string, object?> Variables { get; private set; } = new Dictionary<string, object?>();
+
+        public ScribeReader? Reader { get; private set; }
+
+        public Task<Result<ScribeRenderedEmail>> RenderForReaderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            ScribeReader reader,
+            CancellationToken ct = default
+        )
+        {
+            Reader = reader;
+            return RenderAsync(eventKey, tenantId, variables, audience, ct);
+        }
+
         public ScribeRenderAudience? Audience { get; private set; }
 
         public Task<Result<ScribeRenderedEmail>> RenderAsync(

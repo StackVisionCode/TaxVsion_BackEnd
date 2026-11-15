@@ -26,7 +26,9 @@ public sealed record SendGiftcardReceipt(
     DateTime? ExpiresAtUtc,
     string RecipientEmail,
     string? RecipientName,
-    string? PersonalMessage
+    string? PersonalMessage,
+    // P30: zona comercial en la que vence; null si no vence.
+    string? ExpiresTimeZoneId = null
 );
 
 public static class SendGiftcardHandler
@@ -79,7 +81,8 @@ public static class SendGiftcardHandler
                 definition.ExpiresAtUtc,
                 email,
                 string.IsNullOrWhiteSpace(command.RecipientName) ? null : command.RecipientName.Trim(),
-                message
+                message,
+                definition.ExpiresAtUtc is null ? null : CommercialTimeZone.Id
             )
         );
     }

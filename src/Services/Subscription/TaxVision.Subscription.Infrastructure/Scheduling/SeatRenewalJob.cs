@@ -85,6 +85,10 @@ public sealed class SeatRenewalJob(
             }
         }
 
+        // Un cambio de ciclo en curso o agendado lo aplica la base primero; el asiento renueva después.
+        if (subscription?.HoldsExtraRenewals(seat.CurrentPeriodEndUtc!.Value) == true)
+            return false;
+
         var idempotencyKey = IdempotencyKeyFactory.SeatRenewal(seat.Id, seat.CurrentPeriodEndUtc!.Value);
         var result = seat.BeginRenewal(idempotencyKey, actorUserId: Guid.Empty, nowUtc);
         if (result.IsFailure)

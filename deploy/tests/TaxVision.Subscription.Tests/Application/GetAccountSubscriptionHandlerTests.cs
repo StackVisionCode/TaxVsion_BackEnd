@@ -71,6 +71,20 @@ public sealed class GetAccountSubscriptionHandlerTests
         Assert.Equal(2, result.Value.Plan.Rank);
     }
 
+    // D6: el landing ofrece cambiar de ciclo solo si la edición firmada tiene precio en ese ciclo.
+    // La edición admite Monthly y Yearly, pero solo tiene precio mensual (caso de una edición vieja).
+    [Fact]
+    public async Task The_contracted_plan_lists_only_the_cycles_its_edition_has_a_price_for()
+    {
+        var plan = PlanWith("pro", "Pro", monthlyPrice: 49m, seatsMax: 5, modules: ["documents"]);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
+
+        var result = await HandleAsync(plan, subscription);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(["Monthly"], result.Value.Plan.BillingCycles);
+    }
+
     [Fact]
     public async Task The_price_and_the_modules_stay_contracted()
     {

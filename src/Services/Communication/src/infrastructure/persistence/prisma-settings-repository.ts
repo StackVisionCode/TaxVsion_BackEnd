@@ -208,6 +208,7 @@ export class PrismaLimitsRepository implements LimitsRepository {
       transcriptEnabled: row.TranscriptEnabled,
       callsEnabled: row.CallsEnabled,
       maxCallMinutes: row.MaxCallMinutes,
+      usagePeriodAnchorUtc: row.UsagePeriodAnchorUtc,
       revisionNumber: row.LastEntitlementsRevision === null ? null : Number(row.LastEntitlementsRevision),
       updatedAtUtc: row.UpdatedAtUtc,
     };
@@ -231,6 +232,7 @@ export class PrismaLimitsRepository implements LimitsRepository {
       TranscriptEnabled: s.transcriptEnabled,
       CallsEnabled: s.callsEnabled,
       MaxCallMinutes: s.maxCallMinutes,
+      UsagePeriodAnchorUtc: s.usagePeriodAnchorUtc ?? null,
     };
     if (s.revisionNumber === null) {
       await this.prisma.tenantCommunicationLimits.upsert({

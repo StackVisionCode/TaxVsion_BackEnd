@@ -639,6 +639,15 @@ public sealed class StripePaymentAdapter : IPaymentProvider
             ),
         };
 
+        // P29: la fecha del evento en Stripe es la fecha de negocio, no la de procesamiento.
+        if (result.IsSuccess)
+            result = Result.Success(
+                result.Value with
+                {
+                    ProviderOccurredAtUtc = DateTime.SpecifyKind(stripeEvent.Created, DateTimeKind.Utc),
+                }
+            );
+
         return Task.FromResult(result);
     }
 

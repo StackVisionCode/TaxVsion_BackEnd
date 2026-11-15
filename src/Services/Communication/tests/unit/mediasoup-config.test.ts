@@ -3,6 +3,7 @@ import {
   buildFallbackTransportListenInfos,
   buildWebRtcServerListenInfos,
   resolveWebRtcServerPorts,
+  WEBRTC_TRANSPORT_BASE_OPTIONS,
   type SfuNetworkSettings,
 } from '../../src/infrastructure/webrtc/mediasoup-config.js';
 
@@ -41,4 +42,9 @@ describe('mediasoup-config (WebRtcServer, D-05/D-57)', () => {
     expect(infos[0]).toMatchObject({ protocol: 'udp', portRange: { min: 40000, max: 49999 } });
     expect(infos[1]).toMatchObject({ protocol: 'tcp', portRange: { min: 40000, max: 49999 } });
   });
+
+  it('arranca el envío hacia quien mira a 2 Mbps: la pantalla se ve nítida antes (el BWE baja si la red no da)', () => {
+    expect(WEBRTC_TRANSPORT_BASE_OPTIONS.initialAvailableOutgoingBitrate).toBe(2_000_000);
+  });
 });
+

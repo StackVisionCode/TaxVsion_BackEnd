@@ -39,6 +39,7 @@ public static class NotificationContractNames
         [NotificationResourceType.Campaign] = "campaign",
         [NotificationResourceType.UserManagement] = "user_management",
         [NotificationResourceType.Referral] = "referral",
+        [NotificationResourceType.FinancialImportBatch] = "financial_import_batch",
     }.ToFrozenDictionary();
 
     public static string For(NotificationResourceType resourceType) => ResourceTypes[resourceType];

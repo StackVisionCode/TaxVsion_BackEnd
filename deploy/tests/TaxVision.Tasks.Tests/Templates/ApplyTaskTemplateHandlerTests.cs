@@ -65,6 +65,20 @@ public sealed class ApplyTaskTemplateHandlerTests
         Assert.Equal(Preparer, reminder.UserId);
     }
 
+    /// <summary>P4/P24: con la fecha civil, el encargo vence al final de ese día en la zona de la oficina.</summary>
+    [Fact]
+    public async Task A_civil_due_date_ends_at_the_end_of_the_office_day()
+    {
+        var fixture = new Fixture(Template(recurring: false));
+
+        var result = await fixture.ApplyAsync(Preparer, dueOn: new DateOnly(2027, 4, 15));
+
+        Assert.True(result.IsSuccess);
+        var last = fixture.Tasks.Stored.Single(t => t.Due!.IsStatutory);
+        Assert.Equal(new DateTime(2027, 4, 16, 4, 59, 59, DateTimeKind.Utc), last.Due!.DueAtUtc); // 23:59:59 CDT
+        Assert.Equal("America/Chicago", last.Due.TimeZoneId);
+    }
+
     private static TaskTemplate Template(bool recurring)
     {
         var standard = StandardTaxTemplates.All.First(t => (t.RecurrenceRule is not null) == recurring);
@@ -73,12 +87,7 @@ public sealed class ApplyTaskTemplateHandlerTests
             .Value;
         Assert.True(
             TaskTemplateStepFactory
-                .ApplyRecurrence(
-                    template,
-                    standard.RecurrenceRule,
-                    StandardTaxTemplates.TimeZoneId,
-                    standard.RecurrenceMode
-                )
+                .ApplyRecurrence(template, standard.RecurrenceRule, "America/New_York", standard.RecurrenceMode)
                 .IsSuccess
         );
         Assert.True(TaskTemplateStepFactory.ApplyTo(template, standard.Steps).IsSuccess);
@@ -91,7 +100,7 @@ public sealed class ApplyTaskTemplateHandlerTests
         public FakeMessageBus Bus { get; } = new();
 
         // Los anuncios salen del handler del evento de alta de cada tarea (el replay los deja en el bus).
-        public async Task<Result<TemplateApplicationResponse>> ApplyAsync(Guid? assignee)
+        public async Task<Result<TemplateApplicationResponse>> ApplyAsync(Guid? assignee, DateOnly? dueOn = null)
         {
             var series = new InMemoryTaskSeriesRepository();
             var result = await ApplyTaskTemplateHandler.Handle(
@@ -104,13 +113,15 @@ public sealed class ApplyTaskTemplateHandlerTests
                     2025,
                     DueAtUtc,
                     "America/New_York",
-                    false
+                    false,
+                    dueOn
                 ),
                 new InMemoryTaskTemplateRepository(template),
                 new TaskTemplateInstantiator(Tasks, new InMemoryTaskDependencyRepository()),
                 series,
                 new TaskSeriesMaterializer(Tasks, series),
                 new RecordingUnitOfWork(),
+                new FixedOfficeZone("America/Chicago"),
                 CancellationToken.None
             );
             await DomainEventReplay.DispatchIntoAsync(Bus, Tasks);

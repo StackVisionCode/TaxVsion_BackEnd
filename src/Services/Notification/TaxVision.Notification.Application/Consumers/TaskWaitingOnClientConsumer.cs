@@ -65,7 +65,7 @@ public static class TaskWaitingOnClientConsumer
                             ["customer_name"] = customer.DisplayName,
                             ["task_title"] = evt.Title,
                             ["expected_items"] = evt.ExpectedItems,
-                            ["client_due_at_utc"] = evt.ClientDueAtUtc,
+                            ["client_due_at_utc"] = CivilDue.Typed(evt.ClientDueOn, evt.ClientDueAtUtc),
                             ["tax_year"] = evt.TaxYear,
                             ["portal_link"] = TenantEmailLinks.ClientBase(tenantHost, portal.Value),
                         },

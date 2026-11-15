@@ -21,7 +21,10 @@ public sealed record CreatePlanChangeCheckoutCommand(
     PaymentProviderCode Provider = PaymentProviderCode.Stripe,
     PaymentMethodKind Method = PaymentMethodKind.Card,
     /// <summary>SEC-M1.C — firma HMAC emitida por Subscription (ver CreateSeatsCheckoutCommand).</summary>
-    string? AmountSignature = null
+    string? AmountSignature = null,
+    // Detalle del cobro (plan y extras) para el recibo, y cómo se ve en el historial. Opcionales.
+    IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null,
+    string? ConceptDisplayName = null
 );
 
 public sealed record PlanChangeCheckoutResponse(

@@ -79,6 +79,8 @@ public sealed class ReceiptDocumentClient(
                             officeName = string.IsNullOrWhiteSpace(request.OfficeName)
                                 ? null
                                 : request.OfficeName.Trim(),
+                            // P7: zona del pagador; sin ella, Documents escribe UTC.
+                            timeZoneId = request.TimeZoneId,
                         },
                     }
                 ),

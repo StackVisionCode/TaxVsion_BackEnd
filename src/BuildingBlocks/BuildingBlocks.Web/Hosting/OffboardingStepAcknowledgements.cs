@@ -103,6 +103,9 @@ public sealed class OffboardingStepAcknowledgementPolicy : IHandlerPolicy
             .Handlers.Select(h => h.HandlerType)
             .Distinct()
             .Select(t => new OffboardingStep(OffboardingStepAcknowledgements.ServiceOf(t), t.Name))
+            // Orden fijo: el código pregenerado tiene que salir igual en cada codegen.
+            .OrderBy(step => step.Service, StringComparer.Ordinal)
+            .ThenBy(step => step.Step, StringComparer.Ordinal)
             .ToArray();
         if (steps.Length == 0 || chain.Postprocessors.OfType<PublishOffboardingAcknowledgementsFrame>().Any())
             return;

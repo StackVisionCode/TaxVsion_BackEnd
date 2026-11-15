@@ -23,6 +23,7 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
         IPlanRepository plans,
         ITenantAddOnRepository tenantAddOns,
         IAddOnDefinitionRepository addOnDefinitions,
+        ISubscriptionSeatRepository seats,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -70,6 +71,7 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
                 return;
             }
 
+            var previousCycle = subscription.BillingCycle;
             var result = subscription.CompleteUpgradeCharge(
                 request.Id,
                 toPlan,
@@ -86,6 +88,32 @@ public static class SubscriptionPlanChangePaymentSucceededConsumer
                     result.Error.Code
                 );
                 return;
+            }
+
+            // C2: si cambió el ciclo, cada extra pasa al ciclo nuevo, al precio cobrado y al período de la base.
+            if (request.ToBillingCycle is { } newCycle && newCycle != previousCycle)
+            {
+                var addOnsForUpdate = await tenantAddOns.GetByTenantIdForUpdateAsync(subscription.TenantId, ct);
+                var seatsForUpdate = await seats.GetByTenantIdForUpdateAsync(subscription.TenantId, ct);
+                var switched = BillingCycleSwitch.Apply(
+                    newCycle,
+                    subscription.CurrentPeriodStartUtc,
+                    subscription.CurrentPeriodEndUtc,
+                    addOnsForUpdate,
+                    seatsForUpdate,
+                    PlanChangeQuote.ExtraPrices(request.Lines, seatsForUpdate, request.ChargeCurrency),
+                    request.RequestedByUserId,
+                    evt.PaidAtUtc
+                );
+                // Ya se cobró: no se revierte el plan. Queda registrado para revisarlo a mano.
+                if (switched.IsFailure)
+                    logger.LogError(
+                        "Plan change {PlanChangeRequestId} was paid but the add-ons and seats of tenant {TenantId} could not switch to {Cycle}: {Code}.",
+                        request.Id,
+                        subscription.TenantId,
+                        newCycle,
+                        switched.Error.Code
+                    );
             }
 
             // Absorción: el plan destino ya cubre el módulo → cancelar el add-on para no cobrar doble.

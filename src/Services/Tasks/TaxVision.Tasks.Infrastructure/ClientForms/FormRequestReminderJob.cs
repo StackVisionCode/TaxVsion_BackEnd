@@ -66,8 +66,9 @@ internal sealed class FormRequestReminderJob(
     {
         var now = DateTime.UtcNow;
         var maxDaysBefore = reminders.DaysBeforeDue.Length == 0 ? 0 : reminders.DaysBeforeDue.Max();
-        // Candidatas: cualquier abierta cuya fecha límite ya entró en la ventana previa (o pasó).
-        var threshold = now.AddDays(maxDaysBefore);
+        // Candidatas: cualquier abierta cuya fecha límite ya entró en la ventana previa (o pasó). Un día más:
+        // la etapa de una fecha civil (9:00 de la oficina) llega antes que el instante menos N días.
+        var threshold = now.AddDays(maxDaysBefore + 1);
 
         List<Guid> candidateIds;
         using (var scope = scopeFactory.CreateScope())
@@ -112,13 +113,20 @@ internal sealed class FormRequestReminderJob(
         if (found is null)
             return false;
 
+        var zone = found.DueOn is null
+            ? null
+            : await scope
+                .ServiceProvider.GetRequiredService<global::TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IOfficeTimeZone>()
+                .ResolveAsync(found.TenantId, ct);
         var decision = ReminderSchedule.Evaluate(
             found.Status,
             found.DueAtUtc,
             found.LastReminderAtUtc,
             found.ReminderCount,
             now,
-            reminders
+            reminders,
+            found.DueOn,
+            zone
         );
         if (!decision.ShouldSend)
             return false;

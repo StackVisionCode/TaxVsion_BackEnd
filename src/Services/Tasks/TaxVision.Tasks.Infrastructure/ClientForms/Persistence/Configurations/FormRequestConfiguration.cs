@@ -110,6 +110,7 @@ public sealed class FormRequestConfiguration : IEntityTypeConfiguration<FormRequ
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(request => request.ActionRuns).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Ignore(request => request.LatestRevision);
+        builder.Ignore(request => request.DueCivilDate);
         builder
             .HasOne(request => request.Submission)
             .WithOne()

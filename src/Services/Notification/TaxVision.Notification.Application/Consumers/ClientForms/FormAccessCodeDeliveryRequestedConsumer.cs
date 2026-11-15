@@ -62,7 +62,7 @@ public static class FormAccessCodeDeliveryRequestedConsumer
                     {
                         ["code"] = content.Code,
                         ["form_title"] = content.Title,
-                        ["expires_at"] = command.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                        ["expires_at"] = ScribeDates.Instant(command.ExpiresAtUtc),
                     }
                 ),
                 ct

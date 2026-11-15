@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -37,6 +38,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
@@ -53,11 +55,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // AddTieredRateLimiting auto-registra el contador Redis desde IConnectionMultiplexer, que hay que
 // registrar explícito (AddRedisCache solo aporta IDistributedCache). La escala por plan (tier-aware,
 // TenantPlanCodeProjection) llega en la Fase 2; hoy hace fail-open a la cuota base.
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 
 // RateLimit Fase 2 — escala por plan. Flag OFF por default (fail-open a la cuota base sin escalar,
@@ -90,6 +90,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
 
     // Consumers estáticos — registro EXPLÍCITO por tipo (la discovery convencional no siempre los levanta).

@@ -280,6 +280,11 @@ public sealed class PurchaseConcurrencyIntegrationTests : IAsyncLifetime
             CancellationToken ct = default
         ) => inner.GetByTenantIdAsync(tenantId, ct);
 
+        public Task<IReadOnlyList<SubscriptionSeat>> GetByTenantIdForUpdateAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => inner.GetByTenantIdForUpdateAsync(tenantId, ct);
+
         public async Task AddAsync(SubscriptionSeat seat, CancellationToken ct = default)
         {
             if (!_arrived)

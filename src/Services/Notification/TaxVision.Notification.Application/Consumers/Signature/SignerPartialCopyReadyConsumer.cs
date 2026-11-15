@@ -50,7 +50,8 @@ public static class SignerPartialCopyReadyConsumer
                     new Dictionary<string, object?>
                     {
                         ["full_name"] = evt.SignerFullName,
-                        ["signed_at"] = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm"),
+                        // La hora real de firma viene del evento; los eventos viejos no la traen.
+                        ["signed_at"] = ScribeDates.Instant(evt.SignedAtUtc ?? DateTime.UtcNow),
                         ["download_links"] = downloadLinks,
                         ["document_count"] = evt.Files.Count,
                         ["language"] = evt.Language,
@@ -60,6 +61,7 @@ public static class SignerPartialCopyReadyConsumer
                         ["send_sealed_to_signers"] = evt.SendSealedToSigners,
                     },
                     ScribeRenderAudience.Client,
+                    ScribeReader.From(evt.Language),
                     ct
                 )
             ).EnsureRendered(SignatureTemplateCatalog.PartialCopyKey);

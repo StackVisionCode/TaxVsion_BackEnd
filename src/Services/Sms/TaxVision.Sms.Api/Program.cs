@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Infrastructure.Caching;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Persistence;
@@ -40,6 +41,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddSmsInfrastructure(builder.Configuration);
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
@@ -60,11 +62,9 @@ builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExe
 // registrar explícito (AddRedisCache solo aporta IDistributedCache). La escala por plan (tier-aware,
 // TenantPlanCodeProjection) llega en la Fase 2; hoy hace fail-open a la cuota base. Los webhooks
 // (WebhooksController) son anónimos: los limita el limiter nativo por IP de abajo (SMS-07).
-builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
-    ConnectionMultiplexer.Connect(
-        builder.Configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
-    )
+builder.Services.AddTaxVisionRedis(
+    builder.Configuration.GetConnectionString("Redis")
+        ?? throw new InvalidOperationException("ConnectionStrings:Redis is missing.")
 );
 
 // RateLimit Fase 2 — escala por plan. Flag OFF por default (fail-open a la cuota base sin escalar,
@@ -109,6 +109,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
 
     // RBAC Fase 7 — los consumers de proyección de permisos son `static class` con `Handle`

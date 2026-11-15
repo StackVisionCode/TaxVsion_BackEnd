@@ -22,6 +22,16 @@ public static class WispReviewSchedule
     public const int DueSoonDays = 30;
     public const int OverdueRepeatDays = 30;
 
+    /// <summary>P28: el aviso del día sale a partir de esta hora de la oficina.</summary>
+    public const int SendHour = 9;
+
+    public static bool IsBeforeSendHour(DateTime nowUtc, string? officeTimeZoneId)
+    {
+        var utc = DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc);
+        var zone = IanaTimeZone.TryFindTimeZone(officeTimeZoneId, out var found) ? found : TimeZoneInfo.Utc;
+        return TimeZoneInfo.ConvertTimeFromUtc(utc, zone).Hour < SendHour;
+    }
+
     /// <summary>"Hoy" en el calendario de la oficina. Zona inválida o vacía → UTC.</summary>
     public static DateOnly OfficeToday(DateTime nowUtc, string? officeTimeZoneId)
     {

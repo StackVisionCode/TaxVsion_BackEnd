@@ -77,6 +77,9 @@ public static class AppointmentCancelledConsumer
                 new Dictionary<string, object?>
                 {
                     ["scope"] = evt.Scope,
+                    // Qué se canceló: sin esto, en una serie semanal el cliente no sabe cuál.
+                    ["start_local"] = ScribeDates.Instant(evt.StartUtc),
+                    ["time_zone"] = evt.TimeZoneId,
                     ["reason"] = evt.Reason,
                     ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
                 },
@@ -84,7 +87,8 @@ public static class AppointmentCancelledConsumer
                 gateway,
                 evt.EventId,
                 correlation.CorrelationId,
-                ct
+                ct,
+                timeZoneId: evt.TimeZoneId
             );
         }
     }

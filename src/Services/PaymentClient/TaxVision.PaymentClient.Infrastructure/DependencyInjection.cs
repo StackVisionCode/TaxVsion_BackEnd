@@ -1,4 +1,5 @@
 using BuildingBlocks.Infrastructure.RateLimiting;
+using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -91,9 +92,7 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddSingleton<IStripeConnectGateway, StripeConnectGateway>();
 
-        services.AddSingleton<IConnectionMultiplexer>(_ =>
-            ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis") ?? "localhost:6379")
-        );
+        services.AddTaxVisionRedis(configuration.GetConnectionString("Redis") ?? "localhost:6379");
         services.AddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
 
         // Revisión de pagos atascados esperando al proveedor (StuckPaymentReconciliationJob).

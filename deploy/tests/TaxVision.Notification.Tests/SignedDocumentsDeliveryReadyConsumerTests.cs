@@ -61,6 +61,24 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         Assert.Equal(2, scribe.Variables["total_signers"]);
     }
 
+    /// <summary>Fase 5: la hora de firma sale del evento (no de cuándo lo procesa Notification) y viaja tipada, en el idioma del firmante.</summary>
+    [Fact]
+    public async Task The_copy_says_when_the_signer_actually_signed_in_their_language()
+    {
+        var (gateway, scribe) = (new Gateway(), new Scribe());
+        var signedAt = new DateTime(2026, 11, 18, 14, 0, 0, DateTimeKind.Utc);
+
+        await Handle(Event(purpose: "PartialCopy", items: 1, signedAt: signedAt), gateway, scribe, new Sms());
+
+        var signed = Assert.IsAssignableFrom<IDictionary<string, object?>>(scribe.Variables["signed_at"]);
+        Assert.Equal("2026-11-18T14:00:00.0000000Z", signed["$instant"]);
+        Assert.Contains(
+            "$instant",
+            Assert.IsAssignableFrom<IDictionary<string, object?>>(scribe.Variables["expires_at"]).Keys
+        );
+        Assert.Equal("En", scribe.Reader?.Locale);
+    }
+
     [Fact]
     public async Task A_signer_who_prefers_sms_gets_one_sms_with_the_page_link_and_no_email()
     {
@@ -207,7 +225,8 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         int items,
         IReadOnlyList<Guid>? attachments = null,
         bool preferSms = false,
-        Guid? customerId = null
+        Guid? customerId = null,
+        DateTime? signedAt = null
     ) =>
         new()
         {
@@ -238,6 +257,7 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
             ),
             AttachmentFileIds = attachments ?? [],
             CompletedAtUtc = DateTime.UtcNow,
+            SignedAtUtc = signedAt,
             TotalSignersCount = 2,
         };
 
@@ -314,8 +334,23 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         }
     }
 
-    private sealed class Scribe : IScribeRenderClient
+    private sealed class Scribe : IScribeRenderClient, IScribeReaderRenderClient
     {
+        public ScribeReader? Reader { get; private set; }
+
+        public Task<Result<ScribeRenderedEmail>> RenderForReaderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            ScribeReader reader,
+            CancellationToken ct = default
+        )
+        {
+            Reader = reader;
+            return RenderAsync(eventKey, tenantId, variables, ct);
+        }
+
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
             string eventKey,
             Guid tenantId,

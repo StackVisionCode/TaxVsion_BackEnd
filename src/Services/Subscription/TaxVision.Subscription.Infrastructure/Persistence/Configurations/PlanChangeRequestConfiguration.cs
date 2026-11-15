@@ -35,6 +35,26 @@ public sealed class PlanChangeRequestConfiguration : IEntityTypeConfiguration<Pl
         builder.Property(request => request.PaymentIdempotencyKey).HasMaxLength(200).IsRequired();
         builder.Property(request => request.SaaSPaymentId);
         builder.Property(request => request.UsesHostedCheckout).IsRequired();
+
+        // Desglose del cobro (plan y extras) en tabla propia.
+        builder.OwnsMany(
+            request => request.Lines,
+            line =>
+            {
+                line.ToTable("PlanChangeRequestLines");
+                line.WithOwner().HasForeignKey("PlanChangeRequestId");
+                line.HasKey(l => l.Id);
+                line.Property(l => l.Id).ValueGeneratedNever();
+                line.Property(l => l.Kind).HasConversion<string>().HasMaxLength(20).IsRequired();
+                line.Property(l => l.ReferenceId);
+                line.Property(l => l.Code).HasMaxLength(PlanChangeLine.CodeMaxLength).IsRequired();
+                line.Property(l => l.Description).HasMaxLength(PlanChangeLine.DescriptionMaxLength).IsRequired();
+                line.Property(l => l.Quantity).IsRequired();
+                line.Property(l => l.UnitAmountCents).IsRequired();
+                line.Ignore(l => l.AmountCents);
+            }
+        );
+        builder.Navigation(request => request.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Property(request => request.CheckoutUrl).HasMaxLength(2048);
         builder.Property(request => request.CheckoutExpiresAtUtc);
         builder.Property(request => request.CancelledAtUtc);

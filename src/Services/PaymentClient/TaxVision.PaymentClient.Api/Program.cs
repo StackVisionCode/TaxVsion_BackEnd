@@ -48,6 +48,7 @@ builder.Services.AddSwaggerGen();
 
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddPaymentClientInfrastructure(builder.Configuration);
 
 // Base pública para componer la URL estable de facturas (la embebe Billing en el PDF).
@@ -195,6 +196,7 @@ builder
 
 builder.Host.UseWolverine(options =>
 {
+    options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(CreateTenantPaymentConfigCommand).Assembly);
     options.ListenForPlatformSettings();
     // Registro explícito del consumer de "factura anulada" (revoca el payable/link). La discovery por

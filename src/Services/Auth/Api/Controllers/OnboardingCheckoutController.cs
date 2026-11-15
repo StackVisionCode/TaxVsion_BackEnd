@@ -35,7 +35,9 @@ public sealed class OnboardingCheckoutController(
         // tiraba y el TenantBillingPreference nunca se creaba. En Manage Subscription después el
         // toggle salía en OFF pidiendo activarlo, pese a que el user ya había consentido y Stripe ya
         // tenía el mandate guardado (SetupFutureUsage=off_session).
-        bool AutoRenew = false
+        bool AutoRenew = false,
+        // P7: zona del navegador (Intl); el recibo del pago la usa. Opcional.
+        string? TimeZoneId = null
     );
 
     [HttpPost]
@@ -64,7 +66,8 @@ public sealed class OnboardingCheckoutController(
                 request.PlanId,
                 request.EmailVerificationChallengeId,
                 request.BillingCycle,
-                request.AutoRenew
+                request.AutoRenew,
+                request.TimeZoneId
             ),
             ct
         );

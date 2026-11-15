@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.TimeZones;
 using TaxVision.Signature.Application.Abstractions;
 
 namespace TaxVision.Signature.Application.Analytics.Consumers;
@@ -13,6 +14,7 @@ public static class SignatureRequestSentAnalyticsConsumer
         ISignatureAnalyticsRepository analyticsRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -25,7 +27,8 @@ public static class SignatureRequestSentAnalyticsConsumer
             if (request is null)
                 return;
 
-            var day = DateOnly.FromDateTime(evt.SentAtUtc);
+            // P21: el día de la métrica es el de la oficina (solo hacia adelante).
+            var day = CivilDate.Of(evt.SentAtUtc, await zones.ResolveAsync(evt.TenantId, ct));
             var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
                 evt.TenantId,
                 day,

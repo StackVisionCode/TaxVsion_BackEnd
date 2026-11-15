@@ -41,6 +41,7 @@ public static class OpenCampaignRunHandler
         ICampaignRunRepository runs,
         ICampaignScheduleRepository schedules,
         IUnitOfWork unitOfWork,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -50,6 +51,8 @@ public static class OpenCampaignRunHandler
             schedule = await schedules.GetByIdAsync(command.TenantId, slot.ScheduleId, ct);
             if (schedule is null || !schedule.HoldsLease(slot.LeaseToken, slot.SlotUtc))
                 return Result.Failure<OpenedCampaignRun>(CampaignScheduleErrors.LeaseLost);
+            // P10: el agendado vivo toma su ancla aquí; esta unidad la guarda antes de aplicar el fondeo.
+            schedule.AnchorToOfficeZone(await zones.ResolveAsync(command.TenantId, ct));
         }
 
         var opened = command.Slot is { } scheduled

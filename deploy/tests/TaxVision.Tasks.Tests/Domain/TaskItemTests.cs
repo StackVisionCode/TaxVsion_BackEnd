@@ -245,6 +245,73 @@ public sealed class TaskItemTests
         Assert.Equal("Task.InvalidTransition", result.Error.Code);
     }
 
+    // ── Volver a Not Started (tablero) ────────────────────────────────────────────────────
+
+    [Fact]
+    public void An_InProgress_task_can_go_back_to_NotStarted()
+    {
+        var task = NewTask();
+        task.Start(UserId, Now);
+
+        var result = task.MoveToNotStarted(UserId, Now);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaskItemStatus.NotStarted, task.Status);
+        Assert.Single(task.DomainEvents.OfType<TaskMovedToNotStartedDomainEvent>());
+    }
+
+    /// <summary>Si se completa desde Not Started y se reabre, vuelve a Not Started y no a In Progress.</summary>
+    [Fact]
+    public void Going_back_to_NotStarted_forgets_the_start_so_a_later_reopen_resumes_NotStarted()
+    {
+        var task = NewTask();
+        task.Start(UserId, Now);
+        task.MoveToNotStarted(UserId, Now);
+        task.Complete(UserId, Now);
+
+        task.Reopen(UserId, Now);
+
+        Assert.Null(task.StartedAtUtc);
+        Assert.Equal(TaskItemStatus.NotStarted, task.Status);
+    }
+
+    [Fact]
+    public void Leaving_WaitingOnClient_for_NotStarted_is_allowed()
+    {
+        var task = NewTask();
+        task.MoveToWaitingOnClient(Note("W-2"), null, UserId, Now);
+
+        var result = task.MoveToNotStarted(UserId, Now);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaskItemStatus.NotStarted, task.Status);
+    }
+
+    [Fact]
+    public void Moving_a_NotStarted_task_to_NotStarted_is_a_no_op()
+    {
+        var task = NewTask();
+
+        var result = task.MoveToNotStarted(UserId, Now);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(task.DomainEvents.OfType<TaskMovedToNotStartedDomainEvent>());
+    }
+
+    [Theory]
+    [InlineData("complete")]
+    [InlineData("cancel")]
+    public void A_closed_task_must_be_reopened_before_going_to_NotStarted(string close)
+    {
+        var task = NewTask();
+        _ = close == "complete" ? task.Complete(UserId, Now) : task.Cancel("No longer needed", UserId, Now);
+
+        var result = task.MoveToNotStarted(UserId, Now);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Task.InvalidTransition", result.Error.Code);
+    }
+
     // ── Petición al cliente ───────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -486,6 +553,39 @@ public sealed class TaskItemTests
 
     private static readonly DateTime Apr15 = new(2026, 4, 15, 12, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime Oct15 = new(2026, 10, 15, 12, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>La fecha pedida al cliente se guarda como fecha civil: su instante (fin del día) ya no la dice.</summary>
+    [Fact]
+    public void The_client_due_keeps_the_civil_date_it_was_asked_for()
+    {
+        var task = NewTask();
+
+        task.MoveToWaitingOnClient(
+            Note("falta W-2"),
+            new DateTime(2026, 11, 16, 4, 59, 59, DateTimeKind.Utc),
+            UserId,
+            Now,
+            clientDueOn: new DateOnly(2026, 11, 15)
+        );
+
+        Assert.Equal(new DateOnly(2026, 11, 15), task.ClientDueCivilDate);
+    }
+
+    /// <summary>Regla de lectura P5: lo guardado antes, a medianoche UTC, es esa fecha civil.</summary>
+    [Fact]
+    public void A_client_due_saved_at_midnight_utc_reads_as_that_date()
+    {
+        var task = NewTask();
+
+        task.MoveToWaitingOnClient(
+            Note("falta W-2"),
+            new DateTime(2026, 11, 15, 0, 0, 0, DateTimeKind.Utc),
+            UserId,
+            Now
+        );
+
+        Assert.Equal(new DateOnly(2026, 11, 15), task.ClientDueCivilDate);
+    }
 
     private static DueDate Due(DateTime dueAtUtc, bool isStatutory) =>
         DueDate.Create(dueAtUtc, "America/New_York", isStatutory).Value;

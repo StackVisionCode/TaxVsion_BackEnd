@@ -1,6 +1,7 @@
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -38,7 +39,6 @@ public static class DependencyInjection
         services.AddScoped<IIssuerProfileRepository, IssuerProfileRepository>();
         services.AddScoped<ITenantBillingSettingsRepository, TenantBillingSettingsRepository>();
         services.AddScoped<IInvoiceNumberSequenceRepository, InvoiceNumberSequenceRepository>();
-        services.AddScoped<IOnboardingTenantMapRepository, OnboardingTenantMapRepository>();
         services.AddScoped<IUnappliedPaymentRepository, UnappliedPaymentRepository>();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<BillingMetrics>();
@@ -142,6 +142,11 @@ public static class DependencyInjection
         services.AddScoped<IInvoiceSyncCandidateQuery, InvoiceSyncCandidateQuery>();
         services.AddScoped<SqlInvoiceSyncReconciliationLock>();
         services.AddHostedService<InvoiceSyncReconciliationJob>();
+
+        // Zona de cada oficina: eventos de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<BillingDbContext>();
+        services.AddTenantTimeZoneReconciliation<Reconciliation.BillingTenantTimeZoneTokenProvider>(configuration);
+        services.AddScoped<IOfficeTimeZone, TimeZones.OfficeTimeZone>();
 
         return services;
     }

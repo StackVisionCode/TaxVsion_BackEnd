@@ -127,9 +127,13 @@ public partial class Tenant : TenantlessAggregateRoot
         if (timeZoneResult.IsFailure)
             return Result.Failure<bool>(timeZoneResult.Error);
 
+        var previousZone = DefaultTimeZoneId;
         var changed = ApplyTimeZone(timeZoneResult.Value, nowUtc);
         if (changed)
+        {
             RaiseUpdated();
+            RaiseTimeZoneChanged(previousZone);
+        }
         return Result.Success(changed);
     }
 
@@ -151,10 +155,13 @@ public partial class Tenant : TenantlessAggregateRoot
         if (timeZoneResult.IsFailure)
             return Result.Failure<bool>(timeZoneResult.Error);
 
+        var previousZone = DefaultTimeZoneId;
         var renamed = ApplyName(nameResult.Value, nowUtc);
         var rezoned = ApplyTimeZone(timeZoneResult.Value, nowUtc);
         if (renamed || rezoned)
             RaiseUpdated();
+        if (rezoned)
+            RaiseTimeZoneChanged(previousZone);
         return Result.Success(renamed || rezoned);
     }
 
@@ -240,6 +247,12 @@ public partial class Tenant : TenantlessAggregateRoot
         Version++;
         AddDomainEvent(new TenantUpdatedDomainEvent(Id, Name, DefaultTimeZoneId, UpdatedAtUtc, Version));
     }
+
+    // P9: misma versión que el TenantUpdated de esta edición.
+    private void RaiseTimeZoneChanged(string previousZone) =>
+        AddDomainEvent(
+            new TenantTimeZoneChangedDomainEvent(Id, previousZone, DefaultTimeZoneId, UpdatedAtUtc, Version)
+        );
 
     private void RaiseStatusChanged() =>
         AddDomainEvent(

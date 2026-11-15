@@ -59,6 +59,7 @@ public static class RecalculateEntitlementsHandler
 
         var changedKeys = ComputeChangedKeys(previous, snapshot);
         var maxStaffUsers = await ComputeMaxStaffUsersAsync(command.TenantId, snapshot, seats, ct);
+        var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
 
         await snapshots.UpsertAsync(snapshot, snapshot.RevisionNumber - 1, ct);
 
@@ -77,6 +78,7 @@ public static class RecalculateEntitlementsHandler
                 SeatCount = snapshot.SeatCount,
                 AvailableSeatCount = snapshot.AvailableSeatCount,
                 MaxStaffUsers = maxStaffUsers,
+                CurrentPeriodStartUtc = subscription?.CurrentPeriodStartUtc,
                 EntitlementValues = BuildEntitlementValues(snapshot),
                 CorrelationId = correlation.CorrelationId,
             }

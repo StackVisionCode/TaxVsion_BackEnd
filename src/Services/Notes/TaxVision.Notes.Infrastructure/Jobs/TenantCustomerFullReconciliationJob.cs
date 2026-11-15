@@ -49,10 +49,10 @@ public sealed class TenantCustomerFullReconciliationJob(
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            await RunOnceSafeAsync(pageSize, stoppingToken);
+            var completed = await RunOnceSafeAsync(pageSize, stoppingToken);
             try
             {
-                await Task.Delay(interval, stoppingToken);
+                await Task.Delay(ReconciliationRetry.NextDelay(completed, interval), stoppingToken);
             }
             catch (TaskCanceledException)
             {
@@ -61,19 +61,21 @@ public sealed class TenantCustomerFullReconciliationJob(
         }
     }
 
-    private async Task RunOnceSafeAsync(int pageSize, CancellationToken ct)
+    /// <summary>true si la pasada terminó; false si Customer no respondió o falló, para reintentar pronto.</summary>
+    private async Task<bool> RunOnceSafeAsync(int pageSize, CancellationToken ct)
     {
         try
         {
-            await RunOnceAsync(pageSize, ct);
+            return await RunOnceAsync(pageSize, ct);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "TenantCustomerFullReconciliationJob iteration failed.");
+            return false;
         }
     }
 
-    private async Task RunOnceAsync(int pageSize, CancellationToken ct)
+    private async Task<bool> RunOnceAsync(int pageSize, CancellationToken ct)
     {
         using var scope = serviceProvider.CreateScope();
         var client = scope.ServiceProvider.GetRequiredService<INotesCustomerClient>();
@@ -99,7 +101,7 @@ public sealed class TenantCustomerFullReconciliationJob(
                         "TenantCustomerFullReconciliationJob aborted on page {Page} (Customer.Api unreachable/unauthorized).",
                         page
                     );
-                    return;
+                    return false;
                 }
 
                 foreach (var customer in result.Items)
@@ -124,6 +126,7 @@ public sealed class TenantCustomerFullReconciliationJob(
                     inserted,
                     updated
                 );
+            return true;
         }
     }
 

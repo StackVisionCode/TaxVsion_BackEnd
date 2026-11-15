@@ -71,6 +71,50 @@ public sealed class SaaSReceiptTemplateRenderingTests
         Assert.Contains("15.00 USD", html);
     }
 
+    // Pasar a anual cobra plan, add-ons y asientos en un pago: una fila por cada cosa, con su importe.
+    [Fact]
+    public async Task Renders_one_row_per_charged_item_when_the_charge_has_several()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+        var data = (Dictionary<string, object?>)SampleData();
+        var receipt = (Dictionary<string, object>)data["receipt"]!;
+        receipt["description"] = "Switch to yearly billing";
+        receipt["price"] = "1,589.00";
+        receipt["hasLines"] = true;
+        receipt["lines"] = new List<Dictionary<string, object>>
+        {
+            Line("Enterprise — yearly", "1", "999.00", "999.00"),
+            Line("Email — yearly", "1", "290.00", "290.00"),
+            Line("Extra seats (Standard) — yearly", "2", "150.00", "300.00"),
+        };
+
+        var result = await renderer.RenderHtmlAsync("saas.receipt.v1", 1, Guid.NewGuid(), data);
+
+        Assert.True(result.IsSuccess);
+        var html = result.Value;
+        Assert.Contains("Enterprise — yearly", html);
+        Assert.Contains("Email — yearly", html);
+        Assert.Contains("Extra seats (Standard) — yearly", html);
+        Assert.Contains(">2</td>", html);
+        Assert.Contains("150.00 USD", html);
+        Assert.Contains("300.00 USD", html);
+        Assert.Contains("1,589.00 USD", html);
+    }
+
+    private static Dictionary<string, object> Line(
+        string description,
+        string quantity,
+        string unitPrice,
+        string amount
+    ) =>
+        new()
+        {
+            ["description"] = description,
+            ["quantity"] = quantity,
+            ["unitPrice"] = unitPrice,
+            ["amount"] = amount,
+        };
+
     // Una prorrata no tiene unidades: la fila cae a 1 × el total, que es lo que de verdad se cobró.
     [Fact]
     public async Task Without_a_breakdown_the_line_falls_back_to_one_times_the_total()

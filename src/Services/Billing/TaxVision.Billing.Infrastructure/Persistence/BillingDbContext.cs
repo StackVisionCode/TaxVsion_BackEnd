@@ -2,9 +2,11 @@ using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Billing.Domain.Invoices;
@@ -13,6 +15,7 @@ using TaxVision.Billing.Domain.Payments;
 using TaxVision.Billing.Domain.Permissions;
 using TaxVision.Billing.Domain.RateLimiting;
 using TaxVision.Billing.Domain.Settings;
+using TaxVision.Billing.Infrastructure.Persistence.Archive;
 
 namespace TaxVision.Billing.Infrastructure.Persistence;
 
@@ -33,7 +36,7 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options,
     public DbSet<IssuerProfile> IssuerProfiles => Set<IssuerProfile>();
     public DbSet<InvoicePaymentLink> InvoicePaymentLinks => Set<InvoicePaymentLink>();
     public DbSet<InvoiceNumberSequence> InvoiceNumberSequences => Set<InvoiceNumberSequence>();
-    public DbSet<OnboardingTenantMap> OnboardingTenantMaps => Set<OnboardingTenantMap>();
+    public DbSet<ArchivedPlatformInvoice> ArchivedPlatformInvoices => Set<ArchivedPlatformInvoice>();
     public DbSet<TenantBillingSettings> TenantBillingSettings => Set<TenantBillingSettings>();
     public DbSet<UnappliedPayment> UnappliedPayments => Set<UnappliedPayment>();
 
@@ -55,10 +58,13 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options,
     {
         modelBuilder.HasDefaultSchema(BillingSchemas.Billing);
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyTenantTimeZoneProjection();
         // Schema null → usa el default (billing); misma tabla/índices que la config inline anterior.
         modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilters(modelBuilder);
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

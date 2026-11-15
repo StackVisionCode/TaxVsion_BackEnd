@@ -33,7 +33,9 @@ public sealed class InternalPlanChangeCheckoutController(IMessageBus bus) : Cont
         PaymentProviderCode? Provider = null,
         PaymentMethodKind? Method = null,
         /// <summary>SEC-M1.C — HMAC emitido por Subscription que PaymentApp verifica localmente.</summary>
-        string? AmountSignature = null
+        string? AmountSignature = null,
+        IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null,
+        string? ConceptDisplayName = null
     );
 
     [HttpPost("checkout")]
@@ -53,7 +55,9 @@ public sealed class InternalPlanChangeCheckoutController(IMessageBus bus) : Cont
                 request.IdempotencyKey,
                 request.Provider ?? PaymentProviderCode.Stripe,
                 request.Method ?? PaymentMethodKind.Card,
-                request.AmountSignature
+                request.AmountSignature,
+                request.Lines,
+                request.ConceptDisplayName
             ),
             ct
         );

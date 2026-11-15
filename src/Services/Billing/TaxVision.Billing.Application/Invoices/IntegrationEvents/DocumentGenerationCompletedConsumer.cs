@@ -36,10 +36,6 @@ public static class DocumentGenerationCompletedConsumer
         {
             var invoice = await invoices.GetByIdAsync(evt.TenantId, evt.OwnerId, ct);
 
-            // BIL-12: Documents generó bajo la plataforma y la factura ya se re-hospedó.
-            if (invoice is null && evt.TenantId == PlatformTenant.Id)
-                invoice = await invoices.GetOnboardingInvoiceByIdAsync(evt.OwnerId, ct);
-
             if (invoice is null)
             {
                 logger.LogWarning(

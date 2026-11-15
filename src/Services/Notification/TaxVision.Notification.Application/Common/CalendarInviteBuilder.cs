@@ -38,13 +38,15 @@ public sealed class CalendarInviteBuilder(IPlatformSettings platform) : ICalenda
             "CALSCALE:GREGORIAN",
             $"METHOD:{method}",
             "BEGIN:VEVENT",
-            $"UID:{Uid(request.MeetingId, settings.BaseDomain)}",
+            $"UID:{(request.UidBase is { Length: > 0 } uidBase ? UidFor(uidBase, settings.BaseDomain) : Uid(request.MeetingId, settings.BaseDomain))}",
             $"DTSTAMP:{Stamp(request.StampUtc)}",
             $"SEQUENCE:{request.Sequence.ToString(CultureInfo.InvariantCulture)}",
             $"DTSTART:{Stamp(start)}",
             $"DTEND:{Stamp(end)}",
             $"SUMMARY:{Escape(request.Summary)}",
         };
+        if (!string.IsNullOrWhiteSpace(request.Location))
+            lines.Add($"LOCATION:{Escape(request.Location.Trim())}");
 
         var description = Description(request);
         if (description.Length > 0)
@@ -56,6 +58,8 @@ public sealed class CalendarInviteBuilder(IPlatformSettings platform) : ICalenda
         if (request.Method == CalendarInviteMethod.Cancel)
             lines.Add($"ATTENDEE;ROLE=REQ-PARTICIPANT{Cn(request.AttendeeName)}:mailto:{request.AttendeeEmail.Trim()}");
         lines.Add(request.Method == CalendarInviteMethod.Cancel ? "STATUS:CANCELLED" : "STATUS:CONFIRMED");
+        if (request.Method != CalendarInviteMethod.Cancel)
+            lines.AddRange(Alarms(request.AlarmMinutes));
         lines.Add("END:VEVENT");
         lines.Add("END:VCALENDAR");
 
@@ -71,9 +75,30 @@ public sealed class CalendarInviteBuilder(IPlatformSettings platform) : ICalenda
     public static string Uid(Guid meetingId, string baseDomain) =>
         $"meeting:{meetingId:D}@{PlatformSettingsSnapshot.NormalizeHost(baseDomain)}";
 
+    /// <summary>UID con una base propia (p. ej. <c>public-booking-{id}</c>) y el dominio del producto.</summary>
+    public static string UidFor(string uidBase, string baseDomain) =>
+        $"{uidBase.Trim()}@{PlatformSettingsSnapshot.NormalizeHost(baseDomain)}";
+
+    /// <summary>Un VALARM por aviso: el calendario avisa solo, aunque el correo no se abra.</summary>
+    private static IEnumerable<string> Alarms(IReadOnlyList<int>? minutes)
+    {
+        foreach (var before in minutes ?? [])
+        {
+            if (before <= 0)
+                continue;
+            yield return "BEGIN:VALARM";
+            yield return "ACTION:DISPLAY";
+            yield return "DESCRIPTION:Reminder";
+            yield return $"TRIGGER:-PT{before.ToString(CultureInfo.InvariantCulture)}M";
+            yield return "END:VALARM";
+        }
+    }
+
     private static string Description(CalendarInviteRequest request)
     {
         var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(request.Description))
+            parts.Add(request.Description.Trim());
         if (!string.IsNullOrWhiteSpace(request.Url))
             parts.Add($"Join: {request.Url.Trim()}");
         if (!string.IsNullOrWhiteSpace(request.MeetingCode))

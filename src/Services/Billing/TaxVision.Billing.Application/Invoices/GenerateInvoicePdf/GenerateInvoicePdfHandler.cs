@@ -21,10 +21,6 @@ public static class GenerateInvoicePdfHandler
     {
         var invoice = await invoices.GetByIdAsync(command.TenantId, command.InvoiceId, ct);
 
-        // BIL-12: se pidió bajo la plataforma y el re-hospedaje ganó. Se genera con el dueño actual.
-        if (invoice is null && command.TenantId == PlatformTenant.Id)
-            invoice = await invoices.GetOnboardingInvoiceByIdAsync(command.InvoiceId, ct);
-
         if (invoice is null || invoice.InvoiceNumber is null)
             return; // Nada que generar (borrador borrado o no emitido); no reintentar.
 
@@ -35,10 +31,11 @@ public static class GenerateInvoicePdfHandler
         var request = new InvoiceDocumentRequest(
             InvoiceId: invoice.Id,
             InvoiceNumber: invoice.InvoiceNumber,
-            TaxYear: invoice.IssueDateUtc.Year,
+            // Fechas congeladas al emitir (P6); una factura vieja conserva el día UTC que ya imprimió.
+            TaxYear: (invoice.IssueDate ?? DateOnly.FromDateTime(invoice.IssueDateUtc)).Year,
             Currency: invoice.Currency,
-            IssueDate: DateOnly.FromDateTime(invoice.IssueDateUtc),
-            DueDate: DateOnly.FromDateTime(invoice.DueDateUtc),
+            IssueDate: invoice.IssueDate ?? DateOnly.FromDateTime(invoice.IssueDateUtc),
+            DueDate: invoice.DueDate ?? DateOnly.FromDateTime(invoice.DueDateUtc),
             Issuer: MapIssuer(invoice.Issuer),
             Customer: MapCustomer(invoice.Customer),
             Lines: invoice
@@ -55,17 +52,10 @@ public static class GenerateInvoicePdfHandler
             Notes: invoice.Notes,
             Status: invoice.Status.ToString(),
             PaymentUrl: paymentUrl,
-            PaidDate: invoice.PaidAtUtc is { } paid ? DateOnly.FromDateTime(paid) : null,
+            PaidDate: invoice.PaidDate ?? (invoice.PaidAtUtc is { } paid ? DateOnly.FromDateTime(paid) : null),
             ReceiptNumber: invoice.ReceiptNumber,
             ReceiptHash: invoice.ReceiptHash,
             Discount: ToDollars(invoice.DiscountTotal.AmountCents),
-            Adjustments: invoice
-                .Adjustments.Select(a => new InvoiceDocAdjustment(
-                    string.IsNullOrWhiteSpace(a.Code) ? a.Type.ToString() : $"{a.Type} · {a.Code}",
-                    ToDollars(a.Amount.AmountCents)
-                ))
-                .ToList(),
-            SettlementType: invoice.SettlementType?.ToString(),
             PaymentTerms: invoice.PaymentTerms?.Label(),
             PaymentInstructions: NullIfBlank(invoice.PaymentInstructions),
             InvoiceFooter: NullIfBlank(invoice.InvoiceFooter),

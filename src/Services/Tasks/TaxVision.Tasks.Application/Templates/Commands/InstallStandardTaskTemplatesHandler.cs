@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Templates.Abstractions;
 using TaxVision.Tasks.Application.Templates.Seed;
 using TaxVision.Tasks.Domain.Templates;
@@ -19,9 +20,12 @@ public static class InstallStandardTaskTemplatesHandler
         InstallStandardTaskTemplatesCommand command,
         ITaskTemplateRepository templates,
         IUnitOfWork unitOfWork,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
+        // Las fechas del catálogo se cuentan en la zona de la oficina (P24).
+        var officeZoneId = (await zones.ResolveAsync(command.TenantId, ct)).Id;
         var existing = await templates.ListAsync(command.TenantId, onlyActive: false, ct);
         var names = existing.Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -29,7 +33,7 @@ public static class InstallStandardTaskTemplatesHandler
 
         foreach (var standard in StandardTaxTemplates.All.Where(s => !names.Contains(s.Name)))
         {
-            var built = Build(command, standard);
+            var built = Build(command, standard, officeZoneId);
             if (built.IsFailure)
                 return Result.Failure<IReadOnlyList<TaskTemplateResponse>>(built.Error);
 
@@ -43,7 +47,11 @@ public static class InstallStandardTaskTemplatesHandler
         return Result.Success<IReadOnlyList<TaskTemplateResponse>>([.. installed.Select(TaskTemplateResponse.From)]);
     }
 
-    private static Result<TaskTemplate> Build(InstallStandardTaskTemplatesCommand command, StandardTaxTemplate standard)
+    private static Result<TaskTemplate> Build(
+        InstallStandardTaskTemplatesCommand command,
+        StandardTaxTemplate standard,
+        string officeZoneId
+    )
     {
         var created = TaskTemplate.Create(
             command.TenantId,
@@ -58,7 +66,7 @@ public static class InstallStandardTaskTemplatesHandler
         var recurrence = TaskTemplateStepFactory.ApplyRecurrence(
             created.Value,
             standard.RecurrenceRule,
-            StandardTaxTemplates.TimeZoneId,
+            officeZoneId,
             standard.RecurrenceMode
         );
         if (recurrence.IsFailure)

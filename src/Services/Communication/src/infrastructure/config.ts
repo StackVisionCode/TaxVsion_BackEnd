@@ -207,6 +207,13 @@ const rawEnv = z
       .default('true')
       .transform((value) => value === 'true'),
     COMMUNICATION_PORTAL_ACCOUNT_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
+    // Zona de cada oficina contra el directorio de Tenant (internal/tenants/directory, M2M con
+    // COMMUNICATION_TENANT_BASE_URL). Defaults, sin tocar compose.
+    COMMUNICATION_TENANT_TIME_ZONE_RECONCILE_ENABLED: z
+      .string()
+      .default('true')
+      .transform((value) => value === 'true'),
+    COMMUNICATION_TENANT_TIME_ZONE_RECONCILE_INTERVAL_HOURS: z.coerce.number().int().positive().default(12),
 
     COMMUNICATION_NOTIFICATION_READ_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
     COMMUNICATION_NOTIFICATION_UNREAD_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
@@ -522,6 +529,10 @@ export const config = {
   portalAccountReconcile: {
     enabled: rawEnv.COMMUNICATION_PORTAL_ACCOUNT_RECONCILE_ENABLED,
     intervalHours: rawEnv.COMMUNICATION_PORTAL_ACCOUNT_RECONCILE_INTERVAL_HOURS,
+  },
+  tenantTimeZoneReconcile: {
+    enabled: rawEnv.COMMUNICATION_TENANT_TIME_ZONE_RECONCILE_ENABLED,
+    intervalHours: rawEnv.COMMUNICATION_TENANT_TIME_ZONE_RECONCILE_INTERVAL_HOURS,
   },
   assignmentVisibility: {
     enabled: rawEnv.COMMUNICATION_ASSIGNMENT_VISIBILITY_ENABLED,

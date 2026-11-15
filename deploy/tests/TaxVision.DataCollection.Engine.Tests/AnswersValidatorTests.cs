@@ -26,6 +26,26 @@ public sealed class AnswersValidatorTests
             Assert.Contains(report.Issues, issue => issue.Code == "answer.out_of_range");
     }
 
+    /// <summary>P13: "today" es el día de la oficina. A las 22:00 del 15-mar en Nueva York (02:00Z del 16) mañana no vale.</summary>
+    [Theory]
+    [InlineData("2026-03-15", true)]
+    [InlineData("2026-03-16", false)]
+    public void Date_today_bound_uses_the_office_day(string answer, bool valid)
+    {
+        var clock = new FixedTimeProvider(new DateTimeOffset(2026, 3, 16, 2, 0, 0, TimeSpan.Zero));
+        var engine = new FormEngine(new DataCollectionLimits(), clock);
+        var definition = EngineTestFactory.Definition("date", new { max = "today" });
+
+        var report = engine.ValidateAnswers(
+            definition,
+            EngineTestFactory.Answers(answer),
+            AnswersValidationMode.Submit,
+            TimeZoneInfo.FindSystemTimeZoneById("America/New_York")
+        );
+
+        Assert.Equal(valid, report.IsValid);
+    }
+
     private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;

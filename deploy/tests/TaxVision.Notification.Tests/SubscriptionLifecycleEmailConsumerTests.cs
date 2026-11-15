@@ -35,7 +35,8 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
         Assert.Equal("owner@acme.test", queued.To);
         Assert.Equal(evt.EventId, queued.RelatedEventId);
         Assert.Equal("subscription.cancellation_scheduled.v1", scribe.LastEventKey);
-        Assert.Equal("October 1, 2026", scribe.LastVariables!["access_ends_date"]);
+        // Fase 5: la fecha viaja tipada; Scribe la imprime en la zona de la oficina.
+        Assert.Equal("2026-10-01T00:00:00.0000000Z", Instant(scribe.LastVariables!["access_ends_date"]));
     }
 
     // El recordatorio lo publica un job: cada pasada trae un EventId nuevo, así que la deduplicación por
@@ -56,6 +57,21 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
         Assert.Equal($"{evt.TenantId:N}:access-ending:20261001", gateway.Queued[0].IdempotencyKey);
         // Dos pasadas del job, la MISMA clave: el guard de Postmaster manda uno solo.
         Assert.Equal(gateway.Queued[0].IdempotencyKey, gateway.Queued[1].IdempotencyKey);
+    }
+
+    /// <summary>TZ-E07: el aviso de 7 días y el de 1 día tienen la misma fecha de fin; con la misma clave el segundo no salía.</summary>
+    [Fact]
+    public async Task The_seven_day_and_one_day_access_ending_notices_do_not_share_a_key()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribe = new CapturingScribeRenderClient();
+        var evt = Event("Active", "AccessEnding", new DateTime(2026, 10, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        await HandleAsync(evt with { NoticeDaysBefore = 7 }, gateway, scribe);
+        await HandleAsync(evt with { NoticeDaysBefore = 1 }, gateway, scribe);
+
+        Assert.Equal($"{evt.TenantId:N}:access-ending:20261001:7d", gateway.Queued[0].IdempotencyKey);
+        Assert.Equal($"{evt.TenantId:N}:access-ending:20261001:1d", gateway.Queued[1].IdempotencyKey);
     }
 
     // Los otros avisos se deduplican por evento, así que no llevan clave propia.
@@ -113,7 +129,7 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
         Assert.Equal("2", vars["attempt_number"]);
         Assert.Equal("4", vars["max_attempts"]);
         Assert.Equal(false, vars["is_final"]);
-        Assert.Equal("October 23, 2026", vars["next_retry_date"]);
+        Assert.Equal("2026-10-23T12:00:00.0000000Z", Instant(vars["next_retry_date"]));
         // Nunca el código crudo del proveedor.
         Assert.Equal("Your bank declined the charge.", vars["friendly_reason"]);
         Assert.Equal("https://www.taxoffix.io/account/plan", vars["manage_url"]);
@@ -194,10 +210,36 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
 
         Assert.Equal("subscription.version_change_scheduled", gateway.Queued[0].TemplateKey);
         Assert.Equal("subscription.version_change_scheduled.v1", scribe.LastEventKey);
-        Assert.Equal("December 15, 2026", scribe.LastVariables!["change_date"]);
+        Assert.Equal("2026-12-15T00:00:00.0000000Z", Instant(scribe.LastVariables!["change_date"]));
         Assert.Equal("price $129.00 → $99.00 per month", scribe.LastVariables["change_summary"]);
         Assert.Equal($"{evt.TenantId:N}:version-change:{migrationId:N}", gateway.Queued[0].IdempotencyKey);
         Assert.Equal(gateway.Queued[0].IdempotencyKey, gateway.Queued[1].IdempotencyKey);
+    }
+
+    // Cambio de ciclo: su propia plantilla, y un reenvío del mismo cambio no repite el correo.
+    [Fact]
+    public async Task A_billing_cycle_change_sends_its_template_once_with_amount_and_dates()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribe = new CapturingScribeRenderClient();
+        var evt = Event("Active", "BillingCycleChanged") with
+        {
+            Amount = "1589.00",
+            Cadence = "year",
+            DateCharged = "November 12, 2026",
+            NextChargeDate = "November 12, 2027",
+        };
+
+        await HandleAsync(evt, gateway, scribe);
+        await HandleAsync(evt with { EventId = Guid.NewGuid() }, gateway, scribe);
+
+        Assert.Equal("subscription.billing_cycle_changed", gateway.Queued[0].TemplateKey);
+        Assert.Equal("subscription.billing_cycle_changed.v1", scribe.LastEventKey);
+        Assert.Equal("1589.00", scribe.LastVariables!["amount"]);
+        Assert.Equal("year", scribe.LastVariables["cadence"]);
+        Assert.Equal("November 12, 2027", scribe.LastVariables["next_charge_date"]);
+        Assert.Equal(gateway.Queued[0].IdempotencyKey, gateway.Queued[1].IdempotencyKey);
+        Assert.NotNull(gateway.Queued[0].IdempotencyKey);
     }
 
     private static TenantSubscriptionEmailRequestedIntegrationEvent Event(
@@ -229,8 +271,35 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
             Options.Create(Portal),
             new NoOpCorrelationContext(),
             new NoOpSubscriptionEmailMetrics(),
+            new FixedOfficeZone("America/New_York"),
             CancellationToken.None
         );
+
+    private static string? Instant(object? value) =>
+        Assert.IsAssignableFrom<IDictionary<string, object?>>(value)["$instant"] as string;
+
+    /// <summary>P19: el cobro viaja como instante (Subscription/PaymentApp lo agregan sin quitar el texto viejo).</summary>
+    [Fact]
+    public async Task The_charge_date_travels_as_an_instant_when_the_event_has_it()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribe = new CapturingScribeRenderClient();
+        var evt = Event("Active", "RecurringCharge") with
+        {
+            DateCharged = "November 18, 2026",
+            DateChargedAtUtc = new DateTime(2026, 11, 18, 14, 0, 0, DateTimeKind.Utc),
+        };
+
+        await HandleAsync(evt, gateway, scribe);
+
+        Assert.Equal("2026-11-18T14:00:00.0000000Z", Instant(scribe.LastVariables!["date_charged"]));
+    }
+
+    private sealed class FixedOfficeZone(string timeZoneId) : IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(timeZoneId));
+    }
 
     private sealed class NoOpCorrelationContext : ICorrelationContext
     {

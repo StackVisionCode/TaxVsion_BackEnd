@@ -1,5 +1,6 @@
 using BuildingBlocks.Infrastructure.Caching;
 using Microsoft.Extensions.Caching.Distributed;
+using StackExchange.Redis;
 using Xunit;
 
 namespace TaxVision.BuildingBlocks.Tests.Caching;
@@ -109,6 +110,55 @@ public sealed class RedisCacheServiceTests
         await cache.RemoveAsync("k");
 
         Assert.Null(await cache.GetAsync<string>("k"));
+    }
+
+    // Redis caído: la caché es una optimización, así que la lectura va al origen y no tumba la petición.
+    [Fact]
+    public async Task GetOrCreateAsync_ConRedisCaido_DevuelveElValorDelOrigen()
+    {
+        var cache = new RedisCacheService(new UnreachableRedis());
+
+        var result = await cache.GetOrCreateAsync("k", _ => Task.FromResult(42));
+
+        Assert.Equal(42, result);
+    }
+
+    // La denylist de sesiones y el que escribe revocaciones necesitan saber que Redis falló (H-06).
+    [Fact]
+    public async Task GetAsyncYSetAsync_ConRedisCaido_SiguenPropagandoElError()
+    {
+        var cache = new RedisCacheService(new UnreachableRedis());
+
+        await Assert.ThrowsAsync<RedisConnectionException>(() => cache.GetAsync<bool?>("k"));
+        await Assert.ThrowsAsync<RedisConnectionException>(() => cache.SetAsync("k", true));
+        await Assert.ThrowsAsync<RedisConnectionException>(() => cache.RemoveAsync("k"));
+    }
+
+    private sealed class UnreachableRedis : IDistributedCache
+    {
+        private static RedisConnectionException Down() =>
+            new(ConnectionFailureType.UnableToConnect, "No connection is active/available to service this operation.");
+
+        public byte[]? Get(string key) => throw Down();
+
+        public Task<byte[]?> GetAsync(string key, CancellationToken token = default) => throw Down();
+
+        public void Set(string key, byte[] value, DistributedCacheEntryOptions options) => throw Down();
+
+        public Task SetAsync(
+            string key,
+            byte[] value,
+            DistributedCacheEntryOptions options,
+            CancellationToken token = default
+        ) => throw Down();
+
+        public void Refresh(string key) => throw Down();
+
+        public Task RefreshAsync(string key, CancellationToken token = default) => throw Down();
+
+        public void Remove(string key) => throw Down();
+
+        public Task RemoveAsync(string key, CancellationToken token = default) => throw Down();
     }
 
     private sealed class FakeDistributedCache : IDistributedCache

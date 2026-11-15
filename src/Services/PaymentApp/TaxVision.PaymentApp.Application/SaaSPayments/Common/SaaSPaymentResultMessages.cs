@@ -66,6 +66,16 @@ public static class SaaSPaymentResultMessages
             UnitAmountCents = payment.UnitAmountCents,
             ConceptCode = payment.ConceptCode,
             ConceptDisplayName = payment.ConceptDisplayName,
+            Lines = payment.Lines is null
+                ? null
+                :
+                [
+                    .. payment.Lines.Select(line => new SaaSChargeLine(
+                        line.Description,
+                        line.Quantity,
+                        line.UnitAmountCents
+                    )),
+                ],
             CorrelationId = correlationId,
         };
     }

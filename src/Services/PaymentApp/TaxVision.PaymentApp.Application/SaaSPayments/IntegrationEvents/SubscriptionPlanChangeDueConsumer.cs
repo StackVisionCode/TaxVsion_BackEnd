@@ -44,7 +44,9 @@ public static class SubscriptionPlanChangeDueConsumer
                 Provider: PaymentProviderCode.Stripe,
                 PayerEmail: SyntheticPayer.EmailFor(evt.TenantId),
                 PayerName: null,
-                RequestedByUserId: evt.RequestedByUserId
+                RequestedByUserId: evt.RequestedByUserId,
+                Lines: evt.Lines,
+                ConceptDisplayName: evt.ConceptDisplayName
             );
 
             var result = await bus.InvokeAsync<Result<Guid>>(command, ct);

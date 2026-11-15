@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { issueIceCredentials } from '../../../application/use-cases/issue-ice-credentials.js';
 import { seesAllCustomers } from '../../../application/use-cases/customer-visibility.js';
+import { getCallHistoryItem, listCallHistory } from '../../../application/use-cases/list-call-history.js';
 import { isStaffActor } from '../../../domain/shared/permissions.js';
 import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
 import { requirePermission } from '../plugins/require-permission.js';
@@ -14,7 +15,12 @@ const IceQuerySchema = z.object({
 const HistoryQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   size: z.coerce.number().int().min(1).max(100).default(20),
+  audience: z.enum(['client', 'team']).optional(),
+  recorded: z.enum(['true', 'false']).optional(),
+  q: z.string().trim().max(100).optional(),
 });
+
+const CallIdParamsSchema = z.object({ id: z.string().uuid() });
 
 const CustomerCallsParamsSchema = z.object({
   customerId: z.string().uuid(),
@@ -64,34 +70,47 @@ export async function registerCallRoutes(app: FastifyInstance, container: AppCon
     },
     async (request, reply) => {
       const principal = request.principal!;
-      const query = HistoryQuerySchema.parse(request.query);
-      const [items, totalCount] = await Promise.all([
-        container.calls.listRecentForUser({
-          tenantId: principal.tenantId,
-          userId: principal.userId,
-          take: query.size,
-          skip: (query.page - 1) * query.size,
-        }),
-        container.calls.countRecentForUser(principal.tenantId, principal.userId),
-      ]);
-      return reply.send({
-        items: items.map((snapshot) => ({
-          id: snapshot.id,
-          kind: snapshot.kind,
-          status: snapshot.status,
-          callerUserId: snapshot.callerUserId,
-          calleeUserId: snapshot.calleeUserId,
-          conversationId: snapshot.conversationId,
-          ringingAtUtc: snapshot.ringingAtUtc.toISOString(),
-          endedAtUtc: snapshot.endedAtUtc ? snapshot.endedAtUtc.toISOString() : null,
-          durationSeconds: snapshot.durationSeconds,
-          recordingFileId: snapshot.recordingFileId,
-          endReason: snapshot.endReason,
-        })),
-        page: query.page,
-        size: query.size,
-        totalCount,
-      });
+      const parsed = HistoryQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.code(400).send({ code: 'Call.BadQuery', message: parsed.error.message });
+      }
+      const query = parsed.data;
+      const page = await listCallHistory(
+        {
+          viewer: { tenantId: principal.tenantId, userId: principal.userId, actorType: principal.actorType },
+          page: query.page,
+          size: query.size,
+          filter: {
+            ...(query.audience ? { audience: query.audience } : {}),
+            ...(query.recorded === 'true' ? { recordedOnly: true } : {}),
+            ...(query.q ? { search: query.q } : {}),
+          },
+        },
+        container,
+      );
+      return reply.send(page);
+    },
+  );
+
+  // GET /communication/calls/:id — una llamada del historial propio (deep link de la pagina Calls).
+  app.get(
+    '/communication/calls/:id',
+    {
+      preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.CallStart)],
+    },
+    async (request, reply) => {
+      const principal = request.principal!;
+      const params = CallIdParamsSchema.safeParse(request.params);
+      if (!params.success) return reply.code(404).send({ code: 'Call.NotFound', message: 'Call not found.' });
+      const result = await getCallHistoryItem(
+        {
+          viewer: { tenantId: principal.tenantId, userId: principal.userId, actorType: principal.actorType },
+          callId: params.data.id,
+        },
+        container,
+      );
+      if (!result.isSuccess) return reply.code(404).send({ code: result.error.code, message: result.error.message });
+      return reply.send(result.value);
     },
   );
 

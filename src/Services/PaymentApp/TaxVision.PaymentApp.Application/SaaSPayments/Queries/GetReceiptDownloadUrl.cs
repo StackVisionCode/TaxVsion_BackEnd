@@ -31,7 +31,8 @@ public static class GetReceiptDownloadUrlHandler
                 new Error("Receipt.NotReady", "The receipt for this payment is not ready yet.")
             );
 
-        var url = await downloads.GetAsync(query.TenantId, fileId, ct);
+        // Se pide con el dueño del archivo: el recibo de un alta está bajo la plataforma (el pago ya es de quien pregunta).
+        var url = await downloads.GetAsync(payment.ReceiptOwnerTenant(), fileId, ct);
 
         return url.IsFailure
             ? Result.Failure<ReceiptDownloadUrlResponse>(url.Error)

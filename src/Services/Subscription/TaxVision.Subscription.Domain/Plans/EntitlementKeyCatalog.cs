@@ -12,6 +12,7 @@ public static class EntitlementKeyCatalog
         .. CommunicationEntitlementCatalog.Defaults,
         .. StorageEntitlementCatalog.Defaults,
         .. SignatureEntitlementCatalog.Defaults,
+        .. FinancialInsightsEntitlementCatalog.Defaults,
     ];
 
     /// <summary>Claves de plataforma que la versión todavía no define.</summary>

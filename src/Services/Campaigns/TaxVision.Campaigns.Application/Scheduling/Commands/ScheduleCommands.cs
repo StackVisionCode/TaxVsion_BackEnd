@@ -44,6 +44,7 @@ public static class ScheduleCampaignHandler
         ICampaignRepository campaigns,
         ICampaignScheduleRepository schedules,
         IUnitOfWork unitOfWork,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -82,6 +83,8 @@ public static class ScheduleCampaignHandler
         if (result.IsFailure)
             return Result.Failure<CampaignScheduleResponse>(result.Error);
 
+        // P10: diario/semanal/mensual quedan anclados a la hora local de la oficina.
+        result.Value.AnchorToOfficeZone(await zones.ResolveAsync(command.TenantId, ct));
         await schedules.AddAsync(result.Value, ct);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success(CampaignScheduleResponse.From(result.Value));

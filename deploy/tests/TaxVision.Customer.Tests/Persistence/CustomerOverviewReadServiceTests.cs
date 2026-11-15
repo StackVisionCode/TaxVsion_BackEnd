@@ -85,6 +85,64 @@ public sealed class CustomerOverviewReadServiceTests
     }
 
     [Fact]
+    public async Task GetOverviewAsync_groups_new_customers_by_the_office_month()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        var tenantId = Guid.NewGuid();
+        var byUser = Guid.NewGuid();
+        var tenantContext = new FakeTenantContext();
+        tenantContext.SetTenant(tenantId);
+
+        await using (var seedDb = CreateContext(databaseName, tenantContext))
+        {
+            // 1 nov 05:00Z es todavía 31 de octubre en Honolulu (oficina); 10 nov 12:00Z es noviembre.
+            foreach (
+                var createdAtUtc in new[]
+                {
+                    new DateTime(2026, 11, 1, 5, 0, 0, DateTimeKind.Utc),
+                    new DateTime(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc),
+                }
+            )
+            {
+                var customer = NewCustomer(tenantId, byUser);
+                seedDb.Customers.Add(customer);
+                seedDb.Entry(customer).Property(c => c.CreatedAtUtc).CurrentValue = createdAtUtc;
+            }
+            await seedDb.SaveChangesAsync();
+        }
+
+        await using var db = CreateContext(databaseName, tenantContext);
+        var reader = new CustomerReadService(
+            db,
+            new NoopProtector(),
+            new FixedClock(new DateTimeOffset(2026, 11, 19, 5, 0, 0, TimeSpan.Zero)),
+            new FixedZone("Pacific/Honolulu")
+        );
+
+        var overview = await reader.GetOverviewAsync(tenantId, months: 2);
+
+        Assert.Equal(
+            [(2026, 10, 1), (2026, 11, 1)],
+            overview.Monthly.OrderBy(m => m.Year).ThenBy(m => m.Month).Select(m => (m.Year, m.Month, m.Count))
+        );
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private sealed class FixedZone(string timeZoneId) : BuildingBlocks.TenantTimeZones.ITenantTimeZoneResolver
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(
+            Guid tenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(timeZoneId));
+
+        public void Forget(Guid tenantId) { }
+    }
+
+    [Fact]
     public async Task SearchAsync_caps_page_size_at_100()
     {
         var databaseName = Guid.NewGuid().ToString();

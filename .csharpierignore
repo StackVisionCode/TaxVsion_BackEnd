@@ -4,3 +4,5 @@
 **/Migrations/*ModelSnapshot.cs
 **/wolverine_*.cs
 **/output/
+# Codigo pregenerado de Wolverine: lo escribe scripts/codegen; no se formatea.
+**/Internal/Generated/

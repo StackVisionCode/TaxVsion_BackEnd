@@ -62,7 +62,8 @@ public sealed class CodesController(
         long? MaxRedemptions,
         long? MaxRedemptionsPerTenant,
         long? MaxRedemptionsPerSubject,
-        IReadOnlyCollection<CreateCodeScopeInput>? Scopes
+        IReadOnlyCollection<CreateCodeScopeInput>? Scopes,
+        DateOnly? ExpiresOn = null
     )
     {
         public override string ToString() =>
@@ -109,7 +110,8 @@ public sealed class CodesController(
                 request.MaxRedemptionsPerSubject,
                 request.Scopes,
                 actorId,
-                idempotencyKey
+                idempotencyKey,
+                request.ExpiresOn
             ),
             ct
         );
@@ -194,6 +196,7 @@ public sealed class CodesController(
                 ValueLabel = value.ValueLabel,
                 Code = value.Code,
                 ExpiresAtUtc = value.ExpiresAtUtc,
+                ExpiresTimeZoneId = value.ExpiresTimeZoneId,
                 PersonalMessage = value.PersonalMessage,
                 RedeemUrl = $"{landing}/register?gift={Uri.EscapeDataString(value.Code)}",
             }

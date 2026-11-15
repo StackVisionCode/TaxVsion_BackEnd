@@ -6,6 +6,16 @@ public static class AppointmentErrors
 {
     public static readonly Error NotFound = new("Calendar.Appointment.NotFound", "The appointment was not found.");
 
+    public static readonly Error ManagedByPublicPage = new(
+        "Calendar.Appointment.ManagedByPublicPage",
+        "This demo was booked from a public page. Change it from the booking instead."
+    );
+
+    public static readonly Error NotFromPublicPage = new(
+        "Calendar.Appointment.NotFromPublicPage",
+        "Only appointments booked from a public page can be changed this way."
+    );
+
     public static readonly Error RangeInvalid = new(
         "Calendar.Appointment.RangeInvalid",
         "The range must start before it ends and span at most 62 days."

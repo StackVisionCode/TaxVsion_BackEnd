@@ -57,6 +57,23 @@ public sealed class GiftcardShareConsumerTests
         Assert.Equal("giftcards.share", sent.TemplateKey);
     }
 
+    /// <summary>P30: vence al final del día en la zona comercial, y el correo la escribe.</summary>
+    [Fact]
+    public async Task The_expiry_names_the_commercial_zone()
+    {
+        var (scribe, _) = await Run(
+            Event(expires: new DateTime(2027, 1, 1, 4, 59, 59, DateTimeKind.Utc)) with
+            {
+                ExpiresTimeZoneId = "America/New_York",
+            }
+        );
+
+        Assert.Equal(
+            "Expires Dec 31, 2026 (New York time, GMT-5)",
+            Assert.Single(scribe.Rendered).Variables["expires_text"]
+        );
+    }
+
     [Fact]
     public async Task Without_a_name_it_uses_the_local_part_of_the_email_and_without_expiry_says_so()
     {

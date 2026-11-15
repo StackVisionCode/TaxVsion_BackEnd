@@ -1,3 +1,4 @@
+using BuildingBlocks.TimeZones;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
@@ -134,11 +135,57 @@ public sealed class TaskSeriesTests
         Assert.Equal(TaskErrors.Series.NoFurtherOccurrence, next.Error);
     }
 
+    private static readonly ResolvedTimeZone NewYork = ResolvedTimeZone.Resolve("America/New_York");
+
+    /// <summary>
+    /// Una serie de fecha civil (vence al final del día) que cuenta desde que se cerró sigue venciendo
+    /// al final del día: no toma la hora a la que alguien la cerró.
+    /// </summary>
+    [Fact]
+    public void A_civil_after_completion_series_keeps_ending_at_the_end_of_the_office_day()
+    {
+        var anchor = LocalDay.EndUtc(new DateOnly(2026, 11, 2), NewYork);
+        var series = NewSeries("FREQ=WEEKLY", RecurrenceMode.AfterCompletion, anchor: anchor);
+        var closedAt = new DateTime(2026, 11, 4, 15, 0, 0, DateTimeKind.Utc); // 10:00 en Nueva York
+
+        var next = series.PlanNextOccurrence(anchor, closedAt, closedAt);
+
+        Assert.Equal(LocalDay.EndUtc(new DateOnly(2026, 11, 11), NewYork), next.Value.DueAtUtc);
+    }
+
+    [Fact]
+    public void Resuming_a_civil_series_reseeds_at_the_end_of_today_in_the_office()
+    {
+        var anchor = LocalDay.EndUtc(new DateOnly(2026, 11, 2), NewYork);
+        var series = NewSeries("FREQ=WEEKLY", RecurrenceMode.FixedSchedule, anchor: anchor);
+        series.Pause();
+
+        series.Resume(new DateTime(2026, 11, 20, 15, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal(LocalDay.EndUtc(new DateOnly(2026, 11, 20), NewYork), series.AnchorUtc);
+    }
+
+    // P9: la oficina pasó a Chicago; la serie de fecha civil sigue venciendo al fin del día, ahora en Chicago.
+    [Fact]
+    public void A_civil_series_moves_its_anchor_to_the_end_of_the_same_day_in_the_new_zone()
+    {
+        var anchor = LocalDay.EndUtc(new DateOnly(2026, 12, 15), NewYork);
+        var series = NewSeries("FREQ=MONTHLY;BYMONTHDAY=15", RecurrenceMode.FixedSchedule, anchor: anchor);
+        var chicago = ResolvedTimeZone.Resolve("America/Chicago");
+
+        Assert.True(series.RezoneCivilDue("America/New_York", chicago));
+
+        Assert.Equal(LocalDay.EndUtc(new DateOnly(2026, 12, 15), chicago), series.AnchorUtc);
+        Assert.Equal("America/Chicago", series.Rule.TimeZoneId);
+        Assert.False(series.RezoneCivilDue("America/Denver", ResolvedTimeZone.Resolve("America/Phoenix")));
+    }
+
     private static TaskSeries NewSeries(
         string rule,
         RecurrenceMode mode,
         DateTime? endsAtUtc = null,
-        int? maxOccurrences = null
+        int? maxOccurrences = null,
+        DateTime? anchor = null
     ) =>
         TaskSeries
             .Create(
@@ -154,10 +201,10 @@ public sealed class TaskSeriesTests
                     AssigneeUserId = Ana,
                     IsStatutory = true,
                 },
-                Anchor,
+                anchor ?? Anchor,
                 endsAtUtc,
                 maxOccurrences,
-                Anchor.AddDays(-30)
+                (anchor ?? Anchor).AddDays(-30)
             )
             .Value;
 }

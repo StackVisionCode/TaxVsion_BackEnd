@@ -51,7 +51,8 @@ public sealed class EntitlementKeyCatalogTests
         Assert.Equal(
             CommunicationEntitlementCatalog.Keys.Count
                 + StorageEntitlementCatalog.Keys.Count
-                + SignatureEntitlementCatalog.Keys.Count,
+                + SignatureEntitlementCatalog.Keys.Count
+                + FinancialInsightsEntitlementCatalog.Keys.Count,
             keys.Count
         );
     }
@@ -74,14 +75,15 @@ public sealed class EntitlementKeyCatalogTests
         plan.AddVersion(v1, Guid.Empty, DateTime.UtcNow);
         PlanTestData.PublishAsBeforeF7(plan, v1);
 
-        Assert.Equal(
-            StorageEntitlementCatalog.Keys.Count + SignatureEntitlementCatalog.Keys.Count,
-            EntitlementKeyCatalog.MissingFrom(v1).Count
-        );
+        var nonCommunication =
+            StorageEntitlementCatalog.Keys.Count
+            + SignatureEntitlementCatalog.Keys.Count
+            + FinancialInsightsEntitlementCatalog.Keys.Count;
+        Assert.Equal(nonCommunication, EntitlementKeyCatalog.MissingFrom(v1).Count);
 
         var added = plan.AddMissingEntitlements(EntitlementKeyCatalog.PlatformDefaults, Guid.Empty, DateTime.UtcNow);
 
-        Assert.Equal(StorageEntitlementCatalog.Keys.Count + SignatureEntitlementCatalog.Keys.Count, added.Value);
+        Assert.Equal(nonCommunication, added.Value);
         var published = plan.GetPublishedVersion()!;
         Assert.Equal(2, published.VersionNumber);
         Assert.Empty(EntitlementKeyCatalog.MissingFrom(published));
