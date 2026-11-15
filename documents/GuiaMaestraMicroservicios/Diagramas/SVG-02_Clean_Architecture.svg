@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1150" width="1500" height="1150" font-family="Segoe UI, Arial, sans-serif">
+<title>Clean Architecture de un microservicio TaxVision</title>
+<desc>Las dependencias apuntan al dominio: Api → Infrastructure → Application → Domain; las prohibiciones las vigilan pruebas de fitness</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1500" height="1150" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">Clean Architecture de un microservicio TaxVision</text>
+<text x="30" y="66" font-size="14" fill="#555B63">Las dependencias apuntan al dominio: Api → Infrastructure → Application → Domain; las prohibiciones las vigilan pruebas de fitness</text>
+<rect x="40" y="100" width="310" height="150" rx="8" ry="8" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.6"/>
+<text x="50.0" y="126.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">TaxVision.&lt;Svc&gt;.Api</text>
+<text x="50.0" y="146.0" font-size="13" fill="#1F2328" text-anchor="start">Program.cs: hosting y tubería</text>
+<text x="50.0" y="164.0" font-size="13" fill="#1F2328" text-anchor="start">Controladores con [AllowActorTypes],</text>
+<text x="50.0" y="182.0" font-size="13" fill="#1F2328" text-anchor="start">[HasPermission] y [RateLimit]</text>
+<text x="50.0" y="200.0" font-size="13" fill="#1F2328" text-anchor="start">Requests y autorización propia</text>
+<text x="50.0" y="218.0" font-size="13" fill="#1F2328" text-anchor="start">Internal/Generated (codegen Static)</text>
+<text x="50.0" y="236.0" font-size="13" fill="#1F2328" text-anchor="start">Dockerfile · SDK Web + UserSecretsId</text>
+<rect x="40" y="266" width="310" height="132" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="50.0" y="292.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Referencias de proyecto y paquetes</text>
+<text x="50.0" y="312.0" font-size="13" fill="#1F2328" text-anchor="start">Infrastructure (para registrar DI)</text>
+<text x="50.0" y="330.0" font-size="13" fill="#1F2328" text-anchor="start">BB núcleo, Web, Messaging, Authorization</text>
+<text x="50.0" y="348.0" font-size="13" fill="#1F2328" text-anchor="start">JwtBearer, OpenApi, Swashbuckle</text>
+<text x="50.0" y="366.0" font-size="13" fill="#1F2328" text-anchor="start">HealthChecks.EF, EF Design</text>
+<text x="50.0" y="384.0" font-size="13" fill="#1F2328" text-anchor="start">WolverineFx* (5 paquetes)</text>
+<rect x="40" y="414" width="310" height="96" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="50.0" y="440.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">Prohibido</text>
+<text x="50.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">Controladores → Infrastructure</text>
+<text x="50.0" y="478.0" font-size="13" fill="#1F2328" text-anchor="start">(&lt;Svc&gt;ArchitectureTests)</text>
+<rect x="410" y="100" width="310" height="150" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="420.0" y="126.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">TaxVision.&lt;Svc&gt;.Infrastructure</text>
+<text x="420.0" y="146.0" font-size="13" fill="#1F2328" text-anchor="start">DbContext = IUnitOfWork</text>
+<text x="420.0" y="164.0" font-size="13" fill="#1F2328" text-anchor="start">Filtro global de tenant (fail-closed)</text>
+<text x="420.0" y="182.0" font-size="13" fill="#1F2328" text-anchor="start">Configuraciones EF y migraciones</text>
+<text x="420.0" y="200.0" font-size="13" fill="#1F2328" text-anchor="start">Repositorios y clientes HTTP M2M</text>
+<text x="420.0" y="218.0" font-size="13" fill="#1F2328" text-anchor="start">Jobs (TransactionalJobUnit)</text>
+<text x="420.0" y="236.0" font-size="13" fill="#1F2328" text-anchor="start">Add&lt;Svc&gt;Infrastructure (DI)</text>
+<rect x="410" y="266" width="310" height="132" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="420.0" y="292.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Referencias de proyecto y paquetes</text>
+<text x="420.0" y="312.0" font-size="13" fill="#1F2328" text-anchor="start">Application</text>
+<text x="420.0" y="330.0" font-size="13" fill="#1F2328" text-anchor="start">BB.Infrastructure y BB.EfCore</text>
+<text x="420.0" y="348.0" font-size="13" fill="#1F2328" text-anchor="start">Kits: CustomerVisibility, TenantTimeZones,</text>
+<text x="420.0" y="366.0" font-size="13" fill="#1F2328" text-anchor="start">Jobs, Imaging (opcionales)</text>
+<text x="420.0" y="384.0" font-size="13" fill="#1F2328" text-anchor="start">EF Core SqlServer 10.0.9, Http, Pkcs</text>
+<rect x="410" y="414" width="310" height="96" rx="8" ry="8" fill="#E3F4E8" stroke="#1E7B45" stroke-width="1.6"/>
+<text x="420.0" y="440.0" font-size="14" font-weight="700" fill="#1E7B45" text-anchor="start">Permitido</text>
+<text x="420.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">Implementa los puertos de Application</text>
+<text x="420.0" y="478.0" font-size="13" fill="#1F2328" text-anchor="start">con EF Core, HTTP y Redis</text>
+<rect x="780" y="100" width="310" height="150" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="790.0" y="126.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">TaxVision.&lt;Svc&gt;.Application</text>
+<text x="790.0" y="146.0" font-size="13" fill="#1F2328" text-anchor="start">Commands/queries + handlers estáticos</text>
+<text x="790.0" y="164.0" font-size="13" fill="#1F2328" text-anchor="start">Consumers (XxxConsumer, singular)</text>
+<text x="790.0" y="182.0" font-size="13" fill="#1F2328" text-anchor="start">Puertos en &lt;Feature&gt;/Abstractions</text>
+<text x="790.0" y="200.0" font-size="13" fill="#1F2328" text-anchor="start">DTOs y AssemblyMarker</text>
+<text x="790.0" y="218.0" font-size="13" fill="#1F2328" text-anchor="start">IMessageBus (desvío aceptado)</text>
+<rect x="780" y="266" width="310" height="132" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="790.0" y="292.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Referencias de proyecto y paquetes</text>
+<text x="790.0" y="312.0" font-size="13" fill="#1F2328" text-anchor="start">Domain</text>
+<text x="790.0" y="330.0" font-size="13" fill="#1F2328" text-anchor="start">BB núcleo y BB.Messaging</text>
+<text x="790.0" y="348.0" font-size="13" fill="#1F2328" text-anchor="start">WolverineFx 6.14.0</text>
+<rect x="780" y="414" width="310" height="96" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="790.0" y="440.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">Prohibido (LayeringRulesBase)</text>
+<text x="790.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">Application → Infrastructure</text>
+<text x="790.0" y="478.0" font-size="13" fill="#1F2328" text-anchor="start">Application → EntityFrameworkCore</text>
+<rect x="1150" y="100" width="310" height="150" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1160.0" y="126.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">TaxVision.&lt;Svc&gt;.Domain</text>
+<text x="1160.0" y="146.0" font-size="13" fill="#1F2328" text-anchor="start">Agregados (AggregateRoot, TenantEntity)</text>
+<text x="1160.0" y="164.0" font-size="13" fill="#1F2328" text-anchor="start">Value objects y enums</text>
+<text x="1160.0" y="182.0" font-size="13" fill="#1F2328" text-anchor="start">&lt;Agg&gt;Errors → Result / Error</text>
+<text x="1160.0" y="200.0" font-size="13" fill="#1F2328" text-anchor="start">IDomainEvent (no sale del servicio)</text>
+<text x="1160.0" y="218.0" font-size="13" fill="#1F2328" text-anchor="start">Proyecciones locales (read models)</text>
+<rect x="1150" y="266" width="310" height="132" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="1160.0" y="292.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Referencias de proyecto y paquetes</text>
+<text x="1160.0" y="312.0" font-size="13" fill="#1F2328" text-anchor="start">BB núcleo (BuildingBlocks.csproj)</text>
+<text x="1160.0" y="330.0" font-size="13" fill="#1F2328" text-anchor="start">Ningún paquete propio</text>
+<rect x="1150" y="414" width="310" height="96" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1160.0" y="440.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">Prohibido (LayeringRulesBase)</text>
+<text x="1160.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">Domain → EntityFrameworkCore</text>
+<text x="1160.0" y="478.0" font-size="13" fill="#1F2328" text-anchor="start">Domain → AspNetCore</text>
+<text x="1160.0" y="496.0" font-size="13" fill="#1F2328" text-anchor="start">Domain → Wolverine (tipos)</text>
+<path d="M 350.0 160.0 L 410.0 160.0" fill="none" stroke="#2E7D4F" stroke-width="1.7" marker-end="url(#arr-green)"/>
+<path d="M 720.0 160.0 L 780.0 160.0" fill="none" stroke="#2E7D4F" stroke-width="1.7" marker-end="url(#arr-green)"/>
+<path d="M 1090.0 160.0 L 1150.0 160.0" fill="none" stroke="#2E7D4F" stroke-width="1.7" marker-end="url(#arr-green)"/>
+<path d="M 780.0 215.0 L 720.0 215.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="40" y="540" width="1420" height="270" rx="10" ry="10" fill="#F7F7F8" fill-opacity="0.55" stroke="#8C8C96" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="52" y="562" font-size="14" font-weight="700" fill="#8C8C96">BuildingBlocks · src/BuildingBlocks · 10 proyectos (núcleo + 9) · solo piezas opcionales y aditivas</text>
+<rect x="56" y="580" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="66.0" y="606.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks (núcleo)</text>
+<text x="66.0" y="626.0" font-size="13" fill="#1F2328" text-anchor="start">Result/Error, AggregateRoot, ITenantContext</text>
+<rect x="406" y="580" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="416.0" y="606.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks.Messaging</text>
+<text x="416.0" y="626.0" font-size="13" fill="#1F2328" text-anchor="start">IntegrationEvent, contratos, políticas de fallo</text>
+<rect x="756" y="580" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="766.0" y="606.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks.Authorization</text>
+<text x="766.0" y="626.0" font-size="13" fill="#1F2328" text-anchor="start">&lt;Svc&gt;Permissions.cs, PermissionModuleMap</text>
+<rect x="1106" y="580" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="1116.0" y="606.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks.Web</text>
+<text x="1116.0" y="626.0" font-size="13" fill="#1F2328" text-anchor="start">Hosting, JWT, filtros, middlewares de tenant</text>
+<rect x="56" y="654" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="66.0" y="680.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks.Infrastructure</text>
+<text x="66.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">Redis, caché, M2M, resiliencia, denylist</text>
+<rect x="406" y="654" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="416.0" y="680.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks.EfCore</text>
+<text x="416.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">UseUtcDateTimes() en OnModelCreating</text>
+<rect x="756" y="654" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="766.0" y="680.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks.Jobs</text>
+<text x="766.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">TransactionalJobUnit (una unidad por ítem)</text>
+<rect x="1106" y="654" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="1116.0" y="680.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks.TenantTimeZones</text>
+<text x="1116.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">Kit: zona de la oficina + reconciliación</text>
+<rect x="56" y="728" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="66.0" y="754.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks.CustomerVisibility</text>
+<text x="66.0" y="774.0" font-size="13" fill="#1F2328" text-anchor="start">Kit: asignaciones cliente ↔ staff</text>
+<rect x="406" y="728" width="336" height="60" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="416.0" y="754.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">BuildingBlocks.Imaging</text>
+<text x="416.0" y="774.0" font-size="13" fill="#1F2328" text-anchor="start">Kit: normalizador de avatares (SkiaSharp)</text>
+<rect x="40" y="836" width="1420" height="146" rx="10" ry="10" fill="#F7F7F8" fill-opacity="0.55" stroke="#8C8C96" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="52" y="858" font-size="14" font-weight="700" fill="#8C8C96">Pruebas · deploy/tests/TaxVision.&lt;Svc&gt;.Tests (xunit; nombre por clase, sin números de fase)</text>
+<rect x="56" y="872" width="266" height="96" rx="8" ry="8" fill="#E6F6F7" stroke="#237A80" stroke-width="1.6"/>
+<text x="66.0" y="898.0" font-size="14" font-weight="700" fill="#237A80" text-anchor="start">Domain/ · T-DOM</text>
+<text x="66.0" y="918.0" font-size="13" fill="#1F2328" text-anchor="start">Unitarias sin fakes ni base</text>
+<text x="66.0" y="936.0" font-size="13" fill="#1F2328" text-anchor="start">Result en cada regla de negocio</text>
+<rect x="336" y="872" width="266" height="96" rx="8" ry="8" fill="#E6F6F7" stroke="#237A80" stroke-width="1.6"/>
+<text x="346.0" y="898.0" font-size="14" font-weight="700" fill="#237A80" text-anchor="start">Application/ · T-APP</text>
+<text x="346.0" y="918.0" font-size="13" fill="#1F2328" text-anchor="start">Handler estático + repos falsos</text>
+<text x="346.0" y="936.0" font-size="13" fill="#1F2328" text-anchor="start">No publica si el caso falla</text>
+<rect x="616" y="872" width="266" height="96" rx="8" ry="8" fill="#E6F6F7" stroke="#237A80" stroke-width="1.6"/>
+<text x="626.0" y="898.0" font-size="14" font-weight="700" fill="#237A80" text-anchor="start">Architecture/ · T-ARQ</text>
+<text x="626.0" y="918.0" font-size="13" fill="#1F2328" text-anchor="start">LayeringRulesBase heredada</text>
+<text x="626.0" y="936.0" font-size="13" fill="#1F2328" text-anchor="start">PreGeneratedHandlerCodeTests</text>
+<text x="626.0" y="954.0" font-size="13" fill="#1F2328" text-anchor="start">UtcDateTimesTests</text>
+<rect x="896" y="872" width="266" height="96" rx="8" ry="8" fill="#E6F6F7" stroke="#237A80" stroke-width="1.6"/>
+<text x="906.0" y="898.0" font-size="14" font-weight="700" fill="#237A80" text-anchor="start">Integration/ · T-INT</text>
+<text x="906.0" y="918.0" font-size="13" fill="#1F2328" text-anchor="start">SQL Server real</text>
+<text x="906.0" y="936.0" font-size="13" fill="#1F2328" text-anchor="start">Namespace .Integration.</text>
+<text x="906.0" y="954.0" font-size="13" fill="#1F2328" text-anchor="start">Se corre aparte (fuera del gate)</text>
+<rect x="1176" y="872" width="266" height="96" rx="8" ry="8" fill="#E6F6F7" stroke="#237A80" stroke-width="1.6"/>
+<text x="1186.0" y="898.0" font-size="14" font-weight="700" fill="#237A80" text-anchor="start">Persistence/ · InMemory</text>
+<text x="1186.0" y="918.0" font-size="13" fill="#1F2328" text-anchor="start">Mapeo y filtro de tenant</text>
+<text x="1186.0" y="936.0" font-size="13" fill="#1F2328" text-anchor="start">Fuera del gate (.Persistence.)</text>
+<text x="40.0" y="1006.0" font-size="13" fill="#555B63" text-anchor="start">Gate local exacto: dotnet test TaxVision.slnx --nologo --filter "FullyQualifiedName!~.Integration.&amp;FullyQualifiedName!~.Persistence.&amp;FullyQualifiedName!~ReminderRetentionJobTests"</text>
+<rect x="40" y="1024" width="1420" height="88" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="52" y="1044" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<path d="M 52 1061 L 80 1061" stroke="#2E7D4F" stroke-width="1.7" marker-end="url(#arr-green)"/>
+<text x="90" y="1066" font-size="13" fill="#1F2328">Referencia permitida (apunta al dominio)</text>
+<path d="M 362.25 1061 L 390.25 1061" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="5 3" marker-end="url(#arr-red)"/>
+<text x="400.25" y="1066" font-size="13" fill="#1F2328">Referencia prohibida (falla una prueba de fitness)</text>
+<rect x="725.02" y="1053" width="30" height="16" rx="3" fill="#FDECEC" stroke="#C0392B" stroke-width="1.4"/>
+<text x="763.02" y="1066" font-size="13" fill="#1F2328">Regla de prohibición</text>
+<rect x="911.25" y="1053" width="30" height="16" rx="3" fill="#E3F4E8" stroke="#1E7B45" stroke-width="1.4"/>
+<text x="949.25" y="1066" font-size="13" fill="#1F2328">Uso permitido</text>
+<rect x="1056.66" y="1053" width="30" height="16" rx="3" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.4"/>
+<text x="1094.66" y="1066" font-size="13" fill="#1F2328">Referencias reales (.csproj de Notes)</text>
+<rect x="52" y="1079" width="30" height="16" rx="3" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.4"/>
+<text x="90" y="1092" font-size="13" fill="#1F2328">Proyecto de BuildingBlocks</text>
+<rect x="282.04" y="1079" width="30" height="16" rx="3" fill="#E6F6F7" stroke="#237A80" stroke-width="1.4"/>
+<text x="320.04" y="1092" font-size="13" fill="#1F2328">Carpeta de pruebas</text>
+<text x="30" y="1138" font-size="13" fill="#555B63" font-style="italic">Fuentes: Arquitectura.md · BuildingBlocks.md · Testing_Unit.md · 03_INVENTARIO_ARQUITECTURA.md</text>
+</svg>

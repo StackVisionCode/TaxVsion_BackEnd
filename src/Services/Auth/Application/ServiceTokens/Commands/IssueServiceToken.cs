@@ -16,17 +16,23 @@ public sealed record ServiceTokenResponse(string AccessToken, int ExpiresInSecon
 
 public static class IssueServiceTokenHandler
 {
-    public static Task<Result<ServiceTokenResponse>> Handle(
+    public static async Task<Result<ServiceTokenResponse>> Handle(
         IssueServiceTokenCommand command,
         IJwtTokenGenerator tokens,
         IOptions<ServiceAuthOptions> options,
+        IServiceClientThrottler throttler,
+        IRequestContext request,
         CancellationToken ct
     )
     {
-        if (command.TenantId == Guid.Empty)
-            return Task.FromResult(
-                Result.Failure<ServiceTokenResponse>(new Error("Auth.InvalidClient", "A tenant is required."))
+        // Antes de mirar el secreto: a una dirección frenada no se le confirma nada.
+        if (await throttler.GetRetryAfterAsync(request.IpAddress, ct) is { } retryAfter)
+            return Result.Failure<ServiceTokenResponse>(
+                new Error("Auth.LockedOut", "Too many attempts. Try again later.").WithRetryAfter(retryAfter)
             );
+
+        if (command.TenantId == Guid.Empty)
+            return Result.Failure<ServiceTokenResponse>(new Error("Auth.InvalidClient", "A tenant is required."));
 
         var settings = options.Value;
         var client = settings.Clients.FirstOrDefault(c =>
@@ -35,11 +41,12 @@ public static class IssueServiceTokenHandler
 
         // Comparación en tiempo constante; misma respuesta si el cliente no existe o el secreto no coincide.
         if (client is null || !SecretMatches(client.Secret, command.ClientSecret))
-            return Task.FromResult(
-                Result.Failure<ServiceTokenResponse>(
-                    new Error("Auth.InvalidClient", "Invalid service client credentials.")
-                )
+        {
+            await throttler.RegisterFailureAsync(request.IpAddress, ct);
+            return Result.Failure<ServiceTokenResponse>(
+                new Error("Auth.InvalidClient", "Invalid service client credentials.")
             );
+        }
 
         var token = tokens.GenerateScopedServiceToken(
             command.TenantId,
@@ -50,7 +57,7 @@ public static class IssueServiceTokenHandler
             settings.TokenLifetimeMinutes
         );
 
-        return Task.FromResult(Result.Success(new ServiceTokenResponse(token.Token, token.ExpiresInSeconds)));
+        return Result.Success(new ServiceTokenResponse(token.Token, token.ExpiresInSeconds));
     }
 
     private static bool SecretMatches(string configured, string provided) =>

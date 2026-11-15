@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1240" width="1600" height="1240" font-family="Segoe UI, Arial, sans-serif">
+<title>Seguridad de un request: de JWT a filtro de tenant</title>
+<desc>Orden real de la tubería (FinancialInsights/Program.cs:148-154 y filtros MVC); a la izquierda quién alimenta cada paso, a la derecha qué pasa si falla y cómo se comporta un token M2M</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1600" height="1240" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">Seguridad de un request: de JWT a filtro de tenant</text>
+<text x="30" y="66" font-size="14" fill="#555B63">Orden real de la tubería (FinancialInsights/Program.cs:148-154 y filtros MVC); a la izquierda quién alimenta cada paso, a la derecha qué pasa si falla y cómo se comporta un token M2M</text>
+<text x="30.0" y="132.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Fuentes de datos</text>
+<text x="420.0" y="132.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Tubería de un request humano (orden real)</text>
+<text x="1020.0" y="132.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">Si falla</text>
+<text x="1320.0" y="132.0" font-size="14" font-weight="700" fill="#475569" text-anchor="start">Token M2M (actor_type = Service)</text>
+<rect x="420" y="150" width="560" height="84" rx="8" ry="8" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.6"/>
+<text x="430.0" y="176.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">0 · Gateway YARP (borde; no autoriza por ruta)</text>
+<text x="430.0" y="196.0" font-size="13" fill="#1F2328" text-anchor="start">Valida el JWT si viene · InternalSurfaceGuard · MfaEnrollmentGuard</text>
+<text x="430.0" y="214.0" font-size="13" fill="#1F2328" text-anchor="start">SeatSlotGate · TenantHostGuard (host ↔ tenant) · sin denylist</text>
+<rect x="1020" y="165.0" width="260" height="54" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1030.0" y="189.0" font-size="13" fill="#1F2328" text-anchor="start">404 a /internal</text>
+<text x="1030.0" y="207.0" font-size="13" fill="#1F2328" text-anchor="start">403 tenant_mismatch</text>
+<path d="M 980.0 192.0 L 1020.0 192.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="1320" y="165.0" width="250" height="54" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1330.0" y="189.0" font-size="13" fill="#1F2328" text-anchor="start">M2M interno no pasa por el</text>
+<text x="1330.0" y="207.0" font-size="13" fill="#1F2328" text-anchor="start">Gateway: http://&lt;svc&gt;-api:8080</text>
+<rect x="420" y="258" width="560" height="84" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="430.0" y="284.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">1 · UseAuthentication()</text>
+<text x="430.0" y="304.0" font-size="13" fill="#1F2328" text-anchor="start">RS256 · iss TaxVision.Auth · aud TaxVision.Services · ClockSkew 30 s</text>
+<text x="430.0" y="322.0" font-size="13" fill="#1F2328" text-anchor="start">kid derivado de la clave pública (debe coincidir con Auth)</text>
+<rect x="1020" y="282.0" width="260" height="36" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1030.0" y="306.0" font-size="13" fill="#1F2328" text-anchor="start">401 (firma, iss, aud o exp)</text>
+<path d="M 980.0 300.0 L 1020.0 300.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="1320" y="273.0" width="250" height="54" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1330.0" y="297.0" font-size="13" fill="#1F2328" text-anchor="start">Mismo issuer y firma;</text>
+<text x="1330.0" y="315.0" font-size="13" fill="#1F2328" text-anchor="start">aud propia si usa scopes</text>
+<rect x="420" y="366" width="560" height="84" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="430.0" y="392.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">2 · JwtTenantContextMiddleware</text>
+<text x="430.0" y="412.0" font-size="13" fill="#1F2328" text-anchor="start">Claim tenant_id → TenantContext y bus.TenantId</text>
+<rect x="1020" y="390.0" width="260" height="36" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1030.0" y="414.0" font-size="13" fill="#1F2328" text-anchor="start">401 si el claim está malformado</text>
+<path d="M 980.0 408.0 L 1020.0 408.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="1320" y="381.0" width="250" height="54" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1330.0" y="405.0" font-size="13" fill="#1F2328" text-anchor="start">tenant_id pedido al emitir</text>
+<text x="1330.0" y="423.0" font-size="13" fill="#1F2328" text-anchor="start">(o PlatformTenant.Id)</text>
+<rect x="420" y="474" width="560" height="84" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="430.0" y="500.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">3 · SessionDenylistMiddleware</text>
+<text x="430.0" y="520.0" font-size="13" fill="#1F2328" text-anchor="start">Redis auth:denylist:sid:{N} · Redis caído: FailOpen (por defecto)</text>
+<text x="430.0" y="538.0" font-size="13" fill="#1F2328" text-anchor="start">o FailClosed según SessionDenylist:FailureMode</text>
+<rect x="1020" y="489.0" width="260" height="54" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1030.0" y="513.0" font-size="13" fill="#1F2328" text-anchor="start">401 Auth.SessionRevoked</text>
+<text x="1030.0" y="531.0" font-size="13" fill="#1F2328" text-anchor="start">503 si FailClosed y sin Redis</text>
+<path d="M 980.0 516.0 L 1020.0 516.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="1320" y="498.0" width="250" height="36" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1330.0" y="522.0" font-size="13" fill="#1F2328" text-anchor="start">Sin claim sid → se salta</text>
+<rect x="420" y="582" width="560" height="84" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="430.0" y="608.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">4 · [HasPermission] → ProjectionPermissionsSource</text>
+<text x="430.0" y="628.0" font-size="13" fill="#1F2328" text-anchor="start">UserPermissionsProjection local (caché 30 s) · miss → snapshot de Auth</text>
+<text x="430.0" y="646.0" font-size="13" fill="#1F2328" text-anchor="start">perm_v del JWT menor que la versión de la proyección → token viejo</text>
+<rect x="1020" y="597.0" width="260" height="54" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1030.0" y="621.0" font-size="13" fill="#1F2328" text-anchor="start">403 sin permiso</text>
+<text x="1030.0" y="639.0" font-size="13" fill="#1F2328" text-anchor="start">401 Auth.TokenStale (refrescar)</text>
+<path d="M 980.0 624.0 L 1020.0 624.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="1320" y="606.0" width="250" height="36" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1330.0" y="630.0" font-size="13" fill="#1F2328" text-anchor="start">Lee el claim perm del token</text>
+<rect x="420" y="690" width="560" height="84" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="430.0" y="716.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">5 · Gate de módulo (dentro de PermissionPolicyProvider)</text>
+<text x="430.0" y="736.0" font-size="13" fill="#1F2328" text-anchor="start">PermissionModuleMap.ModuleFor(permiso) · fila null → pasa (fail-open)</text>
+<text x="430.0" y="754.0" font-size="13" fill="#1F2328" text-anchor="start">Lista vacía [] → deniega si Authorization:ModuleGate:Enforce</text>
+<rect x="1020" y="714.0" width="260" height="36" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1030.0" y="738.0" font-size="13" fill="#1F2328" text-anchor="start">403 Authz.ModuleUnavailable</text>
+<path d="M 980.0 732.0 L 1020.0 732.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="1320" y="714.0" width="250" height="36" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1330.0" y="738.0" font-size="13" fill="#1F2328" text-anchor="start">Service siempre habilitado</text>
+<rect x="420" y="798" width="560" height="84" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="430.0" y="824.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">6 · Filtros MVC globales</text>
+<text x="430.0" y="844.0" font-size="13" fill="#1F2328" text-anchor="start">ActorTypeAuthorizationFilter: [AllowActorTypes] obligatorio</text>
+<text x="430.0" y="862.0" font-size="13" fill="#1F2328" text-anchor="start">SurfaceAuthorizationFilter: claim surface solo con [AllowSurface]</text>
+<rect x="1020" y="822.0" width="260" height="36" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1030.0" y="846.0" font-size="13" fill="#1F2328" text-anchor="start">403 Authz.ActorTypeNotDeclared</text>
+<path d="M 980.0 840.0 L 1020.0 840.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="1320" y="813.0" width="250" height="54" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1330.0" y="837.0" font-size="13" fill="#1F2328" text-anchor="start">ServiceOnly (actor_type Service)</text>
+<text x="1330.0" y="855.0" font-size="13" fill="#1F2328" text-anchor="start">+ [AllowActorTypes(Service)]</text>
+<rect x="420" y="906" width="560" height="84" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="430.0" y="932.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">7 · [RateLimit("&lt;svc&gt;.&lt;cat&gt;.&lt;accion&gt;")]</text>
+<text x="430.0" y="952.0" font-size="13" fill="#1F2328" text-anchor="start">Cuotas por plan (RateLimit:EnforceTierQuotas) · contadores en Redis</text>
+<rect x="1020" y="930.0" width="260" height="36" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1030.0" y="954.0" font-size="13" fill="#1F2328" text-anchor="start">Rechazo por límite (Retry-After)</text>
+<path d="M 980.0 948.0 L 1020.0 948.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="1320" y="930.0" width="250" height="36" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1330.0" y="954.0" font-size="13" fill="#1F2328" text-anchor="start">internal/*: [RateLimitExempt]</text>
+<rect x="420" y="1014" width="560" height="84" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="430.0" y="1040.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">8 · Handler (Wolverine) + DbContext</text>
+<text x="430.0" y="1060.0" font-size="13" fill="#1F2328" text-anchor="start">LocalCommandTenantMiddleware restaura el tenant del mensaje</text>
+<text x="430.0" y="1078.0" font-size="13" fill="#1F2328" text-anchor="start">HasQueryFilter: TenantId == EffectiveTenantId (Guid.Empty si falta)</text>
+<rect x="1020" y="1038.0" width="260" height="36" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1030.0" y="1062.0" font-size="13" fill="#1F2328" text-anchor="start">Sin tenant → 0 filas (fail-closed)</text>
+<path d="M 980.0 1056.0 L 1020.0 1056.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<path d="M 700.0 234.0 L 700.0 258.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 700.0 342.0 L 700.0 366.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 700.0 450.0 L 700.0 474.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 700.0 558.0 L 700.0 582.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 700.0 666.0 L 700.0 690.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 700.0 774.0 L 700.0 798.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 700.0 882.0 L 700.0 906.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 700.0 990.0 L 700.0 1014.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="253.0" width="340" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="279.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Auth emite el JWT</text>
+<text x="40.0" y="299.0" font-size="13" fill="#1F2328" text-anchor="start">RS256 · access token humano 15 min</text>
+<text x="40.0" y="317.0" font-size="13" fill="#1F2328" text-anchor="start">Claims: sub, sid, tenant_id, actor_type,</text>
+<text x="40.0" y="335.0" font-size="13" fill="#1F2328" text-anchor="start">perm_v (ya no lleva perm)</text>
+<path d="M 370.0 300.0 L 420.0 300.0" fill="none" stroke="#8C8C96" stroke-width="1.7" marker-end="url(#arr-gray)"/>
+<rect x="30" y="469.0" width="340" height="94" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="40.0" y="495.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">Redis · denylist</text>
+<text x="40.0" y="515.0" font-size="13" fill="#1F2328" text-anchor="start">Escribe solo Auth (TTL 20 min)</text>
+<text x="40.0" y="533.0" font-size="13" fill="#1F2328" text-anchor="start">SessionAccessCutoff: denylist →</text>
+<text x="40.0" y="551.0" font-size="13" fill="#1F2328" text-anchor="start">Pub/Sub → revocación en BD</text>
+<path d="M 370.0 516.0 L 420.0 516.0" fill="none" stroke="#8C8C96" stroke-width="1.7" marker-end="url(#arr-gray)"/>
+<rect x="30" y="586.0" width="340" height="76" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="40.0" y="612.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">Proyección de permisos</text>
+<text x="40.0" y="632.0" font-size="13" fill="#1F2328" text-anchor="start">UserRolesChanged · ApplyIfNewer</text>
+<text x="40.0" y="650.0" font-size="13" fill="#1F2328" text-anchor="start">por PermissionsVersion</text>
+<path d="M 370.0 624.0 L 420.0 624.0" fill="none" stroke="#8C8C96" stroke-width="1.7" marker-end="url(#arr-gray)"/>
+<rect x="30" y="694.0" width="340" height="76" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="40.0" y="720.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">Proyección de entitlements</text>
+<text x="40.0" y="740.0" font-size="13" fill="#1F2328" text-anchor="start">TenantEntitlementsChanged</text>
+<text x="40.0" y="758.0" font-size="13" fill="#1F2328" text-anchor="start">Lector con caché Redis 1 min</text>
+<path d="M 370.0 732.0 L 420.0 732.0" fill="none" stroke="#8C8C96" stroke-width="1.7" marker-end="url(#arr-gray)"/>
+<rect x="30" y="1018.0" width="340" height="76" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="40.0" y="1044.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">Tenant del contexto</text>
+<text x="40.0" y="1064.0" font-size="13" fill="#1F2328" text-anchor="start">HTTP: tenant_id del JWT</text>
+<text x="40.0" y="1082.0" font-size="13" fill="#1F2328" text-anchor="start">Consumers: TenantId del evento</text>
+<path d="M 370.0 1056.0 L 420.0 1056.0" fill="none" stroke="#8C8C96" stroke-width="1.7" marker-end="url(#arr-gray)"/>
+<rect x="30" y="1130" width="1540" height="62" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="42" y="1150" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<rect x="42" y="1159" width="30" height="16" rx="3" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.4"/>
+<text x="80" y="1172" font-size="13" fill="#1F2328">Borde</text>
+<rect x="136.97" y="1159" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="174.97" y="1172" font-size="13" fill="#1F2328">Paso en el servicio</text>
+<rect x="315.91999999999996" y="1159" width="30" height="16" rx="3" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.4"/>
+<text x="353.91999999999996" y="1172" font-size="13" fill="#1F2328">Dato / proyección / estado</text>
+<rect x="544.4" y="1159" width="30" height="16" rx="3" fill="#FDECEC" stroke="#C0392B" stroke-width="1.4"/>
+<text x="582.4" y="1172" font-size="13" fill="#1F2328">Respuesta de rechazo</text>
+<rect x="739.6" y="1159" width="30" height="16" rx="3" fill="#EEF2F7" stroke="#475569" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text x="777.6" y="1172" font-size="13" fill="#1F2328">Comportamiento con token M2M</text>
+<path d="M 997.98 1167 L 1025.98 1167" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="1035.98" y="1172" font-size="13" fill="#1F2328">Orden de la tubería</text>
+<path d="M 1176.93 1167 L 1204.93 1167" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="5 3" marker-end="url(#arr-red)"/>
+<text x="1214.93" y="1172" font-size="13" fill="#1F2328">Rechazo</text>
+<path d="M 1289.45 1167 L 1317.45 1167" stroke="#8C8C96" stroke-width="1.7" marker-end="url(#arr-gray)"/>
+<text x="1327.45" y="1172" font-size="13" fill="#1F2328">Alimenta el paso</text>
+<text x="30" y="1228" font-size="13" fill="#555B63" font-style="italic">Fuentes: Auth_RBAC.md · Session_Denylist.md · Gateway_YARP.md · M2M_ServiceAuth.md · RateLimit_Cuotas_Gates.md</text>
+</svg>

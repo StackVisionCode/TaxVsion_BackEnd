@@ -102,8 +102,29 @@ public sealed class InternalSurfaceGuardMiddlewareTests
         Assert.False(reachedNext);
     }
 
+    /// <summary>
+    /// El grant M2M solo se pide contenedor→contenedor (<c>http://auth-api:8080</c>). Abierto en el Gateway,
+    /// es anónimo y deja probar secretos de clientes de servicio desde Internet.
+    /// </summary>
+    [Theory]
+    [InlineData("/auth/service-token")]
+    [InlineData("/auth/service-token/")]
+    [InlineData("/AUTH/Service-Token")]
+    [InlineData("//auth//service-token")]
+    public async Task Bloquea_el_grant_de_tokens_de_servicio(string path)
+    {
+        var (statusCode, reachedNext) = await InvokeAsync(path);
+
+        Assert.Equal(StatusCodes.Status404NotFound, statusCode);
+        Assert.False(reachedNext);
+    }
+
     [Theory]
     [InlineData("/auth/login")]
+    [InlineData("/auth/refresh")]
+    [InlineData("/auth/me")]
+    // Comparte el prefijo pero no es el grant: debe pasar.
+    [InlineData("/auth/service-token-status")]
     [InlineData("/customers")]
     [InlineData("/tenants/subdomain-available")]
     [InlineData("/health/ready")]

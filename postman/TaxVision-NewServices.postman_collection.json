@@ -20,9 +20,9 @@
               }
             ],
             "url": {
-              "raw": "{{gateway}}/auth/service-token",
+              "raw": "{{authService}}/auth/service-token",
               "host": [
-                "{{gateway}}"
+                "{{authService}}"
               ],
               "path": [
                 "auth",
@@ -113,9 +113,9 @@
               }
             ],
             "url": {
-              "raw": "{{gateway}}/auth/service-token",
+              "raw": "{{authService}}/auth/service-token",
               "host": [
-                "{{gateway}}"
+                "{{authService}}"
               ],
               "path": [
                 "auth",

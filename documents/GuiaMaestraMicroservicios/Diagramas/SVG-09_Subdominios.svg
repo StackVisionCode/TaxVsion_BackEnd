@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1010" width="1600" height="1010" font-family="Segoe UI, Arial, sans-serif">
+<title>Subdominios y resolución de oficina (tenant)</title>
+<desc>El host es un candidato que valida el borde; el tenant autoritativo es el claim tenant_id del JWT (HTTP) o el TenantId del evento (consumers)</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1600" height="1010" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">Subdominios y resolución de oficina (tenant)</text>
+<text x="30" y="66" font-size="14" fill="#555B63">El host es un candidato que valida el borde; el tenant autoritativo es el claim tenant_id del JWT (HTTP) o el TenantId del evento (consumers)</text>
+<rect x="30" y="110" width="220" height="114" rx="8" ry="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="40.0" y="136.0" font-size="14" font-weight="700" fill="#2F6DB5" text-anchor="start">Navegador</text>
+<text x="40.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">https://{slug}.{dominio}</text>
+<text x="40.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">CRM en la raíz</text>
+<text x="40.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">Portal en /portal</text>
+<rect x="280" y="110" width="270" height="114" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="290.0" y="136.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">Cloudflare → Caddy</text>
+<text x="290.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">Snippet taxvision_tenant:</text>
+<text x="290.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">HTML y estáticos → app.{dominio}</text>
+<text x="290.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">API → gateway:8080</text>
+<rect x="580" y="110" width="280" height="114" rx="8" ry="8" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.6"/>
+<text x="590.0" y="136.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">Gateway: borde</text>
+<text x="590.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">ForwardedHeaders solo desde</text>
+<text x="590.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">KnownProxies / KnownNetworks</text>
+<text x="590.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">Borra X-Resolved-Tenant y</text>
+<text x="590.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">X-Tenant-Id entrantes</text>
+<rect x="890" y="110" width="290" height="114" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="900.0" y="136.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">TryGetTenantSlug(host)</text>
+<text x="900.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">{slug}.{BaseDomain}, una etiqueta</text>
+<text x="900.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">y no reservada → slug</text>
+<text x="900.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">Única regla: Auth y Gateway</text>
+<rect x="1214" y="110" width="356" height="114" rx="8" ry="8" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.6"/>
+<text x="1224.0" y="136.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">HostTenantResolver (Gateway)</text>
+<text x="1224.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">Caché: positivo 15 min, revalida 30 s,</text>
+<text x="1224.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">negativo 1 min; los fallos no se cachean</text>
+<text x="1224.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">GET auth/tenant-resolution/by-host</text>
+<text x="1224.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">Host reenviado · timeout 3 s</text>
+<path d="M 250.0 167.0 L 280.0 167.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 550.0 167.0 L 580.0 167.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 860.0 167.0 L 890.0 167.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1180.0 167.0 L 1214.0 167.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1184.7" y="157.0" width="24.6" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="1197.0" y="171.5" font-size="13" fill="#444B55" text-anchor="middle">sí</text>
+<rect x="890" y="300" width="290" height="78" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="900.0" y="326.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Host compartido o de sistema</text>
+<text x="900.0" y="346.0" font-size="13" fill="#1F2328" text-anchor="start">app., client., api., www, apex</text>
+<text x="900.0" y="364.0" font-size="13" fill="#1F2328" text-anchor="start">→ pasa sin resolver oficina</text>
+<path d="M 1100.0 224.0 L 1100.0 300.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1087.7" y="252.0" width="24.6" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="1100.0" y="266.5" font-size="13" fill="#444B55" text-anchor="middle">no</text>
+<rect x="1214" y="300" width="356" height="132" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1224.0" y="326.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Auth · TenantResolver</text>
+<text x="1224.0" y="346.0" font-size="13" fill="#1F2328" text-anchor="start">ApiHost → PlatformTenant.Id</text>
+<text x="1224.0" y="364.0" font-size="13" fill="#1F2328" text-anchor="start">Slug → TenantDomain Active + tenant.IsActive</text>
+<text x="1224.0" y="382.0" font-size="13" fill="#1F2328" text-anchor="start">Custom hostname: host exacto</text>
+<text x="1224.0" y="400.0" font-size="13" fill="#1F2328" text-anchor="start">Caché Redis 5 min por host</text>
+<text x="1224.0" y="418.0" font-size="13" fill="#1F2328" text-anchor="start">Nunca un tenant por defecto</text>
+<path d="M 1392.0 224.0 L 1392.0 300.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="600" y="530" width="230" height="78" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="610.0" y="556.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">404 office_not_found</text>
+<text x="610.0" y="576.0" font-size="13" fill="#1F2328" text-anchor="start">NotRegistered</text>
+<text x="610.0" y="594.0" font-size="13" fill="#1F2328" text-anchor="start">(host no registrado)</text>
+<rect x="850" y="530" width="230" height="78" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="860.0" y="556.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">403 tenant_mismatch</text>
+<text x="860.0" y="576.0" font-size="13" fill="#1F2328" text-anchor="start">tenant_id del JWT ≠</text>
+<text x="860.0" y="594.0" font-size="13" fill="#1F2328" text-anchor="start">tenant del host</text>
+<rect x="1100" y="530" width="230" height="78" rx="8" ry="8" fill="#E3F4E8" stroke="#1E7B45" stroke-width="1.6"/>
+<text x="1110.0" y="556.0" font-size="14" font-weight="700" fill="#1E7B45" text-anchor="start">X-Resolved-Tenant</text>
+<text x="1110.0" y="576.0" font-size="13" fill="#1F2328" text-anchor="start">Host y JWT cuadran:</text>
+<text x="1110.0" y="594.0" font-size="13" fill="#1F2328" text-anchor="start">se propaga al servicio</text>
+<rect x="1350" y="530" width="220" height="78" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="1360.0" y="556.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">Fail-open</text>
+<text x="1360.0" y="576.0" font-size="13" fill="#1F2328" text-anchor="start">Auth no responde</text>
+<text x="1360.0" y="594.0" font-size="13" fill="#1F2328" text-anchor="start">(Unavailable)</text>
+<path d="M 1392.0 432.0 L 1392.0 490.0" fill="none" stroke="#444B55" stroke-width="1.7"/>
+<path d="M 715.0 490.0 L 1460.0 490.0" fill="none" stroke="#444B55" stroke-width="1.7"/>
+<path d="M 715.0 490.0 L 715.0 530.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 965.0 490.0 L 965.0 530.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1215.0 490.0 L 1215.0 530.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1460.0 490.0 L 1460.0 530.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="600" y="670" width="480" height="114" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="610.0" y="696.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Servicio .NET (HTTP)</text>
+<text x="610.0" y="716.0" font-size="13" fill="#1F2328" text-anchor="start">Tenant autoritativo = claim tenant_id del JWT</text>
+<text x="610.0" y="734.0" font-size="13" fill="#1F2328" text-anchor="start">(JwtTenantContextMiddleware); el host es un candidato</text>
+<text x="610.0" y="752.0" font-size="13" fill="#1F2328" text-anchor="start">Ruta pública con token: comparar X-Resolved-Tenant</text>
+<text x="610.0" y="770.0" font-size="13" fill="#1F2328" text-anchor="start">con el tenant del token (patrón de Signature)</text>
+<rect x="1100" y="670" width="470" height="114" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1110.0" y="696.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Consumers (eventos de RabbitMQ)</text>
+<text x="1110.0" y="716.0" font-size="13" fill="#1F2328" text-anchor="start">TenantId del payload del evento</text>
+<text x="1110.0" y="734.0" font-size="13" fill="#1F2328" text-anchor="start">IntegrationEventTenantMiddleware</text>
+<text x="1110.0" y="752.0" font-size="13" fill="#1F2328" text-anchor="start">Guid.Empty → InvalidOperationException</text>
+<text x="1110.0" y="770.0" font-size="13" fill="#1F2328" text-anchor="start">(falla cerrado)</text>
+<path d="M 1215.0 608.0 L 1215.0 640.0 L 840.0 640.0 L 840.0 670.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="300" width="530" height="150" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="40.0" y="326.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">PlatformSettingsSnapshot (dueño: Tenant)</text>
+<text x="40.0" y="346.0" font-size="13" fill="#1F2328" text-anchor="start">BaseDomain (arranque: taxoffix.io), ApiHost, marca</text>
+<text x="40.0" y="364.0" font-size="13" fill="#1F2328" text-anchor="start">AppHost app.{dominio} · ClientHost client.{dominio}</text>
+<text x="40.0" y="382.0" font-size="13" fill="#1F2328" text-anchor="start">ReservedSubdomains: api, app, www, admin, client</text>
+<text x="40.0" y="400.0" font-size="13" fill="#1F2328" text-anchor="start">GET platform/settings/public + PlatformSettingsChanged</text>
+<text x="40.0" y="418.0" font-size="13" fill="#1F2328" text-anchor="start">TryApply solo aplica una versión mayor</text>
+<text x="40.0" y="436.0" font-size="13" fill="#1F2328" text-anchor="start">Refresco cada 5 min; reintento cada 30 s</text>
+<path d="M 560.0 316.0 L 873.0 316.0 L 873.0 254.0 L 940.0 254.0 L 940.0 224.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="631.1" y="306.0" width="169.8" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="716.0" y="320.5" font-size="13" fill="#444B55" text-anchor="middle">BaseDomain y reservados</text>
+<rect x="30" y="476" width="530" height="132" rx="8" ry="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="40.0" y="502.0" font-size="14" font-weight="700" fill="#2F6DB5" text-anchor="start">Hosts por superficie</text>
+<text x="40.0" y="522.0" font-size="13" fill="#1F2328" text-anchor="start">app.{dominio}: CRM y login central</text>
+<text x="40.0" y="540.0" font-size="13" fill="#1F2328" text-anchor="start">{slug}.{dominio}: CRM de la oficina (raíz)</text>
+<text x="40.0" y="558.0" font-size="13" fill="#1F2328" text-anchor="start">{slug}.{dominio}/portal: portal del cliente</text>
+<text x="40.0" y="576.0" font-size="13" fill="#1F2328" text-anchor="start">www.{dominio} y apex: landing</text>
+<text x="40.0" y="594.0" font-size="13" fill="#1F2328" text-anchor="start">api.{dominio}: API y tenant Platform</text>
+<rect x="30" y="630" width="530" height="132" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="656.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Auth también lo aplica</text>
+<text x="40.0" y="676.0" font-size="13" fill="#1F2328" text-anchor="start">TenantHostResolutionMiddleware: solo Request.Host</text>
+<text x="40.0" y="694.0" font-size="13" fill="#1F2328" text-anchor="start">No resuelto → auditoría + 404 si EnforceHostResolution</text>
+<text x="40.0" y="712.0" font-size="13" fill="#1F2328" text-anchor="start">(true; false en docker-compose.local.yml)</text>
+<text x="40.0" y="730.0" font-size="13" fill="#1F2328" text-anchor="start">Login: el TenantId del body se descarta; vale el host</text>
+<text x="40.0" y="748.0" font-size="13" fill="#1F2328" text-anchor="start">TenantResolutionFailed deduplicado 5 min por host</text>
+<rect x="30" y="810" width="1540" height="72" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="40.0" y="834.0" font-size="13" fill="#1F2328" text-anchor="start">Cambio de subdominio: TenantSubdomainChangedIntegrationEvent (OldHost, NewHost, OldSlug, NewSlug, IsPrimary) lo consumen Tenant, Signature, Scribe, Postmaster,</text>
+<text x="40.0" y="852.0" font-size="13" fill="#1F2328" text-anchor="start">PaymentApp, PaymentClient y Notification; ChangeSubdomain y DisableTenantDomain invalidan la caché de Auth.</text>
+<text x="40.0" y="870.0" font-size="13" fill="#1F2328" text-anchor="start">Custom hostnames: Auth los resuelve, pero el Gateway y CORS no (TryGetTenantSlug solo reconoce *.{BaseDomain}).</text>
+<rect x="30" y="900" width="1540" height="62" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="42" y="920" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<rect x="42" y="929" width="30" height="16" rx="3" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.4"/>
+<text x="80" y="942" font-size="13" fill="#1F2328">Cliente / superficie</text>
+<rect x="223.03" y="929" width="30" height="16" rx="3" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.4"/>
+<text x="261.03" y="942" font-size="13" fill="#1F2328">Borde</text>
+<rect x="318.0" y="929" width="30" height="16" rx="3" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.4"/>
+<text x="356.0" y="942" font-size="13" fill="#1F2328">Gateway</text>
+<rect x="431.69" y="929" width="30" height="16" rx="3" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.4"/>
+<text x="469.69" y="942" font-size="13" fill="#1F2328">Decisión / fail-open</text>
+<rect x="619.48" y="929" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="657.48" y="942" font-size="13" fill="#1F2328">Servicio</text>
+<rect x="730.3100000000001" y="929" width="30" height="16" rx="3" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.4"/>
+<text x="768.3100000000001" y="942" font-size="13" fill="#1F2328">Configuración runtime</text>
+<rect x="924.99" y="929" width="30" height="16" rx="3" fill="#FDECEC" stroke="#C0392B" stroke-width="1.4"/>
+<text x="962.99" y="942" font-size="13" fill="#1F2328">Rechazo</text>
+<rect x="1037.51" y="929" width="30" height="16" rx="3" fill="#E3F4E8" stroke="#1E7B45" stroke-width="1.4"/>
+<text x="1075.51" y="942" font-size="13" fill="#1F2328">Resuelto</text>
+<path d="M 1151.33 937 L 1179.33 937" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="1189.33" y="942" font-size="13" fill="#1F2328">Flujo</text>
+<text x="30" y="998" font-size="13" fill="#555B63" font-style="italic">Fuentes: Tenant_Subdomains.md · Tenant_Links.md · Cloudflare.md · Gateway_YARP.md</text>
+</svg>

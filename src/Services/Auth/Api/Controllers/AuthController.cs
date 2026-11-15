@@ -123,15 +123,17 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
 
     /// <summary>
     /// Grant client-credentials (M2M): emite un token de servicio para un tenant. Lo usan los workers
-    /// de otros servicios (p. ej. Notification → CloudStorage) sin contexto de usuario.
+    /// de otros servicios (p. ej. Notification → CloudStorage) sin contexto de usuario. Solo se pide
+    /// contenedor→contenedor: el Gateway lo bloquea (InternalSurfaceGuardMiddleware).
     /// </summary>
     [HttpPost("service-token")]
     [AllowAnonymous]
     [RateLimitExempt(
-        "Grant M2M — anónimo por diseño (todavía no existe un JWT en el momento de la llamada, es la propia emisión); usado por los HttpClients tipados de los otros 21 servicios, nunca por un usuario final."
+        "Grant M2M — anónimo por diseño (todavía no existe un JWT en el momento de la llamada, es la propia emisión); usado por los HttpClients tipados de los otros servicios por la red interna, nunca por un usuario final. El Gateway no lo expone y los fallos de credenciales se frenan por dirección con IServiceClientThrottler (Redis)."
     )]
     [ProducesResponseType<ServiceTokenResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<Error>(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> ServiceToken(IssueServiceTokenCommand command, CancellationToken ct)
     {
         var result = await bus.InvokeAsync<Result<ServiceTokenResponse>>(command, ct);

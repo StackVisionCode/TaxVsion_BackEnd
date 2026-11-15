@@ -1,0 +1,172 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1100" width="1600" height="1100" font-family="Segoe UI, Arial, sans-serif">
+<title>Mensajería: de evento de dominio a consumer idempotente</title>
+<desc>Wolverine 6.14 + RabbitMQ: cola local domain-events → evento de integración → outbox → fanout taxvision-events → cola por servicio → inbox</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1600" height="1100" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">Mensajería: de evento de dominio a consumer idempotente</text>
+<text x="30" y="66" font-size="14" fill="#555B63">Wolverine 6.14 + RabbitMQ: cola local domain-events → evento de integración → outbox → fanout taxvision-events → cola por servicio → inbox</text>
+<text x="48.0" y="112.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Servicio emisor · BB-1 UseTaxVisionDomainEvents()</text>
+<rect x="48" y="124" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="58.0" y="150.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">1 · Handler de Wolverine</text>
+<text x="58.0" y="170.0" font-size="13" fill="#1F2328" text-anchor="start">Transacción EF abierta antes</text>
+<text x="58.0" y="188.0" font-size="13" fill="#1F2328" text-anchor="start">del handler (AutoApplyTransactions)</text>
+<text x="58.0" y="206.0" font-size="13" fill="#1F2328" text-anchor="start">try/catch no cubre la base caída</text>
+<rect x="354" y="124" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="364.0" y="150.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">2 · El agregado registra</text>
+<text x="364.0" y="170.0" font-size="13" fill="#1F2328" text-anchor="start">AggregateRoot.AddDomainEvent</text>
+<text x="364.0" y="188.0" font-size="13" fill="#1F2328" text-anchor="start">IDomainEvent: nunca sale</text>
+<text x="364.0" y="206.0" font-size="13" fill="#1F2328" text-anchor="start">del microservicio</text>
+<rect x="660" y="124" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="670.0" y="150.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">3 · Commit</text>
+<text x="670.0" y="170.0" font-size="13" fill="#1F2328" text-anchor="start">Los eventos de dominio se guardan</text>
+<text x="670.0" y="188.0" font-size="13" fill="#1F2328" text-anchor="start">como mensajes en la misma</text>
+<text x="670.0" y="206.0" font-size="13" fill="#1F2328" text-anchor="start">transacción</text>
+<rect x="966" y="124" width="280" height="96" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="976.0" y="150.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">4 · Cola local domain-events</text>
+<text x="976.0" y="170.0" font-size="13" fill="#1F2328" text-anchor="start">ToLocalQueue + UseDurableInbox</text>
+<text x="976.0" y="188.0" font-size="13" fill="#1F2328" text-anchor="start">Sequential en Auth, Postmaster</text>
+<text x="976.0" y="206.0" font-size="13" fill="#1F2328" text-anchor="start">y CloudStorage (orden de commit)</text>
+<rect x="1272" y="124" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1282.0" y="150.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">5 · XxxDomainEventHandler</text>
+<text x="1282.0" y="170.0" font-size="13" fill="#1F2328" text-anchor="start">Estático, en Application</text>
+<text x="1282.0" y="188.0" font-size="13" fill="#1F2328" text-anchor="start">Devuelve el IntegrationEvent</text>
+<text x="1282.0" y="206.0" font-size="13" fill="#1F2328" text-anchor="start">(sale en cascada)</text>
+<path d="M 328.0 172.0 L 354.0 172.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 634.0 172.0 L 660.0 172.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 940.0 172.0 L 966.0 172.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1246.0 172.0 L 1272.0 172.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="48.0" y="276.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">Salida al broker</text>
+<rect x="1272" y="288" width="280" height="96" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="1282.0" y="314.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">6 · Outbox durable</text>
+<text x="1282.0" y="334.0" font-size="13" fill="#1F2328" text-anchor="start">PersistMessagesWithSqlServer</text>
+<text x="1282.0" y="352.0" font-size="13" fill="#1F2328" text-anchor="start">Tablas inbox/outbox en la base</text>
+<text x="1282.0" y="370.0" font-size="13" fill="#1F2328" text-anchor="start">Todo lo que sale pasa por aquí</text>
+<rect x="966" y="288" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="976.0" y="314.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">7 · Ruta PublishMessage&lt;T&gt;()</text>
+<text x="976.0" y="334.0" font-size="13" fill="#1F2328" text-anchor="start">ToRabbitExchange(taxvision-events)</text>
+<text x="976.0" y="352.0" font-size="13" fill="#1F2328" text-anchor="start">Sin ruta: «No routes can be</text>
+<text x="976.0" y="370.0" font-size="13" fill="#1F2328" text-anchor="start">determined» y se descarta</text>
+<rect x="660" y="288" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="670.0" y="314.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">8 · UseTaxVisionRabbitMq</text>
+<text x="670.0" y="334.0" font-size="13" fill="#1F2328" text-anchor="start">Publisher confirms activados</text>
+<text x="670.0" y="352.0" font-size="13" fill="#1F2328" text-anchor="start">Rechazo del broker → excepción</text>
+<text x="670.0" y="370.0" font-size="13" fill="#1F2328" text-anchor="start">y el outbox reintenta</text>
+<rect x="354" y="288" width="280" height="96" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="364.0" y="314.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">9 · Exchange fanout</text>
+<text x="364.0" y="334.0" font-size="13" fill="#1F2328" text-anchor="start">taxvision-events (uno para todos)</text>
+<text x="364.0" y="352.0" font-size="13" fill="#1F2328" text-anchor="start">Routing key vacía</text>
+<text x="364.0" y="370.0" font-size="13" fill="#1F2328" text-anchor="start">Cada cola recibe todo</text>
+<rect x="48" y="288" width="280" height="96" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="58.0" y="314.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">10 · Cola por servicio</text>
+<text x="58.0" y="334.0" font-size="13" fill="#1F2328" text-anchor="start">&lt;svc&gt;-events, durable</text>
+<text x="58.0" y="352.0" font-size="13" fill="#1F2328" text-anchor="start">billing-events, tasks-events…</text>
+<text x="58.0" y="370.0" font-size="13" fill="#1F2328" text-anchor="start">notification-events</text>
+<path d="M 1412.0 220.0 L 1412.0 288.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1272.0 336.0 L 1246.0 336.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 966.0 336.0 L 940.0 336.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 660.0 336.0 L 634.0 336.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 354.0 336.0 L 328.0 336.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="220.0" y="440.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Servicio consumidor</text>
+<rect x="48" y="452" width="280" height="96" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="58.0" y="478.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">11 · ListenToRabbitQueue</text>
+<text x="58.0" y="498.0" font-size="13" fill="#1F2328" text-anchor="start">BindExchange(taxvision-events)</text>
+<text x="58.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">UseDurableInbox()</text>
+<text x="58.0" y="534.0" font-size="13" fill="#1F2328" text-anchor="start">Deduplica por MessageId</text>
+<rect x="354" y="452" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="364.0" y="478.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">12 · Tenant del mensaje</text>
+<text x="364.0" y="498.0" font-size="13" fill="#1F2328" text-anchor="start">IntegrationEventTenantMiddleware</text>
+<text x="364.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">TenantId del payload</text>
+<text x="364.0" y="534.0" font-size="13" fill="#1F2328" text-anchor="start">Guid.Empty → falla cerrado</text>
+<rect x="660" y="452" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="670.0" y="478.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">13 · XxxConsumer</text>
+<text x="670.0" y="498.0" font-size="13" fill="#1F2328" text-anchor="start">public static class (singular)</text>
+<text x="670.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">Plural: «No known handler»</text>
+<text x="670.0" y="534.0" font-size="13" fill="#1F2328" text-anchor="start">correlation.Push(...)</text>
+<rect x="966" y="452" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="976.0" y="478.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">14 · Consumidor idempotente</text>
+<text x="976.0" y="498.0" font-size="13" fill="#1F2328" text-anchor="start">ApplyIfNewer por versión</text>
+<text x="976.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">Correo: clave con destinatario</text>
+<text x="976.0" y="534.0" font-size="13" fill="#1F2328" text-anchor="start">Re-entrega: el inbox la descarta</text>
+<rect x="1272" y="452" width="280" height="96" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1282.0" y="478.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">15 · Si lanza una excepción</text>
+<text x="1282.0" y="498.0" font-size="13" fill="#1F2328" text-anchor="start">UseTaxVisionConflictPolicy</text>
+<text x="1282.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">y luego ApplyStandard-</text>
+<text x="1282.0" y="534.0" font-size="13" fill="#1F2328" text-anchor="start">FailurePolicies (abajo)</text>
+<path d="M 188.0 384.0 L 188.0 452.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 328.0 500.0 L 354.0 500.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 634.0 500.0 L 660.0 500.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 940.0 500.0 L 966.0 500.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1246.0 500.0 L 1272.0 500.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="48" y="600" width="586" height="150" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="58.0" y="626.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">Guardar antes de publicar</text>
+<text x="58.0" y="646.0" font-size="13" fill="#1F2328" text-anchor="start">Comandos (InvokeAsync): SaveChangesAsync y después publicar,</text>
+<text x="58.0" y="664.0" font-size="13" fill="#1F2328" text-anchor="start">o dejar que BB-1 publique en el commit</text>
+<text x="58.0" y="682.0" font-size="13" fill="#1F2328" text-anchor="start">Jobs: TransactionalJobUnit.RunEachAsync, una unidad por ítem</text>
+<text x="58.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">con IDbContextOutbox.SaveChangesAndFlushMessagesAsync</text>
+<text x="58.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">Un SaveChangesAsync suelto (controlador, job) pierde los eventos</text>
+<text x="58.0" y="736.0" font-size="13" fill="#1F2328" text-anchor="start">Vigilan: SaveBeforePublishTests, JobPublishingTests</text>
+<rect x="660" y="600" width="892" height="206" rx="10" ry="10" fill="#FDECEC" fill-opacity="0.55" stroke="#C0392B" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="672" y="622" font-size="14" font-weight="700" fill="#C0392B">Políticas de fallo (la primera regla que calza gana)</text>
+<rect x="676" y="636" width="206" height="96" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="686.0" y="662.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">ConflictException</text>
+<text x="686.0" y="682.0" font-size="13" fill="#1F2328" text-anchor="start">RowVersion: 409 por HTTP</text>
+<text x="686.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">Mensaje: reintento</text>
+<text x="686.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">programado → error</text>
+<rect x="894" y="636" width="206" height="96" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="904.0" y="662.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">DependencyNotReady</text>
+<text x="904.0" y="682.0" font-size="13" fill="#1F2328" text-anchor="start">ScheduleRetry(delays)</text>
+<text x="904.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">luego error queue</text>
+<text x="904.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">(proyección que llegará)</text>
+<rect x="1112" y="636" width="206" height="96" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1122.0" y="662.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">Permanentes</text>
+<text x="1122.0" y="682.0" font-size="13" fill="#1F2328" text-anchor="start">Json, Argument, Format,</text>
+<text x="1122.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">NotSupported → error</text>
+<text x="1122.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">queue sin reintento</text>
+<rect x="1330" y="636" width="206" height="96" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="1340.0" y="662.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">Resto (transitorias)</text>
+<text x="1340.0" y="682.0" font-size="13" fill="#1F2328" text-anchor="start">RetryWithCooldown</text>
+<text x="1340.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">1 s · 5 s · 15 s</text>
+<text x="1340.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">luego error queue</text>
+<rect x="676" y="744" width="860" height="46" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="686.0" y="768.0" font-size="13" fill="#1F2328" text-anchor="start">Cola de errores: wolverine-dead-letter-queue · alerta de Grafana a los 5 min · drenado manual (runbook README §48)</text>
+<path d="M 1412.0 548.0 L 1412.0 600.0" fill="none" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="6 4" marker-end="url(#arr-red)"/>
+<rect x="48" y="830" width="740" height="132" rx="8" ry="8" fill="#E6F6F7" stroke="#237A80" stroke-width="1.6"/>
+<text x="58.0" y="856.0" font-size="14" font-weight="700" fill="#237A80" text-anchor="start">Codegen Static (UseTaxVisionCodeGeneration)</text>
+<text x="58.0" y="876.0" font-size="13" fill="#1F2328" text-anchor="start">Static en Production, Dynamic en el resto; se fuerza con</text>
+<text x="58.0" y="894.0" font-size="13" fill="#1F2328" text-anchor="start">Wolverine__CodeGeneration__TypeLoadMode (doble guion bajo)</text>
+<text x="58.0" y="912.0" font-size="13" fill="#1F2328" text-anchor="start">Código versionado en &lt;Svc&gt;.Api/Internal/Generated/WolverineHandlers</text>
+<text x="58.0" y="930.0" font-size="13" fill="#1F2328" text-anchor="start">Regenerar: scripts/codegen/regenerate-wolverine-code.ps1 (fuerza Dynamic)</text>
+<text x="58.0" y="948.0" font-size="13" fill="#1F2328" text-anchor="start">Vigila: PreGeneratedHandlerCodeTests · incidente: Tasks 2.9 GB → 184 MB</text>
+<rect x="812" y="830" width="740" height="132" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="822.0" y="856.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">Comandos punto a punto y contratos</text>
+<text x="822.0" y="876.0" font-size="13" fill="#1F2328" text-anchor="start">Orden a un único servicio: cola dedicada sin fanout</text>
+<text x="822.0" y="894.0" font-size="13" fill="#1F2328" text-anchor="start">ToRabbitQueue("cloudstorage-file-deletions") · *-client-form-commands</text>
+<text x="822.0" y="912.0" font-size="13" fill="#1F2328" text-anchor="start">Contratos en BuildingBlocks/Messaging con [MessageIdentity] estable</text>
+<text x="822.0" y="930.0" font-size="13" fill="#1F2328" text-anchor="start">Evolución aditiva: campos nuevos opcionales; no renombrar tipos CLR</text>
+<text x="822.0" y="948.0" font-size="13" fill="#1F2328" text-anchor="start">Antes de re-publicar un evento, revisar todos sus consumidores</text>
+<rect x="48" y="980" width="1504" height="62" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="60" y="1000" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<rect x="60" y="1009" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="98" y="1022" font-size="13" fill="#1F2328">Paso en un servicio</text>
+<rect x="241.94" y="1009" width="30" height="16" rx="3" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.4"/>
+<text x="279.94" y="1022" font-size="13" fill="#1F2328">Cola / exchange / contrato</text>
+<rect x="470.42" y="1009" width="30" height="16" rx="3" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.4"/>
+<text x="508.42" y="1022" font-size="13" fill="#1F2328">Persistencia</text>
+<rect x="607.38" y="1009" width="30" height="16" rx="3" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.4"/>
+<text x="645.38" y="1022" font-size="13" fill="#1F2328">Regla</text>
+<rect x="702.35" y="1009" width="30" height="16" rx="3" fill="#FDECEC" stroke="#C0392B" stroke-width="1.4"/>
+<text x="740.35" y="1022" font-size="13" fill="#1F2328">Fallo / error queue</text>
+<rect x="879.09" y="1009" width="30" height="16" rx="3" fill="#E6F6F7" stroke="#237A80" stroke-width="1.4"/>
+<text x="917.09" y="1022" font-size="13" fill="#1F2328">Operación</text>
+<path d="M 1000.19 1017 L 1028.19 1017" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="1038.19" y="1022" font-size="13" fill="#1F2328">Flujo del mensaje</text>
+<path d="M 1171.73 1017 L 1199.73 1017" stroke="#C0392B" stroke-width="1.7" stroke-dasharray="5 3" marker-end="url(#arr-red)"/>
+<text x="1209.73" y="1022" font-size="13" fill="#1F2328">Camino de error</text>
+<text x="30" y="1088" font-size="13" fill="#555B63" font-style="italic">Fuentes: Wolverine_RabbitMQ.md · Roslyn_Produccion.md · Proyecciones.md · Notification_Email.md · BuildingBlocks.md</text>
+</svg>

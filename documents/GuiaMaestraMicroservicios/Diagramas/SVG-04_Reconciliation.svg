@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1070" width="1600" height="1070" font-family="Segoe UI, Arial, sans-serif">
+<title>Reconciliación de proyecciones (anti-entropía)</title>
+<desc>El evento en vivo es el camino principal; el snapshot paginado por M2M repara datos previos, eventos perdidos y arranques en frío</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1600" height="1070" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">Reconciliación de proyecciones (anti-entropía)</text>
+<text x="30" y="66" font-size="14" fill="#555B63">El evento en vivo es el camino principal; el snapshot paginado por M2M repara datos previos, eventos perdidos y arranques en frío</text>
+<rect x="30" y="110" width="220" height="590" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="136.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Servicio dueño</text>
+<text x="40.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">del dato</text>
+<text x="40.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">Tenant · Customer ·</text>
+<text x="40.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">Auth · Subscription</text>
+<text x="40.0" y="246.0" font-size="13" fill="#1F2328" text-anchor="start">Publica sus eventos</text>
+<text x="40.0" y="264.0" font-size="13" fill="#1F2328" text-anchor="start">(camino principal)</text>
+<text x="40.0" y="300.0" font-size="13" fill="#1F2328" text-anchor="start">Expone internal/*</text>
+<text x="40.0" y="318.0" font-size="13" fill="#1F2328" text-anchor="start">para reconciliar</text>
+<rect x="1350" y="110" width="220" height="590" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="1360.0" y="136.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">Proyección local</text>
+<text x="1360.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">en el consumidor</text>
+<text x="1360.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">UserPermissions</text>
+<text x="1360.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">TenantPlanCode</text>
+<text x="1360.0" y="228.0" font-size="13" fill="#1F2328" text-anchor="start">TenantTimeZone</text>
+<text x="1360.0" y="246.0" font-size="13" fill="#1F2328" text-anchor="start">CustomerAssignment</text>
+<text x="1360.0" y="264.0" font-size="13" fill="#1F2328" text-anchor="start">Directorios (FI)</text>
+<text x="1360.0" y="300.0" font-size="13" fill="#1F2328" text-anchor="start">Cada fila guarda</text>
+<text x="1360.0" y="318.0" font-size="13" fill="#1F2328" text-anchor="start">la versión aplicada</text>
+<text x="278.0" y="130.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">A · Camino principal: evento en vivo</text>
+<rect x="278" y="140" width="240" height="96" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="288.0" y="166.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">Publica el evento</text>
+<text x="288.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">PublishMessage&lt;T&gt;() → fanout</text>
+<text x="288.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">taxvision-events</text>
+<text x="288.0" y="222.0" font-size="13" fill="#1F2328" text-anchor="start">Guardar antes de publicar</text>
+<rect x="546" y="140" width="240" height="96" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="556.0" y="166.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">Cola &lt;svc&gt;-events</text>
+<text x="556.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">Inbox durable</text>
+<text x="556.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">(deduplica por MessageId)</text>
+<rect x="814" y="140" width="240" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="824.0" y="166.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Consumer del servicio</text>
+<text x="824.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">TenantId sale del evento</text>
+<text x="824.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">correlation.Push(...)</text>
+<rect x="1082" y="140" width="240" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1092.0" y="166.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">ApplyIfNewer(versión)</text>
+<text x="1092.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">Menor que la aplicada → descarta</text>
+<text x="1092.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">Igual → re-aplica</text>
+<path d="M 250.0 188.0 L 278.0 188.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 518.0 188.0 L 546.0 188.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 786.0 188.0 L 814.0 188.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1054.0 188.0 L 1082.0 188.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1322.0 188.0 L 1350.0 188.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="278.0" y="286.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">B · Respaldo: snapshot de reconciliación (pull M2M)</text>
+<rect x="1082" y="302" width="240" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1092.0" y="328.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Job de reconciliación</text>
+<text x="1092.0" y="348.0" font-size="13" fill="#1F2328" text-anchor="start">Espera ApplicationStarted</text>
+<text x="1092.0" y="366.0" font-size="13" fill="#1F2328" text-anchor="start">Scope y correlación nuevos</text>
+<text x="1092.0" y="384.0" font-size="13" fill="#1F2328" text-anchor="start">Nunca tumba el servicio</text>
+<rect x="814" y="302" width="240" height="96" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6"/>
+<text x="824.0" y="328.0" font-size="14" font-weight="700" fill="#475569" text-anchor="start">IServiceTokenAcquirer</text>
+<text x="824.0" y="348.0" font-size="13" fill="#1F2328" text-anchor="start">Token para PlatformTenant.Id</text>
+<text x="824.0" y="366.0" font-size="13" fill="#1F2328" text-anchor="start">Caché con margen de 30 s</text>
+<text x="824.0" y="384.0" font-size="13" fill="#1F2328" text-anchor="start">POST auth/service-token</text>
+<rect x="546" y="302" width="240" height="96" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6"/>
+<text x="556.0" y="328.0" font-size="14" font-weight="700" fill="#475569" text-anchor="start">Endpoint interno del dueño</text>
+<text x="556.0" y="348.0" font-size="13" fill="#1F2328" text-anchor="start">ServiceOnly + actor Service</text>
+<text x="556.0" y="366.0" font-size="13" fill="#1F2328" text-anchor="start">[RateLimitExempt]</text>
+<text x="556.0" y="384.0" font-size="13" fill="#1F2328" text-anchor="start">Gateway: 404 a /internal</text>
+<path d="M 1082.0 350.0 L 1054.0 350.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 814.0 350.0 L 786.0 350.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 546.0 350.0 L 250.0 350.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="334.2" y="340.0" width="127.5" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="398.0" y="354.5" font-size="13" fill="#444B55" text-anchor="middle">GET ?page=n&amp;size</text>
+<rect x="278" y="452" width="240" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="288.0" y="478.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Página del snapshot</text>
+<text x="288.0" y="498.0" font-size="13" fill="#1F2328" text-anchor="start">page ≥ 1 · size acotado</text>
+<text x="288.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">Tenant: lista sin total</text>
+<text x="288.0" y="534.0" font-size="13" fill="#1F2328" text-anchor="start">Customer: PagedResult + total</text>
+<rect x="546" y="452" width="240" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="556.0" y="478.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Upsert versionado</text>
+<text x="556.0" y="498.0" font-size="13" fill="#1F2328" text-anchor="start">Misma regla que el consumer</text>
+<text x="556.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">Guarda por página</text>
+<text x="556.0" y="534.0" font-size="13" fill="#1F2328" text-anchor="start">Sin diferencias no escribe</text>
+<rect x="814" y="452" width="240" height="96" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="824.0" y="478.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">¿Quedan páginas?</text>
+<text x="824.0" y="498.0" font-size="13" fill="#1F2328" text-anchor="start">Tenant: página corta = fin</text>
+<text x="824.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">Customer: page*size ≥ total</text>
+<path d="M 250.0 500.0 L 278.0 500.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 518.0 500.0 L 546.0 500.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 786.0 500.0 L 814.0 500.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 934.0 452.0 L 934.0 425.0 L 666.0 425.0 L 666.0 398.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="756.8" y="415.0" width="86.4" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="800.0" y="429.5" font-size="13" fill="#444B55" text-anchor="middle">sí: page + 1</text>
+<rect x="814" y="600" width="240" height="130" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="824.0" y="626.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">ReconciliationRetry</text>
+<text x="824.0" y="646.0" font-size="13" fill="#1F2328" text-anchor="start">NextDelay(completed, interval)</text>
+<text x="824.0" y="664.0" font-size="13" fill="#1F2328" text-anchor="start">true → interval (12 h)</text>
+<text x="824.0" y="682.0" font-size="13" fill="#1F2328" text-anchor="start">false → AfterFailure (2 min)</text>
+<text x="824.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">Lo usan 5 jobs (test los fija)</text>
+<text x="824.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">Fallo del dueño: completed = false</text>
+<path d="M 934.0 548.0 L 934.0 600.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="865.7" y="564.0" width="136.6" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="934.0" y="578.5" font-size="13" fill="#444B55" text-anchor="middle">no: completed = true</text>
+<path d="M 1054.0 665.0 L 1202.0 665.0 L 1202.0 398.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1144.7" y="510.0" width="114.5" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="1202.0" y="524.5" font-size="13" fill="#444B55" text-anchor="middle">siguiente pasada</text>
+<path d="M 666.0 548.0 L 666.0 744.0 L 1460.0 744.0 L 1460.0 700.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="841.5" y="734.0" width="337.1" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="1010.0" y="748.5" font-size="13" fill="#444B55" text-anchor="middle">Escribe la fila · ChangeTracker.Clear() entre páginas</text>
+<rect x="30" y="780" width="500" height="150" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="40.0" y="806.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">Versionado: un snapshot viejo no pisa uno nuevo</text>
+<text x="40.0" y="826.0" font-size="13" fill="#1F2328" text-anchor="start">Permisos: PermissionsVersion (la sube Auth)</text>
+<text x="40.0" y="844.0" font-size="13" fill="#1F2328" text-anchor="start">Plan y entitlements: RevisionNumber</text>
+<text x="40.0" y="862.0" font-size="13" fill="#1F2328" text-anchor="start">Zona: SourceVersion o SourceUpdatedAtUtc</text>
+<text x="40.0" y="880.0" font-size="13" fill="#1F2328" text-anchor="start">Reconcile(zone, readAtUtc) adelanta la hora</text>
+<text x="40.0" y="898.0" font-size="13" fill="#1F2328" text-anchor="start">Asignaciones: Version; aplica solo si es mayor</text>
+<text x="40.0" y="916.0" font-size="13" fill="#1F2328" text-anchor="start">Directorios FI: observedAtUtc al inicio de pasada</text>
+<rect x="550" y="780" width="560" height="150" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6"/>
+<text x="560.0" y="806.0" font-size="14" font-weight="700" fill="#475569" text-anchor="start">Endpoints internos (M2M, [RateLimitExempt])</text>
+<text x="560.0" y="826.0" font-size="13" fill="#1F2328" text-anchor="start">Tenant  GET internal/tenants/directory (sin total)</text>
+<text x="560.0" y="844.0" font-size="13" fill="#1F2328" text-anchor="start">Customer  GET internal/customers/reconciliation</text>
+<text x="560.0" y="862.0" font-size="13" fill="#1F2328" text-anchor="start">Customer  GET internal/customers/assignments/reconciliation</text>
+<text x="560.0" y="880.0" font-size="13" fill="#1F2328" text-anchor="start">Auth  GET internal/users/{owners,staff,…}/reconciliation</text>
+<text x="560.0" y="898.0" font-size="13" fill="#1F2328" text-anchor="start">Subscription  GET internal/tenants/{id}/entitlements</text>
+<text x="560.0" y="916.0" font-size="13" fill="#1F2328" text-anchor="start">PlatformTenant: lo exigen Customer y Auth; Tenant no</text>
+<rect x="1130" y="780" width="440" height="150" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="1140.0" y="806.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">Push en la fuente (la fuente re-publica)</text>
+<text x="1140.0" y="826.0" font-size="13" fill="#1F2328" text-anchor="start">Auth · PermissionsReconciliationService</text>
+<text x="1140.0" y="844.0" font-size="13" fill="#1F2328" text-anchor="start">Re-publica UserRolesChanged cada 6 h,</text>
+<text x="1140.0" y="862.0" font-size="13" fill="#1F2328" text-anchor="start">lotes de 50, sin subir versión</text>
+<text x="1140.0" y="880.0" font-size="13" fill="#1F2328" text-anchor="start">Subscription · EntitlementSnapshotReconciliationJob</text>
+<text x="1140.0" y="898.0" font-size="13" fill="#1F2328" text-anchor="start">OnlyIfChanged: repara a Subscription,</text>
+<text x="1140.0" y="916.0" font-size="13" fill="#1F2328" text-anchor="start">no a los consumidores</text>
+<rect x="30" y="948" width="1540" height="62" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="42" y="968" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<rect x="42" y="977" width="30" height="16" rx="3" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.4"/>
+<text x="80" y="990" font-size="13" fill="#1F2328">Mensajería / evento</text>
+<rect x="230.31" y="977" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="268.31" y="990" font-size="13" fill="#1F2328">Lógica del servicio</text>
+<rect x="409.26" y="977" width="30" height="16" rx="3" fill="#EEF2F7" stroke="#475569" stroke-width="1.4"/>
+<text x="447.26" y="990" font-size="13" fill="#1F2328">Llamada M2M</text>
+<rect x="557.66" y="977" width="30" height="16" rx="3" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.4"/>
+<text x="595.66" y="990" font-size="13" fill="#1F2328">Decisión o regla</text>
+<rect x="717.76" y="977" width="30" height="16" rx="3" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.4"/>
+<text x="755.76" y="990" font-size="13" fill="#1F2328">Proyección</text>
+<path d="M 846.14 985 L 874.14 985" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="884.14" y="990" font-size="13" fill="#1F2328">Flujo</text>
+<text x="30" y="1058" font-size="13" fill="#555B63" font-style="italic">Fuentes: Reconciliation.md · Proyecciones.md · M2M_ServiceAuth.md</text>
+</svg>

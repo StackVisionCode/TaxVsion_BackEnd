@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 1822" width="1500" height="1822" font-family="Segoe UI, Arial, sans-serif">
+<title>SVG-14 · Cambio en Cloudflare: procedimiento manual con el senior (11 pasos)</title>
+<desc>Pasos 1-4, 8 y 10 se apoyan en el código (Caddyfile, Gateway, deploy.yml). Pasos 5-7, 9 y 11 son Recomendación: el repo no tiene una plantilla escrita de solicitud al senior (decisión pendiente, Cloudflare.md §3).</desc>
+<defs><marker id="ah-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/></marker><marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2F5D9E"/></marker><marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker><marker id="ah-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B7791F"/></marker><marker id="ah-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B83232"/></marker><marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FA0"/></marker><marker id="ah-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2C7A7B"/></marker><marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/></marker></defs>
+<rect x="0" y="0" width="1500" height="1822" fill="#FFFFFF"/>
+<rect class="ctr" x="30.0" y="1730.0" width="1440.0" height="68.0" rx="8" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.2"/>
+<text x="40.0" y="1753.0" font-size="14" font-weight="700" fill="#111827">Leyenda</text>
+<rect class="ctr" x="30.0" y="162.0" width="700.0" height="1558.0" rx="8" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="0.8"/>
+<rect class="ctr" x="770.0" y="162.0" width="700.0" height="1558.0" rx="8" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="0.8"/>
+<text x="30.0" y="42.0" font-size="24" font-weight="700" fill="#111827">SVG-14 · Cambio en Cloudflare: procedimiento manual con el senior (11 pasos)</text>
+<text x="30.0" y="68.0" font-size="14" fill="#4B5563">Pasos 1-4, 8 y 10 se apoyan en el código (Caddyfile, Gateway, deploy.yml). Pasos 5-7, 9 y 11 son Recomendación: el repo no tiene una plantilla escrita de solicitud al senior</text>
+<text x="30.0" y="88.0" font-size="14" fill="#4B5563">(decisión pendiente, Cloudflare.md §3).</text>
+<rect class="box" x="30.0" y="112.0" width="700.0" height="40.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="380.0" y="135.0" font-size="14" font-weight="700" text-anchor="middle" fill="#111827">Desarrollador (repo, flota local)</text>
+<rect class="box" x="770.0" y="112.0" width="700.0" height="40.0" rx="6" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="1120.0" y="135.0" font-size="14" font-weight="700" text-anchor="middle" fill="#111827">Senior (panel de Cloudflare)</text>
+<rect class="box" x="100.0" y="182.0" width="560.0" height="98.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="110.0" y="205.0" font-size="14" font-weight="700" fill="#111827">1 · Identificar el host</text>
+<text x="110.0" y="228.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="228.0" font-size="13" fill="#1F2937">¿api.&lt;dominio&gt;, subdominio de oficina (*.&lt;dominio&gt;) o un hostname</text>
+<text x="124.0" y="246.0" font-size="13" fill="#1F2937">nuevo?</text>
+<text x="110.0" y="264.0" font-size="13" font-style="italic" fill="#4B5563">Fuente: Caddyfile (taxvision_api / taxvision_tenant)</text>
+<rect class="box" x="100.0" y="320.0" width="560.0" height="98.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="110.0" y="343.0" font-size="14" font-weight="700" fill="#111827">2 · Identificar el path</text>
+<text x="110.0" y="366.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="366.0" font-size="13" fill="#1F2937">Prefijo /&lt;prefijo&gt;/... único; no chocar con /taxvision-storage,</text>
+<text x="124.0" y="384.0" font-size="13" fill="#1F2937">/taxvision-temp, /taxvision-quarantine</text>
+<text x="110.0" y="402.0" font-size="13" font-style="italic" fill="#4B5563">Fuente: Gateway_YARP.md §6</text>
+<rect class="box" x="100.0" y="458.0" width="560.0" height="98.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="110.0" y="481.0" font-size="14" font-weight="700" fill="#111827">3 · Configurar YARP en el repo</text>
+<text x="110.0" y="504.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="504.0" font-size="13" fill="#1F2937">Ruta + cluster con health check, entrada en LoadShedding:Criticality</text>
+<text x="110.0" y="522.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="522.0" font-size="13" fill="#1F2937">Override del destino en compose + depends_on; regla en Caddy si se</text>
+<text x="124.0" y="540.0" font-size="13" fill="#1F2937">abre en el navegador</text>
+<rect class="box" x="100.0" y="596.0" width="560.0" height="80.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="110.0" y="619.0" font-size="14" font-weight="700" fill="#111827">4 · Identificar si cambia Cloudflare</text>
+<text x="110.0" y="642.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="642.0" font-size="13" fill="#1F2937">Path nuevo consumido por XHR: no cambia Cloudflare</text>
+<text x="110.0" y="660.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="660.0" font-size="13" fill="#1F2937">Hostname nuevo, puerto no HTTP, Turnstile: sí cambia</text>
+<polygon points="380.0,716.0 530.0,761 380.0,806.0 230.0,761" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="380.0" y="755.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">¿Requiere cambio en</text>
+<text x="380.0" y="773.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Cloudflare?</text>
+<rect class="box" x="100.0" y="846.0" width="560.0" height="98.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="110.0" y="869.0" font-size="14" font-weight="700" fill="#111827">5 · Preparar la solicitud</text>
+<text x="110.0" y="892.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="892.0" font-size="13" fill="#1F2937">Hostname, servicio destino (http://localhost:&lt;puerto&gt;), proxied o DNS</text>
+<text x="124.0" y="910.0" font-size="13" fill="#1F2937">only, fecha y cómo se verifica</text>
+<text x="110.0" y="928.0" font-size="13" font-style="italic" fill="#4B5563">Recomendación (plantilla no escrita hoy)</text>
+<rect class="box" x="840.0" y="984.0" width="560.0" height="80.0" rx="6" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="850.0" y="1007.0" font-size="14" font-weight="700" fill="#111827">6 · Aprobación</text>
+<text x="850.0" y="1030.0" font-size="13" fill="#B7791F">•</text>
+<text x="864.0" y="1030.0" font-size="13" fill="#1F2937">El dueño o el senior aprueban el cambio antes de tocar el panel</text>
+<text x="850.0" y="1048.0" font-size="13" font-style="italic" fill="#4B5563">Requiere aprobación</text>
+<rect class="box" x="840.0" y="1104.0" width="560.0" height="98.0" rx="6" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="850.0" y="1127.0" font-size="14" font-weight="700" fill="#111827">7 · El senior configura</text>
+<text x="850.0" y="1150.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="864.0" y="1150.0" font-size="13" fill="#1F2937">Public hostname en el túnel, registro DNS (DNS only si no es HTTP) o</text>
+<text x="864.0" y="1168.0" font-size="13" fill="#1F2937">widget Turnstile</text>
+<text x="850.0" y="1186.0" font-size="13" font-style="italic" fill="#4B5563">Documentación histórica: portal client.&lt;dominio&gt;, TURN, Turnstile</text>
+<rect class="box" x="100.0" y="1242.0" width="560.0" height="98.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="110.0" y="1265.0" font-size="14" font-weight="700" fill="#111827">8 · Verificar el routing</text>
+<text x="110.0" y="1288.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="1288.0" font-size="13" fill="#1F2937">dig +short &lt;host&gt;: proxied → IPs de Cloudflare; DNS only → IP del</text>
+<text x="124.0" y="1306.0" font-size="13" fill="#1F2937">servidor</text>
+<text x="110.0" y="1324.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="1324.0" font-size="13" fill="#1F2937">curl -I https://&lt;host&gt;/health/live → 200 del gateway</text>
+<rect class="box" x="300.0" y="1380.0" width="900.0" height="80.0" rx="6" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="310.0" y="1403.0" font-size="14" font-weight="700" fill="#111827">9 · Permisos y secretos (dev + senior)</text>
+<text x="310.0" y="1426.0" font-size="13" fill="#2C7A7B">•</text>
+<text x="324.0" y="1426.0" font-size="13" fill="#1F2937">Token DNS de Caddy separado del de Auth, con Zone:DNS:Edit y Zone:Zone:Read; no reutilizarlo</text>
+<text x="310.0" y="1444.0" font-size="13" fill="#2C7A7B">•</text>
+<text x="324.0" y="1444.0" font-size="13" fill="#1F2937">Claves nuevas (p. ej. Turnstile) como secrets de GitHub en production-extra + ProductionExtraSecretsDeployTests</text>
+<rect class="box" x="300.0" y="1500.0" width="900.0" height="80.0" rx="6" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="310.0" y="1523.0" font-size="14" font-weight="700" fill="#111827">10 · TLS (dev + senior)</text>
+<text x="310.0" y="1546.0" font-size="13" fill="#2C7A7B">•</text>
+<text x="324.0" y="1546.0" font-size="13" fill="#1F2937">*.&lt;dominio&gt; ya cubierto por el wildcard DNS-01 de Caddy (Caddyfile:125-138)</text>
+<text x="310.0" y="1564.0" font-size="13" fill="#2C7A7B">•</text>
+<text x="324.0" y="1564.0" font-size="13" fill="#1F2937">Un host fuera del wildcard necesita bloque en Caddy (repo) y revisión del senior</text>
+<rect class="box" x="100.0" y="1620.0" width="560.0" height="80.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="110.0" y="1643.0" font-size="14" font-weight="700" fill="#111827">11 · Evidencia</text>
+<text x="110.0" y="1666.0" font-size="13" fill="#2F5D9E">•</text>
+<text x="124.0" y="1666.0" font-size="13" fill="#1F2937">Salidas de dig y curl, healthcheck final del deploy</text>
+<text x="124.0" y="1684.0" font-size="13" fill="#1F2937">(https://${TAXVISION_DOMAIN}/health/ready), fecha y quién aprobó</text>
+<rect class="sw" x="42.0" y="1770.0" width="30" height="16" rx="3" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="82.0" y="1783.0" font-size="13" fill="#1F2937">Lo hace el desarrollador</text>
+<rect class="sw" x="284.0" y="1770.0" width="30" height="16" rx="3" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="324.0" y="1783.0" font-size="13" fill="#1F2937">Lo hace el senior</text>
+<rect class="sw" x="473.5" y="1770.0" width="30" height="16" rx="3" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="513.5" y="1783.0" font-size="13" fill="#1F2937">Requiere aprobación</text>
+<rect class="sw" x="678.0" y="1770.0" width="30" height="16" rx="3" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="718.0" y="1783.0" font-size="13" fill="#1F2937">Compartido dev + senior</text>
+<path class="leg" d="M 912.5 1778.0 L 942.5 1778.0" stroke="#2F5D9E" stroke-width="1.8" marker-end="url(#ah-blue)"/>
+<text x="952.5" y="1783.0" font-size="13" fill="#1F2937">Secuencia</text>
+<path class="leg" d="M 1042.0 1778.0 L 1072.0 1778.0" stroke="#6B7280" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#ah-gray)"/>
+<text x="1082.0" y="1783.0" font-size="13" fill="#1F2937">Atajo sin cambio en Cloudflare</text>
+<path class="arw" d="M 380.0 280.0 L 380.0 320.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 380.0 418.0 L 380.0 458.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 380.0 556.0 L 380.0 596.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 380.0 676.0 L 380.0 716.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 380.0 806.0 L 380.0 846.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 380.0 944.0 L 380.0 964.0 L 1120.0 964.0 L 1120.0 984.0" fill="none" stroke="#6B4FA0" stroke-width="1.6" marker-end="url(#ah-purple)"/>
+<path class="arw" d="M 1120.0 1064.0 L 1120.0 1104.0" fill="none" stroke="#6B4FA0" stroke-width="1.6" marker-end="url(#ah-purple)"/>
+<path class="arw" d="M 1120.0 1202.0 L 1120.0 1222.0 L 380.0 1222.0 L 380.0 1242.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 380.0 1340.0 L 380.0 1360.0 L 750.0 1360.0 L 750.0 1380.0" fill="none" stroke="#2C7A7B" stroke-width="1.6" marker-end="url(#ah-teal)"/>
+<path class="arw" d="M 750.0 1460.0 L 750.0 1500.0" fill="none" stroke="#2C7A7B" stroke-width="1.6" marker-end="url(#ah-teal)"/>
+<path class="arw" d="M 750.0 1580.0 L 750.0 1600.0 L 380.0 1600.0 L 380.0 1620.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 230.0 761.0 L 52.0 761.0 L 52.0 1291.0 L 100.0 1291.0" fill="none" stroke="#6B7280" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah-gray)"/>
+<rect class="lbl" x="389.5" y="815.0" width="25.0" height="22.0" rx="3" fill="#FFFFFF" fill-opacity="0.95" stroke="none"/>
+<text class="lbl" x="402.0" y="829.0" font-size="13" text-anchor="middle" fill="#2F5D9E">Sí</text>
+<rect class="lbl" x="50.2" y="734.0" width="107.5" height="22.0" rx="3" fill="#FFFFFF" fill-opacity="0.95" stroke="none"/>
+<text class="lbl" x="104.0" y="748.0" font-size="13" text-anchor="middle" fill="#6B7280">No: solo repo</text>
+</svg>

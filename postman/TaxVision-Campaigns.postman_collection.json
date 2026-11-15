@@ -30,9 +30,9 @@
               }
             ],
             "url": {
-              "raw": "{{gateway}}/auth/service-token",
+              "raw": "{{authService}}/auth/service-token",
               "host": [
-                "{{gateway}}"
+                "{{authService}}"
               ],
               "path": [
                 "auth",
@@ -1485,6 +1485,10 @@
     {
       "key": "scheduleId",
       "value": ""
+    },
+    {
+      "key": "authService",
+      "value": "http://localhost:5124"
     }
   ]
 }

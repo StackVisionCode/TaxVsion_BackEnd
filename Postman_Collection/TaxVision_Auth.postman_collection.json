@@ -275,9 +275,9 @@
           }
         },
         "url": {
-          "raw": "{{UrlBase}}/auth/service-token",
+          "raw": "{{AuthDirectBase}}/auth/service-token",
           "host": [
-            "{{UrlBase}}"
+            "{{AuthDirectBase}}"
           ],
           "path": [
             "auth",

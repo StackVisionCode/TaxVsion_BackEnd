@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1304" width="1600" height="1304" font-family="Segoe UI, Arial, sans-serif">
+<title>SVG-20 · Offboarding: participación por microservicio</title>
+<desc>Matriz de Investigaciones/Offboarding_Integraciones.md (registro OffboardingParticipants: 27 servicios, 51 pasos; 10 pre-flight offboarding-impact). Estado: Participa, No participa, Incompleta o Pendiente de confirmar.</desc>
+<defs><marker id="ah-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/></marker><marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2F5D9E"/></marker><marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker><marker id="ah-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B7791F"/></marker><marker id="ah-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B83232"/></marker><marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FA0"/></marker><marker id="ah-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2C7A7B"/></marker><marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/></marker></defs>
+<rect x="0" y="0" width="1600" height="1304" fill="#FFFFFF"/>
+<rect class="ctr" x="30.0" y="1212.0" width="1540.0" height="68.0" rx="8" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.2"/>
+<text x="40.0" y="1235.0" font-size="14" font-weight="700" fill="#111827">Leyenda de estados (color de la etiqueta)</text>
+<text x="30.0" y="42.0" font-size="24" font-weight="700" fill="#111827">SVG-20 · Offboarding: participación por microservicio</text>
+<text x="30.0" y="68.0" font-size="14" fill="#4B5563">Matriz de Investigaciones/Offboarding_Integraciones.md (registro OffboardingParticipants: 27 servicios, 51 pasos; 10 pre-flight offboarding-impact). Estado: Participa, No participa,</text>
+<text x="30.0" y="88.0" font-size="14" fill="#4B5563">Incompleta o Pendiente de confirmar.</text>
+<text x="30.0" y="138.0" font-size="16" font-weight="700" fill="#1F2937">Con trabajo activo, credenciales o datos privados (consumer propio)</text>
+<rect class="box" x="30.0" y="152.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="175.0" font-size="14" font-weight="700" fill="#111827">Auth (dueño)</text>
+<text x="40.0" y="198.0" font-size="13" fill="#1F2937">Estado terminal, corte de acceso, higiene y OffboardingRun;</text>
+<text x="40.0" y="216.0" font-size="13" fill="#1F2937">RecomputeTenantSeatSlotsConsumer recalcula asientos; registra</text>
+<text x="40.0" y="234.0" font-size="13" fill="#1F2937">los acuses.</text>
+<rect class="badge" x="436.2" y="160.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="480.1" y="174.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="548.0" y="152.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="558.0" y="175.0" font-size="14" font-weight="700" fill="#111827">Calendar</text>
+<text x="558.0" y="198.0" font-size="13" fill="#1F2937">Revoca el feed iCal; citas vigentes al sucesor o canceladas;</text>
+<text x="558.0" y="216.0" font-size="13" fill="#1F2937">desactiva reglas. PublicBookingHostOffboardedConsumer: demos a</text>
+<text x="558.0" y="234.0" font-size="13" fill="#1F2937">otro anfitrión o canceladas.</text>
+<rect class="badge" x="954.2" y="160.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="998.1" y="174.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<text x="558.0" y="262.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<rect class="box" x="1066.0" y="152.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="1076.0" y="175.0" font-size="14" font-weight="700" fill="#111827">Campaigns</text>
+<text x="1076.0" y="198.0" font-size="13" fill="#1F2937">Agendado RunAs al sucesor con campaigns.send; sin sucesor lo</text>
+<text x="1076.0" y="216.0" font-size="13" fill="#1F2937">pausa y publica CampaignSchedulesPausedOnOffboarding.</text>
+<rect class="badge" x="1472.2" y="160.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="1516.1" y="174.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<text x="1076.0" y="262.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<rect class="box" x="30.0" y="286.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="309.0" font-size="14" font-weight="700" fill="#111827">CloudStorage</text>
+<text x="40.0" y="332.0" font-size="13" fill="#1F2937">Revoca share links que creó (ShareLinkRevoked); conexión de nube</text>
+<text x="40.0" y="350.0" font-size="13" fill="#1F2937">de oficina marcada para revisión. Archivos personales no se</text>
+<text x="40.0" y="368.0" font-size="13" fill="#1F2937">reasignan.</text>
+<rect class="badge" x="436.2" y="294.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="480.1" y="308.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<text x="40.0" y="396.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<rect class="box" x="548.0" y="286.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="558.0" y="309.0" font-size="14" font-weight="700" fill="#111827">Communication (Node)</text>
+<text x="558.0" y="332.0" font-size="13" fill="#1F2937">Reuniones al sucesor o canceladas; sale de grupos; chats Direct</text>
+<text x="558.0" y="350.0" font-size="13" fill="#1F2937">cerrados; tickets al sucesor; acuse a mano. Riesgo V5.</text>
+<rect class="badge" x="954.2" y="294.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="998.1" y="308.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<text x="558.0" y="396.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<rect class="box" x="1066.0" y="286.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="1076.0" y="309.0" font-size="14" font-weight="700" fill="#111827">Connectors</text>
+<text x="1076.0" y="332.0" font-size="13" fill="#1F2937">El consumer solo reenvía PurgeOffboardedMailboxesCommand: el</text>
+<text x="1076.0" y="350.0" font-size="13" fill="#1F2937">acuse sale antes de purgar los buzones personales (V4).</text>
+<rect class="badge" x="1464.0" y="294.0" width="96.0" height="20" rx="10.0" fill="#B7791F" stroke="#B7791F"/>
+<text x="1512.0" y="308.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Incompleta</text>
+<text x="1076.0" y="396.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<rect class="box" x="30.0" y="420.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="443.0" font-size="14" font-weight="700" fill="#111827">Correspondence</text>
+<text x="40.0" y="466.0" font-size="13" fill="#1F2937">Borradores al sucesor, al buzón de oficina o descartados;</text>
+<text x="40.0" y="484.0" font-size="13" fill="#1F2937">enviados intactos; reintenta si Connectors no responde.</text>
+<rect class="badge" x="436.2" y="428.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="480.1" y="442.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<text x="40.0" y="530.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<rect class="box" x="548.0" y="420.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="558.0" y="443.0" font-size="14" font-weight="700" fill="#111827">Customer</text>
+<text x="558.0" y="466.0" font-size="13" fill="#1F2937">Directorio MarkOffboarded; preparador primario al sucesor o</text>
+<text x="558.0" y="484.0" font-size="13" fill="#1F2937">desasignado; revoca accesos ABAC; aviso de imports a quien</text>
+<text x="558.0" y="502.0" font-size="13" fill="#1F2937">retiró.</text>
+<rect class="badge" x="954.2" y="428.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="998.1" y="442.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<text x="558.0" y="530.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<rect class="box" x="1066.0" y="420.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="1076.0" y="443.0" font-size="14" font-weight="700" fill="#111827">Notes</text>
+<text x="1076.0" y="466.0" font-size="13" fill="#1F2937">Registra al retirado en OffboardedStaffProjection; override de</text>
+<text x="1076.0" y="484.0" font-size="13" fill="#1F2937">edición con notes.view_all. No transfiere autoría.</text>
+<rect class="badge" x="1472.2" y="428.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="1516.1" y="442.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="30.0" y="554.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="577.0" font-size="14" font-weight="700" fill="#111827">Notification</text>
+<text x="40.0" y="600.0" font-size="13" fill="#1F2937">5 handlers: directorio inactivo, revoca push, sale de</text>
+<text x="40.0" y="618.0" font-size="13" fill="#1F2937">audiencias, proyección authz inactiva; convierte los avisos</text>
+<text x="40.0" y="636.0" font-size="13" fill="#1F2937">derivados.</text>
+<rect class="badge" x="436.2" y="562.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="480.1" y="576.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="548.0" y="554.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="558.0" y="577.0" font-size="14" font-weight="700" fill="#111827">Reminder</text>
+<text x="558.0" y="600.0" font-size="13" fill="#1F2937">Cancela y desagenda (Quartz) todos sus recordatorios pendientes;</text>
+<text x="558.0" y="618.0" font-size="13" fill="#1F2937">persiste primero, desagenda después.</text>
+<rect class="badge" x="954.2" y="562.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="998.1" y="576.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="1066.0" y="554.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="1076.0" y="577.0" font-size="14" font-weight="700" fill="#111827">Signature</text>
+<text x="1076.0" y="600.0" font-size="13" fill="#1F2937">Archiva perfiles personales; borradores al sucesor o</text>
+<text x="1076.0" y="618.0" font-size="13" fill="#1F2937">descartados; preparador de enviadas al sucesor (identidad 8879)</text>
+<text x="1076.0" y="636.0" font-size="13" fill="#1F2937">o aviso a admins.</text>
+<rect class="badge" x="1472.2" y="562.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="1516.1" y="576.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<text x="1076.0" y="664.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<rect class="box" x="30.0" y="688.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="711.0" font-size="14" font-weight="700" fill="#111827">Tasks (+ Client Forms)</text>
+<text x="40.0" y="734.0" font-size="13" fill="#1F2937">Tareas, series, timers, client requests, intake links y form</text>
+<text x="40.0" y="752.0" font-size="13" fill="#1F2937">requests al sucesor, a quien retiró o pausados.</text>
+<rect class="badge" x="436.2" y="696.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="480.1" y="710.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<text x="40.0" y="798.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<rect class="box" x="548.0" y="688.0" width="504.0" height="120.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="558.0" y="711.0" font-size="14" font-weight="700" fill="#111827">Tenant</text>
+<text x="558.0" y="734.0" font-size="13" fill="#1F2937">Coordinador de seguridad WISP queda vacante y publica</text>
+<text x="558.0" y="752.0" font-size="13" fill="#1F2937">OfficeSecurityCoordinatorVacated. Su pre-flight admite</text>
+<text x="558.0" y="770.0" font-size="13" fill="#1F2937">TenantEmployee.</text>
+<rect class="badge" x="954.2" y="696.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="998.1" y="710.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<text x="558.0" y="798.0" font-size="13" font-style="italic" fill="#2F5D9E">pre-flight: GET offboarding-impact</text>
+<text x="30.0" y="846.0" font-size="16" font-weight="700" fill="#1F2937">Solo proyección de permisos · UserLifecyclePermissionsProjectionConsumer → IsActive = false (fail-closed)</text>
+<rect class="box" x="30.0" y="860.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="883.0" font-size="14" font-weight="700" fill="#111827">Billing</text>
+<rect class="badge" x="230.6" y="872.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="274.5" y="886.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="340.4" y="860.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="350.4" y="883.0" font-size="14" font-weight="700" fill="#111827">Catalog</text>
+<rect class="badge" x="541.0" y="872.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="584.9" y="886.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="650.8" y="860.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="660.8" y="883.0" font-size="14" font-weight="700" fill="#111827">Documents</text>
+<rect class="badge" x="851.4" y="872.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="895.3" y="886.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="961.2" y="860.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="971.2" y="883.0" font-size="14" font-weight="700" fill="#111827">FinancialInsights</text>
+<rect class="badge" x="1161.8" y="872.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="1205.7" y="886.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="1271.6" y="860.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="1281.6" y="883.0" font-size="14" font-weight="700" fill="#111827">Growth</text>
+<rect class="badge" x="1472.2" y="872.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="1516.1" y="886.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="30.0" y="918.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="941.0" font-size="14" font-weight="700" fill="#111827">Inventory</text>
+<rect class="badge" x="230.6" y="930.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="274.5" y="944.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="340.4" y="918.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="350.4" y="941.0" font-size="14" font-weight="700" fill="#111827">PaymentApp</text>
+<rect class="badge" x="541.0" y="930.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="584.9" y="944.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="650.8" y="918.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="660.8" y="941.0" font-size="14" font-weight="700" fill="#111827">PaymentClient</text>
+<rect class="badge" x="851.4" y="930.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="895.3" y="944.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="961.2" y="918.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="971.2" y="941.0" font-size="14" font-weight="700" fill="#111827">Postmaster</text>
+<rect class="badge" x="1161.8" y="930.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="1205.7" y="944.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="1271.6" y="918.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="1281.6" y="941.0" font-size="14" font-weight="700" fill="#111827">Scribe</text>
+<rect class="badge" x="1472.2" y="930.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="1516.1" y="944.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="30.0" y="976.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="999.0" font-size="14" font-weight="700" fill="#111827">Sms</text>
+<rect class="badge" x="230.6" y="988.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="274.5" y="1002.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="340.4" y="976.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="350.4" y="999.0" font-size="14" font-weight="700" fill="#111827">Subscription</text>
+<rect class="badge" x="541.0" y="988.0" width="87.8" height="20" rx="10.0" fill="#2E7D4F" stroke="#2E7D4F"/>
+<text x="584.9" y="1002.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Participa</text>
+<rect class="box" x="650.8" y="976.0" width="298.4" height="46.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="660.8" y="999.0" font-size="14" font-weight="700" fill="#111827">Wallet</text>
+<rect class="badge" x="843.2" y="988.0" width="96.0" height="20" rx="10.0" fill="#B7791F" stroke="#B7791F"/>
+<text x="891.2" y="1002.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Incompleta</text>
+<text x="30.0" y="1040.0" font-size="13" fill="#B7791F">Wallet: el consumer existe pero no tiene prueba en TaxVision.Wallet.Tests.</text>
+<text x="30.0" y="1074.0" font-size="16" font-weight="700" fill="#1F2937">Fuera del registro</text>
+<rect class="box" x="30.0" y="1088.0" width="376.0" height="102.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="1111.0" font-size="14" font-weight="700" fill="#111827">ContentScanner</text>
+<text x="40.0" y="1134.0" font-size="13" fill="#1F2937"></text>
+<text x="40.0" y="1152.0" font-size="13" fill="#1F2937">Escáner sin bus ni datos de usuario.</text>
+<rect class="badge" x="40.0" y="1120.0" width="112.4" height="20" rx="10.0" fill="#6B7280" stroke="#6B7280"/>
+<text x="96.2" y="1134.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">No participa</text>
+<rect class="box" x="418.0" y="1088.0" width="376.0" height="102.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="428.0" y="1111.0" font-size="14" font-weight="700" fill="#111827">Gateway</text>
+<text x="428.0" y="1134.0" font-size="13" fill="#1F2937"></text>
+<text x="428.0" y="1152.0" font-size="13" fill="#1F2937">Solo enruta; la denylist la aplica cada</text>
+<text x="428.0" y="1170.0" font-size="13" fill="#1F2937">servicio.</text>
+<rect class="badge" x="428.0" y="1120.0" width="112.4" height="20" rx="10.0" fill="#6B7280" stroke="#6B7280"/>
+<text x="484.2" y="1134.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">No participa</text>
+<rect class="box" x="806.0" y="1088.0" width="376.0" height="102.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="816.0" y="1111.0" font-size="14" font-weight="700" fill="#111827">CommunicationRecorder</text>
+<text x="816.0" y="1134.0" font-size="13" fill="#1F2937"></text>
+<text x="816.0" y="1152.0" font-size="13" fill="#1F2937">Worker sin datos de empleado propios; confirmar</text>
+<text x="816.0" y="1170.0" font-size="13" fill="#1F2937">que no persiste ids de usuario.</text>
+<rect class="badge" x="816.0" y="1120.0" width="194.4" height="20" rx="10.0" fill="#6B4FA0" stroke="#6B4FA0"/>
+<text x="913.2" y="1134.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Pendiente de confirmar</text>
+<rect class="box" x="1194.0" y="1088.0" width="376.0" height="102.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="1204.0" y="1111.0" font-size="14" font-weight="700" fill="#111827">CommunicationTranscriptWorker</text>
+<text x="1204.0" y="1134.0" font-size="13" fill="#1F2937"></text>
+<text x="1204.0" y="1152.0" font-size="13" fill="#1F2937">Transcripts vía CloudStorage o Communication;</text>
+<text x="1204.0" y="1170.0" font-size="13" fill="#1F2937">confirmar que no persiste ids.</text>
+<rect class="badge" x="1204.0" y="1120.0" width="194.4" height="20" rx="10.0" fill="#6B4FA0" stroke="#6B4FA0"/>
+<text x="1301.2" y="1134.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Pendiente de confirmar</text>
+<rect class="sw" x="42.0" y="1252.0" width="30" height="16" rx="3" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="82.0" y="1265.0" font-size="13" fill="#1F2937">Participa</text>
+<rect class="sw" x="171.5" y="1252.0" width="30" height="16" rx="3" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="211.5" y="1265.0" font-size="13" fill="#1F2937">Participación incompleta</text>
+<rect class="sw" x="413.5" y="1252.0" width="30" height="16" rx="3" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
+<text x="453.5" y="1265.0" font-size="13" fill="#1F2937">No participa</text>
+<rect class="sw" x="565.5" y="1252.0" width="30" height="16" rx="3" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="605.5" y="1265.0" font-size="13" fill="#1F2937">Pendiente de confirmar</text>
+</svg>
