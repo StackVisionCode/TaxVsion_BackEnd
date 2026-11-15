@@ -27,34 +27,6 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             
             /*
-            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
-            * The service registration for TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
-            * 
-            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository Lifetime: Scoped ImplementationType: TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository
-            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository is not public, so requires service location
-            */
-            var customerPortalCopier = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Delivery.CustomerPortalCopier>(serviceScope.ServiceProvider);
-            
-            /*
-            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository Lifetime: Scoped ImplementationType: TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository
-            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository is not public, so requires service location
-            * 
-            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
-            * The service registration for TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
-            */
-            var requestDocumentVerifier = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IRequestDocumentVerifier>(serviceScope.ServiceProvider);
-            
-            /*
-            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository is not public, so requires service location
-            */
-            var fileMetadataRefRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository>(serviceScope.ServiceProvider);
-            
-            /*
-            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            */
-            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
-            
-            /*
             * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository Lifetime: Scoped ImplementationType: TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository
             * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository is not public, so requires service location
             * 
@@ -71,7 +43,35 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var deliverableFiles = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Delivery.DeliverableFiles>(serviceScope.ServiceProvider);
+            
+            /*
+            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
+            * The service registration for TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository Lifetime: Scoped ImplementationType: TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository
+            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository is not public, so requires service location
+            */
+            var customerPortalCopier = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Delivery.CustomerPortalCopier>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository Lifetime: Scoped ImplementationType: TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository
+            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository is not public, so requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
+            * The service registration for TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            */
+            var requestDocumentVerifier = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IRequestDocumentVerifier>(serviceScope.ServiceProvider);
             var signatureRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureRequestRepository>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository is not public, so requires service location
+            */
+            var fileMetadataRefRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);

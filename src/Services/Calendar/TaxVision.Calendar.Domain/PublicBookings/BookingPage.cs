@@ -1,6 +1,7 @@
 using System.Text.Json;
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Calendar.Domain.Booking;
 using TaxVision.Calendar.Domain.Types;
 using TaxVision.Calendar.Domain.ValueObjects;
@@ -249,7 +250,7 @@ public sealed class BookingPage : AggregateRoot
 
         var seen = new HashSet<Guid>();
         var anyActive = false;
-        var validated = new List<(BookingPageHostInput Input, string Name, string Email, string Url)>();
+        var validated = new List<(BookingPageHostInput Input, string Name, string Email, string Url, string? Zone)>();
         foreach (var host in hosts)
         {
             if (host.UserId == Guid.Empty || !seen.Add(host.UserId))
@@ -264,14 +265,17 @@ public sealed class BookingPage : AggregateRoot
             var url = ValueObjects.MeetingUrl.Create(host.MeetingUrl);
             if (url.IsFailure)
                 return Result.Failure(BookingPageErrors.MeetingUrlInvalid);
-            validated.Add((host, name, email.Value.Value, url.Value.Value));
+            string? zone = null;
+            if (!string.IsNullOrWhiteSpace(host.TimeZoneId) && !IanaTimeZone.TryNormalize(host.TimeZoneId, out zone))
+                return Result.Failure(BookingPageErrors.HostTimeZoneInvalid);
+            validated.Add((host, name, email.Value.Value, url.Value.Value, zone));
         }
 
         if (IsActive && !anyActive)
             return Result.Failure(BookingPageErrors.NoActiveHost);
 
         _hosts.RemoveAll(existing => !seen.Contains(existing.UserId));
-        foreach (var (input, name, email, url) in validated)
+        foreach (var (input, name, email, url, zone) in validated)
         {
             var host = _hosts.Find(existing => existing.UserId == input.UserId);
             if (host is null)
@@ -279,7 +283,7 @@ public sealed class BookingPage : AggregateRoot
                 host = BookingPageHost.Create(Id, input.UserId);
                 _hosts.Add(host);
             }
-            host.Apply(name, email, url, input.SortOrder, input.IsActive);
+            host.Apply(name, email, url, input.SortOrder, input.IsActive, zone);
         }
 
         Touch(actingUserId, nowUtc);

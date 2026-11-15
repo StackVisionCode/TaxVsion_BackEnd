@@ -49,7 +49,8 @@ public sealed class TaskSeriesController(IMessageBus bus, IUserPermissionsSource
             request.Mode,
             request.AnchorUtc,
             request.EndsAtUtc,
-            request.MaxOccurrences
+            request.MaxOccurrences,
+            request.AnchorOn
         );
 
         var result = await bus.InvokeAsync<Result<TaskSeriesResponse>>(command, ct);

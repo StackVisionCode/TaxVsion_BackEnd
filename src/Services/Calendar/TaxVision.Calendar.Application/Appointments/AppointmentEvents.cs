@@ -89,6 +89,18 @@ internal static class AppointmentEvents
         };
     }
 
+    /// <summary>
+    /// Lo que anuncia un correo: el inicio de la cita, o la próxima ocurrencia de la serie (la primera de la regla
+    /// dice "5 de enero" en noviembre). Una serie ya terminada anuncia su primera ocurrencia, como antes.
+    /// </summary>
+    public static DateTime? UpcomingStartOf(Appointment appointment, DateTime nowUtc) =>
+        appointment.Timing.StartUtc
+        ?? (
+            appointment.Recurrence is null
+                ? null
+                : OccurrenceExpander.NextStart(appointment, nowUtc) ?? OccurrenceExpander.FirstStart(appointment)
+        );
+
     /// <summary>Inicio de la cita o de la primera ocurrencia de la serie; null si la regla no da ninguna.</summary>
     public static DateTime? FirstStartOf(Appointment appointment) =>
         appointment.Timing.StartUtc
@@ -161,6 +173,9 @@ internal static class AppointmentEvents
             Scope = scope,
             OriginalStartUtc = originalStartUtc,
             Reason = reason,
+            // La ocurrencia cancelada, o la cita sola; una serie entera no tiene una hora que decir.
+            StartUtc = originalStartUtc ?? appointment.Timing.StartUtc,
+            TimeZoneId = appointment.Timing.TimeZone.Id,
             MeetingId = appointment.MeetingId,
             OrganizerUserId = appointment.OrganizerUserId,
             Recipients = RecipientsOf(appointment),

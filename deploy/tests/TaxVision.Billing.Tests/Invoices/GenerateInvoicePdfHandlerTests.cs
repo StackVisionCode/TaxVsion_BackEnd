@@ -147,6 +147,74 @@ public sealed class GenerateInvoicePdfHandlerTests
         Assert.Null(documents.Sent!.PaymentUrl);
     }
 
+    /// <summary>P6: el PDF dice el día de la oficina; emitida a las 20:00 del 31-dic en Nueva York es del 31 y de 2026.</summary>
+    [Fact]
+    public async Task A_frozen_invoice_prints_its_office_dates()
+    {
+        var invoice = Issued(10_000);
+        var frozen = Invoice
+            .CreateDraft(
+                Tenant,
+                Actor,
+                new CustomerSnapshot(Guid.NewGuid(), "Client", "client@example.com", null, null, null),
+                "USD",
+                [new DraftInvoiceLine("Tax prep", 1, 10_000, 0)],
+                null,
+                Now
+            )
+            .Value;
+        frozen.Issue(
+            InvoiceNumber.Create("INV-2026-00044").Value,
+            new DateTime(2027, 1, 1, 1, 0, 0, DateTimeKind.Utc),
+            BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/New_York"),
+            Actor
+        );
+        frozen.ApplyPayment(
+            InvoicePaymentSource.Manual,
+            "ref",
+            Money.Create(10_000, "USD").Value,
+            PaymentMethod.Cash,
+            new DateTime(2027, 1, 15, 2, 0, 0, DateTimeKind.Utc),
+            Actor
+        );
+        var documents = new RecordingDocuments();
+
+        await RunAsync(frozen, documents);
+
+        var sent = Assert.IsType<InvoiceDocumentRequest>(documents.Sent);
+        Assert.Equal(new DateOnly(2026, 12, 31), sent.IssueDate);
+        Assert.Equal(new DateOnly(2027, 1, 30), sent.DueDate);
+        Assert.Equal(2026, sent.TaxYear);
+        Assert.Equal(new DateOnly(2027, 1, 14), sent.PaidDate);
+        Assert.NotNull(invoice);
+    }
+
+    /// <summary>Una factura emitida antes no tiene fechas congeladas: conserva el día que ya se imprimió (UTC).</summary>
+    [Fact]
+    public async Task An_invoice_issued_before_keeps_the_dates_it_already_printed()
+    {
+        var old = Invoice
+            .CreateDraft(
+                Tenant,
+                Actor,
+                new CustomerSnapshot(Guid.NewGuid(), "Client", "client@example.com", null, null, null),
+                "USD",
+                [new DraftInvoiceLine("Tax prep", 1, 10_000, 0)],
+                null,
+                Now
+            )
+            .Value;
+        var issuedAt = new DateTime(2027, 1, 1, 1, 0, 0, DateTimeKind.Utc);
+        old.Issue(InvoiceNumber.Create("INV-2027-00001").Value, issuedAt, issuedAt.AddDays(30), Actor);
+        var documents = new RecordingDocuments();
+
+        await RunAsync(old, documents);
+
+        var sent = Assert.IsType<InvoiceDocumentRequest>(documents.Sent);
+        Assert.Equal(new DateOnly(2027, 1, 1), sent.IssueDate);
+        Assert.Equal(2027, sent.TaxYear);
+    }
+
     private static Invoice Issued(long cents)
     {
         var invoice = Invoice

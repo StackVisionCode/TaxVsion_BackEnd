@@ -11,6 +11,9 @@ public sealed record FormRequestAssignedIntegrationEvent : IntegrationEvent
     public required string Title { get; init; }
     public required bool HasMessage { get; init; }
     public DateTime? DueAtUtc { get; init; }
+
+    /// <summary>Fecha civil del vencimiento (aditivo): el instante es el fin de ese día en la oficina.</summary>
+    public DateOnly? DueOn { get; init; }
     public int? TaxYear { get; init; }
     public required Guid RequestedByUserId { get; init; }
     public required Guid FormTemplateId { get; init; }

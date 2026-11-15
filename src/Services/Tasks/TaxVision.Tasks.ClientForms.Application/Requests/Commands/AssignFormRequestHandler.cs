@@ -27,7 +27,8 @@ public sealed record AssignFormRequestCommand(
     int? TaxYear,
     Guid? TaskId,
     Guid? PrefillFromRequestId,
-    DateTime NowUtc
+    DateTime NowUtc,
+    DateOnly? DueOn = null
 );
 
 public static class AssignFormRequestHandler
@@ -47,9 +48,11 @@ public static class AssignFormRequestHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         IClientFormsMetrics metrics,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
+        command = await WithResolvedDueAsync(command, zones, ct);
         var text = StaffTextGuard.Validate(command.Title, command.MessageToClient);
         if (text.IsFailure)
             return Result.Failure<FormRequestResponse>(text.Error);
@@ -79,6 +82,17 @@ public static class AssignFormRequestHandler
             ct
         );
     }
+
+    // La fecha civil (DueOn) manda: vence al final de ese día en la oficina.
+    private static async Task<AssignFormRequestCommand> WithResolvedDueAsync(
+        AssignFormRequestCommand command,
+        IOfficeTimeZone zones,
+        CancellationToken ct
+    ) =>
+        command with
+        {
+            DueAtUtc = await FormDueDates.ResolveAsync(command.TenantId, command.DueOn, command.DueAtUtc, zones, ct),
+        };
 
     private static async Task<Result<FormRequestResponse>> CreateAndPersistAsync(
         AssignFormRequestCommand command,
@@ -276,7 +290,8 @@ public static class AssignFormRequestHandler
             null,
             command.ByUserId,
             command.NowUtc,
-            prefill.PrefilledComponentIds
+            prefill.PrefilledComponentIds,
+            command.DueOn
         );
 
     private sealed record PrefillResult(

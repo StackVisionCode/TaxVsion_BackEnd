@@ -64,7 +64,7 @@ function runtime(connected: (callId: string) => number = () => 0) {
     publisher,
     emitter,
     presence: { clearBusy: async (i: { userId: string }) => { cleared.push(i.userId); } } as unknown as PresenceService,
-    callUsage: { addSeconds: async (i: { seconds: number }) => { usage.push(i.seconds); }, getSeconds: async () => 0 },
+    callUsage: { addSeconds: async (i: { seconds: number }) => { usage.push(i.seconds); }, secondsThisPeriod: async () => 0 },
   };
   return { calls, clock, publisher, emitter, cleared, usage, deps };
 }

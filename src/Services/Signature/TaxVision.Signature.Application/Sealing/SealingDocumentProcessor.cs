@@ -1,3 +1,4 @@
+using System.Globalization;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions.Sealing;
@@ -171,7 +172,7 @@ public sealed class SealingDocumentProcessor(
         // Sin el id de la SignatureRequest: es un identificador interno sensible y no debe estamparse en
         // cada página del documento firmado. La integridad ya la ancla el "Doc SHA-256" del pie, y la
         // referencia del envelope vive en el Certificate of Completion (documento aparte).
-        var footer = $"Completed {evidenceAtUtc:yyyy-MM-dd HH:mm} UTC";
+        var footer = string.Create(CultureInfo.InvariantCulture, $"Completed {evidenceAtUtc:yyyy-MM-dd HH:mm} UTC");
         var sealingRequest = new SealingRequest(
             originalBytes,
             fields,
@@ -215,7 +216,8 @@ public sealed class SealingDocumentProcessor(
                         SignedAtUtc: signedAt,
                         SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? signerImage : null,
                         Value: textValue,
-                        FontSizePt: field.FontSizePt
+                        FontSizePt: field.FontSizePt,
+                        DisplayDate: SealedFieldDates.DateFor(signedAt, request.DisplayTimeZoneId)
                     )
                 );
             }
@@ -239,7 +241,8 @@ public sealed class SealingDocumentProcessor(
                     SignerDisplayName: preparerName,
                     SignedAtUtc: preparerSignedAt,
                     SignatureImageBytes: field.Kind == SignatureFieldKind.Signature ? preparerImage : null,
-                    Value: null
+                    Value: null,
+                    DisplayDate: SealedFieldDates.DateFor(preparerSignedAt, request.DisplayTimeZoneId)
                 )
             );
         }

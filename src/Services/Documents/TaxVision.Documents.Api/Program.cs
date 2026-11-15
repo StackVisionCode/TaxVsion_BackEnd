@@ -46,6 +46,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddDocumentsInfrastructure(builder.Configuration);
 
 // BB-09 — Documents usaba IConnectionMultiplexer a pelo para IRateCounter y se quedaba sin
@@ -127,6 +128,8 @@ builder.Host.UseWolverine(options =>
     options.Discovery.IncludeAssembly(Assembly.GetExecutingAssembly());
     options.ListenForPlatformSettings();
     options.Discovery.IncludeAssembly(Assembly.Load("TaxVision.Documents.Application"));
+    // Zona de cada oficina: consumer compartido de TenantTimeZones, vive fuera de Application.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConnection =

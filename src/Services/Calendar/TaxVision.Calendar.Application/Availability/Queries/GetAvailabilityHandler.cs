@@ -50,11 +50,12 @@ public static class GetAvailabilityHandler
         var busy = await BusyAsync(query, appointments, ct);
 
         var office = await offices.GetAsync(query.TenantId, ct);
+        var officeZone = office is null ? null : await offices.GetTimeZoneIdAsync(query.TenantId, ct);
         var windows = OfficeCalendar.Restrict(
             WorkingWindows.Build(rules, query.FromUtc, query.ToUtc),
             query.FromUtc,
             query.ToUtc,
-            office?.ToSchedule(rules.Count > 0 ? rules[0].TimeZone.Id : null)
+            office?.ToSchedule(rules.Count > 0 ? rules[0].TimeZone.Id : null, officeZone)
         );
         var free = ConflictDetector.FreeSlots(query.FromUtc, query.ToUtc, windows, busy, blocks, minimum.Value);
 

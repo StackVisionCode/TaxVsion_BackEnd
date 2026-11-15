@@ -175,7 +175,7 @@ public static class GenerateSaaSReceiptDocumentHandler
             SaaSPaymentId: command.SaaSPaymentId,
             TemplateKey: command.TemplateKey,
             TemplateVersion: command.TemplateVersion,
-            FileName: ReceiptFileNames.For(platformBrand, command.Receipt.PaidAtUtc),
+            FileName: ReceiptFileNames.For(platformBrand, command.Receipt.PaidAtUtc, command.Receipt.TimeZoneId),
             CorrelationId: correlationId,
             Receipt: command.Receipt
         );

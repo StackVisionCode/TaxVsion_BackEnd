@@ -26,6 +26,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Campaigns.Application.Runs.Abstractions.IWalletSpendClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
@@ -44,10 +45,13 @@ namespace Internal.Generated.WolverineHandlers
             * 
             * Dependency: Descriptor: ServiceType: TaxVision.Campaigns.Application.Contacts.Abstractions.ICampaignCustomerAssignmentReader Lifetime: Scoped ImplementationType: TaxVision.Campaigns.Infrastructure.Customers.CampaignCustomerAssignmentReader
             * Concrete type TaxVision.Campaigns.Infrastructure.Customers.CampaignCustomerAssignmentReader is not public, so requires service location
+            * 
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Campaigns.Application.Scheduling.Abstractions.IOfficeTimeZone Lifetime: Scoped ImplementationType: TaxVision.Campaigns.Infrastructure.TimeZones.OfficeTimeZone
+            * Concrete type TaxVision.Campaigns.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
             */
             var scheduledRunOpener = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Campaigns.Application.Scheduling.Commands.ScheduledRunOpener>(serviceScope.ServiceProvider);
             var campaignScheduleRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Campaigns.Application.Scheduling.Abstractions.ICampaignScheduleRepository>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var fireCampaignScheduleCommand = (TaxVision.Campaigns.Application.Scheduling.Commands.FireCampaignScheduleCommand)context.Envelope.Message;
 

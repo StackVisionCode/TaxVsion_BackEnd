@@ -89,6 +89,9 @@ public sealed record InvoiceSentToCustomerIntegrationEvent : BillingIntegrationE
     public required string Currency { get; init; }
     public DateTime? DueDateUtc { get; init; }
 
+    /// <summary>Vencimiento civil congelado al emitir (P6, aditivo); null en facturas viejas.</summary>
+    public DateOnly? DueOn { get; init; }
+
     /// <summary>URL ESTABLE de pago (la que vive años). Null si la factura no tiene cobro online.</summary>
     public string? PaymentLink { get; init; }
 

@@ -34,7 +34,11 @@ public sealed class FormRequest : AggregateRoot
     public string? MessageToClient { get; private set; }
     public int? TaxYear { get; private set; }
     public Guid? TaskId { get; private set; }
-    public DateTime? DueAtUtc { get; private set; }
+    public DateTime? DueAtUtc { get; internal set; }
+
+    /// <summary>Fecha civil dada al cliente (el instante, fin del día de la oficina, ya no la dice); sin ella, el día UTC (P5).</summary>
+    public DateOnly? DueOn { get; private set; }
+    public DateOnly? DueCivilDate => DueOn ?? (DueAtUtc is { } due ? DateOnly.FromDateTime(due) : null);
 
     [UserReference(
         UserReferenceKind.ActiveWork,
@@ -121,7 +125,8 @@ public sealed class FormRequest : AggregateRoot
         Guid? responsibleUserId,
         Guid requestedByUserId,
         DateTime nowUtc,
-        IReadOnlyCollection<string>? prefilledComponentIds = null
+        IReadOnlyCollection<string>? prefilledComponentIds = null,
+        DateOnly? dueOn = null
     )
     {
         if (tenantId == Guid.Empty || requestedByUserId == Guid.Empty || !participant.IsValid)
@@ -175,6 +180,7 @@ public sealed class FormRequest : AggregateRoot
             TaxYear = taxYear,
             TaskId = taskId,
             DueAtUtc = dueAtUtc,
+            DueOn = dueAtUtc is null ? null : dueOn,
             RequestedByUserId = requestedByUserId,
             RequestedAtUtc = nowUtc,
             Status = FormRequestStatus.Pending,
@@ -403,7 +409,7 @@ public sealed class FormRequest : AggregateRoot
         return Result.Success();
     }
 
-    public Result ChangeDueDate(DateTime? dueAtUtc, Guid byUserId, DateTime nowUtc)
+    public Result ChangeDueDate(DateTime? dueAtUtc, Guid byUserId, DateTime nowUtc, DateOnly? dueOn = null)
     {
         var editable = EnsureEditable();
         if (editable.IsFailure)
@@ -411,6 +417,7 @@ public sealed class FormRequest : AggregateRoot
         if (dueAtUtc.HasValue && dueAtUtc.Value <= nowUtc)
             return Result.Failure(FormRequestErrors.InvalidDueDate);
         DueAtUtc = dueAtUtc;
+        DueOn = dueAtUtc is null ? null : dueOn;
         Touch(nowUtc);
         AddDomainEvent(new FormRequestDueDateChanged(Id, TenantId, dueAtUtc, byUserId, nowUtc));
         return Result.Success();

@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Billing.Domain.Invoices.Events;
 using TaxVision.Billing.Domain.ValueObjects;
 
@@ -25,6 +26,12 @@ public sealed class Invoice : AggregateRoot
 
     public DateTime IssueDateUtc { get; private set; }
     public DateTime DueDateUtc { get; private set; }
+
+    // Fechas legales congeladas al emitir (P6); null en las emitidas antes: el render usa el día UTC de siempre.
+    public DateOnly? IssueDate { get; private set; }
+    public DateOnly? DueDate { get; private set; }
+    public string? IssueTimeZoneId { get; private set; }
+    public DateOnly? PaidDate { get; private set; }
     public DateTime? SentAtUtc { get; private set; }
     public DateTime? PaidAtUtc { get; private set; }
 
@@ -337,6 +344,7 @@ public sealed class Invoice : AggregateRoot
         {
             // Ya no está pagada: el recibo no vale.
             PaidAtUtc = null;
+            PaidDate = null;
             ReceiptNumber = null;
             ReceiptHash = null;
         }
@@ -346,6 +354,8 @@ public sealed class Invoice : AggregateRoot
     private void IssueReceipt(long paidCents, ValueObjects.PaymentMethod method, DateTime paidAtUtc)
     {
         PaidAtUtc = paidAtUtc;
+        // Día de pago en la zona congelada al emitir; sin zona (factura vieja), el render usa el día UTC.
+        PaidDate = IssueTimeZoneId is { } zone ? CivilDate.Of(paidAtUtc, ResolvedTimeZone.Resolve(zone)) : null;
         PaymentMethod = method;
         ReceiptNumber = $"REC-{InvoiceNumber}";
         ReceiptHash = ComputeReceiptHash(paidCents, method, paidAtUtc);
@@ -411,6 +421,24 @@ public sealed class Invoice : AggregateRoot
             : Result.Failure(
                 new Error("Billing.Invoice.NotDraft", $"Only a Draft invoice can be issued (current: {Status}).")
             );
+
+    /// <summary>
+    /// Emite con las fechas civiles de la oficina (P6): emisión y vencimiento se congelan en esa zona y el
+    /// vencimiento es el final de ese día (P4).
+    /// </summary>
+    public Result Issue(InvoiceNumber invoiceNumber, DateTime nowUtc, ResolvedTimeZone officeZone, Guid actorUserId)
+    {
+        var issueDate = CivilDate.Of(nowUtc, officeZone);
+        var dueDate = issueDate.AddDays(PaymentTerms is { } terms ? terms.NetDays() : LegacyNetDays);
+        var issued = Issue(invoiceNumber, nowUtc, LocalDay.EndUtc(dueDate, officeZone), actorUserId);
+        if (issued.IsFailure)
+            return issued;
+
+        IssueDate = issueDate;
+        DueDate = dueDate;
+        IssueTimeZoneId = officeZone.Id;
+        return issued;
+    }
 
     /// <summary>Emite el borrador: le asigna el número server-side y las fechas, y lo mueve a Issued.
     /// A partir de acá la factura es inmutable en montos.</summary>
@@ -736,7 +764,12 @@ public sealed class Invoice : AggregateRoot
     /// datos del pago obtiene el mismo hash → sirve para verificar que el recibo no fue alterado.</summary>
     private string ComputeReceiptHash(long amountCents, ValueObjects.PaymentMethod method, DateTime paidAtUtc)
     {
-        var canonical = $"{TenantId:N}|{Id:N}|{InvoiceNumber}|{amountCents}|{Currency}|{method}|{paidAtUtc:O}";
+        // El Kind no entra al hash: una fecha leída de la base viene sin "Z" (TZ05-H7).
+        var utc =
+            paidAtUtc.Kind == DateTimeKind.Local
+                ? paidAtUtc.ToUniversalTime()
+                : DateTime.SpecifyKind(paidAtUtc, DateTimeKind.Utc);
+        var canonical = $"{TenantId:N}|{Id:N}|{InvoiceNumber}|{amountCents}|{Currency}|{method}|{utc:O}";
         var bytes = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(canonical));
         return Convert.ToHexString(bytes);
     }

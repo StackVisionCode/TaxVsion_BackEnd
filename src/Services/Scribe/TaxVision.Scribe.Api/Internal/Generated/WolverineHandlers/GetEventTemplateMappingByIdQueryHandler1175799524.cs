@@ -22,11 +22,11 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var scribeDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Scribe.Infrastructure.Persistence.ScribeDbContext>(serviceScope.ServiceProvider);
             var eventTemplateMappingRepository = new TaxVision.Scribe.Infrastructure.Persistence.Repositories.EventTemplateMappingRepository(scribeDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var getEventTemplateMappingByIdQuery = (TaxVision.Scribe.Application.EventMappings.Queries.GetEventTemplateMappingByIdQuery)context.Envelope.Message;
 

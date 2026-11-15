@@ -21,6 +21,8 @@ public static class TaskCreatedEventFactory
             CustomerId = task.Reference.CustomerId,
             TaxYear = task.Reference.TaxYear,
             DueAtUtc = task.Due?.DueAtUtc,
+            DueOn = task.Due?.DueOn,
+            DueTimeZoneId = task.Due?.TimeZoneId,
             ParentTaskId = task.ParentTaskId,
         };
 }

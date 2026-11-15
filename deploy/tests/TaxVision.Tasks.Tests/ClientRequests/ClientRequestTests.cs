@@ -11,6 +11,26 @@ public sealed class ClientRequestTests
     private static readonly DateTime Now = new(2026, 3, 1, 12, 0, 0, DateTimeKind.Utc);
 
     [Fact]
+    public void A_request_keeps_the_civil_date_given_to_the_client()
+    {
+        var request = ClientRequest
+            .Create(
+                TenantId,
+                CustomerId,
+                PreparerId,
+                null,
+                "W-2",
+                null,
+                new DateTime(2026, 11, 16, 4, 59, 59, DateTimeKind.Utc),
+                Now,
+                dueOn: new DateOnly(2026, 11, 15)
+            )
+            .Value;
+
+        Assert.Equal(new DateOnly(2026, 11, 15), request.DueCivilDate);
+    }
+
+    [Fact]
     public void A_new_request_starts_pending()
     {
         var request = NewRequest();
@@ -195,6 +215,34 @@ public sealed class ClientRequestTests
 
         Assert.Equal(ClientRequestErrors.Closed, request.HandOverFollowUp(Guid.NewGuid()).Error);
         Assert.Equal(PreparerId, request.StaffRecipientUserId);
+    }
+
+    // P9: una solicitud abierta con fecha civil vence al fin de ese día en la zona nueva de la oficina.
+    [Fact]
+    public void An_open_request_due_moves_to_the_end_of_the_same_day_in_the_new_zone()
+    {
+        var newYork = BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/New_York");
+        var chicago = BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/Chicago");
+        var day = new DateOnly(2026, 11, 20);
+        var request = ClientRequest
+            .Create(
+                TenantId,
+                CustomerId,
+                PreparerId,
+                null,
+                "W-2",
+                null,
+                BuildingBlocks.TimeZones.LocalDay.EndUtc(day, newYork),
+                Now,
+                day
+            )
+            .Value;
+
+        Assert.True(request.RezoneCivilDue("America/New_York", chicago));
+
+        Assert.Equal(BuildingBlocks.TimeZones.LocalDay.EndUtc(day, chicago), request.DueAtUtc);
+        Assert.Equal(day, request.DueOn);
+        Assert.False(request.RezoneCivilDue("America/New_York", chicago));
     }
 
     private static ClientRequest NewRequest() =>

@@ -345,7 +345,8 @@ public sealed class TenantDomainTests
 
         tenant.UpdateNameAndTimeZone("Acme", "America/Chicago", nowUtc);
 
-        var raised = Assert.IsType<TenantUpdatedDomainEvent>(Assert.Single(tenant.DomainEvents));
+        // Un solo TenantUpdated por edición; el cambio de zona además se anuncia aparte (P9).
+        var raised = Assert.Single(tenant.DomainEvents.OfType<TenantUpdatedDomainEvent>());
         Assert.Equal("Acme", raised.Name);
         Assert.Equal("America/Chicago", raised.DefaultTimeZoneId);
         Assert.Equal(nowUtc, raised.UpdatedAtUtc);

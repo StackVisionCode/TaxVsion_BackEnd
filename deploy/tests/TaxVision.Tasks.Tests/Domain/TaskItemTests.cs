@@ -487,6 +487,39 @@ public sealed class TaskItemTests
     private static readonly DateTime Apr15 = new(2026, 4, 15, 12, 0, 0, DateTimeKind.Utc);
     private static readonly DateTime Oct15 = new(2026, 10, 15, 12, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>La fecha pedida al cliente se guarda como fecha civil: su instante (fin del día) ya no la dice.</summary>
+    [Fact]
+    public void The_client_due_keeps_the_civil_date_it_was_asked_for()
+    {
+        var task = NewTask();
+
+        task.MoveToWaitingOnClient(
+            Note("falta W-2"),
+            new DateTime(2026, 11, 16, 4, 59, 59, DateTimeKind.Utc),
+            UserId,
+            Now,
+            clientDueOn: new DateOnly(2026, 11, 15)
+        );
+
+        Assert.Equal(new DateOnly(2026, 11, 15), task.ClientDueCivilDate);
+    }
+
+    /// <summary>Regla de lectura P5: lo guardado antes, a medianoche UTC, es esa fecha civil.</summary>
+    [Fact]
+    public void A_client_due_saved_at_midnight_utc_reads_as_that_date()
+    {
+        var task = NewTask();
+
+        task.MoveToWaitingOnClient(
+            Note("falta W-2"),
+            new DateTime(2026, 11, 15, 0, 0, 0, DateTimeKind.Utc),
+            UserId,
+            Now
+        );
+
+        Assert.Equal(new DateOnly(2026, 11, 15), task.ClientDueCivilDate);
+    }
+
     private static DueDate Due(DateTime dueAtUtc, bool isStatutory) =>
         DueDate.Create(dueAtUtc, "America/New_York", isStatutory).Value;
 

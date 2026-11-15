@@ -15,13 +15,19 @@ namespace TaxVision.Campaigns.Application.Scheduling.Commands;
 /// <summary>Dispara el slot <paramref name="SlotUtc"/> de un agendado reclamado con <paramref name="LeaseToken"/>.</summary>
 public sealed record FireCampaignScheduleCommand(Guid TenantId, Guid ScheduleId, Guid LeaseToken, DateTime SlotUtc);
 
-/// <summary>Salta el slot sin run: regla de negocio o audiencia que no respondió a tiempo. Avanza el agendado.</summary>
-public sealed record SkipScheduledSlotCommand(Guid TenantId, Guid ScheduleId, Guid LeaseToken, DateTime SlotUtc);
+/// <summary>Difiere el slot por la ventana de SMS (P12): no abre run ni avanza el agendado.</summary>
+public sealed record DeferScheduledSlotCommand(
+    Guid TenantId,
+    Guid ScheduleId,
+    Guid LeaseToken,
+    DateTime SlotUtc,
+    DateTime DeferToUtc
+);
 
-public static class SkipScheduledSlotHandler
+public static class DeferScheduledSlotHandler
 {
     public static async Task<Result> Handle(
-        SkipScheduledSlotCommand command,
+        DeferScheduledSlotCommand command,
         ICampaignScheduleRepository schedules,
         IUnitOfWork unitOfWork,
         CancellationToken ct
@@ -31,6 +37,31 @@ public static class SkipScheduledSlotHandler
         if (schedule is null || !schedule.HoldsLease(command.LeaseToken, command.SlotUtc))
             return Result.Failure(CampaignScheduleErrors.LeaseLost);
 
+        schedule.DeferTo(command.DeferToUtc);
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+}
+
+/// <summary>Salta el slot sin run: regla de negocio o audiencia que no respondió a tiempo. Avanza el agendado.</summary>
+public sealed record SkipScheduledSlotCommand(Guid TenantId, Guid ScheduleId, Guid LeaseToken, DateTime SlotUtc);
+
+public static class SkipScheduledSlotHandler
+{
+    public static async Task<Result> Handle(
+        SkipScheduledSlotCommand command,
+        ICampaignScheduleRepository schedules,
+        IUnitOfWork unitOfWork,
+        IOfficeTimeZone zones,
+        CancellationToken ct
+    )
+    {
+        var schedule = await schedules.GetByIdAsync(command.TenantId, command.ScheduleId, ct);
+        if (schedule is null || !schedule.HoldsLease(command.LeaseToken, command.SlotUtc))
+            return Result.Failure(CampaignScheduleErrors.LeaseLost);
+
+        // P10: un agendado vivo sin ancla toma la de su próximo envío antes de avanzar.
+        schedule.AnchorToOfficeZone(await zones.ResolveAsync(command.TenantId, ct));
         schedule.MarkFired(Guid.Empty, DateTime.UtcNow);
         await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
@@ -87,7 +118,14 @@ public static class FireCampaignScheduleHandler
             return await SkipAsync(command, opened.Error, bus, ct);
         }
 
-        if (opened.IsFailure && opened.Error == CampaignScheduleErrors.LeaseLost)
+        // Lease perdido o slot diferido por la ventana de SMS: no se salta ni se avanza.
+        if (
+            opened.IsFailure
+            && (
+                opened.Error == CampaignScheduleErrors.LeaseLost
+                || opened.Error == CampaignScheduleErrors.OutsideSmsWindow
+            )
+        )
             return Result.Failure<CampaignRunResponse>(opened.Error);
 
         if (opened.IsFailure)

@@ -11,6 +11,26 @@ namespace TaxVision.Customer.Tests.Application;
 
 public sealed class RunCustomerImportHandlerTests
 {
+    // P20 (TZ15-H7): el año fiscal del cónyuge importado es el año en curso de la oficina, no el UTC.
+    [Fact]
+    public void Default_tax_year_is_the_office_local_year()
+    {
+        // 03:00Z del 1-ene-2027 = 21:00 del 31-dic-2026 en Chicago.
+        var newYearUtc = new DateTime(2027, 1, 1, 3, 0, 0, DateTimeKind.Utc);
+
+        Assert.Equal(
+            2026,
+            ImportRowApplier.DefaultTaxYear(
+                newYearUtc,
+                BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/Chicago")
+            )
+        );
+        Assert.Equal(
+            2027,
+            ImportRowApplier.DefaultTaxYear(newYearUtc, BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(null))
+        );
+    }
+
     // El detector ya excluye archivados: esto cubre al que se archiva entre el cruce y la fila.
     [Fact]
     public void ApplyUpdate_ArchivedCustomer_ReturnsFailureInsteadOfReportingTheRowAsUpdated()

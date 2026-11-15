@@ -39,6 +39,11 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             
             /*
+            * Concrete type TaxVision.Documents.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Documents.Application.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
+            
+            /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
@@ -51,9 +56,9 @@ namespace Internal.Generated.WolverineHandlers
             var tenantLogoResolver = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Documents.Application.Abstractions.ITenantLogoResolver>(serviceScope.ServiceProvider);
             var documentBrandingRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Documents.Application.Abstractions.IDocumentBrandingRepository>(serviceScope.ServiceProvider);
             var documentGenerationRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Documents.Application.Abstractions.IDocumentGenerationRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var processClientFormSummaryGenerationCommand = (TaxVision.Documents.Application.Generations.ClientFormSummary.ProcessClientFormSummaryGenerationCommand)context.Envelope.Message;
 
@@ -74,7 +79,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Documents.Application.Generations.ClientFormSummary.ProcessClientFormSummaryGenerationHandler");
                 
                 // The actual message execution
-                await TaxVision.Documents.Application.Generations.ClientFormSummary.ProcessClientFormSummaryGenerationHandler.Handle(processClientFormSummaryGenerationCommand, documentGenerationRepository, _protectedPayloadCodec, documentBrandingRepository, tenantLogoResolver, documentTemplateRenderer, _htmlToPdfConverter, documentStorageClient, _pdfPageCounter, unitOfWork, context, correlationContext, _platformSettings, _timeProvider, _loggerForMessage, cancellation).ConfigureAwait(false);
+                await TaxVision.Documents.Application.Generations.ClientFormSummary.ProcessClientFormSummaryGenerationHandler.Handle(processClientFormSummaryGenerationCommand, documentGenerationRepository, _protectedPayloadCodec, documentBrandingRepository, tenantLogoResolver, documentTemplateRenderer, _htmlToPdfConverter, documentStorageClient, _pdfPageCounter, unitOfWork, context, correlationContext, _platformSettings, _timeProvider, _loggerForMessage, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

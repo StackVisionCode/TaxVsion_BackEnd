@@ -118,7 +118,8 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
                 request.TaxYear,
                 request.TaskId,
                 request.PrefillFromRequestId,
-                DateTime.UtcNow
+                DateTime.UtcNow,
+                request.DueOn
             ),
             ct
         );
@@ -147,7 +148,8 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
                 request.DueAtUtc,
                 request.TaxYear,
                 DateTime.UtcNow,
-                await CanViewAllAsync(ct)
+                await CanViewAllAsync(ct),
+                request.DueOn
             ),
             ct
         );
@@ -366,7 +368,8 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
                     id,
                     request.DueAtUtc,
                     rowVersion,
-                    DateTime.UtcNow
+                    DateTime.UtcNow,
+                    request.DueOn
                 ),
                 ct
             )

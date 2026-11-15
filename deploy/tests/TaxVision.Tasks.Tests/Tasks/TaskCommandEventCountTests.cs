@@ -298,6 +298,7 @@ public sealed class TaskCommandEventCountTests
                 new RecordingTaskMetrics(),
                 new NoOpCascades(),
                 new NoUsers(),
+                new FixedOfficeZone("Etc/UTC"),
             };
             var method = handler.GetMethod("Handle", BindingFlags.Public | BindingFlags.Static)!;
             var args = method

@@ -78,6 +78,81 @@ describe('calendar consumers — invitados de la sala', () => {
     expect(invited.map((i) => i.inviteeUserId).sort()).toEqual([portalUser, staff].sort());
     expect(invited.find((i) => i.inviteeUserId === portalUser)?.inviteeKind).toBe('Customer');
     expect(events.some((e) => e.eventType === 'communication.meeting.linked_to_appointment.v1')).toBe(true);
+    // TZ03-H7 (P25): sin zona en la cita, el correo va en la de la oficina.
+    const invitationZones = events.filter((e) => e.eventType === 'communication.meeting.invitation_created.v1').map((e) => (e as unknown as { timeZone: string | null }).timeZone);
+    expect(new Set(invitationZones)).toEqual(new Set(['America/New_York']));
+  });
+
+  it('la sala de una cita usa la zona de la cita en sus correos (TZ03-H7)', async () => {
+    const tenantId = randomUUID();
+    const organizer = randomUUID();
+    const staff = randomUUID();
+    const customerId = randomUUID();
+    const portalUser = randomUUID();
+    const meetings = new Map<string, Meeting>();
+    const invitations: MeetingInvitation[] = [];
+    const events: IntegrationEvent[] = [];
+    const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
+
+    bindCalendarConsumers((type, handler) => handlers.set(type, handler), {
+      meetings: {
+        findById: async (_t: string, id: string) => meetings.get(id) ?? null,
+        findByAppointmentId: async () => null,
+        save: async (m: Meeting) => void meetings.set(m.id, m),
+        listInvitationsByMeeting: async () => [...invitations],
+        saveInvitation: async (i: MeetingInvitation) => void invitations.push(i),
+      },
+      appointmentRoomLock: { run: (_t: string, _a: string, work: () => Promise<unknown>) => work() },
+      publisher: { enqueue: async (e: IntegrationEvent) => void events.push(e) },
+      passcodes: { hash: async () => 'h' },
+      settings: { get: async () => ({ chatEnabled: true }) },
+      meetingMediaPolicy: { get: async () => ({ meshMaxParticipants: 4, defaultMaxParticipants: 10 }) },
+      effectiveSettings: {
+        resolve: async () => ({
+          meeting: { defaultDurationMinutes: 60, maxDurationMinutes: 240, guestsAllowed: false },
+          invitations: { minTtlHours: 168, expiryGraceHours: 24 },
+        }),
+      },
+      customerDirectory: {
+        findActiveByEmail: async (_t: string, email: string) =>
+          email === 'client@example.com' ? [{ customerId, email, displayName: 'Ana Client' }] : [],
+      },
+      userDirectory: { findActiveStaffByEmail: async () => null, findByUserId: async () => null },
+      customerPortalAccounts: {
+        findActiveByCustomerId: async (id: string) => (id === customerId ? { customerId, tenantId, userId: portalUser, isActive: true } : null),
+      },
+      tenantHostResolver: { resolveHost: async () => 'office.example.com', resolveTimeZone: async () => 'America/New_York' },
+      maxInvitationsPerMeeting: 200,
+    } as never);
+
+    await handlers.get('calendar.appointment_scheduled.v1')!({
+      eventId: randomUUID(),
+      eventType: 'calendar.appointment_scheduled.v1',
+      tenantId,
+      occurredOnUtc: new Date().toISOString(),
+      payload: {
+        TenantId: tenantId,
+        AppointmentId: randomUUID(),
+        Title: 'Return review',
+        OrganizerUserId: organizer,
+        StartUtc: new Date(Date.now() + 86_400_000).toISOString(),
+        IsVirtual: true,
+        TimeZoneId: 'America/Chicago',
+        CustomerId: customerId,
+        AttendeeUserIds: [staff],
+        Recipients: [
+          { Email: 'host@example.com', UserId: organizer },
+          { Email: 'staff@example.com', UserId: staff },
+          { Email: 'client@example.com', UserId: null },
+          { Email: 'outsider@example.com', UserId: null },
+        ],
+      },
+    });
+
+    expect([...meetings.values()][0]?.toSnapshot().timeZoneId).toBe('America/Chicago');
+    const zones = events.filter((e) => e.eventType === 'communication.meeting.invitation_created.v1').map((e) => (e as unknown as { timeZone: string | null }).timeZone);
+    expect(zones.length).toBeGreaterThan(0);
+    expect(new Set(zones)).toEqual(new Set(['America/Chicago']));
   });
 
   it('quien se suma después a una cita virtual queda invitado a su sala; a una presencial, no', async () => {

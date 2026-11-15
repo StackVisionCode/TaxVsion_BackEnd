@@ -30,9 +30,9 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Signature.Application.Abstractions.IAuthzUserPermissionsProjectionRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var authzUserPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IAuthzUserPermissionsProjectionRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var userReactivatedIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.UserReactivatedIntegrationEvent)context.Envelope.Message;
 

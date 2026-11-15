@@ -26,6 +26,11 @@ namespace Internal.Generated.WolverineHandlers
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Scribe.Application.Abstractions.ICloudStorageClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
             * The service registration for TaxVision.Scribe.Application.Abstractions.ICloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.TenantTimeZones.ITenantTimeZoneResolver Lifetime: Scoped ImplementationType: BuildingBlocks.TenantTimeZones.TenantTimeZoneResolver
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore Lifetime: Scoped ImplementationFactory: BuildingBlocks.TenantTimeZones.TenantTimeZonesServiceCollectionExtensions+<>c__0"1.<AddTenantTimeZoneProjection>b__0_0
+            * The service registration for BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var emailRenderer = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Scribe.Application.Rendering.IEmailRenderer>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else

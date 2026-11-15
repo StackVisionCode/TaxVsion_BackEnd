@@ -54,6 +54,7 @@ builder.Services.AddSwaggerGen();
 
 // ---------- BuildingBlocks (correlación + tenant context) ----------
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddSubscriptionInfrastructure(builder.Configuration);
 builder.Services.Configure<SubscriptionCatalogOptions>(builder.Configuration.GetSection("Subscription"));
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
@@ -169,6 +170,8 @@ builder.Host.UseWolverine(options =>
 {
     options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(ChangePlanHandler).Assembly);
+    // Zona de cada oficina: consumer compartido de TenantTimeZones, vive fuera de Application.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

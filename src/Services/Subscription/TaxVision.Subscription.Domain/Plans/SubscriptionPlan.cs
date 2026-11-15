@@ -459,7 +459,13 @@ public sealed class SubscriptionPlan : TenantlessAggregateRoot
             var amount = Money.Create(tier.UnitAmount.Amount, tier.UnitAmount.Currency);
             if (amount.IsFailure)
                 return Result.Failure<SubscriptionPlanVersion>(amount.Error);
-            var clone = PlanPriceTier.Create(version.Id, tier.BillingCycle, tier.MinQuantity, tier.MaxQuantity, amount.Value);
+            var clone = PlanPriceTier.Create(
+                version.Id,
+                tier.BillingCycle,
+                tier.MinQuantity,
+                tier.MaxQuantity,
+                amount.Value
+            );
             if (clone.IsFailure)
                 return Result.Failure<SubscriptionPlanVersion>(clone.Error);
             version.AddPriceTier(clone.Value);
@@ -475,14 +481,21 @@ public sealed class SubscriptionPlan : TenantlessAggregateRoot
             keys.Add(feature.FeatureKey.Value);
         }
 
-        foreach (var module in extraModules.Select(m => m.Trim().ToLowerInvariant()).Where(m => m.Length > 0).Distinct())
+        foreach (
+            var module in extraModules.Select(m => m.Trim().ToLowerInvariant()).Where(m => m.Length > 0).Distinct()
+        )
         {
             var key = EntitlementKey.Create($"module.{module}");
             if (key.IsFailure)
                 return Result.Failure<SubscriptionPlanVersion>(key.Error);
             if (!keys.Add(key.Value.Value))
                 continue;
-            var feature = PlanFeature.Create(version.Id, key.Value, defaultEnabled: true, description: $"module.{module}");
+            var feature = PlanFeature.Create(
+                version.Id,
+                key.Value,
+                defaultEnabled: true,
+                description: $"module.{module}"
+            );
             if (feature.IsFailure)
                 return Result.Failure<SubscriptionPlanVersion>(feature.Error);
             version.AddFeature(feature.Value);
@@ -497,7 +510,9 @@ public sealed class SubscriptionPlan : TenantlessAggregateRoot
         if (published.IsFailure)
             return Result.Failure<SubscriptionPlanVersion>(published.Error);
         var superseded = version.Supersede(nowUtc);
-        return superseded.IsFailure ? Result.Failure<SubscriptionPlanVersion>(superseded.Error) : Result.Success(version);
+        return superseded.IsFailure
+            ? Result.Failure<SubscriptionPlanVersion>(superseded.Error)
+            : Result.Success(version);
     }
 
     /// <summary>

@@ -24,6 +24,8 @@ export interface TenantCommunicationLimitsSnapshot {
   readonly transcriptEnabled: boolean | null;
   readonly callsEnabled: boolean | null;
   readonly maxCallMinutes: number | null;
+  /** Inicio del período de la suscripción: su día local es el ancla del cupo mensual (P11). null = mes UTC. */
+  readonly usagePeriodAnchorUtc?: Date | null;
   /** Revisión de entitlements del evento; null en mensajes viejos (se aplica sin comparar). */
   readonly revisionNumber: number | null;
   readonly updatedAtUtc: Date;

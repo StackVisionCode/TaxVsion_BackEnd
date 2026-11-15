@@ -2,10 +2,8 @@ using BuildingBlocks.Results;
 
 namespace TaxVision.Tasks.ClientForms.Domain.Requests;
 
-/// <summary>
-/// Las acciones del formulario (crear cliente, pedir firma…): intentos, reintentos y resultado. Son parte del agregado
-/// <see cref="FormRequest"/>: se guardan con él y comparten su RowVersion (TSK-9).
-/// </summary>
+/// <summary>Las acciones del formulario (crear cliente, pedir firma…): intentos, reintentos y resultado.</summary>
+/// <remarks>Parte del agregado <see cref="FormRequest"/>: se guardan con él y comparten su RowVersion.</remarks>
 public sealed class FormRequestActions
 {
     private readonly FormRequest _request;

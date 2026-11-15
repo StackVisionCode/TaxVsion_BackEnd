@@ -45,6 +45,8 @@ public sealed class TenantRecurringPaymentConfiguration : IEntityTypeConfigurati
         );
 
         builder.Property(plan => plan.BillingCycle).HasConversion<string>().HasMaxLength(20).IsRequired();
+
+        builder.Property(plan => plan.TimeZoneId).HasMaxLength(64);
         builder.Property(plan => plan.CustomIntervalDays);
         builder.Property(plan => plan.StartDate).IsRequired();
         builder.Property(plan => plan.EndDate);

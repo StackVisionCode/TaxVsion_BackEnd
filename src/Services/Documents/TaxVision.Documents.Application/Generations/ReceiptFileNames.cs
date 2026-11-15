@@ -7,9 +7,11 @@ namespace TaxVision.Documents.Application.Generations;
 /// </summary>
 public static class ReceiptFileNames
 {
-    public static string For(string platformBrand, DateTime paidAtUtc)
+    public static string For(string platformBrand, DateTime paidAtUtc, string? timeZoneId = null)
     {
         var brand = new string((platformBrand ?? string.Empty).Where(char.IsLetterOrDigit).ToArray());
-        return $"{(brand.Length == 0 ? "Platform" : brand)}_Receipt_{paidAtUtc:yyyy-MM-dd}.pdf";
+        // El día del cobro para quien paga (P7); sin zona, el día UTC.
+        var day = Receipts.ReceiptRenderData.PaidDay(paidAtUtc, timeZoneId);
+        return $"{(brand.Length == 0 ? "Platform" : brand)}_Receipt_{day:yyyy-MM-dd}.pdf";
     }
 }

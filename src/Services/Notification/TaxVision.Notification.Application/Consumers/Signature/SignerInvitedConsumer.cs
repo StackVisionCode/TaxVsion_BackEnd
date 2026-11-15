@@ -126,11 +126,12 @@ public static class SignerInvitedConsumer
                         ["full_name"] = evt.FullName,
                         ["invite_link"] = inviteLink,
                         // F7 — null si el enlace nunca expira; el template Scribe decide cómo pintarlo.
-                        ["expires_at"] = evt.ExpiresAtUtc?.ToString("yyyy-MM-dd HH:mm"),
+                        ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
                         ["requires_consent"] = evt.RequiresConsent,
                         ["language"] = evt.Language,
                     },
                     ScribeRenderAudience.Client,
+                    ScribeReader.From(evt.Language),
                     ct
                 )
             ).EnsureRendered("sig.signer_invited.v1");

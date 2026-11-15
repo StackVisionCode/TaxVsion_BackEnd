@@ -85,9 +85,17 @@ public sealed class ProcessClientFormSummaryGenerationHandlerTests
                 TestPlatform.Settings,
                 TimeProvider.System,
                 NullLogger<ProcessClientFormSummaryGenerationCommand>.Instance,
+                new OfficeZone(),
                 CancellationToken.None
             );
         }
+    }
+
+    internal sealed class OfficeZone(string zone = "Etc/UTC")
+        : TaxVision.Documents.Application.Abstractions.IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(zone));
     }
 
     internal sealed class Codec(SubmissionSummaryPayload? payload) : IProtectedPayloadCodec

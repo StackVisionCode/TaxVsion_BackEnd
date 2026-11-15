@@ -51,6 +51,18 @@ public sealed class SaaSPaymentSucceededReceiptConsumerTests
     }
 
     // El pago de un onboarding tiene su propio recibo, pedido por Auth.
+    /// <summary>P7: el recibo SaaS va en la zona de la oficina que paga.</summary>
+    [Fact]
+    public async Task The_receipt_carries_the_office_zone()
+    {
+        var bus = new CapturingMessageBus();
+
+        await HandleAsync(Event(), bus);
+
+        var command = Assert.IsType<GenerateSaaSReceiptDocumentCommand>(Assert.Single(bus.Invoked));
+        Assert.Equal("America/New_York", command.Receipt.TimeZoneId);
+    }
+
     [Fact]
     public async Task A_payment_without_tenant_asks_for_nothing()
     {
@@ -67,8 +79,15 @@ public sealed class SaaSPaymentSucceededReceiptConsumerTests
             bus,
             new TestCorrelationContext("c"),
             NullLogger<GenerateSaaSReceiptDocumentResult>.Instance,
+            new OfficeZone(),
             CancellationToken.None
         );
+
+    private sealed class OfficeZone : TaxVision.Documents.Application.Abstractions.IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/New_York"));
+    }
 
     private static SaaSPaymentSucceededIntegrationEvent Event() =>
         new()

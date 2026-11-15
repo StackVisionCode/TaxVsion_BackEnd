@@ -1,3 +1,4 @@
+using BuildingBlocks.TimeZones;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 
@@ -17,7 +18,9 @@ public static class ReminderSchedule
         DateTime? lastReminderAtUtc,
         int reminderCount,
         DateTime nowUtc,
-        ClientFormsReminderOptions options
+        ClientFormsReminderOptions options,
+        DateOnly? dueOn = null,
+        ResolvedTimeZone? officeZone = null
     )
     {
         var isOverdue = dueAtUtc is { } due && nowUtc > due;
@@ -36,7 +39,7 @@ public static class ReminderSchedule
         {
             if (days <= 0)
                 continue;
-            var stage = dueAt.AddDays(-days);
+            var stage = StageAt(dueAt, days, dueOn, officeZone);
             if (nowUtc >= stage && nowUtc <= dueAt && (lastReminderAtUtc is null || lastReminderAtUtc < stage))
                 return new ReminderDecision(true, false);
         }
@@ -54,4 +57,13 @@ public static class ReminderSchedule
 
         return new ReminderDecision(false, isOverdue);
     }
+
+    // Con fecha civil, la etapa es a las 9:00 de la oficina N días antes (como el aviso de tareas, P32);
+    // restarle días al instante (fin del día) la dejaba cerca de la medianoche.
+    private static DateTime StageAt(DateTime dueAtUtc, int days, DateOnly? dueOn, ResolvedTimeZone? officeZone) =>
+        dueOn is { } civil && officeZone is not null
+            ? WallTime
+                .ToUtc(civil.AddDays(-days), new TimeOnly(9, 0), officeZone, NonexistentTimePolicy.ShiftForward)
+                .Value
+            : dueAtUtc.AddDays(-days);
 }

@@ -5,6 +5,7 @@ using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Security;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -74,6 +75,13 @@ public static class DependencyInjection
         services.AddScoped<ITaskDependencyRepository, TaskDependencyRepository>();
         services.AddScoped<ITaskLabelRepository, TaskLabelRepository>();
         services.AddScoped<ITaskSeriesRepository, TaskSeriesRepository>();
+        services.AddScoped<CivilDueRezoneStore>();
+        services.AddScoped<TaxVision.Tasks.Application.Tasks.TimeZones.ICivilDueRezoneStore>(sp =>
+            sp.GetRequiredService<CivilDueRezoneStore>()
+        );
+        services.AddScoped<TaxVision.Tasks.ClientForms.Application.Requests.TimeZones.IFormRequestRezoneStore>(sp =>
+            sp.GetRequiredService<CivilDueRezoneStore>()
+        );
         services.AddScoped<ITaskTemplateRepository, TaskTemplateRepository>();
         services.AddScoped<IClientRequestRepository, ClientRequestRepository>();
         services.AddOptions<ClientReminderOptions>().Bind(configuration.GetSection(ClientReminderOptions.SectionName));
@@ -93,6 +101,15 @@ public static class DependencyInjection
         AddPermissionsPullRecovery(services);
         AddCustomerDirectory(services, configuration);
         services.AddClientForms(configuration);
+
+        // Zona de cada oficina: eventos de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<TasksDbContext>();
+        services.AddTenantTimeZoneReconciliation<Reconciliation.TasksTenantTimeZoneTokenProvider>(configuration);
+        services.AddScoped<Application.Common.Abstractions.IOfficeTimeZone, TimeZones.OfficeTimeZone>();
+        services.AddScoped<
+            global::TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IOfficeTimeZone,
+            TimeZones.OfficeTimeZone
+        >();
 
         return services;
     }

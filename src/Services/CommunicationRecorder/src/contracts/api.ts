@@ -23,6 +23,8 @@ export const createSessionSchema = z.object({
   scope: z.enum(['Meeting', 'Call']),
   scopeId: z.string().min(1).max(100),
   startedAtUtc: isoDate,
+  // P25: fecha local de la grabación en la zona de la oficina (la calcula Communication) para el nombre del archivo.
+  recordingLocalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   maxDurationSeconds: z.number().int().min(1),
   toleranceSeconds: z.number().int().min(0).default(0),
   tracksRetentionDays: z.number().int().min(0),

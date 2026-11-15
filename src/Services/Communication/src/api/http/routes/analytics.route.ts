@@ -20,6 +20,10 @@ const RangeQuery = z.object({
 });
 
 export async function registerAnalyticsRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
+  const queryDeps = {
+    analytics: container.analytics,
+    timeZone: async () => (await container.effectiveSettings.platform()).analyticsTimeZone,
+  };
   app.get('/communication/analytics/summary', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal!;
     const permCheck = await checkPermission(
@@ -39,7 +43,7 @@ export async function registerAnalyticsRoutes(app: FastifyInstance, container: A
         ...(query.from !== undefined ? { fromDay: query.from } : {}),
         ...(query.to !== undefined ? { toDay: query.to } : {}),
       },
-      container,
+      queryDeps,
     );
     return reply.send(result);
   });
@@ -63,7 +67,7 @@ export async function registerAnalyticsRoutes(app: FastifyInstance, container: A
         ...(query.from !== undefined ? { fromDay: query.from } : {}),
         ...(query.to !== undefined ? { toDay: query.to } : {}),
       },
-      container,
+      queryDeps,
     );
     return reply.send(result);
   });

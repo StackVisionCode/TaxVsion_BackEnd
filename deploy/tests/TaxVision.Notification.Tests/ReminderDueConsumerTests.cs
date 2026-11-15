@@ -168,7 +168,32 @@ public sealed class ReminderDueConsumerTests
 
         await Handle(harness, Due() with { Body = null, AnchorAtUtc = anchorUtc });
 
-        Assert.Contains("14:00", harness.PushSender.Sent[0].Body);
+        // Con fecha, zona escrita y en inglés (antes: "Es a las 14:00.").
+        Assert.Equal(
+            "Scheduled for Thu, Aug 20, 2026, 2:00 PM · Santo Domingo time, GMT-4.",
+            harness.PushSender.Sent[0].Body
+        );
+    }
+
+    [Fact]
+    public async Task Without_body_or_anchor_the_notice_is_in_english()
+    {
+        var harness = new Harness(preferencesEnabled: true, withActiveDevice: true);
+
+        await Handle(harness, Due() with { Body = null, AnchorAtUtc = null });
+
+        Assert.Equal("You have a reminder.", harness.PushSender.Sent[0].Body);
+    }
+
+    [Fact]
+    public async Task With_an_unknown_zone_the_time_is_labelled_utc()
+    {
+        var harness = new Harness(preferencesEnabled: true, withActiveDevice: true);
+        var anchorUtc = new DateTime(2026, 8, 20, 18, 0, 0, DateTimeKind.Utc);
+
+        await Handle(harness, Due() with { Body = null, AnchorAtUtc = anchorUtc, TimeZoneId = "Mars/Olympus" });
+
+        Assert.Equal("Scheduled for Thu, Aug 20, 2026, 6:00 PM · UTC.", harness.PushSender.Sent[0].Body);
     }
 
     private static Task Handle(Harness harness, ReminderDueIntegrationEvent evt) =>

@@ -30,7 +30,8 @@ public sealed record ClientRequestResponse(
     DateTime? SubmittedAtUtc,
     DateTime? ResolvedAtUtc,
     string? ResolutionNote,
-    IReadOnlyList<ClientRequestDocumentResponse> Documents
+    IReadOnlyList<ClientRequestDocumentResponse> Documents,
+    DateOnly? DueOn = null
 )
 {
     public static ClientRequestResponse From(ClientRequest request) =>
@@ -47,7 +48,8 @@ public sealed record ClientRequestResponse(
             request.SubmittedAtUtc,
             request.ResolvedAtUtc,
             request.ResolutionNote,
-            [.. request.Documents.Select(Map)]
+            [.. request.Documents.Select(Map)],
+            request.DueCivilDate
         );
 
     internal static ClientRequestDocumentResponse Map(ClientRequestDocument d) =>
@@ -66,7 +68,8 @@ public sealed record PortalClientRequestResponse(
     DateTime? DueAtUtc,
     DateTime CreatedAtUtc,
     string? ResolutionNote,
-    IReadOnlyList<ClientRequestDocumentResponse> Documents
+    IReadOnlyList<ClientRequestDocumentResponse> Documents,
+    DateOnly? DueOn = null
 )
 {
     public static PortalClientRequestResponse From(ClientRequest request) =>
@@ -78,6 +81,7 @@ public sealed record PortalClientRequestResponse(
             request.DueAtUtc,
             request.CreatedAtUtc,
             request.ResolutionNote,
-            [.. request.Documents.Where(d => d.IsActive).Select(ClientRequestResponse.Map)]
+            [.. request.Documents.Where(d => d.IsActive).Select(ClientRequestResponse.Map)],
+            request.DueCivilDate
         );
 }

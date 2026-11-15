@@ -8,7 +8,7 @@ import type { IntegrationEventPublisher } from '../ports/integration-event-publi
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
-import { type CallUsageRepository, yearMonthUtc } from '../ports/call-usage-repository.js';
+import type { CallUsageMeter } from '../ports/call-usage-repository.js';
 import { CallEventTypes, type CallStartedEvent } from '../../contracts/events/call-events.js';
 
 /**
@@ -49,7 +49,7 @@ export interface InitiateCallDeps {
   readonly settings: TenantSettingsProvider;
   /** F4: `callsEnabled`/`videoCallsEnabled`/`maxConcurrentCalls`/`maxMonthlyMinutes` del resolver (INV-12 H-3). */
   readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
-  readonly callUsage?: CallUsageRepository | undefined;
+  readonly callUsage?: CallUsageMeter | undefined;
   /** D-58: un cliente del portal llama con su CustomerId persistido en el participante. */
   readonly customerPortalAccounts?: Pick<CustomerPortalAccountRepository, 'findActiveByUserId'> | undefined;
 }
@@ -79,7 +79,7 @@ export async function initiateCall(
       }
     }
     if (effective.calls.maxMonthlyMinutes !== null && deps.callUsage) {
-      const used = await deps.callUsage.getSeconds({ tenantId: command.tenantId, yearMonth: yearMonthUtc(new Date()) });
+      const used = await deps.callUsage.secondsThisPeriod({ tenantId: command.tenantId, at: new Date() });
       if (used >= effective.calls.maxMonthlyMinutes * 60) {
         return Result.fail(makeError('Call.LimitReached', 'monthly'));
       }

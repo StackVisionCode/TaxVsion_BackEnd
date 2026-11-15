@@ -19,6 +19,12 @@ public interface IFormEngine
     Result<FormAnswers> ParseAnswers(string json);
     VisibilityMap EvaluateVisibility(FormDefinition definition, FormAnswers answers);
     AnswersValidationReport ValidateAnswers(FormDefinition definition, FormAnswers answers, AnswersValidationMode mode);
+    AnswersValidationReport ValidateAnswers(
+        FormDefinition definition,
+        FormAnswers answers,
+        AnswersValidationMode mode,
+        TimeZoneInfo? officeZone
+    );
     FormAnswers RemoveHiddenAnswers(FormDefinition definition, FormAnswers answers, VisibilityMap visibility);
     FormProgress CalculateProgress(FormDefinition definition, FormAnswers answers, VisibilityMap visibility);
     CanonicalDefinition Canonicalize(FormDefinition definition);

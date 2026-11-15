@@ -123,7 +123,8 @@ public sealed record BookingPageHostView(
     string NotificationEmail,
     string MeetingUrl,
     int SortOrder,
-    bool IsActive
+    bool IsActive,
+    string? TimeZoneId
 );
 
 public sealed record HeardAboutOptionView(

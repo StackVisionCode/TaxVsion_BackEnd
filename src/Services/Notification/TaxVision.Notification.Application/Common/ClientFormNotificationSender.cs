@@ -70,7 +70,15 @@ public sealed class ClientFormNotificationSender(
         var variables = new Dictionary<string, object?>(request.Variables) { ["language"] = request.Language };
         // Participante externo del formulario: lo ve como cliente de la oficina.
         var render = (
-            await scribe.RenderAsync(request.TemplateKey, request.TenantId, variables, ScribeRenderAudience.Client, ct)
+            await scribe.RenderAsync(
+                request.TemplateKey,
+                request.TenantId,
+                variables,
+                ScribeRenderAudience.Client,
+                // Fechas y plazos en el idioma del participante.
+                ScribeReader.From(request.Language),
+                ct
+            )
         ).EnsureRendered(request.TemplateKey);
         var dispatch = render.ToDispatchRequest(
             request.TenantId,
@@ -150,7 +158,14 @@ public sealed class ClientFormNotificationSender(
         var variables = Variables(request, destination, host);
         var audience = request.CustomerRecipient ? ScribeRenderAudience.Client : ScribeRenderAudience.Staff;
         var render = (
-            await scribe.RenderAsync(request.EmailTemplateKey, request.TenantId, variables, audience, ct)
+            await scribe.RenderAsync(
+                request.EmailTemplateKey,
+                request.TenantId,
+                variables,
+                audience,
+                ScribeReader.From(destination.Language),
+                ct
+            )
         ).EnsureRendered(request.EmailTemplateKey);
         // El gate del gateway aplica inactivo, preferencia y obligatorio del catálogo (por kind).
         var result = await emailGateway.QueueEmailAsync(

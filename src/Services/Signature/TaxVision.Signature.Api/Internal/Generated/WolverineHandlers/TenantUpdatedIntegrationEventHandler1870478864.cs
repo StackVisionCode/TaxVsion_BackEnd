@@ -10,11 +10,13 @@ namespace Internal.Generated.WolverineHandlers
     public sealed class TenantUpdatedIntegrationEventHandler1870478864 : Wolverine.Runtime.Handlers.MessageHandler
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
+        private readonly Microsoft.Extensions.Logging.ILoggerFactory _loggerFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.Signature.Domain.Projections.TenantBrandingRef> _loggerOfTenantBrandingRef;
 
-        public TenantUpdatedIntegrationEventHandler1870478864(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Signature.Domain.Projections.TenantBrandingRef> loggerOfTenantBrandingRef)
+        public TenantUpdatedIntegrationEventHandler1870478864(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILoggerFactory loggerFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Signature.Domain.Projections.TenantBrandingRef> loggerOfTenantBrandingRef)
         {
             _serviceScopeFactory = serviceScopeFactory;
+            _loggerFactory = loggerFactory;
             _loggerOfTenantBrandingRef = loggerOfTenantBrandingRef;
         }
 
@@ -25,14 +27,25 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             
             /*
+            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.TenantBrandingRefRepository is not public, so requires service location
+            */
+            var tenantBrandingRefRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ITenantBrandingRefRepository>(serviceScope.ServiceProvider);
+            
+            /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             
             /*
-            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.TenantBrandingRefRepository is not public, so requires service location
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore Lifetime: Scoped ImplementationFactory: BuildingBlocks.TenantTimeZones.TenantTimeZonesServiceCollectionExtensions+<>c__0"1.<AddTenantTimeZoneProjection>b__0_0
+            * The service registration for BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
-            var tenantBrandingRefRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ITenantBrandingRefRepository>(serviceScope.ServiceProvider);
+            var tenantTimeZoneResolver = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.TenantTimeZones.ITenantTimeZoneResolver>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var tenantTimeZoneStore = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
@@ -52,11 +65,13 @@ namespace Internal.Generated.WolverineHandlers
 
             try
             {
-                System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Signature.Application.Projections.TenantBrandingProjectionConsumer");
-                System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Signature.Application.Projections.TenantBrandingProjectionConsumer");
                 
                 // The actual message execution
                 await TaxVision.Signature.Application.Projections.TenantBrandingProjectionConsumer.Handle(tenantUpdatedIntegrationEvent, tenantBrandingRefRepository, unitOfWork, correlationContext, _loggerOfTenantBrandingRef, cancellation).ConfigureAwait(false);
+
+                
+                // The actual message execution
+                await BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer.Handle(tenantUpdatedIntegrationEvent, tenantTimeZoneStore, tenantTimeZoneResolver, unitOfWork, correlationContext, _loggerFactory, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

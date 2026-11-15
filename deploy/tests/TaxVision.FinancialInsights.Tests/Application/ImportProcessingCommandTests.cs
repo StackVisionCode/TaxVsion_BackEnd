@@ -17,7 +17,9 @@ public sealed class ImportProcessingCommandTests
     {
         await using var h = new FinancialTestHarness(_tenant);
         var (batch, document) = await Claimed(h);
-        h.Db.AiProcessingReservations.Add(AiProcessingReservation.Create(_tenant, document, "m", DateTime.UtcNow).Value);
+        h.Db.AiProcessingReservations.Add(
+            AiProcessingReservation.Create(_tenant, document, "m", DateTime.UtcNow).Value
+        );
         await h.Db.SaveChangesAsync();
 
         var result = await Complete(
@@ -63,10 +65,19 @@ public sealed class ImportProcessingCommandTests
         await using var h = new FinancialTestHarness(_tenant);
         var (batch, document) = await Claimed(h);
 
-        Assert.Equal(ImportDocumentStatus.Ready, (await Stop(h, document, ImportDocumentStop.ReturnToQueue, "EntitlementsPending")).Value);
+        Assert.Equal(
+            ImportDocumentStatus.Ready,
+            (await Stop(h, document, ImportDocumentStop.ReturnToQueue, "EntitlementsPending")).Value
+        );
         batch.StartProcessing(document);
-        Assert.Equal(ImportDocumentStatus.NeedsReview, (await Stop(h, document, ImportDocumentStop.HoldForReview, "AccessChanged")).Value);
-        Assert.Equal("Import.DocumentNotFound", (await Stop(h, Guid.NewGuid(), ImportDocumentStop.Fail, "x")).Error.Code);
+        Assert.Equal(
+            ImportDocumentStatus.NeedsReview,
+            (await Stop(h, document, ImportDocumentStop.HoldForReview, "AccessChanged")).Value
+        );
+        Assert.Equal(
+            "Import.DocumentNotFound",
+            (await Stop(h, Guid.NewGuid(), ImportDocumentStop.Fail, "x")).Error.Code
+        );
     }
 
     [Fact]
@@ -86,7 +97,10 @@ public sealed class ImportProcessingCommandTests
             CancellationToken.None
         );
 
-        Assert.Equal(ImportBatchSource.Portal, (await h.Db.ImportBatches.IgnoreQueryFilters().SingleAsync(b => b.Id == created.Value.Id)).Source);
+        Assert.Equal(
+            ImportBatchSource.Portal,
+            (await h.Db.ImportBatches.IgnoreQueryFilters().SingleAsync(b => b.Id == created.Value.Id)).Source
+        );
     }
 
     private async Task<(ImportBatch Batch, Guid Document)> Claimed(FinancialTestHarness h)
@@ -106,7 +120,15 @@ public sealed class ImportProcessingCommandTests
         bool needsReview
     ) =>
         CompleteImportDocumentHandler.Handle(
-            new CompleteImportDocumentCommand(_tenant, document, movements, needsReview, PageCount: 2, InputTokens: 120, OutputTokens: 40),
+            new CompleteImportDocumentCommand(
+                _tenant,
+                document,
+                movements,
+                needsReview,
+                PageCount: 2,
+                InputTokens: 120,
+                OutputTokens: 40
+            ),
             h.Batches,
             h.Movements,
             h.Reservations,

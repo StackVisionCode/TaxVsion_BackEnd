@@ -57,7 +57,7 @@ public sealed class DownloadAttachmentHandlerTests
         FakeMessageBus Bus,
         FakeCorrelationContext Correlation,
         FakeUnitOfWork UnitOfWork
-    )> SetupAsync(Guid tenantId, Guid customerId, Guid accountId, DateTime receivedAtUtc)
+    )> SetupAsync(Guid tenantId, Guid customerId, Guid accountId, DateTime receivedAtUtc, string? officeZone = null)
     {
         var email = NewIncomingEmail(tenantId, customerId, accountId, receivedAtUtc);
         var repo = new FakeIncomingEmailRepository();
@@ -70,6 +70,7 @@ public sealed class DownloadAttachmentHandlerTests
                 repo,
                 bus,
                 unitOfWork,
+                new OfficeZone(officeZone),
                 CancellationToken.None
             );
         return (
@@ -82,6 +83,36 @@ public sealed class DownloadAttachmentHandlerTests
             new FakeCorrelationContext(),
             unitOfWork
         );
+    }
+
+    // P20 (TZ15-H6): el año de la carpeta es el año local de la oficina al recibir el correo.
+    [Fact]
+    public async Task The_tax_year_is_the_office_local_year_of_reception()
+    {
+        var tenantId = Guid.NewGuid();
+        // 03:00Z del 1-ene-2027 = 21:00 del 31-dic-2026 en Chicago.
+        var (email, repo, threads, connectors, uploader, bus, correlation, uow) = await SetupAsync(
+            tenantId,
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            new DateTime(2027, 1, 1, 3, 0, 0, DateTimeKind.Utc),
+            "America/Chicago"
+        );
+
+        var result = await DownloadAttachmentHandler.Handle(
+            new DownloadAttachmentCommand(tenantId, email.Id, email.Attachments.Single().Id, Guid.NewGuid()),
+            repo,
+            threads,
+            connectors,
+            uploader,
+            bus,
+            correlation,
+            uow,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2026, Assert.IsType<SaveFileRequestedIntegrationEvent>(Assert.Single(bus.Published)).TaxYear);
     }
 
     [Fact]
@@ -385,5 +416,11 @@ public sealed class DownloadAttachmentHandlerTests
         Assert.NotEqual(rejectedFileId, evt.FileId);
         Assert.Equal(AttachmentDownloadStatus.Downloaded, attachment.DownloadStatus);
         Assert.Null(attachment.StorageRejectionReason);
+    }
+
+    private sealed class OfficeZone(string? zone) : IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(zone));
     }
 }

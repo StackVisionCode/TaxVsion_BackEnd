@@ -62,9 +62,7 @@ public static class AppointmentBookingDeclinedConsumer
                 new Dictionary<string, object?>
                 {
                     ["appointment_title"] = evt.Title,
-                    ["start_local"] = evt.StartUtc is { } start
-                        ? CalendarTimeFormatting.InZone(start, evt.TimeZoneId)
-                        : null,
+                    ["start_local"] = ScribeDates.Instant(evt.StartUtc),
                     ["time_zone"] = evt.TimeZoneId,
                     ["reason"] = string.IsNullOrWhiteSpace(evt.Reason) ? null : evt.Reason,
                     ["portal_link"] = bookAgain,
@@ -73,7 +71,8 @@ public static class AppointmentBookingDeclinedConsumer
                 gateway,
                 evt.EventId,
                 correlation.CorrelationId,
-                ct
+                ct,
+                timeZoneId: evt.TimeZoneId
             );
         }
     }

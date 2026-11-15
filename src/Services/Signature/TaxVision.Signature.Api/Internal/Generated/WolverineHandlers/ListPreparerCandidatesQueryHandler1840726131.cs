@@ -20,15 +20,15 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var signatureDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Infrastructure.Persistence.SignatureDbContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Signature.Application.Abstractions.IAuthzUserPermissionsProjectionRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var authzUserPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IAuthzUserPermissionsProjectionRepository>(serviceScope.ServiceProvider);
             var signatureRequestStaffWorkRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureRequestStaffWorkRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var signatureDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Infrastructure.Persistence.SignatureDbContext>(serviceScope.ServiceProvider);
             // The actual message body
             var listPreparerCandidatesQuery = (TaxVision.Signature.Application.Requests.Queries.PreparerCandidates.ListPreparerCandidatesQuery)context.Envelope.Message;
 

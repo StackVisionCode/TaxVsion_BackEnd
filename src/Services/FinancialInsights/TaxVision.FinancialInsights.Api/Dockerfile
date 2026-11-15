@@ -8,6 +8,8 @@ RUN dotnet publish "src/Services/FinancialInsights/TaxVision.FinancialInsights.A
     -c Release -o /app/publish --no-restore /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.9 AS final
+# Contenedor en UTC declarado; la zona de negocio es la de la oficina, no la del proceso.
+ENV TZ=Etc/UTC
 ENV MALLOC_ARENA_MAX=2
 RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*

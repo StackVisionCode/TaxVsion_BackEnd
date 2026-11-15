@@ -36,5 +36,7 @@ public static class SubscriptionBillingCycleChangedDomainEventHandler
                 ? null
                 : changed.EffectiveAtUtc.ToString("MMMM d, yyyy", English),
             NextChargeDate = changed.NextRenewalAtUtc.ToString("MMMM d, yyyy", English),
+            DateChargedAtUtc = changed.ChargedAmountCents is null ? null : changed.EffectiveAtUtc,
+            NextChargeAtUtc = changed.NextRenewalAtUtc,
         };
 }

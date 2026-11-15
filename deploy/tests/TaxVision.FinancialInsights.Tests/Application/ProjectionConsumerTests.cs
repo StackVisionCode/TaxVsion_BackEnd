@@ -39,7 +39,17 @@ public sealed class ProjectionConsumerTests
         var reader = new FinancialUserPermissionsReader(h.Db);
         Assert.Contains("financial.import", (await reader.GetSnapshotAsync(tenant, user))!.PermissionCodes);
 
-        await ProjectionConsumer.Handle(granted with { PermissionsVersion = 2, PermissionCodes = [] }, h.Projections, h.Db, h.Correlation, Ct);
+        await ProjectionConsumer.Handle(
+            granted with
+            {
+                PermissionsVersion = 2,
+                PermissionCodes = [],
+            },
+            h.Projections,
+            h.Db,
+            h.Correlation,
+            Ct
+        );
         await ProjectionConsumer.Handle(granted, h.Projections, h.Db, h.Correlation, Ct);
         await ProjectionConsumer.Handle(
             new RolePermissionsChangedIntegrationEvent
@@ -70,7 +80,16 @@ public sealed class ProjectionConsumerTests
             h.Correlation,
             Ct
         );
-        await ProjectionConsumer.Handle(granted with { PermissionsVersion = 3 }, h.Projections, h.Db, h.Correlation, Ct);
+        await ProjectionConsumer.Handle(
+            granted with
+            {
+                PermissionsVersion = 3,
+            },
+            h.Projections,
+            h.Db,
+            h.Correlation,
+            Ct
+        );
         Assert.Null(await reader.GetSnapshotAsync(tenant, user));
     }
 
@@ -86,7 +105,14 @@ public sealed class ProjectionConsumerTests
         );
         var enabled = Entitlements(tenant, 1, "True");
         await ProjectionConsumer.Handle(enabled, h.Projections, h.Db, invalidator, h.Correlation, Ct);
-        await ProjectionConsumer.Handle(Entitlements(tenant, 2, "False"), h.Projections, h.Db, invalidator, h.Correlation, Ct);
+        await ProjectionConsumer.Handle(
+            Entitlements(tenant, 2, "False"),
+            h.Projections,
+            h.Db,
+            invalidator,
+            h.Correlation,
+            Ct
+        );
         await ProjectionConsumer.Handle(enabled, h.Projections, h.Db, invalidator, h.Correlation, Ct);
 
         Assert.Empty((await new FinancialTenantModulesReader(h.Db).GetEnabledModulesAsync(tenant))!);
@@ -111,8 +137,46 @@ public sealed class ProjectionConsumerTests
         await ProjectionConsumer.Handle(withQuota, h.Projections, h.Db, h.Cache, h.Correlation, Ct);
         Assert.Equal(200, (await h.Db.TenantEntitlementsProjections.SingleAsync()).DocumentsPerMonth);
 
-        await ProjectionConsumer.Handle(Entitlements(tenant, 2, "True"), h.Projections, h.Db, h.Cache, h.Correlation, Ct);
+        await ProjectionConsumer.Handle(
+            Entitlements(tenant, 2, "True"),
+            h.Projections,
+            h.Db,
+            h.Cache,
+            h.Correlation,
+            Ct
+        );
         Assert.Null((await h.Db.TenantEntitlementsProjections.SingleAsync()).DocumentsPerMonth);
+    }
+
+    // P11: el inicio del período de la suscripción es el ancla del cupo mensual de IA; un evento sin él no lo borra.
+    [Fact]
+    public async Task Entitlements_keep_the_subscription_period_anchor()
+    {
+        var tenant = Guid.NewGuid();
+        await using var h = new FinancialTestHarness(tenant);
+        var anchor = new DateTime(2026, 3, 15, 14, 0, 0, DateTimeKind.Utc);
+
+        await ProjectionConsumer.Handle(
+            Entitlements(tenant, 1, "True") with
+            {
+                CurrentPeriodStartUtc = anchor,
+            },
+            h.Projections,
+            h.Db,
+            h.Cache,
+            h.Correlation,
+            Ct
+        );
+        await ProjectionConsumer.Handle(
+            Entitlements(tenant, 2, "True"),
+            h.Projections,
+            h.Db,
+            h.Cache,
+            h.Correlation,
+            Ct
+        );
+
+        Assert.Equal(anchor, (await h.Db.TenantEntitlementsProjections.SingleAsync()).UsagePeriodAnchorUtc);
     }
 
     [Fact]
@@ -271,7 +335,17 @@ public sealed class ProjectionConsumerTests
             CreatedBy = Guid.NewGuid(),
         };
         await FileScanConsumer.Handle(wrongCustomer, h.Batches, h.Db, h.Correlation, Ct);
-        await FileScanConsumer.Handle(wrongCustomer with { OwnerId = customer, TenantId = Guid.NewGuid() }, h.Batches, h.Db, h.Correlation, Ct);
+        await FileScanConsumer.Handle(
+            wrongCustomer with
+            {
+                OwnerId = customer,
+                TenantId = Guid.NewGuid(),
+            },
+            h.Batches,
+            h.Db,
+            h.Correlation,
+            Ct
+        );
         Assert.Equal(ImportDocumentStatus.AwaitingScan, batch.Documents.Single().Status);
 
         var valid = wrongCustomer with { OwnerId = customer };
@@ -280,7 +354,13 @@ public sealed class ProjectionConsumerTests
         Assert.Equal(ImportDocumentStatus.Ready, batch.Documents.Single().Status);
 
         await FileScanConsumer.Handle(
-            new FileInfectedDetectedIntegrationEvent { TenantId = tenant, FileId = file, ObjectKey = "x", ScanReport = "eicar" },
+            new FileInfectedDetectedIntegrationEvent
+            {
+                TenantId = tenant,
+                FileId = file,
+                ObjectKey = "x",
+                ScanReport = "eicar",
+            },
             h.Batches,
             h.Db,
             h.Correlation,

@@ -19,7 +19,9 @@ public sealed record RenderRequest(
     IReadOnlyDictionary<string, object?> Variables,
     LogoScope LogoScope = LogoScope.System,
     TemplateChannel Channel = TemplateChannel.Email,
-    RenderAudience Audience = RenderAudience.Staff
+    RenderAudience Audience = RenderAudience.Staff,
+    // Zona de quien lee (P18): si no viene, la de la oficina; sin oficina, UTC rotulado.
+    string? TimeZoneId = null
 );
 
 /// <param name="DispatchScope">

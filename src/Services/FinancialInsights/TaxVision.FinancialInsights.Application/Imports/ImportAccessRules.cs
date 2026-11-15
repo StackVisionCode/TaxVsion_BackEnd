@@ -23,7 +23,9 @@ internal static class ImportAccessRules
         var plan = await entitlements.GetOrPullAsync(tenantId, ct);
         if (plan is null)
             return Result.Failure(FinancialInsightsErrors.EntitlementsUnavailable);
-        return modules.All(plan.HasModule) ? Result.Success() : Result.Failure(FinancialInsightsErrors.ModuleUnavailable);
+        return modules.All(plan.HasModule)
+            ? Result.Success()
+            : Result.Failure(FinancialInsightsErrors.ModuleUnavailable);
     }
 
     /// <summary>
@@ -69,7 +71,9 @@ internal static class ImportAccessRules
             if (state == ImportFileState.Unavailable)
                 return Result.Failure<Dictionary<Guid, ImportFileState>>(FinancialInsightsErrors.FileStatusUnavailable);
             if (state == ImportFileState.Ineligible || (state == ImportFileState.AwaitingScan && !allowPendingScan))
-                return Result.Failure<Dictionary<Guid, ImportFileState>>(FinancialInsightsErrors.FileNotEligible(fileId));
+                return Result.Failure<Dictionary<Guid, ImportFileState>>(
+                    FinancialInsightsErrors.FileNotEligible(fileId)
+                );
             states[fileId] = state;
         }
         return Result.Success(states);

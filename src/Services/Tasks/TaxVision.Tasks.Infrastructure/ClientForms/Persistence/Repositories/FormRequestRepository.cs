@@ -510,7 +510,8 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
                 .Submission?.Revisions.OrderByDescending(revision => revision.RevisionNumber)
                 .FirstOrDefault()
                 ?.SignatureStatus
-                ?? FormRevisionSignatureStatus.None
+                ?? FormRevisionSignatureStatus.None,
+            request.DueCivilDate
         );
     }
 

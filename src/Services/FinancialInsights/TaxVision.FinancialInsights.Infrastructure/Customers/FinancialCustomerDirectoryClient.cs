@@ -43,14 +43,24 @@ internal sealed class FinancialCustomerDirectoryClient(
         return dto is null
             ? null
             : new RemoteCustomerPage(
-                dto.Items.Select(i => new RemoteCustomer(i.TenantId, i.CustomerId, i.DisplayName, IsActive(i.Status))).ToArray(),
+                dto.Items.Select(i => new RemoteCustomer(i.TenantId, i.CustomerId, i.DisplayName, IsActive(i.Status)))
+                    .ToArray(),
                 dto.Page * dto.Size < dto.TotalCount
             );
     }
 
-    public async Task<RemoteCustomerPage?> ListActiveAsync(Guid tenantId, int page, int size, CancellationToken ct = default)
+    public async Task<RemoteCustomerPage?> ListActiveAsync(
+        Guid tenantId,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
     {
-        var dto = await GetAsync<SummaryPage>(tenantId, $"internal/customers/list?status=Active&page={page}&size={size}", ct);
+        var dto = await GetAsync<SummaryPage>(
+            tenantId,
+            $"internal/customers/list?status=Active&page={page}&size={size}",
+            ct
+        );
         return dto is null
             ? null
             : new RemoteCustomerPage(
@@ -83,15 +93,22 @@ internal sealed class FinancialCustomerDirectoryClient(
             }
             return await response.Content.ReadFromJsonAsync<T>(Json, ct);
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException
-            || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        catch (Exception ex)
+            when (ex is HttpRequestException or JsonException
+                || (ex is TaskCanceledException && !ct.IsCancellationRequested)
+            )
         {
             logger.LogWarning("Customer directory call failed with {ExceptionType}.", ex.GetType().Name);
             return null;
         }
     }
 
-    private sealed record ReconciliationPage(IReadOnlyList<ReconciliationItem> Items, int Page, int Size, int TotalCount);
+    private sealed record ReconciliationPage(
+        IReadOnlyList<ReconciliationItem> Items,
+        int Page,
+        int Size,
+        int TotalCount
+    );
 
     private sealed record ReconciliationItem(Guid TenantId, Guid CustomerId, string? DisplayName, string? Status);
 

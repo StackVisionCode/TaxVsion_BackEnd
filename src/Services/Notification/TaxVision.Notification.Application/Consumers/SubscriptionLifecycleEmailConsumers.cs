@@ -1,6 +1,7 @@
 ﻿using System.Globalization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.TimeZones;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -22,12 +23,17 @@ public static class SubscriptionLifecycleEmailConsumer
         IOptions<PortalOptions> portal,
         ICorrelationContext correlation,
         ISubscriptionEmailMetrics metrics,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
         var (eventKey, templateKey) = ResolveTemplate(evt.Status, evt.Reason);
         if (eventKey is null || templateKey is null)
             return;
+
+        // Los "faltan N días" se cuentan en el calendario de la oficina.
+        var zone = await zones.ResolveAsync(evt.TenantId, ct);
+        var nowUtc = DateTime.UtcNow;
 
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
@@ -41,10 +47,12 @@ public static class SubscriptionLifecycleEmailConsumer
                         ["plan_name"] = evt.PlanName ?? "your plan",
                         ["renew_url"] = evt.RenewUrl,
                         ["manage_url"] = evt.ManageUrl ?? evt.RenewUrl,
-                        ["access_ends_date"] = FormatDate(evt.AccessEndsAtUtc),
-                        ["days_until_end"] = DaysUntil(evt.AccessEndsAtUtc),
-                        ["days_until_renewal"] = evt.DaysUntilRenewal?.ToString(CultureInfo.InvariantCulture) ?? "",
-                        ["renewal_date"] = FormatDate(evt.NextRenewalAtUtc),
+                        ["access_ends_date"] = Typed(evt.AccessEndsAtUtc),
+                        ["days_until_end"] = DaysUntil(evt.AccessEndsAtUtc, nowUtc, zone),
+                        ["days_until_renewal"] = evt.NextRenewalAtUtc is null
+                            ? evt.DaysUntilRenewal?.ToString(CultureInfo.InvariantCulture) ?? ""
+                            : DaysUntil(evt.NextRenewalAtUtc, nowUtc, zone),
+                        ["renewal_date"] = Typed(evt.NextRenewalAtUtc),
                         ["failure_reason"] = evt.FailureCode ?? string.Empty,
                         // Variables para cobro recurrente, mandate y cambio de preferencia.
                         ["amount"] = evt.Amount ?? string.Empty,
@@ -53,22 +61,25 @@ public static class SubscriptionLifecycleEmailConsumer
                         ["receipt_url"] = evt.ReceiptUrl ?? string.Empty,
                         ["new_mode"] = evt.NewMode ?? string.Empty,
                         ["cadence"] = evt.Cadence ?? "month",
-                        ["date_charged"] = evt.DateCharged ?? string.Empty,
-                        ["next_charge_date"] = evt.NextChargeDate ?? string.Empty,
+                        // Eventos de antes traen solo el texto ya formateado: se respeta tal cual.
+                        ["date_charged"] =
+                            (object?)ScribeDates.Instant(evt.DateChargedAtUtc) ?? evt.DateCharged ?? string.Empty,
+                        ["next_charge_date"] =
+                            (object?)ScribeDates.Instant(evt.NextChargeAtUtc) ?? evt.NextChargeDate ?? string.Empty,
                         // Cobro automático de renovación fallido: uno por intento.
                         ["item_description"] = evt.ItemDescription ?? evt.PlanName ?? "your subscription",
                         ["has_card"] = !string.IsNullOrWhiteSpace(evt.CardLast4),
                         ["attempt_number"] = evt.AttemptNumber?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
                         ["max_attempts"] = evt.MaxAttempts?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
                         ["is_final"] = evt.IsFinalAttempt,
-                        ["next_retry_date"] = FormatDate(evt.NextAttemptAtUtc),
+                        ["next_retry_date"] = Typed(evt.NextAttemptAtUtc),
                         ["friendly_reason"] = ChargeFailureReasons.Describe(evt.FailureCode),
                         ["suspension_effect"] = ChargeFailureConsequences.Describe(
                             evt.Consequence,
                             evt.ItemDescription
                         ),
                         // Cambio de condiciones del plan agendado por una migración.
-                        ["change_date"] = FormatDate(evt.VersionChangeEffectiveAtUtc),
+                        ["change_date"] = Typed(evt.VersionChangeEffectiveAtUtc),
                         ["change_summary"] = evt.VersionChangeSummary ?? string.Empty,
                     },
                     ct
@@ -88,8 +99,10 @@ public static class SubscriptionLifecycleEmailConsumer
                     // deduplicación por evento no sirve. La clave se ancla al tenant y a la fecha de fin.
                     IdempotencyKey = templateKey switch
                     {
-                        "subscription.access_ending" =>
-                            $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}",
+                        // El de 7 y el de 1 día comparten fecha de fin; un evento viejo sin número, la clave de antes.
+                        "subscription.access_ending" => evt.NoticeDaysBefore is { } daysBefore
+                            ? $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}:{daysBefore}d"
+                            : $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}",
                         "subscription.renewal_upcoming" =>
                             $"{evt.TenantId:N}:renewal-upcoming:{evt.NextRenewalAtUtc:yyyyMMdd}:{evt.DaysUntilRenewal}",
                         // Un correo por intento: un reenvío del mismo aviso no lo repite.
@@ -164,13 +177,9 @@ public static class SubscriptionLifecycleEmailConsumer
         };
     }
 
-    // El copy de estas plantillas es inglés (los eventos no traen idioma del destinatario), así que la fecha
-    // también: antes salía en español dentro de un texto en inglés.
-    private static string DaysUntil(DateTime? value) =>
-        value is { } date
-            ? Math.Max(0, (date.Date - DateTime.UtcNow.Date).Days).ToString(CultureInfo.InvariantCulture)
-            : string.Empty;
+    private static string DaysUntil(DateTime? value, DateTime nowUtc, ResolvedTimeZone zone) =>
+        value is { } date ? OfficeDays.Until(date, nowUtc, zone).ToString(CultureInfo.InvariantCulture) : string.Empty;
 
-    private static string FormatDate(DateTime? value) =>
-        value is { } date ? date.ToString("MMMM d, yyyy", new CultureInfo("en-US")) : string.Empty;
+    // Sin fecha va vacío, como antes: las plantillas preguntan por "".
+    private static object Typed(DateTime? value) => (object?)ScribeDates.Instant(value) ?? string.Empty;
 }

@@ -2,9 +2,11 @@ using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Campaigns.Domain.Campaigns;
@@ -33,6 +35,10 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
     public DbSet<Contact> Contacts => Set<Contact>();
     public DbSet<ContactList> ContactLists => Set<ContactList>();
     public DbSet<SenderProfile> SenderProfiles => Set<SenderProfile>();
+
+    // P32: ventana de SMS de cada oficina.
+    public DbSet<TaxVision.Campaigns.Domain.Settings.CampaignSmsWindow> CampaignSmsWindows =>
+        Set<TaxVision.Campaigns.Domain.Settings.CampaignSmsWindow>();
     public DbSet<CampaignTemplate> CampaignTemplates => Set<CampaignTemplate>();
     public DbSet<CampaignSchedule> CampaignSchedules => Set<CampaignSchedule>();
     public DbSet<CampaignScheduleHandover> CampaignScheduleHandovers => Set<CampaignScheduleHandover>();
@@ -48,8 +54,11 @@ public sealed class CampaignsDbContext(DbContextOptions<CampaignsDbContext> opti
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         modelBuilder.ApplyCustomerAssignmentProjection();
+        modelBuilder.ApplyTenantTimeZoneProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     private Guid EffectiveTenantId => tenantContext.HasTenant ? tenantContext.TenantId : Guid.Empty;

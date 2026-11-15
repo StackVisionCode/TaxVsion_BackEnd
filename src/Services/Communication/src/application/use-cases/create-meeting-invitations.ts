@@ -184,7 +184,8 @@ export async function createMeetingInvitations(
   // El link va al SUBDOMINIO del tenant (bug prod: salía app./client.taxoffix.io). Se resuelve el
   // host UNA vez por batch (cacheado). Si falla, buildMeetingJoinUrl cae al base fijo.
   const tenantHost = await deps.tenantHostResolver.resolveHost(command.tenantId);
-  const timeZone = (await deps.tenantHostResolver.resolveTimeZone?.(command.tenantId)) ?? null;
+  // TZ03-H7: la sala de una cita usa la zona de la cita; si no, la de la oficina.
+  const timeZone = meetingSnapshot.timeZoneId ?? (await deps.tenantHostResolver.resolveTimeZone?.(command.tenantId)) ?? null;
   const nameOf = (userId: string) => meetingSnapshot.participants.find((p) => p.userId === userId)?.displayName;
   const hostDisplayName = await resolveUserDisplayName(deps.userDirectory, meetingSnapshot.hostUserId, nameOf(meetingSnapshot.hostUserId));
   const invitedByDisplayName =

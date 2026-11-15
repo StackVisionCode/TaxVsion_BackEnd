@@ -53,6 +53,7 @@ public sealed class CampaignScheduleRepository(CampaignsDbContext db) : ICampaig
                 && s.NextFireAtUtc != null
                 && s.NextFireAtUtc <= nowUtc
                 && s.ActiveRunId == null
+                && (s.DeferredUntilUtc == null || s.DeferredUntilUtc <= nowUtc)
                 && (s.LeasedUntilUtc == null || s.LeasedUntilUtc < nowUtc)
             )
             .OrderBy(s => s.NextFireAtUtc)

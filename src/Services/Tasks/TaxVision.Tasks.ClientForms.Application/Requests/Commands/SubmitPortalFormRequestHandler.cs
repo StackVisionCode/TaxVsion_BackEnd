@@ -47,9 +47,11 @@ public static class SubmitPortalFormRequestHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         IClientFormsMetrics metrics,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
+        engine = new OfficeDayFormEngine(engine, (await zones.ResolveAsync(command.Context.TenantId, ct)).Zone);
         var found = await LoadAsync(command, requests, ct);
         if (found.IsFailure)
             return Result.Failure<FormSubmitOutcome>(found.Error);

@@ -17,6 +17,7 @@ public sealed class BookingPageHostConfiguration : IEntityTypeConfiguration<Book
         builder.Property(h => h.DisplayName).HasMaxLength(BookingPageHost.MaxDisplayNameLength).IsRequired();
         builder.Property(h => h.NotificationEmail).HasMaxLength(WorkEmail.MaxLength).IsRequired();
         builder.Property(h => h.MeetingUrl).HasMaxLength(Location.MaxLength).IsRequired();
+        builder.Property(h => h.TimeZoneId).HasMaxLength(64);
 
         builder.HasIndex(h => new { h.BookingPageId, h.UserId }).IsUnique();
         builder.HasIndex(h => h.UserId);

@@ -28,6 +28,30 @@ public sealed class FormRequestReminderTests
             Options
         );
 
+    /// <summary>
+    /// Fecha civil (vence al final del 15-nov en Nueva York): el aviso "3 días antes" sale a las 9:00 de la oficina
+    /// del 12-nov, no cerca de la medianoche (que es lo que daba restar 3 días al instante).
+    /// </summary>
+    [Fact]
+    public void A_civil_due_date_reminds_at_nine_in_the_office_on_the_stage_day()
+    {
+        var due = new DateTime(2026, 11, 16, 4, 59, 59, DateTimeKind.Utc);
+        var nineThirty = new DateTime(2026, 11, 12, 14, 30, 0, DateTimeKind.Utc);
+
+        var decision = ReminderSchedule.Evaluate(
+            FormRequestStatus.Pending,
+            due,
+            null,
+            0,
+            nineThirty,
+            Options,
+            new DateOnly(2026, 11, 15),
+            BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/New_York")
+        );
+
+        Assert.True(decision.ShouldSend);
+    }
+
     [Fact]
     public void Closed_requests_never_remind()
     {

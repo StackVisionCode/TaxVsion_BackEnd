@@ -77,7 +77,10 @@ public sealed class SaveFileFromSourceHandlerTests
     [InlineData("taxvision-storage", "Invalid")]
     [InlineData("taxvision-storage", "Signature")]
     [InlineData("taxvision-quarantine", "Invalid")]
-    public async Task External_upload_request_cannot_access_an_object_outside_the_temp_bucket(string bucket, string ownerType)
+    public async Task External_upload_request_cannot_access_an_object_outside_the_temp_bucket(
+        string bucket,
+        string ownerType
+    )
     {
         var tenantId = Guid.NewGuid();
         var fileId = Guid.NewGuid();
@@ -93,7 +96,10 @@ public sealed class SaveFileFromSourceHandlerTests
 
         Assert.Empty(storage.Deleted);
         Assert.Empty(storage.Copied);
-        Assert.Equal("InvalidSourceBucket", Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>()).Reason);
+        Assert.Equal(
+            "InvalidSourceBucket",
+            Assert.Single(bus.Published.OfType<FileSaveRejectedIntegrationEvent>()).Reason
+        );
     }
 
     [Fact]

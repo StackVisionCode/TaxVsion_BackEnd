@@ -25,17 +25,16 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
-            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
-            
-            /*
-            * The service registration for TaxVision.Calendar.Application.Permissions.Abstractions.IUserPermissionsProjectionRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            */
-            var userPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Permissions.Abstractions.IUserPermissionsProjectionRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var publicBookingNotices = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.PublicBookingNotices>(serviceScope.ServiceProvider);
+            var publicBookingScheduler = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.PublicBookingScheduler>(serviceScope.ServiceProvider);
+            var publicBookingRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.Abstractions.IPublicBookingRepository>(serviceScope.ServiceProvider);
+            var bookingPageRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.Abstractions.IBookingPageRepository>(serviceScope.ServiceProvider);
             var availabilityRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Availability.Abstractions.IAvailabilityRepository>(serviceScope.ServiceProvider);
             
             /*
@@ -47,19 +46,20 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Calendar.Infrastructure.Persistence.Repositories.CalendarFeedTokenRepository is not public, so requires service location
             */
             var calendarFeedTokenRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Feeds.Abstractions.ICalendarFeedTokenRepository>(serviceScope.ServiceProvider);
+            var appointmentRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Appointments.Abstractions.IAppointmentRepository>(serviceScope.ServiceProvider);
             
             /*
-            * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
-            var publicBookingNotices = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.PublicBookingNotices>(serviceScope.ServiceProvider);
-            var publicBookingScheduler = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.PublicBookingScheduler>(serviceScope.ServiceProvider);
-            var appointmentRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Appointments.Abstractions.IAppointmentRepository>(serviceScope.ServiceProvider);
-            var publicBookingRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.Abstractions.IPublicBookingRepository>(serviceScope.ServiceProvider);
-            var bookingPageRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.Abstractions.IBookingPageRepository>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for TaxVision.Calendar.Application.Permissions.Abstractions.IUserPermissionsProjectionRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var userPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Permissions.Abstractions.IUserPermissionsProjectionRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var userOffboardedIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardedIntegrationEvent)context.Envelope.Message;
 

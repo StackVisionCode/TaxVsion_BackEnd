@@ -26,6 +26,11 @@ namespace Internal.Generated.WolverineHandlers
             var auditChainAppender = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IAuditChainAppender>(serviceScope.ServiceProvider);
             
             /*
+            * Concrete type TaxVision.Signature.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
+            
+            /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
@@ -55,7 +60,7 @@ namespace Internal.Generated.WolverineHandlers
 
                 
                 // The actual message execution
-                await TaxVision.Signature.Application.Analytics.Consumers.SignatureRequestCreatedAnalyticsConsumer.Handle(signatureRequestCreatedIntegrationEvent, signatureAnalyticsRepository, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
+                await TaxVision.Signature.Application.Analytics.Consumers.SignatureRequestCreatedAnalyticsConsumer.Handle(signatureRequestCreatedIntegrationEvent, signatureAnalyticsRepository, unitOfWork, correlationContext, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

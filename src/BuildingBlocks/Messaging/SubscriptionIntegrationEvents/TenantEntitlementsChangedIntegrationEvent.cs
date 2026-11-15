@@ -34,6 +34,13 @@ public sealed record TenantEntitlementsChangedIntegrationEvent : IntegrationEven
     /// </summary>
     public int? MaxStaffUsers { get; init; }
 
+    /// <summary>
+    /// Inicio del período vigente de la suscripción. Su día local es el ancla de los cupos mensuales (P11): se
+    /// reinician ese día de cada mes a medianoche de la oficina. Opcional: un mensaje viejo llega null y el
+    /// consumidor sigue con el mes UTC.
+    /// </summary>
+    public DateTime? CurrentPeriodStartUtc { get; init; }
+
     /// <summary>Snapshot resuelto completo: EntitlementKey -&gt; valor stringificado
     /// (ej. "seats.max" -&gt; "15", "storage.max_bytes" -&gt; "107374182400",
     /// "module.signatures" -&gt; "True"). Mismo contenido que expondría

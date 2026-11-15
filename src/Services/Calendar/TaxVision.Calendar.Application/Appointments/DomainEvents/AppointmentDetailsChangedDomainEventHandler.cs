@@ -30,7 +30,7 @@ public static class AppointmentDetailsChangedDomainEventHandler
             Description = appointment.Description,
             Location = appointment.Location?.Value,
             ChangedFields = changed.ChangedFields,
-            StartUtc = AppointmentEvents.FirstStartOf(appointment),
+            StartUtc = AppointmentEvents.UpcomingStartOf(appointment, DateTime.UtcNow),
             TimeZoneId = appointment.Timing.TimeZone.Id,
             IsRecurring = appointment.IsRecurring,
             MeetingId = appointment.MeetingId,

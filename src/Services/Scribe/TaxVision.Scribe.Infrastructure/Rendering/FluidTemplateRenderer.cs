@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -6,7 +7,10 @@ using System.Text.RegularExpressions;
 using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
+using BuildingBlocks.TimeZones;
 using Fluid;
+using Fluid.Values;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using TaxVision.Scribe.Application.Abstractions;
@@ -44,12 +48,29 @@ public sealed partial class FluidTemplateRenderer(
     IPlatformSettings platform,
     IMemoryCache l1Cache,
     ITemplateSourceCache l2Cache,
-    ILogger<FluidTemplateRenderer> logger
+    ILogger<FluidTemplateRenderer> logger,
+    ITenantTimeZoneResolver? officeZones = null
 ) : IEmailRenderer
 {
     private static readonly FluidParser Parser = new();
     private static readonly TimeSpan RenderTimeout = TimeSpan.FromSeconds(5);
-    private static readonly TemplateOptions Options = new() { MaxRecursion = 100, MaxSteps = 10000 };
+    private static readonly TemplateOptions Options = CreateOptions();
+
+    private static TemplateOptions CreateOptions()
+    {
+        var options = new TemplateOptions { MaxRecursion = 100, MaxSteps = 10000 };
+        // P18: otros formatos de una fecha tipada. Si llega texto (emisor viejo), lo devuelven tal cual.
+        options.Filters.AddFilter("office_date", (input, _, _) => Zoned(input, date => date.DateText()));
+        options.Filters.AddFilter("office_time", (input, _, _) => Zoned(input, date => date.TimeText()));
+        options.Filters.AddFilter(
+            "office_deadline",
+            (input, _, _) => Zoned(input, date => date.Deadline(DateTime.UtcNow))
+        );
+        return options;
+    }
+
+    private static ValueTask<FluidValue> Zoned(FluidValue input, Func<ZonedDate, string> format) =>
+        new(input.ToObjectValue() is ZonedDate date ? new StringValue(format(date)) : input);
 
     // El layout de la oficina. Quien renderiza sobre él lleva el logo del tenant, no el del sistema.
     private const string TenantLayoutKey = "tenant-base";
@@ -107,7 +128,8 @@ public sealed partial class FluidTemplateRenderer(
                 new Error("EmailRenderer.Channel", "The requested channel does not match the template channel.")
             );
 
-        var variables = NormalizeVariables(request.Variables);
+        var readerZone = await ReaderZoneAsync(request, ct);
+        var variables = NormalizeVariables(request.Variables, readerZone, request.Locale?.Value);
         if (request.Channel == TemplateChannel.Push)
             return await RenderPushAsync(templateKey.Value, template.TenantId, version, variables, ct);
 
@@ -762,13 +784,62 @@ public sealed partial class FluidTemplateRenderer(
     /// pasarlos al TemplateContext.
     /// </summary>
     private static IReadOnlyDictionary<string, object?> NormalizeVariables(
-        IReadOnlyDictionary<string, object?> variables
+        IReadOnlyDictionary<string, object?> variables,
+        ResolvedTimeZone? zone = null,
+        string? language = null
     )
     {
         var normalized = new Dictionary<string, object?>(variables.Count, StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in variables)
-            normalized[key] = value is JsonElement element ? NormalizeJsonElement(element) : value;
+        {
+            var plain = value is JsonElement element ? NormalizeJsonElement(element) : value;
+            normalized[key] = (object?)TypedDate(plain, zone ?? ResolvedTimeZone.Utc, language) ?? plain;
+        }
         return normalized;
+    }
+
+    /// <summary>
+    /// Fecha tipada en el cable (P18): {"$instant": "...Z"} o {"$date": "YYYY-MM-DD"}. Sale como
+    /// <see cref="ZonedDate"/>, que se imprime en la zona de quien lee. Cualquier otra cosa sigue igual.
+    /// </summary>
+    private static ZonedDate? TypedDate(object? value, ResolvedTimeZone zone, string? language)
+    {
+        if (value is not IDictionary<string, object?> { Count: 1 } marker)
+            return null;
+        var (kind, raw) = marker.First();
+        var text = raw as string;
+        if (
+            kind == "$instant"
+            && DateTime.TryParse(
+                text,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal,
+                out var instant
+            )
+        )
+            return ZonedDate.Instant(instant, zone, language);
+        if (
+            kind == "$date"
+            && DateOnly.TryParseExact(
+                text,
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var date
+            )
+        )
+            return ZonedDate.Civil(date, language);
+        return null;
+    }
+
+    /// <summary>Zona de quien lee: la pedida, si es válida; si no, la de la oficina; sin oficina, UTC (que el formato rotula).</summary>
+    private async Task<ResolvedTimeZone> ReaderZoneAsync(RenderRequest request, CancellationToken ct)
+    {
+        if (IanaTimeZone.TryFindTimeZone(request.TimeZoneId, out _))
+            return ResolvedTimeZone.Resolve(request.TimeZoneId);
+        if (request.TenantId is { } tenantId && officeZones is not null)
+            return await officeZones.ResolveAsync(tenantId, ct);
+        return ResolvedTimeZone.Utc;
     }
 
     private static object? NormalizeJsonElement(JsonElement element) =>

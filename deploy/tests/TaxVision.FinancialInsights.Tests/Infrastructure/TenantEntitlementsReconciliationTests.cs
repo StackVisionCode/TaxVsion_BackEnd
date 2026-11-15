@@ -48,8 +48,16 @@ public sealed class TenantEntitlementsReconciliationTests
         await h.Db.SaveChangesAsync();
         var queue = new ImportProcessingQueue(h.Db);
 
-        var due = await queue.ListTenantsToRefreshAsync(staleBeforeUtc: DateTime.UtcNow.AddHours(1), take: 10, CancellationToken.None);
-        var missingOnly = await queue.ListTenantsToRefreshAsync(staleBeforeUtc: DateTime.UtcNow.AddHours(-1), take: 10, CancellationToken.None);
+        var due = await queue.ListTenantsToRefreshAsync(
+            staleBeforeUtc: DateTime.UtcNow.AddHours(1),
+            take: 10,
+            CancellationToken.None
+        );
+        var missingOnly = await queue.ListTenantsToRefreshAsync(
+            staleBeforeUtc: DateTime.UtcNow.AddHours(-1),
+            take: 10,
+            CancellationToken.None
+        );
 
         Assert.Equal(new[] { known, withBatch, fresh, stale }.Order(), due.Order());
         Assert.Equal(new[] { known, withBatch }.Order(), missingOnly.Order());
@@ -77,7 +85,12 @@ public sealed class TenantEntitlementsReconciliationTests
         var customer = Guid.NewGuid();
         await using var h = new FinancialTestHarness(tenant);
         await h.SeedCustomerAsync(customer);
-        h.Snapshots.Snapshot = new TenantEntitlementsSnapshot("enterprise", 2, ["financial_insights", "documents"], 200);
+        h.Snapshots.Snapshot = new TenantEntitlementsSnapshot(
+            "enterprise",
+            2,
+            ["financial_insights", "documents"],
+            200
+        );
 
         var created = await CreatePortalImportBatchHandler.Handle(
             new CreatePortalImportBatchCommand(tenant, Guid.NewGuid(), customer, [Guid.NewGuid()], true),

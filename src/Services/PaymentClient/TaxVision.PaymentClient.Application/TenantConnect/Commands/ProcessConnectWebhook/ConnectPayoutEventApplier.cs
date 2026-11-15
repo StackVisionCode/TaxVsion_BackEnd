@@ -35,15 +35,17 @@ internal static class ConnectPayoutEventApplier
             return Result.Failure<IReadOnlyList<object>>(amountResult.Error);
 
         var failed = evt.EventType == "payout.failed";
+        // P29: el payout se fecha cuando lo dice Stripe (event.created); un reloj adelantado no deja fechas futuras.
+        var occurredUtc = evt.OccurredAtUtc is { } provider && provider <= nowUtc ? provider : nowUtc;
         if (failed)
             schedule.RecordPayoutFailed(
                 evt.PayoutReference!,
                 amountResult.Value,
                 evt.PayoutFailureReason ?? "Payout failed.",
-                nowUtc
+                occurredUtc
             );
         else
-            schedule.RecordPayoutPaid(evt.PayoutReference!, amountResult.Value, nowUtc);
+            schedule.RecordPayoutPaid(evt.PayoutReference!, amountResult.Value, occurredUtc);
 
         await AuditEntryFactory.AppendAsync(
             audit,
@@ -74,7 +76,7 @@ internal static class ConnectPayoutEventApplier
                 AmountCents = amountResult.Value.AmountCents,
                 Currency = amountResult.Value.Currency,
                 FailureReason = evt.PayoutFailureReason ?? "Payout failed.",
-                FailedAtUtc = nowUtc,
+                FailedAtUtc = occurredUtc,
                 CorrelationId = correlation.CorrelationId,
             }
             : new PayoutCompletedIntegrationEvent
@@ -84,7 +86,7 @@ internal static class ConnectPayoutEventApplier
                 ProviderPayoutReference = evt.PayoutReference!,
                 AmountCents = amountResult.Value.AmountCents,
                 Currency = amountResult.Value.Currency,
-                PaidAtUtc = nowUtc,
+                PaidAtUtc = occurredUtc,
                 CorrelationId = correlation.CorrelationId,
             };
         return Result.Success<IReadOnlyList<object>>([message]);

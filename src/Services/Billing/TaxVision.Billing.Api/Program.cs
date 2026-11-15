@@ -45,6 +45,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddBillingInfrastructure(builder.Configuration);
 
 // RateLimit Fase 2 — CachedTenantPlanCodeReader (5 min TTL) y HttpPlanRateLimitReader (catálogo
@@ -126,6 +127,8 @@ builder.Host.UseWolverine(options =>
     // P2 — consumer compartido (kit) que mantiene la proyección de asignaciones cliente↔staff desde el
     // snapshot CustomerAssignmentsChanged de Customer. Vive fuera del assembly del servicio → registro explícito.
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
+    // Zona de cada oficina: consumer compartido de TenantTimeZones, vive fuera de Application.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
 
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 

@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 
 namespace TaxVision.Campaigns.Domain.Scheduling;
 
@@ -72,6 +73,43 @@ public sealed class CampaignSchedule : TenantEntity
     public int OccurrenceCount { get; private set; }
 
     public DateTime? LastFiredAtUtc { get; private set; }
+
+    // Ancla civil (P10): diario, semanal y mensual avanzan en hora local de la oficina. Null = agendado sin ancla
+    // todavía (avanza como antes hasta que dispare y la tome).
+    public string? TimeZoneId { get; private set; }
+    public TimeOnly? LocalTimeOfDay { get; private set; }
+    public int? AnchorDay { get; private set; }
+
+    /// <summary>Slot diferido por la ventana de SMS (P12): no se reclama antes de este instante. El slot no cambia.</summary>
+    public DateTime? DeferredUntilUtc { get; private set; }
+
+    /// <summary>Difiere el slot actual hasta <paramref name="untilUtc"/> y suelta el lease; el agendado sigue su ritmo.</summary>
+    public void DeferTo(DateTime untilUtc)
+    {
+        DeferredUntilUtc = untilUtc;
+        ClearLease();
+        Touch();
+    }
+
+    /// <summary>
+    /// Toma el ancla civil de su próximo envío en la zona de la oficina (P10). Solo diario/semanal/mensual y una sola
+    /// vez; sin zona conocida (UTC de respaldo) espera a la próxima.
+    /// </summary>
+    public void AnchorToOfficeZone(ResolvedTimeZone officeZone)
+    {
+        if (TimeZoneId is not null || officeZone.IsFallback || NextFireAtUtc is not { } next || !IsCalendarRecurrence)
+            return;
+
+        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(next, DateTimeKind.Utc), officeZone.Zone);
+        TimeZoneId = officeZone.Id;
+        LocalTimeOfDay = TimeOnly.FromDateTime(local);
+        AnchorDay = local.Day;
+        Touch();
+    }
+
+    private bool IsCalendarRecurrence =>
+        Kind == ScheduleKind.Recurring
+        && Frequency is RecurrenceFrequency.Daily or RecurrenceFrequency.Weekly or RecurrenceFrequency.Monthly;
 
     /// <summary>Run en vuelo del último disparo (guard de solape). Se limpia al consumir <c>run.completed</c>.</summary>
     public Guid? ActiveRunId { get; private set; }
@@ -310,6 +348,7 @@ public sealed class CampaignSchedule : TenantEntity
     public void MarkFired(Guid runId, DateTime nowUtc, bool runIsTerminal = false)
     {
         LastFiredAtUtc = nowUtc;
+        DeferredUntilUtc = null;
         // Sin run, o run que ya cerró al arrancar (todo Skipped): no activar el guard de solape, porque su
         // run.completed ya salió y el agendado quedaría esperando para siempre.
         if (runId != Guid.Empty && !runIsTerminal)
@@ -363,6 +402,7 @@ public sealed class CampaignSchedule : TenantEntity
         && NextFireAtUtc is { } next
         && next <= nowUtc
         && ActiveRunId is null
+        && (DeferredUntilUtc is null || DeferredUntilUtc <= nowUtc)
         && (LeasedUntilUtc is null || LeasedUntilUtc < nowUtc);
 
     /// <summary>
@@ -401,7 +441,8 @@ public sealed class CampaignSchedule : TenantEntity
     /// <summary>Avanza un instante al siguiente slot según la frecuencia. Monthly usa calendario
     /// (mismo día del mes siguiente, con clamp de fin de mes); Custom/legacy usan IntervalMinutes.</summary>
     private DateTime Advance(DateTime from) =>
-        Frequency switch
+        CivilAdvance(from)
+        ?? Frequency switch
         {
             RecurrenceFrequency.Hourly => from.AddHours(1),
             RecurrenceFrequency.Daily => from.AddDays(1),
@@ -410,6 +451,31 @@ public sealed class CampaignSchedule : TenantEntity
             // Custom, o schedules legacy sin Frequency: por intervalo en minutos.
             _ => from.AddMinutes(IntervalMinutes ?? 0),
         };
+
+    // Con ancla: el día siguiente (o la semana / el mes) a la misma hora local; mensual recorta a fin de mes y vuelve
+    // al día ancla. Una hora que no existe (salto del horario de verano) se corre hacia adelante.
+    private DateTime? CivilAdvance(DateTime from)
+    {
+        if (TimeZoneId is null || LocalTimeOfDay is not { } time || !IsCalendarRecurrence)
+            return null;
+
+        var zone = ResolvedTimeZone.Resolve(TimeZoneId);
+        var day = CivilDate.Of(from, zone);
+        var nextDay = Frequency switch
+        {
+            RecurrenceFrequency.Daily => day.AddDays(1),
+            RecurrenceFrequency.Weekly => day.AddDays(7),
+            _ => NextMonthlyDay(day),
+        };
+        return WallTime.ToUtc(nextDay, time, zone, NonexistentTimePolicy.ShiftForward).Value;
+    }
+
+    private DateOnly NextMonthlyDay(DateOnly day)
+    {
+        var month = new DateOnly(day.Year, day.Month, 1).AddMonths(1);
+        var anchor = AnchorDay ?? day.Day;
+        return new DateOnly(month.Year, month.Month, Math.Min(anchor, DateTime.DaysInMonth(month.Year, month.Month)));
+    }
 
     private static Result BaseGuards(Guid tenantId, Guid campaignId)
     {

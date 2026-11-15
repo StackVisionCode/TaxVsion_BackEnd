@@ -25,11 +25,11 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var customerDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Customer.Infrastructure.Persistence.CustomerDbContext>(serviceScope.ServiceProvider);
             var customerRepository = new TaxVision.Customer.Infrastructure.Persistence.Repositories.CustomerRepository(customerDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var getMyCustomerContactQuery = (TaxVision.Customer.Application.Customers.Portal.GetMyCustomerContactQuery)context.Envelope.Message;
 

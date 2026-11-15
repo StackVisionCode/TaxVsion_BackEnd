@@ -33,7 +33,10 @@ internal static class PortalFormRequestDetailMapper
             consents,
             MapReview(request),
             MapSummary(request),
-            request.PrefilledComponentIds
+            request.PrefilledComponentIds,
+            request.DueCivilDate,
+            request.DueAtUtc < DateTime.UtcNow
+                && request.Status is FormRequestStatus.Pending or FormRequestStatus.Returned
         );
     }
 

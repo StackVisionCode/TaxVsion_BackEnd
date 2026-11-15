@@ -23,9 +23,10 @@ public static class ImportBatchCompletedDomainEventHandler
             BatchId = completed.BatchId,
             CustomerId = completed.CustomerId,
             CreatedByUserId = completed.CreatedBy,
-            Source = completed.Source == ImportBatchSource.Portal
-                ? FinancialImportBatchSources.Portal
-                : FinancialImportBatchSources.Staff,
+            Source =
+                completed.Source == ImportBatchSource.Portal
+                    ? FinancialImportBatchSources.Portal
+                    : FinancialImportBatchSources.Staff,
             CompletedDocuments = completed.Completed,
             NeedsReviewDocuments = completed.NeedsReview,
             FailedDocuments = completed.Failed,

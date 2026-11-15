@@ -12,6 +12,39 @@ namespace TaxVision.Growth.Tests.Application;
 
 public sealed class CodesAdministrationApplicationTests
 {
+    /// <summary>P30: la fecha elegida vence al final de ese día en la zona comercial (Nueva York, LLC en Miami).</summary>
+    [Fact]
+    public async Task CreateCodeDefinition_expires_at_the_end_of_the_chosen_day_in_the_commercial_zone()
+    {
+        var definitions = new InMemoryCodeDefinitionRepository();
+
+        var created = await CreateCodeDefinitionHandler.Handle(
+            CreatePercentageCommand(
+                PlatformTenant.Id,
+                CodeOwnerScope.Platform,
+                tenantScopeId: null,
+                "commercial-day"
+            ) with
+            {
+                ExpiresAtUtc = null,
+                ExpiresOn = new DateOnly(2026, 12, 31),
+            },
+            definitions,
+            new SpyCodeTokenHasher(),
+            new FakeBusinessIdempotencyExecutor(),
+            new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc)),
+            CancellationToken.None
+        );
+
+        Assert.True(created.IsSuccess);
+        // 23:59:59 del 31-dic en Nueva York (EST, UTC-5) = 04:59:59Z del 1-ene.
+        Assert.Equal(
+            new DateTime(2027, 1, 1, 4, 59, 59, DateTimeKind.Utc),
+            Assert.Single(definitions.Definitions).ExpiresAtUtc
+        );
+        Assert.Equal("America/New_York", CommercialTimeZone.Id);
+    }
+
     [Fact]
     public async Task CreateCodeDefinition_enforces_platform_and_tenant_ownership()
     {

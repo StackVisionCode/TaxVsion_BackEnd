@@ -210,6 +210,7 @@ public sealed class AssignExternalFormRequestHandlerTests
             bus ?? new FakeMessageBus(),
             new TestCorrelationContext(),
             new RecordingClientFormsMetrics(),
+            null!,
             default
         );
 

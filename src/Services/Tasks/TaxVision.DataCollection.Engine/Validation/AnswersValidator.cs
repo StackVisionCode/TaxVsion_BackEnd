@@ -12,7 +12,8 @@ namespace TaxVision.DataCollection.Engine.Validation;
 internal sealed partial class AnswersValidator(
     DataCollectionLimits limits,
     ComponentRegistry registry,
-    TimeProvider timeProvider
+    TimeProvider timeProvider,
+    TimeZoneInfo? officeZone = null
 )
 {
     internal AnswersValidationReport Validate(
@@ -437,8 +438,12 @@ internal sealed partial class AnswersValidator(
             Add(issues, "answer.out_of_range", path, component.Id, rowId, "Date is outside the allowed range.");
     }
 
-    // "today" = fecha UTC del reloj inyectado al validar (P-1.4).
-    private DateOnly Today() => DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+    // "today" = el día de la oficina (P13) si se conoce; si no, la fecha UTC del reloj inyectado (P-1.4).
+    private DateOnly Today()
+    {
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        return DateOnly.FromDateTime(officeZone is null ? now : TimeZoneInfo.ConvertTimeFromUtc(now, officeZone));
+    }
 
     private static DateOnly? ReadDateBound(FormComponent component, string name, DateOnly today)
     {

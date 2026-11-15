@@ -87,6 +87,7 @@ public static class QualifyReferralHandler
                         attribution.ReferrerId,
                         program.Id,
                         attribution.ReferrerId,
+                        // P11: el año de la cuota es el año UTC del pago, a propósito.
                         command.PaymentSucceededAtUtc.Year,
                         program.Policy.MaximumRewardsPerReferrerPerCalendarYear,
                         qualification.Id,

@@ -5,6 +5,7 @@ using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Consents;
 using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
+using TaxVision.Tasks.ClientForms.Application.Requests;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Audit;
 using TaxVision.Tasks.ClientForms.Domain.Participants;
@@ -27,9 +28,11 @@ public static class CreateFormIntakeLinkHandler
         IFormExternalAccessSecurity security,
         IFormAuditLog audit,
         IUnitOfWork unitOfWork,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
+        command = await WithResolvedExpiryAsync(command, zones, ct);
         if (!await capabilities.IsIntakeLinkAvailableAsync(command.TenantId, ct))
             return Failure(FormParticipantErrors.IntakeLinkUnavailable);
         if (!await responsibleUsers.IsActiveAsync(command.TenantId, command.ResponsibleUserId, ct))
@@ -55,6 +58,23 @@ public static class CreateFormIntakeLinkHandler
             new FormIntakeLinkTokenResponse(FormIntakeLinkResponse.From(created.Value), token.RawToken)
         );
     }
+
+    // La fecha civil (ExpiresOn) manda: vence al final de ese día en la oficina.
+    private static async Task<CreateFormIntakeLinkCommand> WithResolvedExpiryAsync(
+        CreateFormIntakeLinkCommand command,
+        IOfficeTimeZone zones,
+        CancellationToken ct
+    ) =>
+        command with
+        {
+            ExpiresAtUtc = await FormDueDates.ResolveAsync(
+                command.TenantId,
+                command.ExpiresOn,
+                command.ExpiresAtUtc,
+                zones,
+                ct
+            ),
+        };
 
     private static async Task<Result<(FormTemplateVersion Version, EntryNoticeSelection Notice)>> LoadSourcesAsync(
         CreateFormIntakeLinkCommand command,

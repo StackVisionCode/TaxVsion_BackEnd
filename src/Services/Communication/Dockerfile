@@ -18,6 +18,8 @@ RUN npm run build
 
 # ---------- Stage 2: runtime ----------
 FROM node:24.22.2-bookworm-slim AS runtime
+# Contenedor en UTC declarado; la zona de negocio es la de la oficina, no la del proceso.
+ENV TZ=Etc/UTC
 WORKDIR /app
 
 # Herramientas para OpenSSL de Prisma + healthcheck.

@@ -23,6 +23,11 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            
+            /*
+            * Concrete type TaxVision.Signature.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
             var signatureAnalyticsRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureAnalyticsRepository>(serviceScope.ServiceProvider);
             var signatureRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureRequestRepository>(serviceScope.ServiceProvider);
             
@@ -31,9 +36,9 @@ namespace Internal.Generated.WolverineHandlers
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var auditChainAppender = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IAuditChainAppender>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var signatureRequestSentIntegrationEvent = (BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureRequestSentIntegrationEvent)context.Envelope.Message;
 
@@ -56,7 +61,7 @@ namespace Internal.Generated.WolverineHandlers
 
                 
                 // The actual message execution
-                await TaxVision.Signature.Application.Analytics.Consumers.SignatureRequestSentAnalyticsConsumer.Handle(signatureRequestSentIntegrationEvent, signatureRequestRepository, signatureAnalyticsRepository, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
+                await TaxVision.Signature.Application.Analytics.Consumers.SignatureRequestSentAnalyticsConsumer.Handle(signatureRequestSentIntegrationEvent, signatureRequestRepository, signatureAnalyticsRepository, unitOfWork, correlationContext, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

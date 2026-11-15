@@ -20,6 +20,9 @@ public sealed record GiftcardShareRequestedIntegrationEvent : GrowthIntegrationE
     public required string Code { get; init; }
     public DateTime? ExpiresAtUtc { get; init; }
 
+    /// <summary>Zona comercial en la que vence (P30, aditivo): el correo la escribe.</summary>
+    public string? ExpiresTimeZoneId { get; init; }
+
     /// <summary>Mensaje personal opcional del remitente (se escapa al renderizar).</summary>
     public string? PersonalMessage { get; init; }
 

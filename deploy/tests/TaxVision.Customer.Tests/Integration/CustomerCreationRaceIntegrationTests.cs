@@ -167,6 +167,7 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
                 options.Services.AddSingleton<ICustomerImportCloudStorageClient, EmptyFile>();
                 options.Services.AddSingleton<ICustomerImportReaderFactory>(new FixedRows(rows ?? []));
                 options.Services.AddSingleton<ICatalogResolver, NoCatalogs>();
+                options.Services.AddSingleton<IOfficeTimeZone, UtcOfficeZone>();
                 options.Services.AddSingleton<ITransactionalUnitRunner, CustomerTransactionalUnitRunner>();
             },
             interceptors
@@ -353,5 +354,11 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
         public string ComputeBlindIndex(string plainText, Guid tenantId) => string.Empty;
 
         public IReadOnlyCollection<string> ComputeBlindIndexCandidates(string plainText, Guid tenantId) => [];
+    }
+
+    private sealed class UtcOfficeZone : IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(null));
     }
 }

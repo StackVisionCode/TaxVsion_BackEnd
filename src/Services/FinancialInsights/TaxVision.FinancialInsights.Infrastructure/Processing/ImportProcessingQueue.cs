@@ -1,4 +1,6 @@
 using System.Data;
+using BuildingBlocks.TenantTimeZones;
+using BuildingBlocks.TimeZones;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.FinancialInsights.Application.Imports;
 using TaxVision.FinancialInsights.Domain.Imports;
@@ -39,13 +41,18 @@ public sealed class ImportProcessingQueue(FinancialInsightsDbContext db)
                 && d.Status == ImportDocumentStatus.Ready
             )
             .ExecuteUpdateAsync(
-                set => set.SetProperty(d => d.Status, ImportDocumentStatus.Processing)
-                    .SetProperty(d => d.UpdatedAtUtc, DateTime.UtcNow),
+                set =>
+                    set.SetProperty(d => d.Status, ImportDocumentStatus.Processing)
+                        .SetProperty(d => d.UpdatedAtUtc, DateTime.UtcNow),
                 ct
             ) == 1;
 
     /// <summary>Documentos que quedaron en Processing por un worker caído.</summary>
-    public async Task<IReadOnlyList<ClaimCandidate>> ListInterruptedAsync(DateTime olderThanUtc, int take, CancellationToken ct) =>
+    public async Task<IReadOnlyList<ClaimCandidate>> ListInterruptedAsync(
+        DateTime olderThanUtc,
+        int take,
+        CancellationToken ct
+    ) =>
         await db
             .ImportDocuments.IgnoreQueryFilters()
             .AsNoTracking()
@@ -72,7 +79,11 @@ public sealed class ImportProcessingQueue(FinancialInsightsDbContext db)
     /// Tenants conocidos localmente (directorio de oficinas o con lotes) sin fila de plan o con una anterior a
     /// <paramref name="staleBeforeUtc"/>. Primero los que no tienen fila.
     /// </summary>
-    public async Task<IReadOnlyList<Guid>> ListTenantsToRefreshAsync(DateTime staleBeforeUtc, int take, CancellationToken ct)
+    public async Task<IReadOnlyList<Guid>> ListTenantsToRefreshAsync(
+        DateTime staleBeforeUtc,
+        int take,
+        CancellationToken ct
+    )
     {
         var known = db
             .TenantDirectoryProjections.IgnoreQueryFilters()
@@ -92,16 +103,26 @@ public sealed class ImportProcessingQueue(FinancialInsightsDbContext db)
             .ImportBatches.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(b => b.TenantId == tenantId && b.Documents.Any(d => d.Id == documentId))
-            .Select(b => new { b.CustomerId, FileId = b.Documents.Where(d => d.Id == documentId).Select(d => d.FileId).First() })
+            .Select(b => new
+            {
+                b.CustomerId,
+                FileId = b.Documents.Where(d => d.Id == documentId).Select(d => d.FileId).First(),
+            })
             .SingleOrDefaultAsync(ct);
         if (batch is null)
             return null;
 
-        var tenant = await db.TenantDirectoryProjections.IgnoreQueryFilters().AsNoTracking()
+        var tenant = await db
+            .TenantDirectoryProjections.IgnoreQueryFilters()
+            .AsNoTracking()
             .SingleOrDefaultAsync(t => t.TenantId == tenantId, ct);
-        var customer = await db.CustomerDirectoryProjections.IgnoreQueryFilters().AsNoTracking()
+        var customer = await db
+            .CustomerDirectoryProjections.IgnoreQueryFilters()
+            .AsNoTracking()
             .SingleOrDefaultAsync(c => c.TenantId == tenantId && c.CustomerId == batch.CustomerId, ct);
-        var plan = await db.TenantEntitlementsProjections.IgnoreQueryFilters().AsNoTracking()
+        var plan = await db
+            .TenantEntitlementsProjections.IgnoreQueryFilters()
+            .AsNoTracking()
             .SingleOrDefaultAsync(e => e.TenantId == tenantId, ct);
         return new ProcessingContext(batch.CustomerId, batch.FileId, tenant, customer, plan);
     }
@@ -110,19 +131,37 @@ public sealed class ImportProcessingQueue(FinancialInsightsDbContext db)
     /// Reserva serializable del cupo mensual antes de llamar al modelo. <c>false</c> si el documento ya tuvo un intento
     /// (no se cobra dos veces) o si el tenant agotó su cupo del mes.
     /// </summary>
-    public async Task<bool> TryReserveAsync(Guid tenantId, Guid documentId, string model, int monthlyLimit, CancellationToken ct)
+    public async Task<bool> TryReserveAsync(
+        Guid tenantId,
+        Guid documentId,
+        string model,
+        int monthlyLimit,
+        CancellationToken ct
+    )
     {
         if (monthlyLimit < 1)
             return false;
         var now = DateTime.UtcNow;
-        var month = AiProcessingReservation.MonthStart(now);
+        // P11: el mes del cupo empieza el día de alta de la suscripción a medianoche de la oficina.
+        var anchor = await db
+            .TenantEntitlementsProjections.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(e => e.TenantId == tenantId)
+            .Select(e => e.UsagePeriodAnchorUtc)
+            .FirstOrDefaultAsync(ct);
+        var zoneId = await db.Set<TenantTimeZoneProjection>()
+            .AsNoTracking()
+            .Where(z => z.TenantId == tenantId)
+            .Select(z => z.TimeZoneId)
+            .FirstOrDefaultAsync(ct);
+        var month = MonthlyUsagePeriod.StartUtc(now, anchor, ResolvedTimeZone.Resolve(zoneId));
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         var reservations = db.AiProcessingReservations.IgnoreQueryFilters();
         if (await reservations.AnyAsync(r => r.TenantId == tenantId && r.ImportDocumentId == documentId, ct))
             return false;
         if (await reservations.CountAsync(r => r.TenantId == tenantId && r.MonthStartUtc == month, ct) >= monthlyLimit)
             return false;
-        var reservation = AiProcessingReservation.Create(tenantId, documentId, model, now);
+        var reservation = AiProcessingReservation.Create(tenantId, documentId, model, now, month);
         if (reservation.IsFailure)
             return false;
         db.AiProcessingReservations.Add(reservation.Value);

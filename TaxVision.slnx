@@ -11,6 +11,9 @@
   <Folder Name="/src/BuildingBlocks/CustomerVisibility/">
     <Project Path="src/BuildingBlocks/CustomerVisibility/BuildingBlocks.CustomerVisibility.csproj" />
   </Folder>
+  <Folder Name="/src/BuildingBlocks/EfCore/">
+    <Project Path="src/BuildingBlocks/EfCore/BuildingBlocks.EfCore.csproj" />
+  </Folder>
   <Folder Name="/src/BuildingBlocks/Imaging/">
     <Project Path="src/BuildingBlocks/Imaging/BuildingBlocks.Imaging.csproj" />
   </Folder>
@@ -18,6 +21,9 @@
     <Project Path="src/BuildingBlocks/Jobs/BuildingBlocks.Jobs.csproj" />
   </Folder>
   <Folder Name="/src/BuildingBlocks/Messaging/" />
+  <Folder Name="/src/BuildingBlocks/TenantTimeZones/">
+    <Project Path="src/BuildingBlocks/TenantTimeZones/BuildingBlocks.TenantTimeZones.csproj" />
+  </Folder>
   <Folder Name="/src/Gateway/">
     <Project Path="src/Gateway/TaxVision.Gateway/TaxVision.Gateway.csproj" />
   </Folder>

@@ -88,12 +88,13 @@ public static class SignatureCertificateReadyConsumer
                         new Dictionary<string, object?>
                         {
                             ["full_name"] = signer.FullName,
-                            ["completed_at"] = evt.CompletedAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                            ["completed_at"] = ScribeDates.Instant(evt.CompletedAtUtc),
                             ["download_link"] = downloadLink,
                             ["document_title"] = evt.DocumentTitle,
                             ["language"] = signer.Language,
                         },
                         ScribeRenderAudience.Client,
+                        ScribeReader.From(signer.Language),
                         ct
                     )
                 ).EnsureRendered("sig.certificate_ready.v1");

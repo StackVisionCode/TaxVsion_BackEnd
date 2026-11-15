@@ -1,7 +1,9 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Tasks.Domain.ClientRequests.Events;
 using TaxVision.Tasks.Domain.Tasks;
+using TaxVision.Tasks.Domain.ValueObjects;
 
 namespace TaxVision.Tasks.Domain.ClientRequests;
 
@@ -47,6 +49,11 @@ public sealed class ClientRequest : AggregateRoot
     /// <summary>La fecha que se le dio al cliente, que no es la del encargo interno.</summary>
     public DateTime? DueAtUtc { get; private set; }
 
+    /// <summary>La fecha civil dada al cliente; su instante (fin del día de la oficina) ya no la dice.</summary>
+    public DateOnly? DueOn { get; private set; }
+
+    public DateOnly? DueCivilDate => DueOn ?? DueDate.LegacyCivilDate(DueAtUtc);
+
     public IReadOnlyList<ClientRequestDocument> Documents => _documents.AsReadOnly();
 
     [UserReference(
@@ -80,6 +87,19 @@ public sealed class ClientRequest : AggregateRoot
 
     public bool IsOpen => Status is ClientRequestStatus.Pending or ClientRequestStatus.Submitted;
 
+    /// <summary>P9: abierta y con fin de día en la zona anterior: pasa al fin del mismo día en la nueva.</summary>
+    public bool RezoneCivilDue(string previousTimeZoneId, ResolvedTimeZone newZone)
+    {
+        if (
+            !IsOpen
+            || DueOn is not { } day
+            || DueAtUtc != LocalDay.EndUtc(day, ResolvedTimeZone.Resolve(previousTimeZoneId))
+        )
+            return false;
+        DueAtUtc = LocalDay.EndUtc(day, newZone);
+        return true;
+    }
+
     public static Result<ClientRequest> Create(
         Guid tenantId,
         Guid customerId,
@@ -88,7 +108,8 @@ public sealed class ClientRequest : AggregateRoot
         string? title,
         string? details,
         DateTime? dueAtUtc,
-        DateTime nowUtc
+        DateTime nowUtc,
+        DateOnly? dueOn = null
     )
     {
         if (tenantId == Guid.Empty || requestedByUserId == Guid.Empty)
@@ -115,6 +136,7 @@ public sealed class ClientRequest : AggregateRoot
             Title = trimmed,
             Details = string.IsNullOrWhiteSpace(details) ? null : details.Trim(),
             DueAtUtc = dueAtUtc,
+            DueOn = dueAtUtc is null ? null : dueOn,
             Status = ClientRequestStatus.Pending,
             CreatedAtUtc = nowUtc,
         };

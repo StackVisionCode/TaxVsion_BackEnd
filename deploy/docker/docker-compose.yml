@@ -12,6 +12,7 @@ services:
     container_name: taxvision-rabbitmq
     restart: unless-stopped
     environment:
+      TZ: Etc/UTC
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in .env}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
     # 5672 (AMQP) solo loopback: los servicios de la app usan rabbitmq:5672 por DNS
@@ -33,6 +34,8 @@ services:
 
   redis:
     image: redis:7.2.12-alpine
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
@@ -60,6 +63,7 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
+      TZ: Etc/UTC
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
     # 9000 (API S3) solo loopback: los servicios .NET/Node corridos con `dotnet run`/
@@ -104,6 +108,7 @@ services:
         } >> "$$conf"
         exec /init
     environment:
+      TZ: Etc/UTC
       CLAMD_STREAM_MAX_LENGTH: ${CLAMD_STREAM_MAX_LENGTH:-2100M}
       CLAMD_MAX_FILE_SIZE: ${CLAMD_MAX_FILE_SIZE:-2100M}
       CLAMD_MAX_SCAN_SIZE: ${CLAMD_MAX_SCAN_SIZE:-2100M}
@@ -134,6 +139,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ContentScanner__ApiKey: ${CONTENT_SCANNER_API_KEY:?Set CONTENT_SCANNER_API_KEY in .env}
     mem_limit: 768m
     cpus: 1.0
@@ -173,6 +179,7 @@ services:
         echo "SQL Server no respondio en 120s: $$SQLSERVER_HOST:$$SQLSERVER_PORT" >&2
         exit 1
     environment:
+      TZ: Etc/UTC
       SQLSERVER_HOST: ${SQLSERVER_HOST:?Set SQLSERVER_HOST in .env}
       SQLSERVER_PORT: ${SQLSERVER_PORT:-1433}
     networks:
@@ -211,6 +218,8 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.153.0
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-otel-collector
     restart: unless-stopped
     command: ["--config=/etc/otelcol/config.yml"]
@@ -241,6 +250,8 @@ services:
     profiles:
       - observability
     image: gcr.io/cadvisor/cadvisor:v0.49.1
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-cadvisor
     restart: unless-stopped
     privileged: true
@@ -269,6 +280,8 @@ services:
     profiles:
       - observability
     image: prom/node-exporter:v1.8.2
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-node-exporter
     restart: unless-stopped
     pid: host
@@ -291,6 +304,8 @@ services:
     profiles:
       - observability
     image: prom/prometheus:v3.5.3
+    environment:
+      TZ: Etc/UTC
     container_name: taxvision-prometheus
     restart: unless-stopped
     command:
@@ -331,6 +346,7 @@ services:
         fi
         exec /run.sh
     environment:
+      TZ: Etc/UTC
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
       GF_USERS_ALLOW_SIGN_UP: "false"
@@ -359,6 +375,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
@@ -435,6 +452,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -768,8 +786,11 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${CUSTOMER_DB_CONNECTION:?Set CUSTOMER_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -846,8 +867,11 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${SUBSCRIPTION_DB_CONNECTION:?Set SUBSCRIPTION_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -902,6 +926,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -1013,6 +1038,9 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      # Scribe primero (o junto): un Scribe viejo imprimiría el marcador de fecha tipada como texto raro.
+      scribe-api:
+        condition: service_healthy
     networks:
       - taxvision-network
 
@@ -1026,6 +1054,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -1116,6 +1145,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -1155,6 +1185,14 @@ services:
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    # Notification manda las fechas tipadas ({"$instant": ...}) que solo un Scribe de la Fase 5 sabe imprimir:
+    # notification-api espera a este healthcheck. El deploy construye y levanta los dos en la misma corrida.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     depends_on:
       db-ready:
         condition: service_completed_successfully
@@ -1195,6 +1233,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -1286,6 +1325,7 @@ services:
     # Cierra las conexiones IMAP con LOGOUT y suelta los leases antes de morir.
     stop_grace_period: 30s
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CONNECTORS_DB_CONNECTION:?Set CONNECTORS_DB_CONNECTION in .env}
@@ -1324,6 +1364,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CORRESPONDENCE_DB_CONNECTION:?Set CORRESPONDENCE_DB_CONNECTION in .env}
@@ -1391,6 +1432,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${NOTES_DB_CONNECTION:?Set NOTES_DB_CONNECTION in .env}
@@ -1455,6 +1497,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${SMS_DB_CONNECTION:?Set SMS_DB_CONNECTION in .env}
@@ -1520,8 +1563,11 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${CAMPAIGNS_DB_CONNECTION:?Set CAMPAIGNS_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -1585,6 +1631,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${FINANCIAL_INSIGHTS_DB_CONNECTION:-}
@@ -1596,6 +1643,7 @@ services:
       Services__Auth__BaseUrl: http://auth-api:8080/
       Services__Customer__BaseUrl: http://customer-api:8080/
       Services__CloudStorage__BaseUrl: http://cloudstorage-api:8080/
+      Services__Tenant__BaseUrl: http://tenant-api:8080/
       ServiceAuthClient__ClientId: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID:-financial-insights-worker}
       ServiceAuthClient__ClientSecret: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET:-}
       OpenAI__ApiKey: ${FINANCIAL_INSIGHTS_OPENAI_API_KEY:-}
@@ -1638,6 +1686,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${WALLET_DB_CONNECTION:?Set WALLET_DB_CONNECTION in .env}
@@ -1689,6 +1738,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CATALOG_DB_CONNECTION:?Set CATALOG_DB_CONNECTION in .env}
@@ -1729,6 +1779,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${INVENTORY_DB_CONNECTION:?Set INVENTORY_DB_CONNECTION in .env}
@@ -1769,6 +1820,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${REMINDER_DB_CONNECTION:?Set REMINDER_DB_CONNECTION in .env}
@@ -1817,8 +1869,11 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${CALENDAR_DB_CONNECTION:?Set CALENDAR_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -1878,8 +1933,11 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Zona de cada oficina: reconciliación contra el directorio de Tenant.
+      TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       ConnectionStrings__Default: ${TASKS_DB_CONNECTION:?Set TASKS_DB_CONNECTION in .env}
       ConnectionStrings__Redis: redis:6379
       RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
@@ -1939,6 +1997,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${CLOUDSTORAGE_DB_CONNECTION:?Set CLOUDSTORAGE_DB_CONNECTION in .env}
@@ -2057,6 +2116,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2142,6 +2202,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2219,6 +2280,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2289,6 +2351,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       # Enlace de la giftcard enviada por correo: alta del landing con el código precargado.
       Giftcards__RedeemBaseUrl: https://${TAXVISION_BASE_DOMAIN:-taxoffix.io}
       ASPNETCORE_ENVIRONMENT: Production
@@ -2341,6 +2404,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2401,6 +2465,7 @@ services:
     expose:
       - "8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2481,6 +2546,7 @@ services:
       - "${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}:${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}/udp"
       - "${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}:${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE:-40000}-${COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_END:-40003}/tcp"
     environment:
+      TZ: Etc/UTC
       NODE_ENV: production
       LOG_LEVEL: info
       SERVICE_NAME: communication-service
@@ -2614,6 +2680,7 @@ services:
     # whisper corre con nice 10 (TRANSCRIPT_WORKER_WHISPER_NICE) para no quitarle CPU a lo que está en vivo.
     mem_limit: ${TRANSCRIPT_WORKER_MEM_LIMIT:-3g}
     environment:
+      TZ: Etc/UTC
       NODE_ENV: production
       LOG_LEVEL: info
       SERVICE_NAME: communication-transcript-worker
@@ -2685,6 +2752,7 @@ services:
     # ffmpeg componiendo 1080p consume RAM por hilo; el tope evita que una composición tumbe el host.
     mem_limit: 1536m
     environment:
+      TZ: Etc/UTC
       NODE_ENV: production
       LOG_LEVEL: info
       SERVICE_NAME: communication-recorder
@@ -2771,6 +2839,7 @@ services:
     image: minio/mc:latest
     entrypoint: ["sh", "/provision/provision-service-accounts.sh"]
     environment:
+      TZ: Etc/UTC
       MINIO_ALIAS: taxvision
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
@@ -2800,6 +2869,7 @@ services:
       context: ../..
       dockerfile: deploy/docker/migrations/Dockerfile
     environment:
+      TZ: Etc/UTC
       AUTH_DB_CONNECTION: ${AUTH_DB_CONNECTION:?Set AUTH_DB_CONNECTION in .env}
       TENANT_DB_CONNECTION: ${TENANT_DB_CONNECTION:?Set TENANT_DB_CONNECTION in .env}
       CUSTOMER_DB_CONNECTION: ${CUSTOMER_DB_CONNECTION:?Set CUSTOMER_DB_CONNECTION in .env}
@@ -2853,6 +2923,7 @@ services:
     ports:
       - "127.0.0.1:5047:8080"
     environment:
+      TZ: Etc/UTC
       <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
@@ -2962,6 +3033,7 @@ services:
     container_name: taxvision-caddy
     restart: unless-stopped
     environment:
+      TZ: Etc/UTC
       # Host publico de la API. Cloudflare Tunnel lo entrega por HTTP al puerto
       # 80 del host; el Caddyfile lo envia a gateway:8080 sin redireccionarlo.
       TAXVISION_DOMAIN: ${TAXVISION_DOMAIN:-api.taxoffix.io}

@@ -36,6 +36,8 @@ public static class TaskAssignedDomainEventHandler
                 AssigneeUserId = assigned.AssigneeUserId,
                 PreviousAssigneeUserId = assigned.PreviousAssigneeUserId,
                 DueAtUtc = task.Due?.DueAtUtc,
+                DueOn = task.Due?.DueOn,
+                DueTimeZoneId = task.Due?.TimeZoneId,
                 AssignedByUserId = assigned.AssignedByUserId,
             }
         );

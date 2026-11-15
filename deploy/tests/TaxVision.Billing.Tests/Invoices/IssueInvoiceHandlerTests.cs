@@ -23,7 +23,8 @@ public sealed class IssueInvoiceHandlerTests
     {
         var invoice = await IssueAsync(new InvoiceTermsSnapshot(terms, null, null));
 
-        Assert.Equal(Now.AddDays(days), invoice.DueDateUtc);
+        // Vence al final del día civil en la oficina (P4), ya no a la misma hora N días después.
+        Assert.Equal(EndOfUtcDay(Now.AddDays(days)), invoice.DueDateUtc);
     }
 
     [Fact]
@@ -31,8 +32,28 @@ public sealed class IssueInvoiceHandlerTests
     {
         var invoice = await IssueAsync(null);
 
-        Assert.Equal(Now.AddDays(30), invoice.DueDateUtc);
+        Assert.Equal(EndOfUtcDay(Now.AddDays(30)), invoice.DueDateUtc);
     }
+
+    /// <summary>P6: el número sale del año de la oficina. 20:00 del 31-dic en Nueva York es 2026, no 2027.</summary>
+    [Fact]
+    public async Task The_number_uses_the_office_year()
+    {
+        var draft = Draft(null);
+
+        var result = await HandleAsync(
+            draft,
+            new NewSequence(),
+            clock: new FixedClock(new DateTime(2027, 1, 1, 1, 0, 0, DateTimeKind.Utc)),
+            zone: "America/New_York"
+        );
+
+        Assert.Equal("INV-2026-00001", result.Value.InvoiceNumber);
+        Assert.Equal(new DateOnly(2026, 12, 31), draft.IssueDate);
+        Assert.Equal("America/New_York", draft.IssueTimeZoneId);
+    }
+
+    private static DateTime EndOfUtcDay(DateTime instant) => instant.Date.AddDays(1).AddSeconds(-1);
 
     // BIL-16: Wolverine guarda aunque se devuelva Failure, así que el número reservado se perdería.
     [Fact]
@@ -98,7 +119,9 @@ public sealed class IssueInvoiceHandlerTests
     private static Task<Result<IssueInvoiceResult>> HandleAsync(
         Invoice invoice,
         NewSequence sequences,
-        NoStock? stock = null
+        NoStock? stock = null,
+        FixedClock? clock = null,
+        string zone = "Etc/UTC"
     ) =>
         IssueInvoiceHandler.Handle(
             new IssueInvoiceCommand(Tenant, invoice.Id, Guid.NewGuid(), CanViewAll: true),
@@ -108,9 +131,16 @@ public sealed class IssueInvoiceHandlerTests
             stock ?? new NoStock(),
             new CountingUnitOfWork(),
             new FakeMessageBus(),
-            new FixedClock(Now),
+            clock ?? new FixedClock(Now),
+            new OfficeZone(zone),
             CancellationToken.None
         );
+
+    private sealed class OfficeZone(string zone) : IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(zone));
+    }
 
     private sealed class SingleInvoice(Invoice invoice) : IInvoiceRepository
     {

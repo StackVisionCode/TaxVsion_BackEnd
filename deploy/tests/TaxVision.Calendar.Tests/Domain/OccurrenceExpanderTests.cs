@@ -43,6 +43,32 @@ public sealed class OccurrenceExpanderTests
         return appointment;
     }
 
+    // P23 (H9): un día completo se busca por fecha civil; antes se descartaba y desaparecía de las vistas.
+    [Fact]
+    public void An_all_day_appointment_is_its_civil_days_in_its_zone()
+    {
+        var timing = EventTiming.AllDayOf(new DateOnly(2026, 11, 26), new DateOnly(2026, 11, 27), NewYork).Value;
+        var appointment = Appointment
+            .Schedule(
+                Guid.NewGuid(),
+                AppointmentTitle.Create("Office closed").Value,
+                timing,
+                Guid.NewGuid(),
+                Organizer,
+                Now
+            )
+            .Value;
+
+        var occurrence = Assert.Single(
+            OccurrenceExpander.Expand(appointment, Utc(2026, 11, 27), Utc(2026, 11, 28)).Value
+        );
+
+        // Del 26 a las 00:00 al 28 a las 00:00 de Nueva York (EST).
+        Assert.Equal(Utc(2026, 11, 26, 5), occurrence.StartUtc);
+        Assert.Equal(Utc(2026, 11, 28, 5), occurrence.EndUtc);
+        Assert.Empty(OccurrenceExpander.Expand(appointment, Utc(2026, 11, 29), Utc(2026, 11, 30)).Value);
+    }
+
     private static DateTime ExpectedByHand(string zoneId, int y, int m, int d, int hour)
     {
         Assert.True(IanaTimeZone.TryFindTimeZone(zoneId, out var zone));

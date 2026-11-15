@@ -248,6 +248,14 @@ public sealed class CampaignRunDomainEventIntegrationTests : IAsyncLifetime
                 services.AddScoped<ICampaignRepository, CampaignRepository>();
                 services.AddScoped<ICampaignRunRepository, CampaignRunRepository>();
                 services.AddScoped<ICampaignScheduleRepository, CampaignScheduleRepository>();
+                // El opener también lee la zona de la oficina y su ventana de SMS.
+                services.AddSingleton<TaxVision.Campaigns.Application.Scheduling.Abstractions.IOfficeTimeZone>(
+                    new UnknownOfficeZone()
+                );
+                services.AddScoped<
+                    TaxVision.Campaigns.Application.Settings.SmsWindow.ICampaignSmsWindowRepository,
+                    CampaignSmsWindowRepository
+                >();
                 services.AddCampaignRunOrchestration();
                 services.AddScoped<IContactRepository, ContactRepository>();
                 services.AddScoped<IContactListRepository, ContactListRepository>();

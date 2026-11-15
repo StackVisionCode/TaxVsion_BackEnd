@@ -116,6 +116,21 @@ public sealed partial class ProcessConnectWebhookHandlerTests
         Assert.Equal(PaymentAuditAction.PayoutScheduleUpdated, audit.Action);
     }
 
+    /// <summary>P29: el payout se fecha cuando lo dice Stripe (event.created), no cuando llegó el webhook.</summary>
+    [Fact]
+    public async Task PayoutPaid_is_dated_when_the_provider_says()
+    {
+        await SeedAccountAsync();
+        await SeedScheduleAsync();
+        var providerTime = DateTime.UtcNow.AddHours(-5);
+
+        _gateway.Next = Payout("evt_pt", "payout.paid", "po_t", 500, "usd", null) with { OccurredAtUtc = providerTime };
+        await InvokeAsync();
+
+        var completed = Assert.IsType<PayoutCompletedIntegrationEvent>(Assert.Single(_published));
+        Assert.Equal(providerTime, completed.PaidAtUtc);
+    }
+
     [Fact]
     public async Task PayoutFailed_RecordsItAndPublishesFailed_WithItsReason()
     {

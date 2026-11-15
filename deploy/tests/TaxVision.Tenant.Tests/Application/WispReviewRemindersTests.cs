@@ -62,6 +62,20 @@ public sealed class WispReviewRemindersTests
         );
     }
 
+    /// <summary>P28: el aviso del día sale a partir de las 9:00 de la oficina, no a medianoche UTC.</summary>
+    [Fact]
+    public async Task The_notice_waits_for_nine_oclock_in_the_office()
+    {
+        Seed("2025-12-01");
+
+        // 8:00 en Nueva York (13:00Z): todavía no.
+        Assert.Null(await RegisterAsync(new DateTime(2026, 11, 10, 13, 0, 0, DateTimeKind.Utc), "America/New_York"));
+        // 9:30 en Nueva York el mismo día: sale.
+        Assert.NotNull(
+            await RegisterAsync(new DateTime(2026, 11, 10, 14, 30, 0, DateTimeKind.Utc), "America/New_York")
+        );
+    }
+
     [Fact]
     public async Task The_stage_follows_the_office_calendar()
     {

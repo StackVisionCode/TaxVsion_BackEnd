@@ -22,17 +22,29 @@ public sealed class UpstreamClientTests
 
         Assert.Equal(
             ImportFileState.Ineligible,
-            await Files(_ => Json($$"""{"id":"{{file}}","ownerType":"Customer","ownerId":"{{other}}","status":"Available","detectedContentType":"application/pdf","sizeBytes":42}"""))
+            await Files(_ =>
+                    Json(
+                        $$"""{"id":"{{file}}","ownerType":"Customer","ownerId":"{{other}}","status":"Available","detectedContentType":"application/pdf","sizeBytes":42}"""
+                    )
+                )
                 .CheckAsync(file, customer)
         );
         Assert.Equal(
             ImportFileState.Ready,
-            await Files(_ => Json($$"""{"id":"{{file}}","ownerType":1,"ownerId":"{{customer}}","status":3,"detectedContentType":"application/pdf","sizeBytes":42}"""))
+            await Files(_ =>
+                    Json(
+                        $$"""{"id":"{{file}}","ownerType":1,"ownerId":"{{customer}}","status":3,"detectedContentType":"application/pdf","sizeBytes":42}"""
+                    )
+                )
                 .CheckAsync(file, customer)
         );
         Assert.Equal(
             ImportFileState.AwaitingScan,
-            await Files(_ => Json($$"""{"id":"{{file}}","ownerType":"Customer","ownerId":"{{customer}}","status":"PendingScan","declaredContentType":"application/pdf","sizeBytes":42}"""))
+            await Files(_ =>
+                    Json(
+                        $$"""{"id":"{{file}}","ownerType":"Customer","ownerId":"{{customer}}","status":"PendingScan","declaredContentType":"application/pdf","sizeBytes":42}"""
+                    )
+                )
                 .CheckAsync(file, customer)
         );
         Assert.Equal(
@@ -100,7 +112,17 @@ public sealed class UpstreamClientTests
     public async Task Entitlements_pull_returns_null_without_token_or_when_subscription_fails()
     {
         var calls = 0;
-        Assert.Null(await Entitlements(null, _ => { calls++; return Json("{}"); }).FetchAsync(Tenant));
+        Assert.Null(
+            await Entitlements(
+                    null,
+                    _ =>
+                    {
+                        calls++;
+                        return Json("{}");
+                    }
+                )
+                .FetchAsync(Tenant)
+        );
         Assert.Equal(0, calls);
         Assert.Null(await Entitlements("t", _ => new HttpResponseMessage(HttpStatusCode.NotFound)).FetchAsync(Tenant));
         Assert.Null(await Entitlements("t", _ => throw new HttpRequestException("down")).FetchAsync(Tenant));

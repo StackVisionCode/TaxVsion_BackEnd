@@ -30,6 +30,11 @@ public sealed class InvoiceSentConsumerTests
 
         Assert.Equal("billing.invoice_sent.v1", render.LastEventKey);
         Assert.Equal("100.00 USD", render.LastVariables["amount_due"]);
+        // El vencimiento viaja tipado: Scribe lo imprime en el día de la oficina (antes, día UTC y cultura del proceso).
+        Assert.Equal(
+            "2026-11-02T00:00:00.0000000Z",
+            Assert.IsAssignableFrom<IDictionary<string, object?>>(render.LastVariables["due_date"])["$instant"]
+        );
         // La factura la lee el cliente: lleva el logo del portal de la oficina.
         Assert.Equal(ScribeRenderAudience.Client, render.LastAudience);
 
@@ -38,6 +43,27 @@ public sealed class InvoiceSentConsumerTests
         Assert.Equal("billing.invoice_sent", email.TemplateKey);
         Assert.Equal(EmailDispatchScope.TenantPreferred, email.Scope);
         Assert.Equal([pdf], email.AttachmentFileIds);
+    }
+
+    /// <summary>P6: con el vencimiento congelado viaja la fecha civil de la oficina, no el instante.</summary>
+    [Fact]
+    public async Task The_frozen_due_date_travels_as_a_civil_date()
+    {
+        var render = new RecordingRenderClient();
+
+        await Handle(
+            render,
+            new RecordingEmailGateway(),
+            Invoice("client@example.com", null) with
+            {
+                DueOn = new DateOnly(2027, 1, 30),
+            }
+        );
+
+        Assert.Equal(
+            "2027-01-30",
+            Assert.IsAssignableFrom<IDictionary<string, object?>>(render.LastVariables["due_date"])["$date"]
+        );
     }
 
     [Fact]

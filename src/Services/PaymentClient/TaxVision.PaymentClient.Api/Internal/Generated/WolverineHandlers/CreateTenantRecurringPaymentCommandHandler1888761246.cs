@@ -20,8 +20,9 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var tenantRegistry = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.PaymentClient.Application.Abstractions.ITenantRegistry>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -52,7 +53,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.PaymentClient.Application.Recurring.Commands.CreateTenantRecurringPayment.CreateTenantRecurringPaymentHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.PaymentClient.Application.Recurring.Commands.CreateTenantRecurringPayment.CreateTenantRecurringPaymentHandler.Handle(createTenantRecurringPaymentCommand, tenantRecurringPaymentRepository, paymentAuditLogWriter, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.PaymentClient.Application.Recurring.Commands.CreateTenantRecurringPayment.CreateTenantRecurringPaymentHandler.Handle(createTenantRecurringPaymentCommand, tenantRecurringPaymentRepository, paymentAuditLogWriter, unitOfWork, correlationContext, tenantRegistry, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

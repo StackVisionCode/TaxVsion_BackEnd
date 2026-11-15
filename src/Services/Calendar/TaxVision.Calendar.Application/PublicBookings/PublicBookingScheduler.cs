@@ -1,5 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Calendar.Application.Appointments.Abstractions;
 using TaxVision.Calendar.Application.Appointments.Commands;
 using TaxVision.Calendar.Application.Availability.Abstractions;
@@ -218,7 +219,7 @@ public sealed class PublicBookingScheduler(
         if (hostId is not { } host || page.FindActiveHost(host) is not { } pageHost)
             return Result.Failure<string>(PublicBookingErrors.SlotTaken);
 
-        var zone = await TimeZoneOfAsync(page.TenantId, host, booking.VisitorTimeZone, ct);
+        var zone = await PublicBookingEvents.HostTimeZoneAsync(page, host, booking.VisitorTimeZone, availability, ct);
         var timing = EventTiming.PointInTimeOf(startUtc, startUtc.AddMinutes(booking.DurationMinutes), zone);
         var location = Location.Create(pageHost.MeetingUrl);
         if (timing.IsFailure || location.IsFailure)
@@ -244,7 +245,13 @@ public sealed class PublicBookingScheduler(
         CancellationToken ct
     )
     {
-        var zone = await TimeZoneOfAsync(page.TenantId, host.UserId, booking.VisitorTimeZone, ct);
+        var zone = await PublicBookingEvents.HostTimeZoneAsync(
+            page,
+            host.UserId,
+            booking.VisitorTimeZone,
+            availability,
+            ct
+        );
         var timing = EventTiming.PointInTimeOf(
             booking.SlotStartUtc,
             booking.SlotStartUtc.AddMinutes(booking.DurationMinutes),
@@ -274,17 +281,6 @@ public sealed class PublicBookingScheduler(
         );
     }
 
-    /// <summary>Zona de la cita: la de la disponibilidad del anfitrión; sin ella, la del visitante.</summary>
-    private async Task<string> TimeZoneOfAsync(Guid tenantId, Guid hostId, string visitorZone, CancellationToken ct)
-    {
-        foreach (var rule in await availability.ListRulesAsync(tenantId, hostId, ct))
-        {
-            if (rule.IsActive)
-                return rule.TimeZone.Id;
-        }
-        return visitorZone;
-    }
-
     private async Task<List<DateTime>> HostStartsAsync(
         BookingPage page,
         AppointmentType type,
@@ -299,7 +295,9 @@ public sealed class PublicBookingScheduler(
     )
     {
         var from = Max(fromUtc, nowUtc.AddMinutes(page.MinNoticeMinutes));
-        var to = Min(toUtc, nowUtc.AddDays(page.MaxDaysAhead));
+        // P23: el último día reservable llega a la medianoche local del anfitrión, no a la hora de ahora.
+        var hostZone = await PublicBookingEvents.HostTimeZoneAsync(page, hostId, IanaTimeZone.UtcId, availability, ct);
+        var to = Min(toUtc, BookingHorizon.EndUtc(nowUtc, page.MaxDaysAhead, hostZone));
         if (to <= from)
             return [];
 

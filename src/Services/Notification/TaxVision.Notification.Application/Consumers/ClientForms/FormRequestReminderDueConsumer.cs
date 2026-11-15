@@ -43,7 +43,7 @@ public static class FormRequestReminderDueConsumer
             new Dictionary<string, object?>
             {
                 ["request_title"] = evt.Title,
-                ["due_date"] = evt.DueAtUtc,
+                ["due_date"] = CivilDue.Typed(evt.DueOn, evt.DueAtUtc),
                 ["is_overdue"] = evt.IsOverdue,
             },
             new Dictionary<string, string> { ["title"] = evt.Title, ["isOverdue"] = evt.IsOverdue.ToString() }

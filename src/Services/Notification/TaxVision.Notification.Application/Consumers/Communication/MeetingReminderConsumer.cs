@@ -33,8 +33,7 @@ public static class MeetingReminderConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var meetingTitle = MeetingNotifications.Title(evt.MeetingTitle);
-            var startLocal = MeetingNotifications.LocalTime(evt.ScheduledForUtc, evt.TimeZone);
-            var timeZone = MeetingNotifications.TimeZoneLabel(evt.TimeZone);
+            var when = MeetingNotifications.Describe(evt.ScheduledForUtc, evt.TimeZone);
 
             var context = new Dictionary<string, string>
             {
@@ -57,7 +56,7 @@ public static class MeetingReminderConsumer
                 EventKey,
                 evt.OccurredOn,
                 $"\"{meetingTitle}\" starts in {evt.MinutesBefore} min",
-                $"{startLocal} ({timeZone}).",
+                $"{when}.",
                 correlation.CorrelationId,
                 context,
                 ct
@@ -77,14 +76,15 @@ public static class MeetingReminderConsumer
                     new Dictionary<string, object?>
                     {
                         ["meeting_title"] = meetingTitle,
-                        ["start_local"] = startLocal,
-                        ["time_zone"] = timeZone,
+                        ["start_local"] = ScribeDates.Instant(evt.ScheduledForUtc),
+                        ["time_zone"] = MeetingNotifications.TimeZoneLabel(evt.TimeZone),
                         ["duration_minutes"] = evt.DurationMinutes,
                         ["minutes_before"] = evt.MinutesBefore,
                         ["host_name"] = evt.HostDisplayName,
                         ["meeting_code"] = evt.ShortCode,
                     },
                     ScribeRenderAudience.Client,
+                    ScribeReader.From(null, evt.TimeZone),
                     ct
                 )
             ).EnsureRendered(EventKey);

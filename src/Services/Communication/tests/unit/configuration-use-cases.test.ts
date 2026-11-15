@@ -121,9 +121,17 @@ class FakeEmitter {
   }
 }
 
+class FakeAnalytics {
+  hasDays = false;
+  async hasAnyDay(): Promise<boolean> {
+    return this.hasDays;
+  }
+}
+
 function harness() {
   const emitter = new FakeEmitter();
   return {
+    analytics: new FakeAnalytics(),
     platformSettings: new FakePlatformRepo(),
     tenantConstraints: new FakeConstraintsRepo(),
     tenantSettings: new FakeSettingsRepo(),
@@ -153,6 +161,24 @@ describe('updatePlatformSettings', () => {
     expect(h.effectiveSettings.platformInvalidations).toBe(1);
     expect(h.publisher.events.map((e) => e.eventType)).toEqual([SettingsEventTypes.PlatformSettingsChanged]);
     expect(h.emitterSpy.broadcasts).toEqual(['settings.changed']);
+  });
+
+  // P21 (TZ03-H4): con días ya guardados, cambiar la zona mezclaría días cortados en dos zonas.
+  it('refuses to change analyticsTimeZone once analytics days exist', async () => {
+    const h = harness();
+    h.analytics.hasDays = true;
+    const r = await updatePlatformSettings({ actorUserId: randomUUID(), correlationId: 'c1', patch: { analyticsTimeZone: 'America/New_York' } }, h);
+    expect(!r.isSuccess && r.error.code).toBe('Settings.AnalyticsTimeZoneLocked');
+    expect(h.platformSettings.saved).toBe(0);
+  });
+
+  it('allows analyticsTimeZone while no analytics day exists, and resending the same zone', async () => {
+    const h = harness();
+    const first = await updatePlatformSettings({ actorUserId: randomUUID(), correlationId: 'c1', patch: { analyticsTimeZone: 'America/New_York' } }, h);
+    expect(first.isSuccess).toBe(true);
+    h.analytics.hasDays = true;
+    const same = await updatePlatformSettings({ actorUserId: randomUUID(), correlationId: 'c2', patch: { analyticsTimeZone: 'America/New_York' } }, h);
+    expect(same.isSuccess).toBe(true);
   });
 
   it('a rejected patch leaves no trace', async () => {

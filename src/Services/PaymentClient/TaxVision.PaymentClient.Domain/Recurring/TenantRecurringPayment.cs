@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.PaymentClient.Domain.ValueObjects;
 
 namespace TaxVision.PaymentClient.Domain.Recurring;
@@ -32,6 +33,25 @@ public sealed class TenantRecurringPayment : TenantEntity
     public int? MaxExecutions { get; private set; }
     public RecurringStatus Status { get; private set; }
     public DateTime? NextExecutionDate { get; private set; }
+
+    // Ancla civil (P10, TZ05-H14): cada ocurrencia se calcula desde el día y la hora locales del inicio en la zona de
+    // la oficina, no desde la anterior. Null = plan sin ancla (avanza como antes).
+    public string? TimeZoneId { get; private set; }
+    public DateOnly? AnchorDate { get; private set; }
+    public TimeOnly? AnchorLocalTime { get; private set; }
+
+    /// <summary>Ancla el plan a la fecha y hora locales de su inicio; una sola vez y nunca con la zona UTC de respaldo.</summary>
+    public void AnchorToOfficeZone(ResolvedTimeZone officeZone)
+    {
+        if (TimeZoneId is not null || officeZone.IsFallback)
+            return;
+
+        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(StartDate, DateTimeKind.Utc), officeZone.Zone);
+        TimeZoneId = officeZone.Id;
+        AnchorDate = DateOnly.FromDateTime(local);
+        AnchorLocalTime = TimeOnly.FromDateTime(local);
+    }
+
     public int ExecutionCount { get; private set; }
     public int FailureCount { get; private set; }
     public RetryPolicy RetryPolicy { get; private set; } = null!;
@@ -192,7 +212,8 @@ public sealed class TenantRecurringPayment : TenantEntity
     }
 
     private DateTime Advance(DateTime date) =>
-        BillingCycle switch
+        CivilAdvance(date)
+        ?? BillingCycle switch
         {
             BillingCycle.Monthly => date.AddMonths(1),
             BillingCycle.Quarterly => date.AddMonths(3),
@@ -200,6 +221,26 @@ public sealed class TenantRecurringPayment : TenantEntity
             BillingCycle.Custom => date.AddDays(CustomIntervalDays!.Value),
             _ => date.AddMonths(1),
         };
+
+    // Con ancla: el mes (trimestre, año) siguiente se cuenta desde el día ancla, así el 31 vuelve al 31; la hora local se
+    // mantiene a través del cambio de horario. Custom suma días civiles.
+    private DateTime? CivilAdvance(DateTime date)
+    {
+        if (TimeZoneId is null || AnchorDate is not { } anchor || AnchorLocalTime is not { } time)
+            return null;
+
+        var zone = ResolvedTimeZone.Resolve(TimeZoneId);
+        var current = CivilDate.Of(date, zone);
+        var monthsSoFar = (current.Year - anchor.Year) * 12 + current.Month - anchor.Month;
+        var next = BillingCycle switch
+        {
+            BillingCycle.Quarterly => anchor.AddMonths(monthsSoFar + 3),
+            BillingCycle.Yearly => anchor.AddMonths(monthsSoFar + 12),
+            BillingCycle.Custom => current.AddDays(CustomIntervalDays!.Value),
+            _ => anchor.AddMonths(monthsSoFar + 1),
+        };
+        return WallTime.ToUtc(next, time, zone, NonexistentTimePolicy.ShiftForward).Value;
+    }
 
     /// <summary>Reserva el schedule antes de disparar el cobro — lo saca de
     /// <c>Pending</c>/<c>RetryPending</c> para que una segunda pasada del job (p.ej. dos

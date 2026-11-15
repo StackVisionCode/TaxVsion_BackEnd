@@ -970,8 +970,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (!IsRecurring)
             return Result.Failure(RecurrenceErrors.NotASeries);
 
-        // Una serie no tiene StartUtc: lo que se anuncia es su primera ocurrencia.
-        var previousFirstUtc = OccurrenceExpander.FirstStart(this);
+        // Una serie no tiene StartUtc: se anuncia su próxima ocurrencia (la primera, si todavía no empezó).
+        var previousFirstUtc = OccurrenceExpander.NextStart(this, nowUtc) ?? OccurrenceExpander.FirstStart(this);
         // Antes de cambiar la regla: después ya no se sabe a qué ocurrencia apuntaba cada excepción.
         var positions = OccurrenceExpander.ExceptionPositions(this);
         Timing = timing;
@@ -980,7 +980,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
 
         var rsvpTokens = ResetResponses();
 
-        var newFirstUtc = OccurrenceExpander.FirstStart(this) ?? nowUtc;
+        var newFirstUtc = OccurrenceExpander.NextStart(this, nowUtc) ?? OccurrenceExpander.FirstStart(this) ?? nowUtc;
         AddDomainEvent(
             new AppointmentRescheduledDomainEvent(
                 Id,

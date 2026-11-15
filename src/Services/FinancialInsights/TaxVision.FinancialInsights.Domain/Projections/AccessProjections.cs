@@ -1,5 +1,6 @@
 using System.Text.Json;
 using BuildingBlocks.Domain;
+using BuildingBlocks.TimeZones;
 
 namespace TaxVision.FinancialInsights.Domain.Projections;
 
@@ -7,6 +8,7 @@ namespace TaxVision.FinancialInsights.Domain.Projections;
 public sealed class UserPermissionsProjection : TenantEntity
 {
     private UserPermissionsProjection() { }
+
     [UserReference(UserReferenceKind.Projection, HandledBy = "UserLifecyclePermissionsProjectionConsumer")]
     public Guid UserId { get; private set; }
     public int PermissionsVersion { get; private set; }
@@ -17,10 +19,20 @@ public sealed class UserPermissionsProjection : TenantEntity
     public DateTime LifecycleUpdatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
-    public static UserPermissionsProjection Create(Guid tenantId, Guid userId, int version,
-        IReadOnlyCollection<string> codes, IReadOnlyCollection<Guid> roleIds)
+    public static UserPermissionsProjection Create(
+        Guid tenantId,
+        Guid userId,
+        int version,
+        IReadOnlyCollection<string> codes,
+        IReadOnlyCollection<Guid> roleIds
+    )
     {
-        var projection = new UserPermissionsProjection { Id = Guid.NewGuid(), UserId = userId, IsActive = true };
+        var projection = new UserPermissionsProjection
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            IsActive = true,
+        };
         projection.SetTenant(tenantId);
         projection.ApplyIfNewer(version, codes, roleIds);
         return projection;
@@ -28,15 +40,21 @@ public sealed class UserPermissionsProjection : TenantEntity
 
     public static UserPermissionsProjection CreateInactive(Guid tenantId, Guid userId, DateTime observedAtUtc)
     {
-        var projection = new UserPermissionsProjection { Id = Guid.NewGuid(), UserId = userId,
-            LifecycleUpdatedAtUtc = observedAtUtc, UpdatedAtUtc = observedAtUtc };
+        var projection = new UserPermissionsProjection
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            LifecycleUpdatedAtUtc = observedAtUtc,
+            UpdatedAtUtc = observedAtUtc,
+        };
         projection.SetTenant(tenantId);
         return projection;
     }
 
     public void ApplyIfNewer(int version, IReadOnlyCollection<string> codes, IReadOnlyCollection<Guid> roleIds)
     {
-        if (version < PermissionsVersion) return;
+        if (version < PermissionsVersion)
+            return;
         PermissionsVersion = version;
         PermissionCodesJson = JsonSerializer.Serialize(codes.Distinct(StringComparer.Ordinal).ToArray());
         RoleIdsJson = JsonSerializer.Serialize(roleIds.Distinct().ToArray());
@@ -46,26 +64,34 @@ public sealed class UserPermissionsProjection : TenantEntity
 
     public void SetActive(bool active, DateTime observedAtUtc)
     {
-        if (observedAtUtc < LifecycleUpdatedAtUtc) return;
+        if (observedAtUtc < LifecycleUpdatedAtUtc)
+            return;
         IsActive = active;
         LifecycleUpdatedAtUtc = observedAtUtc;
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    public IReadOnlyList<string> PermissionCodes() => JsonSerializer.Deserialize<List<string>>(PermissionCodesJson) ?? [];
+    public IReadOnlyList<string> PermissionCodes() =>
+        JsonSerializer.Deserialize<List<string>>(PermissionCodesJson) ?? [];
 }
 
 // Kept for role-change visibility; never unioned into a user's effective codes.
 public sealed class RolePermissionsProjection : TenantEntity
 {
     private RolePermissionsProjection() { }
+
     public string RoleName { get; private set; } = string.Empty;
     public int PermissionsVersion { get; private set; }
     public string PermissionCodesJson { get; private set; } = "[]";
     public DateTime UpdatedAtUtc { get; private set; }
 
-    public static RolePermissionsProjection Create(Guid tenantId, Guid roleId, string name, int version,
-        IReadOnlyCollection<string> codes)
+    public static RolePermissionsProjection Create(
+        Guid tenantId,
+        Guid roleId,
+        string name,
+        int version,
+        IReadOnlyCollection<string> codes
+    )
     {
         var projection = new RolePermissionsProjection { Id = roleId };
         projection.SetTenant(tenantId);
@@ -75,7 +101,8 @@ public sealed class RolePermissionsProjection : TenantEntity
 
     public void ApplyIfNewer(string name, int version, IReadOnlyCollection<string> codes)
     {
-        if (version < PermissionsVersion) return;
+        if (version < PermissionsVersion)
+            return;
         RoleName = name;
         PermissionsVersion = version;
         PermissionCodesJson = JsonSerializer.Serialize(codes.Distinct(StringComparer.Ordinal).ToArray());
@@ -86,32 +113,57 @@ public sealed class RolePermissionsProjection : TenantEntity
 public sealed class TenantEntitlementsProjection : TenantEntity
 {
     private TenantEntitlementsProjection() { }
+
     public string PlanCode { get; private set; } = string.Empty;
     public long RevisionNumber { get; private set; }
     public string EnabledModulesJson { get; private set; } = "[]";
+
     // Tope mensual de documentos con IA del plan (financial.documents_per_month); null si el plan no lo trae.
     public int? DocumentsPerMonth { get; private set; }
+
+    // Inicio del período de la suscripción: su día local es el ancla del cupo mensual (P11). Null = mes UTC.
+    public DateTime? UsagePeriodAnchorUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
     public IReadOnlyList<string> EnabledModules => JsonSerializer.Deserialize<List<string>>(EnabledModulesJson) ?? [];
 
-    public static TenantEntitlementsProjection Create(Guid tenantId, string planCode, long revision,
-        IReadOnlyList<string> modules, int? documentsPerMonth)
+    public static TenantEntitlementsProjection Create(
+        Guid tenantId,
+        string planCode,
+        long revision,
+        IReadOnlyList<string> modules,
+        int? documentsPerMonth,
+        DateTime? usagePeriodAnchorUtc = null
+    )
     {
         var projection = new TenantEntitlementsProjection { Id = tenantId };
         projection.SetTenant(tenantId);
-        projection.ApplyIfNewer(planCode, revision, modules, documentsPerMonth);
+        projection.ApplyIfNewer(planCode, revision, modules, documentsPerMonth, usagePeriodAnchorUtc);
         return projection;
     }
 
-    public void ApplyIfNewer(string planCode, long revision, IReadOnlyList<string> modules, int? documentsPerMonth)
+    public void ApplyIfNewer(
+        string planCode,
+        long revision,
+        IReadOnlyList<string> modules,
+        int? documentsPerMonth,
+        DateTime? usagePeriodAnchorUtc = null
+    )
     {
-        if (revision < RevisionNumber) return;
+        if (revision < RevisionNumber)
+            return;
         PlanCode = planCode;
         RevisionNumber = revision;
         EnabledModulesJson = JsonSerializer.Serialize(modules);
         DocumentsPerMonth = documentsPerMonth is >= 0 ? documentsPerMonth : null;
+        // Un mensaje viejo o la lectura M2M no traen el ancla: se conserva la última conocida.
+        if (usagePeriodAnchorUtc is { } anchor)
+            UsagePeriodAnchorUtc = DateTime.SpecifyKind(anchor, DateTimeKind.Utc);
         UpdatedAtUtc = DateTime.UtcNow;
     }
+
+    /// <summary>Inicio del período vigente del cupo mensual en la zona de la oficina (P11).</summary>
+    public DateTime UsagePeriodStartUtc(DateTime nowUtc, ResolvedTimeZone officeZone) =>
+        MonthlyUsagePeriod.StartUtc(nowUtc, UsagePeriodAnchorUtc, officeZone);
 
     public bool HasModule(string module) => EnabledModules.Contains(module, StringComparer.OrdinalIgnoreCase);
 
@@ -122,6 +174,7 @@ public sealed class TenantEntitlementsProjection : TenantEntity
 public sealed class TenantDirectoryProjection : TenantEntity
 {
     private TenantDirectoryProjection() { }
+
     public string Name { get; private set; } = string.Empty;
     public string Status { get; private set; } = string.Empty;
     public bool IsActive { get; private set; }
@@ -130,15 +183,24 @@ public sealed class TenantDirectoryProjection : TenantEntity
 
     public static TenantDirectoryProjection Create(Guid tenantId, string name, DateTime observedAtUtc)
     {
-        var projection = new TenantDirectoryProjection { Id = tenantId, Name = name, Status = "Active", IsActive = true, UpdatedAtUtc = observedAtUtc };
+        var projection = new TenantDirectoryProjection
+        {
+            Id = tenantId,
+            Name = name,
+            Status = "Active",
+            IsActive = true,
+            UpdatedAtUtc = observedAtUtc,
+        };
         projection.SetTenant(tenantId);
         return projection;
     }
 
     public void ApplyStatus(string status, bool active, long? version, DateTime observedAtUtc)
     {
-        if (version.HasValue && TenantVersion.HasValue && version < TenantVersion) return;
-        if (!version.HasValue && observedAtUtc < UpdatedAtUtc) return;
+        if (version.HasValue && TenantVersion.HasValue && version < TenantVersion)
+            return;
+        if (!version.HasValue && observedAtUtc < UpdatedAtUtc)
+            return;
         Status = status;
         IsActive = active;
         TenantVersion = version ?? TenantVersion;
@@ -147,8 +209,10 @@ public sealed class TenantDirectoryProjection : TenantEntity
 
     public void ApplyName(string name, long? version, DateTime observedAtUtc)
     {
-        if (version.HasValue && TenantVersion.HasValue && version < TenantVersion) return;
-        if (!version.HasValue && observedAtUtc < UpdatedAtUtc) return;
+        if (version.HasValue && TenantVersion.HasValue && version < TenantVersion)
+            return;
+        if (!version.HasValue && observedAtUtc < UpdatedAtUtc)
+            return;
         Name = name;
         TenantVersion = version ?? TenantVersion;
         UpdatedAtUtc = observedAtUtc;
@@ -158,23 +222,37 @@ public sealed class TenantDirectoryProjection : TenantEntity
 public sealed class CustomerDirectoryProjection : TenantEntity
 {
     private CustomerDirectoryProjection() { }
+
     public Guid CustomerId { get; private set; }
     public string? DisplayName { get; private set; }
     public bool IsActive { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
-    public static CustomerDirectoryProjection Create(Guid tenantId, Guid customerId, string? name, DateTime observedAtUtc)
+    public static CustomerDirectoryProjection Create(
+        Guid tenantId,
+        Guid customerId,
+        string? name,
+        DateTime observedAtUtc
+    )
     {
-        var projection = new CustomerDirectoryProjection { Id = Guid.NewGuid(), CustomerId = customerId,
-            DisplayName = name, IsActive = true, UpdatedAtUtc = observedAtUtc };
+        var projection = new CustomerDirectoryProjection
+        {
+            Id = Guid.NewGuid(),
+            CustomerId = customerId,
+            DisplayName = name,
+            IsActive = true,
+            UpdatedAtUtc = observedAtUtc,
+        };
         projection.SetTenant(tenantId);
         return projection;
     }
 
     public void Apply(string? name, bool active, DateTime observedAtUtc)
     {
-        if (observedAtUtc < UpdatedAtUtc) return;
-        if (name is not null) DisplayName = name;
+        if (observedAtUtc < UpdatedAtUtc)
+            return;
+        if (name is not null)
+            DisplayName = name;
         IsActive = active;
         UpdatedAtUtc = observedAtUtc;
     }

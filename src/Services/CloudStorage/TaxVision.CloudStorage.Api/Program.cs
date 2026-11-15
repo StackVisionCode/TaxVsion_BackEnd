@@ -53,6 +53,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddBuildingBlocks();
+builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddCloudStorageInfrastructure(builder.Configuration);
 
 // Dominio de la plataforma: el callback OAuth de Drive/OneDrive/Dropbox vuelve al subdominio del

@@ -226,6 +226,42 @@ public sealed partial class ProcessProviderWebhookHandlerTests
         Assert.Equal(0, metrics.ChargedBack);
     }
 
+    /// <summary>P29: la fecha del pago es la del proveedor; un webhook que llega horas tarde no la corre.</summary>
+    [Fact]
+    public async Task Success_payload_dates_the_payment_when_the_provider_says()
+    {
+        var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SubscriptionRenewal);
+        var providerTime = DateTime.UtcNow.AddHours(-3);
+
+        await HandleStripeAsync(
+            payment,
+            Payload(PaymentStatus.Succeeded) with
+            {
+                ProviderOccurredAtUtc = providerTime,
+            }
+        );
+
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        Assert.Equal(providerTime, payment.PaidAtUtc);
+    }
+
+    /// <summary>Un reloj del proveedor adelantado no deja un pago con fecha futura: se usa la de procesamiento.</summary>
+    [Fact]
+    public async Task Success_payload_from_the_future_uses_the_processing_time()
+    {
+        var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.SubscriptionRenewal);
+
+        await HandleStripeAsync(
+            payment,
+            Payload(PaymentStatus.Succeeded) with
+            {
+                ProviderOccurredAtUtc = DateTime.UtcNow.AddHours(2),
+            }
+        );
+
+        Assert.True(payment.PaidAtUtc <= DateTime.UtcNow);
+    }
+
     [Fact]
     public async Task RequiresAction_payload_is_not_actionable()
     {

@@ -33,6 +33,9 @@ public sealed class FireCampaignScheduleHandlerTests
         public FakeUnitOfWork UnitOfWork { get; } = new();
         public FakeMessageBus Bus { get; } = new();
         public CampaignSchedulerOptions Options { get; } = new();
+        public FakeCampaignSmsWindowRepository SmsWindows { get; } = new();
+        public TaxVision.Campaigns.Application.Scheduling.Abstractions.IOfficeTimeZone Zone { get; set; } =
+            UnknownOfficeZone.Instance;
         public Campaign Campaign { get; }
         public ContactList List { get; }
 
@@ -102,7 +105,10 @@ public sealed class FireCampaignScheduleHandlerTests
                         Customers,
                         new FakeCampaignCustomerAssignmentReader(),
                         Microsoft.Extensions.Options.Options.Create(new CampaignsVisibilityOptions())
-                    )
+                    ),
+                    Zone,
+                    Microsoft.Extensions.Options.Options.Create(Options),
+                    SmsWindows
                 ),
                 Microsoft.Extensions.Options.Options.Create(Options),
                 new CampaignRunStarter(Wallet, new FakeCorrelationContext(), NullLogger<CampaignRunStarter>.Instance),
@@ -110,6 +116,86 @@ public sealed class FireCampaignScheduleHandlerTests
                 NullLogger<CampaignSchedule>.Instance,
                 CancellationToken.None
             );
+    }
+
+    /// <summary>P12: un SMS agendado para las 23:00 de la oficina no sale; espera a las 8:00 sin abrir run.</summary>
+    [Fact]
+    public async Task An_sms_slot_at_night_waits_for_the_window_without_opening_a_run()
+    {
+        var h = new Harness { Zone = new NewYorkOffice() };
+        var sms = Campaign.Create(Tenant, Creator, "Reminder", CampaignChannel.Sms, "body", "subj").Value;
+        h.Campaigns.Campaigns.Add(sms);
+        // 23:00 del 18-nov en Nueva York = 04:00Z del 19.
+        var slot = new DateTime(2026, 11, 19, 4, 0, 0, DateTimeKind.Utc);
+        var schedule = CampaignSchedule
+            .CreateOneTime(Tenant, sms.Id, slot, [h.List.Id], createdByUserId: Creator)
+            .Value;
+        h.Schedules.Schedules.Add(schedule);
+        var lease = ScheduleLease.Take(schedule, DateTime.UtcNow.AddMinutes(2));
+
+        var result = await h.FireAsync(schedule, lease, slot);
+
+        Assert.True(result.IsFailure);
+        Assert.Empty(h.Runs.Runs);
+        Assert.Equal(new DateTime(2026, 11, 19, 13, 0, 0, DateTimeKind.Utc), schedule.DeferredUntilUtc);
+        Assert.Equal(slot, schedule.NextFireAtUtc);
+    }
+
+    /// <summary>P32: con la ventana 9:00–18:00 de la oficina, un SMS a las 8:30 espera a las 9:00; sin ajuste propio sale.</summary>
+    [Fact]
+    public async Task An_sms_slot_waits_for_the_office_window_and_without_one_uses_the_platform_window()
+    {
+        // 8:30 del 18-nov en Nueva York = 13:30Z.
+        var slot = new DateTime(2026, 11, 18, 13, 30, 0, DateTimeKind.Utc);
+
+        var narrowed = new Harness { Zone = new NewYorkOffice() };
+        narrowed.SmsWindows.Windows.Add(
+            TaxVision
+                .Campaigns.Domain.Settings.CampaignSmsWindow.Set(
+                    Tenant,
+                    new TimeOnly(9, 0),
+                    new TimeOnly(18, 0),
+                    Creator,
+                    slot
+                )
+                .Value
+        );
+        var narrowedSchedule = SmsSchedule(narrowed, slot);
+        var waited = await narrowed.FireAsync(
+            narrowedSchedule,
+            ScheduleLease.Take(narrowedSchedule, DateTime.UtcNow.AddMinutes(2)),
+            slot
+        );
+
+        Assert.True(waited.IsFailure);
+        Assert.Equal(new DateTime(2026, 11, 18, 14, 0, 0, DateTimeKind.Utc), narrowedSchedule.DeferredUntilUtc);
+
+        var platform = new Harness { Zone = new NewYorkOffice() };
+        var platformSchedule = SmsSchedule(platform, slot);
+        await platform.FireAsync(
+            platformSchedule,
+            ScheduleLease.Take(platformSchedule, DateTime.UtcNow.AddMinutes(2)),
+            slot
+        );
+
+        Assert.Null(platformSchedule.DeferredUntilUtc);
+    }
+
+    private static CampaignSchedule SmsSchedule(Harness h, DateTime slot)
+    {
+        var sms = Campaign.Create(Tenant, Creator, "Reminder", CampaignChannel.Sms, "body", "subj").Value;
+        h.Campaigns.Campaigns.Add(sms);
+        var schedule = CampaignSchedule
+            .CreateOneTime(Tenant, sms.Id, slot, [h.List.Id], createdByUserId: Creator)
+            .Value;
+        h.Schedules.Schedules.Add(schedule);
+        return schedule;
+    }
+
+    private sealed class NewYorkOffice : TaxVision.Campaigns.Application.Scheduling.Abstractions.IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/New_York"));
     }
 
     [Fact]

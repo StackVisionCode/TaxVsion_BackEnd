@@ -193,7 +193,7 @@ public static class GenerateOnboardingReceiptDocumentHandler
             TemplateVersion: command.TemplateVersion,
             OnboardingId: command.OnboardingId,
             DocumentVersion: command.DocumentVersion,
-            FileName: ReceiptFileNames.For(platformBrand, command.Receipt.PaidAtUtc),
+            FileName: ReceiptFileNames.For(platformBrand, command.Receipt.PaidAtUtc, command.Receipt.TimeZoneId),
             CorrelationId: correlationId,
             Receipt: command.Receipt
         );

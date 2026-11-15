@@ -145,6 +145,7 @@ public sealed class SignedDocumentDeliveryIssuer(
                 IsReissue = issued.IsReissue,
                 CanRequestNewLink = policy.AllowPublicReissue,
                 CompletedAtUtc = request.CompletedAtUtc ?? DateTime.UtcNow,
+                SignedAtUtc = signer.SignedAtUtc,
                 TotalSignersCount = request.Signers.Count,
                 SendSealedToSigners = request.SendSealedDocumentToSigners,
             }

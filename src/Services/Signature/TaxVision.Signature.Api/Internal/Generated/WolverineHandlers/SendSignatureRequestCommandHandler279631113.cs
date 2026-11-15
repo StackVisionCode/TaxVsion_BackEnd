@@ -25,6 +25,11 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             
             /*
+            * Concrete type TaxVision.Signature.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
+            
+            /*
             * The service registration for TaxVision.Signature.Application.Abstractions.ISignatureRequestListCacheInvalidator is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var signatureRequestListCacheInvalidator = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureRequestListCacheInvalidator>(serviceScope.ServiceProvider);
@@ -57,7 +62,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Signature.Application.Requests.Commands.Send.SendSignatureRequestHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Signature.Application.Requests.Commands.Send.SendSignatureRequestHandler.Handle(sendSignatureRequestCommand, signatureRequestRepository, _signingTokenService, unitOfWork, context, correlationContext, signatureRequestListCacheInvalidator, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Signature.Application.Requests.Commands.Send.SendSignatureRequestHandler.Handle(sendSignatureRequestCommand, signatureRequestRepository, _signingTokenService, unitOfWork, context, correlationContext, signatureRequestListCacheInvalidator, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

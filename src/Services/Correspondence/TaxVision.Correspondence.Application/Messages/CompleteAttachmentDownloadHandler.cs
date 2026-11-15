@@ -1,6 +1,7 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Correspondence.Application.Abstractions;
 using TaxVision.Correspondence.Domain.Inbox;
 using Wolverine;
@@ -27,6 +28,7 @@ public static class CompleteAttachmentDownloadHandler
         IIncomingEmailRepository incomingEmails,
         IMessageBus bus,
         IUnitOfWork unitOfWork,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -67,7 +69,8 @@ public static class CompleteAttachmentDownloadHandler
                 OwnerType = email.CustomerId is null ? "User" : "Customer",
                 OwnerId = email.CustomerId ?? command.ActorId,
                 FolderType = "EmailIncoming",
-                TaxYear = email.ReceivedAtUtc.Year,
+                // P20 (TZ15-H6): año local de la oficina al recibir el correo.
+                TaxYear = CivilDate.Of(email.ReceivedAtUtc, await zones.ResolveAsync(command.TenantId, ct)).Year,
                 OriginalName = attachment.Filename,
                 ContentType = attachment.ContentType,
                 SizeBytes = command.SizeBytes,

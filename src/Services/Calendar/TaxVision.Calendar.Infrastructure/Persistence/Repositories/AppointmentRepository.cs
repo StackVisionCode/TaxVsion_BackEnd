@@ -50,6 +50,20 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
             : Result.Success(appointment);
     }
 
+    // P23 (H9): el día completo se busca por fecha civil, con un día de margen por la zona; el expansor recorta exacto.
+    private static System.Linq.Expressions.Expression<Func<Appointment, bool>> InRange(
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc
+    )
+    {
+        var firstDay = DateOnly.FromDateTime(rangeStartUtc).AddDays(-1);
+        var lastDay = DateOnly.FromDateTime(rangeEndUtc).AddDays(1);
+        return a =>
+            a.Recurrence != null
+            || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc)
+            || (a.Timing.StartDate <= lastDay && a.Timing.EndDate >= firstDay);
+    }
+
     public async Task<IReadOnlyList<Appointment>> ListForRangeAsync(
         Guid tenantId,
         DateTime rangeStartUtc,
@@ -59,7 +73,7 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
         await Scoped(tenantId)
             .Include(a => a.Attendees)
             .Include(a => a.Exceptions)
-            .Where(a => a.Recurrence != null || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc))
+            .Where(InRange(rangeStartUtc, rangeEndUtc))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Appointment>> ListOrganizerTypeForRangeAsync(
@@ -73,7 +87,7 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
         await Scoped(tenantId)
             .Include(a => a.Exceptions)
             .Where(a => a.OrganizerUserId == organizerUserId && a.AppointmentTypeId == appointmentTypeId)
-            .Where(a => a.Recurrence != null || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc))
+            .Where(InRange(rangeStartUtc, rangeEndUtc))
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
@@ -87,9 +101,7 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
                 Scoped(tenantId)
                     .Include(a => a.Attendees)
                     .Include(a => a.Exceptions)
-                    .Where(a =>
-                        a.Recurrence != null || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc)
-                    ),
+                    .Where(InRange(rangeStartUtc, rangeEndUtc)),
                 tenantId,
                 assignedToUserId
             )
@@ -106,7 +118,7 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
             .Include(a => a.Attendees)
             .Include(a => a.Exceptions)
             .Where(a => a.OrganizerUserId == userId || a.Attendees.Any(at => at.UserId == userId))
-            .Where(a => a.Recurrence != null || (a.Timing.StartUtc < rangeEndUtc && a.Timing.EndUtc > rangeStartUtc))
+            .Where(InRange(rangeStartUtc, rangeEndUtc))
             .ToListAsync(ct);
 
     // Tracked (el consumer de offboard reasigna/cancela y persiste). Seek por (TenantId, OrganizerUserId,

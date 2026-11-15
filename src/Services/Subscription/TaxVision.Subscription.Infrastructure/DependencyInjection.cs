@@ -3,6 +3,7 @@ using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.PurchaseIntentAmount;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -219,6 +220,11 @@ public static class DependencyInjection
         AddPermissionsPullRecovery(services);
 
         AddRateLimitTierQuotas(services);
+
+        // Zona de cada oficina: eventos de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<SubscriptionDbContext>();
+        services.AddTenantTimeZoneReconciliation<Reconciliation.SubscriptionTenantTimeZoneTokenProvider>(configuration);
+
         return services;
     }
 

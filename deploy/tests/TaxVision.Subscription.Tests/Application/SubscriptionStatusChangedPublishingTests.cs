@@ -222,8 +222,12 @@ public sealed class SubscriptionStatusChangedPublishingTests
         var notice = SubscriptionStatusChangedPublishing.Reannouncement(
             subscription,
             SubscriptionChangeReason.AccessEnding,
-            "trace"
+            "trace",
+            noticeDaysBefore: 7
         );
+
+        // TZ-E07: el aviso dice cuál es (7 o 1 día antes) para que Notification no los confunda.
+        Assert.Equal(7, notice.NoticeDaysBefore);
 
         Assert.Equal("Active", notice.Status);
         Assert.Equal("Active", notice.PreviousStatus);

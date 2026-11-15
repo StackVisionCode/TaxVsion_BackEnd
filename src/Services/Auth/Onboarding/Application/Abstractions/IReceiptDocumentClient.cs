@@ -30,5 +30,6 @@ public sealed record RequestReceiptGenerationRequest(
     string? PaymentMethodMasked,
     string IdempotencyKey,
     string CorrelationId,
-    string? OfficeName = null
+    string? OfficeName = null,
+    string? TimeZoneId = null
 );

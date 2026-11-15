@@ -3,6 +3,7 @@ using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -83,6 +84,11 @@ public static class DependencyInjection
         // reconciliación (pull cross-tenant a Customer) + el consumer compartido de eventos en vivo.
         services.AddCustomerVisibilityProjection<NotificationDbContext>();
         services.AddCustomerVisibilityReconciliation<Reconciliation.NotificationPlatformTokenProvider>(configuration);
+
+        // Zona de cada oficina (TenantTimeZones): eventos de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<NotificationDbContext>();
+        services.AddTenantTimeZoneReconciliation<Reconciliation.NotificationTenantTimeZoneTokenProvider>(configuration);
+        services.AddScoped<IOfficeTimeZone, TimeZones.OfficeTimeZone>();
 
         AddCustomerDirectoryReconciliation(services, configuration);
         AddRecipientProjectionReconciliation(services, configuration);

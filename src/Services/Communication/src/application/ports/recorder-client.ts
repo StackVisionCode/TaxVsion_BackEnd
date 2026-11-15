@@ -10,6 +10,8 @@ export interface RecorderSessionStart {
   readonly scope: 'Meeting' | 'Call';
   readonly scopeId: string;
   readonly startedAtUtc: string;
+  /** P25: fecha local de la grabación en la zona de la oficina (`yyyy-MM-dd`). */
+  readonly recordingLocalDate?: string;
   readonly maxDurationSeconds: number;
   readonly toleranceSeconds: number;
   readonly tracksRetentionDays: number;

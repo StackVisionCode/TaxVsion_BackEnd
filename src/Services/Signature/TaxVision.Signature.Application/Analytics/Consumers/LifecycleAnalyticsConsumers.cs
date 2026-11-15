@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.TimeZones;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Domain.Requests;
 
@@ -20,6 +21,7 @@ public static class SignatureRequestCanceledAnalyticsConsumer
         ISignatureAnalyticsRepository analyticsRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -31,7 +33,8 @@ public static class SignatureRequestCanceledAnalyticsConsumer
             var request = await requestRepository.GetByIdAsync(evt.TenantId, evt.SignatureRequestId, ct);
             if (request is null)
                 return;
-            var day = DateOnly.FromDateTime(evt.CanceledAtUtc);
+            // P21: el día de la métrica es el de la oficina (solo hacia adelante).
+            var day = CivilDate.Of(evt.CanceledAtUtc, await zones.ResolveAsync(evt.TenantId, ct));
             var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
                 evt.TenantId,
                 day,
@@ -52,6 +55,7 @@ public static class DocumentSignedAnalyticsConsumer
         ISignatureAnalyticsRepository analyticsRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -64,7 +68,8 @@ public static class DocumentSignedAnalyticsConsumer
             if (request is null)
                 return;
 
-            var day = DateOnly.FromDateTime(evt.SignedAtUtc);
+            // P21: el día de la métrica es el de la oficina (solo hacia adelante).
+            var day = CivilDate.Of(evt.SignedAtUtc, await zones.ResolveAsync(evt.TenantId, ct));
             var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
                 evt.TenantId,
                 day,
@@ -88,6 +93,7 @@ public static class SignerRejectedAnalyticsConsumer
         ISignatureAnalyticsRepository analyticsRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -99,7 +105,8 @@ public static class SignerRejectedAnalyticsConsumer
             var request = await requestRepository.GetByIdAsync(evt.TenantId, evt.SignatureRequestId, ct);
             if (request is null)
                 return;
-            var day = DateOnly.FromDateTime(evt.RejectedAtUtc);
+            // P21: el día de la métrica es el de la oficina (solo hacia adelante).
+            var day = CivilDate.Of(evt.RejectedAtUtc, await zones.ResolveAsync(evt.TenantId, ct));
             var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
                 evt.TenantId,
                 day,
@@ -120,6 +127,7 @@ public static class SignatureRequestSealingCompletedAnalyticsConsumer
         ISignatureAnalyticsRepository analyticsRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -134,7 +142,8 @@ public static class SignatureRequestSealingCompletedAnalyticsConsumer
             // Un re-sellado (tras un rechazo de CloudStorage) vuelve a publicar el evento: cuenta una sola vez.
             if (!await analyticsRepository.TryMarkSealedAsync(evt.TenantId, evt.SignatureRequestId, ct))
                 return;
-            var day = DateOnly.FromDateTime(evt.SealedAtUtc);
+            // P21: el día de la métrica es el de la oficina (solo hacia adelante).
+            var day = CivilDate.Of(evt.SealedAtUtc, await zones.ResolveAsync(evt.TenantId, ct));
             var snapshot = await analyticsRepository.GetOrCreateForDayAsync(
                 evt.TenantId,
                 day,

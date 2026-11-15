@@ -44,7 +44,7 @@ public static class FormRequestReturnedConsumer
             {
                 ["request_title"] = evt.Title,
                 ["comment_count"] = evt.FieldCommentCount,
-                ["due_date"] = evt.DueAtUtc,
+                ["due_date"] = CivilDue.Typed(evt.DueOn, evt.DueAtUtc),
             },
             new Dictionary<string, string> { ["title"] = evt.Title, ["revisionNumber"] = evt.RevisionNumber.ToString() }
         );

@@ -147,6 +147,40 @@ public sealed partial class SignatureRequestCompletedConsumerTests
         );
     }
 
+    /// <summary>
+    /// Aceptación de la Fase 6 (P8): firmado a las 21:00 de Chicago el 12-nov (03:00Z del 13), el campo Date dice 12-nov
+    /// y el certificado nuevo dice en qué zona están las fechas. Los sellos y tiempos del certificado siguen en UTC.
+    /// </summary>
+    [Fact]
+    public async Task A_document_signed_in_the_chicago_evening_shows_the_chicago_date()
+    {
+        var request = NewCompletedRequest(
+            documents: 1,
+            generateCertificate: true,
+            displayTimeZoneId: "America/Chicago",
+            signedAtUtc: new DateTime(2026, 11, 13, 3, 0, 0, DateTimeKind.Utc),
+            withDateField: true
+        );
+        var sealer = new FakeSealer();
+        var certificates = new FixedCertificateRenderer();
+
+        await RunSealingPhaseAsync(
+            request,
+            new FakeStorage(),
+            sealer,
+            new CapturingBus(),
+            attempts: 1,
+            certificates: certificates
+        );
+
+        var dateField = Assert.Single(
+            Assert.Single(sealer.Requests).Fields,
+            field => field.Kind == SignatureFieldKind.Date
+        );
+        Assert.Equal(new DateOnly(2026, 11, 12), dateField.DisplayDate);
+        Assert.Equal("Chicago time, GMT-6", Assert.Single(certificates.Models).DateFieldsZone);
+    }
+
     [Fact]
     public async Task SealingPhase_OnlyHandsOverTheResults()
     {
@@ -398,7 +432,10 @@ public sealed partial class SignatureRequestCompletedConsumerTests
         Guid? signatureImageFileId = null,
         bool generateCertificate = false,
         SignatureCaptureMethod captureMethod = SignatureCaptureMethod.Drawn,
-        CertificateGenerationMode certificateMode = CertificateGenerationMode.SingleForRequest
+        CertificateGenerationMode certificateMode = CertificateGenerationMode.SingleForRequest,
+        string? displayTimeZoneId = null,
+        DateTime? signedAtUtc = null,
+        bool withDateField = false
     )
     {
         var limits = TestSignatureLimits.Default;
@@ -442,6 +479,20 @@ public sealed partial class SignatureRequestCompletedConsumerTests
                     )
                     .IsSuccess
             );
+            if (withDateField)
+                Assert.True(
+                    request
+                        .PlaceField(
+                            TestSignatureLimits.MaxFieldsPerSigner,
+                            signer.Id,
+                            document.Id,
+                            SignatureFieldKind.Date,
+                            FieldPosition.Create(1, 0.4, 0.1, 0.2, 0.05).Value,
+                            null,
+                            true
+                        )
+                        .IsSuccess
+                );
             Assert.True(
                 request
                     .AttachVerifiedDocument(
@@ -451,7 +502,7 @@ public sealed partial class SignatureRequestCompletedConsumerTests
                     .IsSuccess
             );
         }
-        Assert.True(request.Send(DateTime.UtcNow).IsSuccess);
+        Assert.True(request.Send(DateTime.UtcNow, displayTimeZoneId).IsSuccess);
         var signed = signatureImageFileId is { } imageFileId
             ? request.MarkSignerSigned(
                 signer.Id,
@@ -462,7 +513,7 @@ public sealed partial class SignatureRequestCompletedConsumerTests
                 "127.0.0.1",
                 "tests"
             )
-            : request.MarkSignerSigned(signer.Id, DateTime.UtcNow, "127.0.0.1", "tests");
+            : request.MarkSignerSigned(signer.Id, signedAtUtc ?? DateTime.UtcNow, "127.0.0.1", "tests");
         Assert.True(signed.IsSuccess);
         Assert.Equal(SignatureRequestStatus.Completed, request.Status);
         return request;

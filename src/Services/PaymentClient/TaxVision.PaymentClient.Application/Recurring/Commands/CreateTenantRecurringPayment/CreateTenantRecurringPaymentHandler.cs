@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Common;
 using TaxVision.PaymentClient.Domain.Audit;
@@ -17,6 +18,7 @@ public static class CreateTenantRecurringPaymentHandler
         IPaymentAuditLogWriter audit,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
+        ITenantRegistry tenants,
         CancellationToken ct
     )
     {
@@ -51,6 +53,9 @@ public static class CreateTenantRecurringPaymentHandler
             return Result.Failure<Guid>(createResult.Error);
 
         var plan = createResult.Value;
+        // P10: el plan se ancla a la hora local de la oficina antes de generar su primera ocurrencia.
+        var tenant = await tenants.GetByIdAsync(command.TenantId, ct);
+        plan.AnchorToOfficeZone(ResolvedTimeZone.Resolve(tenant?.DefaultTimeZoneId));
         var generateResult = plan.GenerateSchedules(1, nowUtc);
         if (generateResult.IsFailure)
             return Result.Failure<Guid>(generateResult.Error);

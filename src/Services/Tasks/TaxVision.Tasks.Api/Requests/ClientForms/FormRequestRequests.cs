@@ -11,7 +11,8 @@ public sealed record AssignFormRequestRequest(
     DateTime? DueAtUtc,
     int? TaxYear,
     Guid? TaskId,
-    Guid? PrefillFromRequestId
+    Guid? PrefillFromRequestId,
+    DateOnly? DueOn = null
 );
 
 public sealed record AssignExternalFormRequestRequest(
@@ -22,7 +23,8 @@ public sealed record AssignExternalFormRequestRequest(
     string? Title,
     string? MessageToClient,
     DateTime? DueAtUtc,
-    int? TaxYear
+    int? TaxYear,
+    DateOnly? DueOn = null
 );
 
 // P-13 — aplicar al perfil: campos elegidos (null = todos los mapeados) y si incluir el tax identifier (admin).
@@ -46,7 +48,7 @@ public sealed record LinkFormRequestCustomerRequest(Guid CustomerId, string RowV
 
 public sealed record ReassignFormRequestResponsibleRequest(Guid UserId, string RowVersion);
 
-public sealed record ChangeFormRequestDueDateRequest(DateTime? DueAtUtc, string RowVersion);
+public sealed record ChangeFormRequestDueDateRequest(DateTime? DueAtUtc, string RowVersion, DateOnly? DueOn = null);
 
 public sealed record SavePortalFormDraftRequest(JsonElement Answers, string RowVersion);
 

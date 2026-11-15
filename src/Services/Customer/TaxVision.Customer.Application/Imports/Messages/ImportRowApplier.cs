@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using Microsoft.Extensions.Logging;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Dtos;
@@ -34,9 +35,14 @@ internal sealed class ImportRowApplier(
     ICustomerRepository customerRepo,
     ISensitiveDataProtector protector,
     ICatalogResolver catalogs,
-    ILogger logger
+    ILogger logger,
+    int defaultTaxYear
 )
 {
+    /// <summary>P20 (TZ15-H7): año fiscal por defecto de lo importado = año en curso de la oficina.</summary>
+    public static int DefaultTaxYear(DateTime nowUtc, ResolvedTimeZone officeZone) =>
+        CivilDate.Of(nowUtc, officeZone).Year;
+
     public async Task<ImportRowOutcome> ApplyAsync(ImportCustomerRow raw, CancellationToken ct)
     {
         var parsed = ImportRowParser.Parse(raw);
@@ -309,7 +315,7 @@ internal sealed class ImportRowApplier(
             taxIdentifierCipher: spouseCipher,
             taxIdentifierBlindIndex: spouseBlind,
             taxIdentifierLast4: spouseLast4,
-            taxYear: DateTime.UtcNow.Year,
+            taxYear: defaultTaxYear,
             qualifiesAsDependent: false,
             livedWithTaxpayer: true,
             byUserId: byUserId,

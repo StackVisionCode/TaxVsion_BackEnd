@@ -9,7 +9,12 @@ public interface IImportBatchRepository
 {
     Task<ImportBatch?> GetAsync(Guid tenantId, Guid batchId, CancellationToken ct = default);
 
-    Task<ImportBatch?> GetForCustomerAsync(Guid tenantId, Guid customerId, Guid batchId, CancellationToken ct = default);
+    Task<ImportBatch?> GetForCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid batchId,
+        CancellationToken ct = default
+    );
 
     Task<ImportBatch?> GetByFileAsync(Guid tenantId, Guid fileId, CancellationToken ct = default);
 
@@ -59,7 +64,11 @@ public interface IFinancialAccessReader
 {
     Task<TenantDirectoryProjection?> FindTenantAsync(Guid tenantId, CancellationToken ct = default);
 
-    Task<CustomerDirectoryProjection?> FindCustomerAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
+    Task<CustomerDirectoryProjection?> FindCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        CancellationToken ct = default
+    );
 
     Task<bool> IsCustomerAssignedAsync(Guid tenantId, Guid customerId, Guid userId, CancellationToken ct = default);
 }

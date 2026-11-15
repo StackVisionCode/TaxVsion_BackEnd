@@ -15,10 +15,17 @@ RUN dotnet publish "src/Services/Scribe/TaxVision.Scribe.Api/TaxVision.Scribe.Ap
     /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.9 AS final
+# Contenedor en UTC declarado; la zona de negocio es la de la oficina, no la del proceso.
+ENV TZ=Etc/UTC
 # glibc: 2 arenas de malloc en vez de 8 por nucleo; .NET retenia memoria nativa ya liberada.
 ENV MALLOC_ARENA_MAX=2
 WORKDIR /app
 EXPOSE 8080
+
+# curl es para el HEALTHCHECK de docker-compose (GET /health/ready): notification-api espera a que
+# scribe-api esté "service_healthy" antes de arrancar (fechas tipadas en el render, Fase 5).
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "TaxVision.Scribe.Api.dll"]

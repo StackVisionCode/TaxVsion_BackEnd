@@ -152,6 +152,8 @@ export interface CallRecordingProcessingStartedEvent extends IntegrationEvent {
   readonly callId: string;
   readonly recordingFileId: string;
   readonly startedAtUtc: string;
+  /** P25: fecha local de la grabación en la zona de la oficina, para el nombre del transcript. */
+  readonly recordingLocalDate?: string;
   /** F7 (T-28): pistas de audio por participante (captura server-side); sin ellas el worker usa el archivo unico. */
   readonly audioTracks?: readonly RecordingAudioTrackRef[];
   /** F7: idioma de la oficina ('auto' o codigo) y vocabulario (T-30). */

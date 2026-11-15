@@ -26,7 +26,12 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Tasks.ClientForms.Application.Consents.Abstractions.IConsentNoticeRepository Lifetime: Scoped ImplementationType: TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.ConsentNoticeRepository
@@ -47,9 +52,9 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormRequestRepository is not public, so requires service location
             */
             var formRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.Abstractions.IFormRequestRepository>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var savePortalFormDraftCommand = (TaxVision.Tasks.ClientForms.Application.Requests.Commands.SavePortalFormDraftCommand)context.Envelope.Message;
 
@@ -71,7 +76,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.ClientForms.Application.Requests.Commands.SavePortalFormDraftHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Tasks.ClientForms.Application.Requests.Commands.SavePortalFormDraftHandler.Handle(savePortalFormDraftCommand, formRequestRepository, formTemplateVersionRepository, _formEngine, answersProtector, formConsentGate, unitOfWork, _clientFormsMetrics, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Tasks.ClientForms.Application.Requests.Commands.SavePortalFormDraftHandler.Handle(savePortalFormDraftCommand, formRequestRepository, formTemplateVersionRepository, _formEngine, answersProtector, formConsentGate, unitOfWork, _clientFormsMetrics, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

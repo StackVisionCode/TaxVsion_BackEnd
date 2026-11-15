@@ -139,6 +139,7 @@ public sealed class InvoicePaidPublishingTests
             new UnitOfWorkStub(),
             bus,
             TimeProvider.System,
+            new UtcOffice(),
             CancellationToken.None
         );
 
@@ -259,5 +260,11 @@ public sealed class InvoicePaidPublishingTests
     private sealed class CallbackDisposable(Action callback) : IDisposable
     {
         public void Dispose() => callback();
+    }
+
+    private sealed class UtcOffice : IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Utc);
     }
 }

@@ -111,6 +111,41 @@ public sealed class SignerVerificationChallengeAppPushTests
         Assert.Equal(NotificationStatus.Failed, logs.Logs[0].Status);
     }
 
+    /// <summary>P14: un código de minutos se dice relativo; "Vence a las 14:10 UTC" obligaba a convertir.</summary>
+    [Theory]
+    [InlineData("Es", "Vence en 10 minutos.")]
+    [InlineData("En", "Expires in 10 minutes.")]
+    public async Task Sms_code_says_how_many_minutes_it_lasts(string language, string expected)
+    {
+        var sms = new RecordingSmsSender();
+        var evt = BuildEvent() with
+        {
+            Method = "SmsOtp",
+            DeliveryAddress = "+15550100",
+            SignerLanguage = language,
+            ExpiresAtUtc = DateTime.UtcNow.AddMinutes(10),
+        };
+
+        await SignerVerificationChallengeIssuedConsumer.Handle(
+            evt,
+            NoOpEmailDispatchGateway.Instance,
+            NoOpScribeRenderClient.Instance,
+            sms,
+            new RecordingPushSender(),
+            new FakePushDeviceTokenRepository(),
+            new RecordingNotificationLogRepository(),
+            new NoOpUnitOfWork(),
+            new NoOpCorrelationContext(),
+            TestPlatform.Settings,
+            NullLogger<SignerVerificationChallengeIssuedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var text = Assert.Single(sms.Texts);
+        Assert.EndsWith(expected, text);
+        Assert.DoesNotContain("UTC", text);
+    }
+
     private static SignerVerificationChallengeIssuedIntegrationEvent BuildEvent() =>
         new()
         {
@@ -239,6 +274,23 @@ public sealed class SignerVerificationChallengeAppPushTests
         {
             SaveCount++;
             return Task.FromResult(0);
+        }
+    }
+
+    private sealed class RecordingSmsSender : ISmsSender
+    {
+        public List<string> Texts { get; } = [];
+
+        public Task<Result> SendAsync(
+            string phoneNumber,
+            string text,
+            CancellationToken ct,
+            string? templateKey,
+            string? idempotencyToken
+        )
+        {
+            Texts.Add(text);
+            return Task.FromResult(Result.Success());
         }
     }
 

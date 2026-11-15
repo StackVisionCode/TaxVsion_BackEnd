@@ -30,6 +30,8 @@ export interface ScheduleMeetingCommand {
   readonly continuationOfMeetingId?: string | null;
   /** Sala de una cita de Calendar. */
   readonly appointmentId?: string | null;
+  /** Zona de la cita (TZ03-H7). */
+  readonly timeZoneId?: string | null;
 }
 
 export interface ScheduleMeetingResult {
@@ -90,6 +92,7 @@ export async function scheduleMeeting(
     durationPolicy,
     continuationOfMeetingId: command.continuationOfMeetingId ?? null,
     appointmentId: command.appointmentId ?? null,
+    timeZoneId: command.timeZoneId ?? null,
   });
   if (!scheduleResult.isSuccess) return Result.fail(scheduleResult.error);
 

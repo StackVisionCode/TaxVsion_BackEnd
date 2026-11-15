@@ -50,6 +50,27 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                     b.ToTable("CustomerAssignmentProjections", (string)null);
                 });
 
+            modelBuilder.Entity("BuildingBlocks.TenantTimeZones.TenantTimeZoneProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("SourceVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantTimeZoneProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Calendar.Domain.Appointments.Appointment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -504,6 +525,58 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
                     b.ToTable("OfficeSchedules", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Calendar.Domain.Office.OfficeTimeZoneChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FromTimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("MovedRules")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MovedSeries")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ResolvedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("TenantVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ToTimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Status");
+
+                    b.HasIndex("TenantId", "TenantVersion")
+                        .IsUnique();
+
+                    b.ToTable("OfficeTimeZoneChanges", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Calendar.Domain.Permissions.RolePermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -760,6 +833,10 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("SortOrder")
                         .HasColumnType("int");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");

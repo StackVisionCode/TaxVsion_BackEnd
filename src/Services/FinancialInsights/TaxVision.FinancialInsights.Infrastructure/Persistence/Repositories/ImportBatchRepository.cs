@@ -18,7 +18,9 @@ public sealed class ImportBatchRepository(FinancialInsightsDbContext db) : IImpo
         Guid customerId,
         Guid batchId,
         CancellationToken ct = default
-    ) => Batches().SingleOrDefaultAsync(b => b.TenantId == tenantId && b.CustomerId == customerId && b.Id == batchId, ct);
+    ) =>
+        Batches()
+            .SingleOrDefaultAsync(b => b.TenantId == tenantId && b.CustomerId == customerId && b.Id == batchId, ct);
 
     public Task<ImportBatch?> GetByFileAsync(Guid tenantId, Guid fileId, CancellationToken ct = default) =>
         Batches().SingleOrDefaultAsync(b => b.TenantId == tenantId && b.Documents.Any(d => d.FileId == fileId), ct);
@@ -31,8 +33,7 @@ public sealed class ImportBatchRepository(FinancialInsightsDbContext db) : IImpo
         IReadOnlyCollection<Guid> fileIds,
         CancellationToken ct = default
     ) =>
-        db.ImportDocuments.IgnoreQueryFilters()
-            .AnyAsync(d => d.TenantId == tenantId && fileIds.Contains(d.FileId), ct);
+        db.ImportDocuments.IgnoreQueryFilters().AnyAsync(d => d.TenantId == tenantId && fileIds.Contains(d.FileId), ct);
 
     public async Task<bool> TryAddAsync(ImportBatch batch, CancellationToken ct = default)
     {

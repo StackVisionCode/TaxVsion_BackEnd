@@ -16,14 +16,16 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 keyColumn: "Id",
                 keyValue: new Guid("a1000000-0000-0000-0000-0000000001a0"),
                 column: "Description",
-                value: "Import client bank statements into Financial Insights");
+                value: "Import client bank statements into Financial Insights"
+            );
 
             migrationBuilder.UpdateData(
                 table: "Permissions",
                 keyColumn: "Id",
                 keyValue: new Guid("a1000000-0000-0000-0000-0000000001a1"),
                 column: "Description",
-                value: "View client Financial Insights imports and movements");
+                value: "View client Financial Insights imports and movements"
+            );
         }
 
         /// <inheritdoc />
@@ -34,14 +36,16 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 keyColumn: "Id",
                 keyValue: new Guid("a1000000-0000-0000-0000-0000000001a0"),
                 column: "Description",
-                value: "Register customer bank statement imports");
+                value: "Register customer bank statement imports"
+            );
 
             migrationBuilder.UpdateData(
                 table: "Permissions",
                 keyColumn: "Id",
                 keyValue: new Guid("a1000000-0000-0000-0000-0000000001a1"),
                 column: "Description",
-                value: "View customer financial imports");
+                value: "View customer financial imports"
+            );
         }
     }
 }

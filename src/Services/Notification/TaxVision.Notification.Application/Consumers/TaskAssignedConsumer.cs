@@ -28,7 +28,7 @@ public static class TaskAssignedConsumer
                 return;
 
             var title = $"You were assigned a task: {evt.Title}";
-            var body = evt.DueAtUtc is { } due ? $"Due {due:yyyy-MM-dd}." : null;
+            var body = CivilDue.Text(evt.DueOn, evt.DueAtUtc) is { } due ? $"Due {due}." : null;
 
             await dispatcher.RecordInAppAsync(
                 evt.TenantId,

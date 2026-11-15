@@ -48,6 +48,61 @@ public sealed class T44ConsumersTests
         Assert.Equal(taskId.ToString(), evt.ResourceId);
     }
 
+    /// <summary>P4: vence el 15 a las 23:59:59 de Nueva York (16 en UTC); el aviso dice el 15.</summary>
+    [Fact]
+    public async Task TaskAssigned_el_cuerpo_dice_la_fecha_civil()
+    {
+        var publisher = new CapturingIntegrationEventPublisher();
+
+        await TaskAssignedConsumer.Handle(
+            new TaskAssignedIntegrationEvent
+            {
+                TenantId = TenantId,
+                CorrelationId = "corr",
+                TaskId = Guid.NewGuid(),
+                Title = "File the 1040",
+                AssigneeUserId = Guid.NewGuid(),
+                DueAtUtc = new DateTime(2026, 11, 16, 4, 59, 59, DateTimeKind.Utc),
+                DueOn = new DateOnly(2026, 11, 15),
+            },
+            BuildDispatcher(publisher),
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        var evt = Assert.IsType<InAppNotificationRequestedIntegrationEvent>(Assert.Single(publisher.Published));
+        Assert.Equal("Due Nov 15, 2026.", evt.FallbackBody);
+    }
+
+    [Fact]
+    public async Task TaskOverdue_el_aviso_dice_la_fecha_civil_y_la_manda_como_parametro()
+    {
+        var publisher = new CapturingIntegrationEventPublisher();
+
+        await TaskOverdueConsumer.Handle(
+            new TaskOverdueIntegrationEvent
+            {
+                TenantId = TenantId,
+                CorrelationId = "corr",
+                TaskId = Guid.NewGuid(),
+                Title = "File the 1040",
+                AssigneeUserId = Guid.NewGuid(),
+                IsStatutory = false,
+                DueAtUtc = new DateTime(2026, 11, 16, 4, 59, 59, DateTimeKind.Utc),
+                DueOn = new DateOnly(2026, 11, 15),
+            },
+            BuildDispatcher(publisher),
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        var evt = publisher.Published.OfType<InAppNotificationRequestedIntegrationEvent>().Single();
+        // Copy visible en inglés (antes: "Vencía el … y sigue abierta.").
+        Assert.Equal("Task overdue: File the 1040", evt.FallbackTitle);
+        Assert.Equal("It was due Nov 15, 2026 and is still open.", evt.FallbackBody);
+        Assert.Equal("2026-11-15", evt.Params["dueOn"]);
+    }
+
     [Fact]
     public async Task TaskAssigned_auto_asignacion_no_notifica_al_actor()
     {

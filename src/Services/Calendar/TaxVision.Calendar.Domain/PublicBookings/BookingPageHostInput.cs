@@ -7,5 +7,7 @@ public sealed record BookingPageHostInput(
     string? NotificationEmail,
     string? MeetingUrl,
     int SortOrder,
-    bool IsActive
+    bool IsActive,
+    // P23: zona IANA explícita del anfitrión; null = la de su disponibilidad.
+    string? TimeZoneId = null
 );

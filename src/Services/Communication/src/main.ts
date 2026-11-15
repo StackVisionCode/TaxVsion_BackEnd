@@ -29,6 +29,7 @@ import { RedisCallEmptinessClock } from './infrastructure/redis/redis-call-empti
 import { registerSessionHandlers } from './api/socket/handlers/session-handlers.js';
 import { startCustomerReconciliationScheduler } from './infrastructure/schedulers/customer-reconciliation-scheduler.js';
 import { startUserDirectoryReconciliationScheduler } from './infrastructure/schedulers/user-directory-reconciliation-scheduler.js';
+import { startTenantTimeZoneReconciliationScheduler } from './infrastructure/schedulers/tenant-time-zone-reconciliation-scheduler.js';
 import { startPortalAccountReconciliationScheduler } from './infrastructure/schedulers/portal-account-reconciliation-scheduler.js';
 import { startCustomerAssignmentReconciliationScheduler } from './infrastructure/schedulers/customer-assignment-reconciliation-scheduler.js';
 import { startOutboxDrainer } from './infrastructure/rabbit/outbox-drainer.js';
@@ -37,6 +38,7 @@ import { bindSignatureConsumers } from './application/event-handlers/signature-c
 import { bindCustomerConsumers } from './application/event-handlers/customer-consumers.js';
 import { bindAuthConsumers } from './application/event-handlers/auth-consumers.js';
 import { bindTenantHostConsumers } from './application/event-handlers/tenant-host-consumers.js';
+import { bindTenantTimeZoneConsumers } from './application/event-handlers/tenant-time-zone-consumers.js';
 import { bindOffboardingConsumers } from './application/event-handlers/offboarding-consumers.js';
 import { bindCloudStorageConsumers } from './application/event-handlers/cloudstorage-consumers.js';
 import { bindCloudStorageNotificationConsumers } from './application/event-handlers/cloudstorage-notification-consumers.js';
@@ -255,6 +257,14 @@ async function main(): Promise<void> {
       lock: container.distributedLock,
     },
   );
+  // Siembra y repara la zona de cada oficina contra el directorio de Tenant (oficinas previas y eventos perdidos).
+  const tenantTimeZoneReconciliation = startTenantTimeZoneReconciliationScheduler(
+    {
+      enabled: config.tenantTimeZoneReconcile.enabled,
+      intervalHours: config.tenantTimeZoneReconcile.intervalHours,
+    },
+    { client: container.tenantDirectory, store: container.tenantTimeZones, lock: container.distributedLock },
+  );
   // Repara CustomerPortalAccount (portal userId ↔ customerId) contra Auth: chateabilidad y foto del cliente.
   const portalAccountReconciliation = startPortalAccountReconciliationScheduler(
     {
@@ -317,6 +327,12 @@ async function main(): Promise<void> {
   bindTenantHostConsumers(consumers.register.bind(consumers), {
     hostCache: container.tenantHostCache,
     platformSettings,
+  });
+  // Zona de cada oficina desde Tenant (alta y cambios); un cambio también olvida el host cacheado.
+  bindTenantTimeZoneConsumers(consumers.register.bind(consumers), {
+    store: container.tenantTimeZones,
+    hostCache: container.tenantHostCache,
+    emitter,
   });
   // Offboarding (retiro terminal): proyecciones, reuniones, grupos, chats Direct, soporte y grabaciones (offboarding-consumers.ts).
   bindOffboardingConsumers(consumers.register.bind(consumers), {
@@ -522,6 +538,7 @@ async function main(): Promise<void> {
         customerAssignmentReconciliation,
         userDirectoryReconciliation,
         portalAccountReconciliation,
+        tenantTimeZoneReconciliation,
         sessionWatcher,
         presenceWatcher,
         consumers,
@@ -548,6 +565,7 @@ async function shutdown(
   customerAssignmentReconciliation: ReturnType<typeof startCustomerAssignmentReconciliationScheduler>,
   userDirectoryReconciliation: ReturnType<typeof startUserDirectoryReconciliationScheduler>,
   portalAccountReconciliation: ReturnType<typeof startPortalAccountReconciliationScheduler>,
+  tenantTimeZoneReconciliation: ReturnType<typeof startTenantTimeZoneReconciliationScheduler>,
   sessionWatcher: ReturnType<typeof startSessionDenylistWatcher>,
   presenceWatcher: ReturnType<typeof startPresenceChangedWatcher>,
   consumers: ConsumerRuntime,
@@ -565,6 +583,7 @@ async function shutdown(
     customerAssignmentReconciliation.stop();
     userDirectoryReconciliation.stop();
     portalAccountReconciliation.stop();
+    tenantTimeZoneReconciliation.stop();
     recordingScheduler.stop();
     await container.sfu.stop();
     await sessionWatcher.stop();

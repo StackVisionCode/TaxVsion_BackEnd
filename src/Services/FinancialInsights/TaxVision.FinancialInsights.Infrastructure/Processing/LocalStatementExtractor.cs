@@ -17,12 +17,19 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
         IReadOnlyList<ExtractedPage> pages = mediaType.ToLowerInvariant() switch
         {
             "text/csv" or "application/csv" => [new ExtractedPage(1, DecodeText(bytes))],
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ExtractWorkbook(bytes, settings.MaxTextCharacters),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ExtractWorkbook(
+                bytes,
+                settings.MaxTextCharacters
+            ),
             "application/pdf" => await ExtractPdfAsync(bytes, settings, ct),
             "image/png" or "image/jpeg" => [await ExtractImageAsync(bytes, mediaType, ct)],
-            _ => throw new DocumentProcessingException("FileType", "Unsupported statement format.")
+            _ => throw new DocumentProcessingException("FileType", "Unsupported statement format."),
         };
-        if (pages.Count == 0 || pages.Count > settings.MaxPages || pages.Sum(x => x.Text.Length) > settings.MaxTextCharacters)
+        if (
+            pages.Count == 0
+            || pages.Count > settings.MaxPages
+            || pages.Sum(x => x.Text.Length) > settings.MaxTextCharacters
+        )
             throw new DocumentProcessingException("DocumentLimit", "Statement exceeds page or text limits.");
         if (pages.Count(x => x.ImageBytes is not null) > settings.MaxVisionPages)
             throw new DocumentProcessingException("VisionPageLimit", "Too many pages require image review.");
@@ -33,8 +40,14 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
 
     private static string DecodeText(byte[] bytes)
     {
-        try { return new UTF8Encoding(false, true).GetString(bytes).TrimStart('\uFEFF'); }
-        catch (DecoderFallbackException) { return Encoding.Latin1.GetString(bytes); }
+        try
+        {
+            return new UTF8Encoding(false, true).GetString(bytes).TrimStart('\uFEFF');
+        }
+        catch (DecoderFallbackException)
+        {
+            return Encoding.Latin1.GetString(bytes);
+        }
     }
 
     private static IReadOnlyList<ExtractedPage> ExtractWorkbook(byte[] bytes, int maxChars)
@@ -56,9 +69,14 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
             }
             return [new ExtractedPage(1, text.ToString())];
         }
-        catch (DocumentProcessingException) { throw; }
+        catch (DocumentProcessingException)
+        {
+            throw;
+        }
         catch (Exception ex) when (ex is InvalidDataException or ArgumentException or NotSupportedException)
-        { throw new DocumentProcessingException("InvalidSpreadsheet", "Spreadsheet could not be parsed."); }
+        {
+            throw new DocumentProcessingException("InvalidSpreadsheet", "Spreadsheet could not be parsed.");
+        }
     }
 
     private static async Task<ExtractedPage> ExtractImageAsync(byte[] bytes, string mediaType, CancellationToken ct)
@@ -70,13 +88,20 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
             await File.WriteAllBytesAsync(path, bytes, ct);
             var (text, confidence) = await RunOcrAsync(path, ct);
             return IsReadable(text) && confidence >= 70
-                ? new ExtractedPage(1, text) : new ExtractedPage(1, text, bytes, mediaType);
+                ? new ExtractedPage(1, text)
+                : new ExtractedPage(1, text, bytes, mediaType);
         }
-        finally { Directory.Delete(directory, recursive: true); }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
-    private static async Task<IReadOnlyList<ExtractedPage>> ExtractPdfAsync(byte[] bytes,
-        FinancialProcessingOptions settings, CancellationToken ct)
+    private static async Task<IReadOnlyList<ExtractedPage>> ExtractPdfAsync(
+        byte[] bytes,
+        FinancialProcessingOptions settings,
+        CancellationToken ct
+    )
     {
         var directory = CreateTempDirectory();
         try
@@ -84,25 +109,50 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
             var pdf = Path.Combine(directory, "statement.pdf");
             await File.WriteAllBytesAsync(pdf, bytes, ct);
             var info = await RunAsync("pdfinfo", [pdf], 16_000, ct);
-            var pageLine = info.Split('\n').FirstOrDefault(x => x.StartsWith("Pages:", StringComparison.OrdinalIgnoreCase));
+            var pageLine = info.Split('\n')
+                .FirstOrDefault(x => x.StartsWith("Pages:", StringComparison.OrdinalIgnoreCase));
             if (pageLine is null || !int.TryParse(pageLine[6..].Trim(), out var count) || count is < 1 or > 1000)
                 throw new DocumentProcessingException("InvalidPdf", "PDF page count could not be read.");
             if (count > settings.MaxPages)
                 throw new DocumentProcessingException("DocumentLimit", "PDF has too many pages.");
-            var raw = await RunAsync("pdftotext", ["-layout", "-f", "1", "-l", count.ToString(), pdf, "-"],
-                settings.MaxTextCharacters + 5_000, ct);
+            var raw = await RunAsync(
+                "pdftotext",
+                ["-layout", "-f", "1", "-l", count.ToString(), pdf, "-"],
+                settings.MaxTextCharacters + 5_000,
+                ct
+            );
             var extracted = raw.Split('\f');
             var pages = new List<ExtractedPage>(count);
             for (var index = 1; index <= count; index++)
             {
                 var text = index <= extracted.Length ? extracted[index - 1].Trim() : string.Empty;
-                if (IsReadable(text)) { pages.Add(new ExtractedPage(index, text)); continue; }
+                if (IsReadable(text))
+                {
+                    pages.Add(new ExtractedPage(index, text));
+                    continue;
+                }
                 var prefix = Path.Combine(directory, $"page-{index}");
-                await RunAsync("pdftoppm", ["-f", index.ToString(), "-l", index.ToString(),
-                    "-singlefile", "-scale-to", "1800", "-png", pdf, prefix], 4_000, ct);
+                await RunAsync(
+                    "pdftoppm",
+                    [
+                        "-f",
+                        index.ToString(),
+                        "-l",
+                        index.ToString(),
+                        "-singlefile",
+                        "-scale-to",
+                        "1800",
+                        "-png",
+                        pdf,
+                        prefix,
+                    ],
+                    4_000,
+                    ct
+                );
                 var imagePath = prefix + ".png";
                 var (ocr, confidence) = await RunOcrAsync(imagePath, ct);
-                if (IsReadable(ocr) && confidence >= 70) pages.Add(new ExtractedPage(index, ocr));
+                if (IsReadable(ocr) && confidence >= 70)
+                    pages.Add(new ExtractedPage(index, ocr));
                 else
                 {
                     var image = await File.ReadAllBytesAsync(imagePath, ct);
@@ -113,11 +163,14 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
             }
             return pages;
         }
-        finally { Directory.Delete(directory, recursive: true); }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
-    private static bool IsReadable(string text) => text.Count(char.IsLetterOrDigit) >= 80
-        && text.Count(ch => ch == '\uFFFD') < 3;
+    private static bool IsReadable(string text) =>
+        text.Count(char.IsLetterOrDigit) >= 80 && text.Count(ch => ch == '\uFFFD') < 3;
 
     private static async Task<(string Text, double Confidence)> RunOcrAsync(string imagePath, CancellationToken ct)
     {
@@ -128,9 +181,13 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
         foreach (var line in tsv.Split('\n').Skip(1))
         {
             var cells = line.TrimEnd('\r').Split('\t', 12);
-            if (cells.Length != 12 || string.IsNullOrWhiteSpace(cells[11])
+            if (
+                cells.Length != 12
+                || string.IsNullOrWhiteSpace(cells[11])
                 || !double.TryParse(cells[10], NumberStyles.Float, CultureInfo.InvariantCulture, out var confidence)
-                || confidence < 0) continue;
+                || confidence < 0
+            )
+                continue;
             text.Append(cells[11]).Append(' ');
             var weight = cells[11].Length;
             weightedConfidence += confidence * weight;
@@ -146,8 +203,12 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
         return path;
     }
 
-    private static async Task<string> RunAsync(string executable, IReadOnlyList<string> arguments,
-        int maxCharacters, CancellationToken ct)
+    private static async Task<string> RunAsync(
+        string executable,
+        IReadOnlyList<string> arguments,
+        int maxCharacters,
+        CancellationToken ct
+    )
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(90));
@@ -155,10 +216,13 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
         var started = false;
         process.StartInfo = new ProcessStartInfo(executable)
         {
-            UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true,
-            CreateNoWindow = true
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
         };
-        foreach (var argument in arguments) process.StartInfo.ArgumentList.Add(argument);
+        foreach (var argument in arguments)
+            process.StartInfo.ArgumentList.Add(argument);
         try
         {
             started = process.Start();
@@ -168,14 +232,25 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
             var output = await stdout;
             _ = await stderr; // Do not log OCR output or document paths.
             if (process.ExitCode != 0)
-                throw new DocumentProcessingException("LocalOcrFailed", $"{executable} could not process the document.");
+                throw new DocumentProcessingException(
+                    "LocalOcrFailed",
+                    $"{executable} could not process the document."
+                );
             return output;
         }
         catch (System.ComponentModel.Win32Exception)
-        { throw new DocumentProcessingException("LocalOcrUnavailable", $"{executable} is not installed."); }
+        {
+            throw new DocumentProcessingException("LocalOcrUnavailable", $"{executable} is not installed.");
+        }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        { throw new DocumentProcessingException("LocalOcrTimeout", $"{executable} timed out."); }
-        finally { if (started && !process.HasExited) process.Kill(entireProcessTree: true); }
+        {
+            throw new DocumentProcessingException("LocalOcrTimeout", $"{executable} timed out.");
+        }
+        finally
+        {
+            if (started && !process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
     }
 
     private static async Task<string> ReadLimitedAsync(StreamReader reader, int maxCharacters, CancellationToken ct)
@@ -185,7 +260,8 @@ public sealed class LocalStatementExtractor(IOptions<FinancialProcessingOptions>
         while (true)
         {
             var read = await reader.ReadAsync(buffer, ct);
-            if (read == 0) return text.ToString();
+            if (read == 0)
+                return text.ToString();
             text.Append(buffer, 0, read);
             if (text.Length > maxCharacters)
                 throw new DocumentProcessingException("DocumentLimit", "Local extraction exceeded output limit.");

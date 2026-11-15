@@ -65,7 +65,7 @@ public static class ClientRequestCreatedConsumer
                             ["customer_name"] = customer.DisplayName,
                             ["request_title"] = evt.Title,
                             ["request_details"] = evt.Details,
-                            ["due_at_utc"] = evt.DueAtUtc,
+                            ["due_at_utc"] = CivilDue.Typed(evt.DueOn, evt.DueAtUtc),
                             ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
                         },
                         ScribeRenderAudience.Client,

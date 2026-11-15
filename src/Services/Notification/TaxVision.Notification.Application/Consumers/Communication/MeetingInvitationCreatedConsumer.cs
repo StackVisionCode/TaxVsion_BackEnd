@@ -107,9 +107,9 @@ public static class MeetingInvitationCreatedConsumer
             {
                 ["invitee_name"] = string.IsNullOrWhiteSpace(evt.InviteeName) ? "there" : evt.InviteeName!,
                 ["join_link"] = evt.JoinUrl,
-                ["expires_at"] = evt.ExpiresAtUtc.ToString("yyyy-MM-dd HH:mm"),
+                ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
                 ["meeting_title"] = meetingTitle,
-                ["start_local"] = MeetingNotifications.LocalTime(evt.ScheduledForUtc, evt.TimeZone),
+                ["start_local"] = ScribeDates.Instant(evt.ScheduledForUtc),
                 ["time_zone"] = MeetingNotifications.TimeZoneLabel(evt.TimeZone),
                 ["duration_minutes"] = evt.DurationMinutes,
                 ["host_name"] = evt.HostDisplayName,
@@ -121,7 +121,15 @@ public static class MeetingInvitationCreatedConsumer
                 CalendarRsvpLinks.AddTo(variables, rsvpBase, evt.RsvpToken);
 
             var render = (
-                await scribeClient.RenderAsync(EventKey, evt.TenantId, variables, AudienceOf(evt.InviteeKind), ct)
+                await scribeClient.RenderAsync(
+                    EventKey,
+                    evt.TenantId,
+                    variables,
+                    AudienceOf(evt.InviteeKind),
+                    // Hora y vencimiento en la zona de la reunión; sin zona, la de la oficina.
+                    ScribeReader.From(null, evt.TimeZone),
+                    ct
+                )
             ).EnsureRendered(EventKey);
 
             // Sin fecha no hay nada que poner en el calendario (reunión en curso o sin agendar).

@@ -62,7 +62,10 @@ public sealed class InternalTenantEntitlementsControllerTests
         bus.WhenInvokedMessageOf<GetTenantEntitlementSummaryQuery>()
             .RespondWith(Result.Failure<EntitlementSummaryResponse>(new Error("EntitlementSnapshot.NotFound", "x")));
 
-        var result = await new InternalTenantEntitlementsController(bus).GetSummary(Guid.NewGuid(), CancellationToken.None);
+        var result = await new InternalTenantEntitlementsController(bus).GetSummary(
+            Guid.NewGuid(),
+            CancellationToken.None
+        );
 
         var error = Assert.IsType<ObjectResult>(result);
         Assert.Equal("EntitlementSnapshot.NotFound", Assert.IsType<Error>(error.Value).Code);

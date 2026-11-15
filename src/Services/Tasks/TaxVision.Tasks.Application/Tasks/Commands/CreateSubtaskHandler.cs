@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 using Wolverine;
@@ -23,7 +24,8 @@ public sealed record CreateSubtaskCommand(
     DateTime? DueAtUtc,
     string? DueTimeZoneId,
     bool DueIsStatutory,
-    decimal? EstimatedHours
+    decimal? EstimatedHours,
+    DateOnly? DueOn = null
 );
 
 public static class CreateSubtaskHandler
@@ -32,6 +34,7 @@ public static class CreateSubtaskHandler
         CreateSubtaskCommand command,
         ITaskRepository tasks,
         IUnitOfWork unitOfWork,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -42,7 +45,8 @@ public static class CreateSubtaskHandler
         if (!TaskAccessPolicy.CanMutate(parent.Value, command.ByUserId, command.HasManageAll))
             return Result.Failure<TaskResponse>(TaskErrors.Forbidden);
 
-        var draft = BuildDraft(command);
+        var officeZone = command.DueOn is null ? null : await zones.ResolveAsync(command.TenantId, ct);
+        var draft = BuildDraft(command, officeZone);
         if (draft.IsFailure)
             return Result.Failure<TaskResponse>(draft.Error);
 
@@ -70,7 +74,10 @@ public static class CreateSubtaskHandler
             DateTime.UtcNow
         );
 
-    private static Result<TaskDraft> BuildDraft(CreateSubtaskCommand command) =>
+    private static Result<TaskDraft> BuildDraft(
+        CreateSubtaskCommand command,
+        BuildingBlocks.TimeZones.ResolvedTimeZone? officeZone
+    ) =>
         TaskDraft.From(
             command.Title,
             command.Description,
@@ -79,6 +86,8 @@ public static class CreateSubtaskHandler
             command.DueIsStatutory,
             command.EstimatedHours,
             null,
-            null
+            null,
+            command.DueOn,
+            officeZone
         );
 }

@@ -1,6 +1,7 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.TimeZones;
+using BuildingBlocks.TimeZones.Formatting;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -165,10 +166,9 @@ public static class ReminderDueConsumer
             return evt.Body!;
 
         if (evt.AnchorAtUtc is not { } anchorUtc)
-            return "Tenés un recordatorio.";
+            return "You have a reminder.";
 
-        return IanaTimeZone.TryFindTimeZone(evt.TimeZoneId, out var zone)
-            ? $"Es a las {TimeZoneInfo.ConvertTimeFromUtc(anchorUtc, zone):HH:mm}."
-            : $"Es a las {anchorUtc:HH:mm} UTC.";
+        // Fecha, hora y zona escrita: el aviso puede llegar días antes y el dueño puede estar en otra zona.
+        return $"Scheduled for {ZonedTimeFormatter.DateTime(anchorUtc, ResolvedTimeZone.Resolve(evt.TimeZoneId))}.";
     }
 }

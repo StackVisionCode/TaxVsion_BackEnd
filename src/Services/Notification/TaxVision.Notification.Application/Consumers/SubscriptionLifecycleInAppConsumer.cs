@@ -1,6 +1,8 @@
 using System.Globalization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.TimeZones;
+using BuildingBlocks.TimeZones.Formatting;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
@@ -14,9 +16,13 @@ public static class SubscriptionLifecycleInAppConsumer
         NotificationDispatcher dispatcher,
         IRecipientResolver resolver,
         ICorrelationContext correlation,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
+        // Las fechas de la campana van en el día de la oficina, no en el UTC.
+        var zone = await zones.ResolveAsync(evt.TenantId, ct);
+
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var recipients = await BillingNotificationRecipients.ResolveOwnerAndSubscribersAsync(
@@ -43,7 +49,7 @@ public static class SubscriptionLifecycleInAppConsumer
                 "auth.tenant_subscription_email_requested.v1",
                 evt.OccurredOn,
                 title,
-                SubscriptionBody(evt),
+                SubscriptionBody(evt, zone),
                 evt.TenantId.ToString(),
                 new Dictionary<string, string>
                 {
@@ -84,19 +90,21 @@ public static class SubscriptionLifecycleInAppConsumer
     private static string ChargeFailureTitle(TenantSubscriptionEmailRequestedIntegrationEvent evt) =>
         evt.IsFinalAttempt ? "Payment failed — action required" : "Payment attempt failed";
 
-    private static string SubscriptionBody(TenantSubscriptionEmailRequestedIntegrationEvent evt)
+    private static string SubscriptionBody(TenantSubscriptionEmailRequestedIntegrationEvent evt, ResolvedTimeZone zone)
     {
         if (IsChargeFailure(evt))
         {
             var what = $"We couldn't charge {evt.Amount} for your {evt.ItemDescription ?? "subscription"}.";
             return evt.IsFinalAttempt || evt.NextAttemptAtUtc is null
                 ? $"{what} Complete the payment in Manage subscription to restore access."
-                : $"{what} We'll try again on {evt.NextAttemptAtUtc.Value.ToString("MMMM d", new CultureInfo("en-US"))}.";
+                : $"{what} We'll try again on {ZonedTimeFormatter.Date(evt.NextAttemptAtUtc.Value, zone)}.";
         }
 
         if (string.Equals(evt.Reason, "VersionChangeScheduled", StringComparison.OrdinalIgnoreCase))
         {
-            var when = evt.VersionChangeEffectiveAtUtc?.ToString("MMMM d, yyyy", new CultureInfo("en-US"));
+            var when = evt.VersionChangeEffectiveAtUtc is { } effective
+                ? ZonedTimeFormatter.Date(effective, zone)
+                : null;
             return $"Starting {when ?? "your next renewal"}: {evt.VersionChangeSummary}.";
         }
 

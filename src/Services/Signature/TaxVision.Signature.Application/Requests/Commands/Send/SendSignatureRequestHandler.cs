@@ -25,6 +25,7 @@ public static class SendSignatureRequestHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ISignatureRequestListCacheInvalidator listCache,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
@@ -33,7 +34,9 @@ public static class SendSignatureRequestHandler
             return NotFound();
 
         var sentAt = DateTime.UtcNow;
-        var transition = request.Send(sentAt);
+        // P8: la zona de la oficina queda congelada en la solicitud para el campo Date y el certificado.
+        var officeZone = await zones.ResolveAsync(cmd.TenantId, ct);
+        var transition = request.Send(sentAt, officeZone.Id);
         if (transition.IsFailure)
             return transition;
 

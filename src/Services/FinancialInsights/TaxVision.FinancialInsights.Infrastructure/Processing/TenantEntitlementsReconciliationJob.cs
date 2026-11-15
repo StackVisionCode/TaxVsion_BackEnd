@@ -73,7 +73,8 @@ public sealed class TenantEntitlementsReconciliationJob(
     {
         IReadOnlyList<Guid> tenants;
         using (var scope = services.CreateScope())
-            tenants = await scope.ServiceProvider.GetRequiredService<ImportProcessingQueue>()
+            tenants = await scope
+                .ServiceProvider.GetRequiredService<ImportProcessingQueue>()
                 .ListTenantsToRefreshAsync(staleBeforeUtc, take, ct);
 
         var (refreshed, failed) = (0, 0);
@@ -85,7 +86,11 @@ public sealed class TenantEntitlementsReconciliationJob(
             {
                 try
                 {
-                    if (await scope.ServiceProvider.GetRequiredService<TenantEntitlementsResolver>().RefreshAsync(tenantId, ct))
+                    if (
+                        await scope
+                            .ServiceProvider.GetRequiredService<TenantEntitlementsResolver>()
+                            .RefreshAsync(tenantId, ct)
+                    )
                         refreshed++;
                     else
                         failed++;
@@ -93,7 +98,11 @@ public sealed class TenantEntitlementsReconciliationJob(
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
                     failed++;
-                    logger.LogWarning("Entitlements refresh failed for tenant {TenantId} with {ExceptionType}.", tenantId, ex.GetType().Name);
+                    logger.LogWarning(
+                        "Entitlements refresh failed for tenant {TenantId} with {ExceptionType}.",
+                        tenantId,
+                        ex.GetType().Name
+                    );
                 }
             }
         }

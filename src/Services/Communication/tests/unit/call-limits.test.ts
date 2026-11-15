@@ -94,11 +94,11 @@ describe('call limits at initiate (F4, INV-12 H-3)', () => {
     expect(!concurrent.isSuccess && concurrent.error).toMatchObject({ code: 'Call.LimitReached', message: 'concurrent' });
 
     calls.open = 0;
-    const usage = { addSeconds: async () => undefined, getSeconds: async () => 600 * 60 };
+    const usage = { addSeconds: async () => undefined, secondsThisPeriod: async () => 600 * 60 };
     const monthly = await initiateCall(command(), { calls: calls.asRepository(), idempotency, publisher: new RecordingPublisher(), settings, effectiveSettings: new PlanResolver({ maxMonthlyMinutes: 600 }), callUsage: usage });
     expect(!monthly.isSuccess && monthly.error).toMatchObject({ code: 'Call.LimitReached', message: 'monthly' });
 
-    const ok = await initiateCall(command(), { calls: calls.asRepository(), idempotency, publisher: new RecordingPublisher(), settings, effectiveSettings: new PlanResolver({ maxConcurrentCalls: 2, maxMonthlyMinutes: 600 }), callUsage: { ...usage, getSeconds: async () => 10 } });
+    const ok = await initiateCall(command(), { calls: calls.asRepository(), idempotency, publisher: new RecordingPublisher(), settings, effectiveSettings: new PlanResolver({ maxConcurrentCalls: 2, maxMonthlyMinutes: 600 }), callUsage: { ...usage, secondsThisPeriod: async () => 10 } });
     expect(ok.isSuccess).toBe(true);
   });
 

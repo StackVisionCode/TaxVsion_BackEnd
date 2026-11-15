@@ -7,7 +7,8 @@ public sealed record CreateFormIntakeLinkRequest(
     string EntryNoticeKey,
     DateTime? ExpiresAtUtc,
     int? MaxSubmissions,
-    Guid ResponsibleUserId
+    Guid ResponsibleUserId,
+    DateOnly? ExpiresOn = null
 );
 
 public sealed record ChangeFormIntakeLinkRequest(string RowVersion);

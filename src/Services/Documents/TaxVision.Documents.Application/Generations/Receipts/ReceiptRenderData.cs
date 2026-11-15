@@ -1,4 +1,6 @@
 using System.Globalization;
+using BuildingBlocks.TimeZones;
+using BuildingBlocks.TimeZones.Formatting;
 using TaxVision.Documents.Application.Abstractions;
 
 namespace TaxVision.Documents.Application.Generations.Receipts;
@@ -28,8 +30,13 @@ public static class ReceiptRenderData
 
     public static string Money(long amountCents) => (amountCents / 100m).ToString("N2", CultureInfo.InvariantCulture);
 
-    public static string PaidAt(DateTime paidAtUtc) =>
-        paidAtUtc.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
+    /// <summary>P7: fecha y hora en la zona de quien paga, con el formato único; sin zona, UTC rotulado.</summary>
+    public static string PaidAt(DateTime paidAtUtc, string? timeZoneId) =>
+        ZonedTimeFormatter.DateTime(paidAtUtc, ResolvedTimeZone.Resolve(timeZoneId));
+
+    /// <summary>Día del cobro para quien paga: nombre del archivo y carpeta del año.</summary>
+    public static DateOnly PaidDay(DateTime paidAtUtc, string? timeZoneId) =>
+        CivilDate.Of(paidAtUtc, ResolvedTimeZone.Resolve(timeZoneId));
 
     /// <summary>Prefiere el logo de marca; si no hay, el de config. Nunca falla: la plantilla lo omite
     /// cuando queda vacío.</summary>

@@ -66,6 +66,15 @@ public sealed record TenantSubscriptionEmailRequestedIntegrationEvent : Integrat
     /// <summary>Fecha del próximo cobro ya formateada.</summary>
     public string? NextChargeDate { get; init; }
 
+    /// <summary>Instante del cobro (P19): Notification lo manda tipado a Scribe.</summary>
+    public DateTime? DateChargedAtUtc { get; init; }
+
+    /// <summary>Instante del próximo cobro (P19).</summary>
+    public DateTime? NextChargeAtUtc { get; init; }
+
+    /// <summary>Qué aviso es (7 o 1 día antes del fin); null fuera de los recordatorios. Aditivo (TZ-E07).</summary>
+    public int? NoticeDaysBefore { get; init; }
+
     // Cobro automático de renovación fallido (motivo RenewalChargeFailed): uno por intento.
 
     /// <summary>Pago fallido; con el intento arma la clave de idempotencia del correo.</summary>

@@ -4,6 +4,7 @@
 #pragma warning disable CS0618
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using BuildingBlocks.TimeZones;
 using TaxVision.Signature.Domain.Platform;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using TaxVision.Signature.Domain.Settings;
@@ -157,6 +158,14 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
 
     /// <summary>F3 — hora UTC a la que el job debe transicionar la solicitud a InProgress.</summary>
     public DateTime? ScheduledSendAtUtc { get; private set; }
+
+    /// <summary>Zona de la oficina congelada al enviar (P8): el campo Date del firmado es la fecha civil en ella.</summary>
+    public string? DisplayTimeZoneId { get; private set; }
+
+    /// <summary>P20 (TZ07-H9): año local de un instante en la zona congelada; sin zona, el año UTC de antes.</summary>
+    public int OfficeYearOf(DateTime instantUtc) =>
+        CivilDate.Of(instantUtc, ResolvedTimeZone.Resolve(DisplayTimeZoneId)).Year;
+
     public DateTime? CanceledAtUtc { get; private set; }
     public DateTime? ExpiredAtUtc { get; private set; }
     public DateTime? RejectedAtUtc { get; private set; }
@@ -1191,7 +1200,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         Status == SignatureRequestStatus.Draft && ValidateDocumentsForSend().IsSuccess && _signers.Count >= MinSigners;
 
     /// <summary>Transiciona Draft/Scheduled → InProgress validando documento, firmantes y campos.</summary>
-    public Result Send(DateTime sentAtUtc)
+    public Result Send(DateTime sentAtUtc, string? displayTimeZoneId = null)
     {
         if (
             Status
@@ -1210,6 +1219,7 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
 
         Status = SignatureRequestStatus.InProgress;
         SentAtUtc = sentAtUtc;
+        DisplayTimeZoneId = IanaTimeZone.TryNormalize(displayTimeZoneId, out var zone) ? zone : null;
         // Al enviar efectivamente la solicitud ya no "espera" por un reloj futuro: se limpia la fecha.
         ScheduledSendAtUtc = null;
         // F7 — solo computamos vencimiento si la expiración está activa.

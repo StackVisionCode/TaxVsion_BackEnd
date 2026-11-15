@@ -23,7 +23,11 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Common.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormConsentRecordRepository is not public, so requires service location
@@ -45,6 +49,7 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormRequestRepository is not public, so requires service location
             */
             var formRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.Abstractions.IFormRequestRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var getExternalFormSessionRequestQuery = (TaxVision.Tasks.ClientForms.Application.Requests.Queries.GetExternalFormSessionRequestQuery)context.Envelope.Message;
 
@@ -53,7 +58,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.ClientForms.Application.Requests.Queries.GetExternalFormSessionRequestHandler");
             
             // The actual message execution
-            var outgoing1 = await TaxVision.Tasks.ClientForms.Application.Requests.Queries.GetExternalFormSessionRequestHandler.Handle(getExternalFormSessionRequestQuery, formRequestRepository, formTemplateVersionRepository, answersProtector, _formEngine, consentNoticeRepository, formConsentRecordRepository, cancellation).ConfigureAwait(false);
+            var outgoing1 = await TaxVision.Tasks.ClientForms.Application.Requests.Queries.GetExternalFormSessionRequestHandler.Handle(getExternalFormSessionRequestQuery, formRequestRepository, formTemplateVersionRepository, answersProtector, _formEngine, consentNoticeRepository, formConsentRecordRepository, officeTimeZone, cancellation).ConfigureAwait(false);
 
             
             // Outgoing, cascaded message

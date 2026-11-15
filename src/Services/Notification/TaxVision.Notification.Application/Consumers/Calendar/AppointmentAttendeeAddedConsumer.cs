@@ -85,9 +85,7 @@ public static class AppointmentAttendeeAddedConsumer
                 new Dictionary<string, object?>
                 {
                     ["appointment_title"] = evt.Title,
-                    ["start_local"] = evt.StartUtc is { } start
-                        ? CalendarTimeFormatting.InZone(start, evt.TimeZoneId)
-                        : "Follows the series schedule",
+                    ["start_local"] = (object?)ScribeDates.Instant(evt.StartUtc) ?? "Follows the series schedule",
                     ["time_zone"] = evt.TimeZoneId,
                     ["is_recurring"] = evt.IsRecurring,
                     ["is_virtual"] = evt.IsVirtual,
@@ -98,7 +96,8 @@ public static class AppointmentAttendeeAddedConsumer
                 evt.EventId,
                 correlation.CorrelationId,
                 ct,
-                TenantEmailLinks.StaffBase(await hosts.ResolveHostAsync(evt.TenantId, ct), portal.Value)
+                TenantEmailLinks.StaffBase(await hosts.ResolveHostAsync(evt.TenantId, ct), portal.Value),
+                timeZoneId: evt.TimeZoneId
             );
         }
     }

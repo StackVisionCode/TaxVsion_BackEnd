@@ -81,7 +81,12 @@ public sealed class CatalogRevisionsTests
         await Apply(new FinancialInsightsModuleRevision(), [starter, pro, enterprise], [], modules: modules);
         var proEdition = pro.GetPublishedVersion()!.Id;
 
-        var again = await Apply(new FinancialInsightsModuleRevision(), [starter, pro, enterprise], [], modules: modules);
+        var again = await Apply(
+            new FinancialInsightsModuleRevision(),
+            [starter, pro, enterprise],
+            [],
+            modules: modules
+        );
 
         Assert.True(again.IsSuccess);
         Assert.Equal(proEdition, pro.GetPublishedVersion()!.Id);
@@ -97,7 +102,12 @@ public sealed class CatalogRevisionsTests
         PublishCopy(pro, 129m, 1290m, seats: 10, storage: 50 * GiB, extraModule: "meetings");
         var enterprise = Plan("enterprise", 99m, 999m, seats: 3, storage: 15 * GiB);
 
-        var result = await Apply(new FinancialInsightsModuleRevision(), [pro, enterprise], [office], modules: ModuleCatalog());
+        var result = await Apply(
+            new FinancialInsightsModuleRevision(),
+            [pro, enterprise],
+            [office],
+            modules: ModuleCatalog()
+        );
 
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
         Assert.Equal(richer.Id, office.PlanVersionId);
@@ -112,7 +122,12 @@ public sealed class CatalogRevisionsTests
         var old = enterprise.GetPublishedVersion()!;
         var current = PublishCopy(enterprise, 99m, 999m, seats: 3, storage: 15 * GiB, extraModule: "meetings");
 
-        var legacy = enterprise.AddLegacyEditionWithModules(old.Id, ["financial_insights"], Guid.Empty, DateTime.UtcNow);
+        var legacy = enterprise.AddLegacyEditionWithModules(
+            old.Id,
+            ["financial_insights"],
+            Guid.Empty,
+            DateTime.UtcNow
+        );
 
         Assert.True(legacy.IsSuccess, legacy.IsFailure ? legacy.Error.Code : null);
         Assert.Equal(PlanVersionStatus.Superseded, legacy.Value.Status);
@@ -150,7 +165,12 @@ public sealed class CatalogRevisionsTests
         PublishCopy(enterprise, 99m, 999m, seats: 3, storage: 15 * GiB, extraModule: "meetings");
         var starter = Plan("starter", 39m, 390m, seats: 1, storage: 5 * GiB);
         var starterOffice = ActiveOn(starter, starter.GetPublishedVersion()!);
-        await Apply(new FinancialInsightsModuleRevision(), [enterprise, starter], [office, starterOffice], modules: modules);
+        await Apply(
+            new FinancialInsightsModuleRevision(),
+            [enterprise, starter],
+            [office, starterOffice],
+            modules: modules
+        );
         var published = enterprise.GetPublishedVersion()!.Id;
 
         var result = await Apply(

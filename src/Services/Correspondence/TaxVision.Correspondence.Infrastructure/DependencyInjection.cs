@@ -2,6 +2,7 @@ using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,6 +43,12 @@ public static class DependencyInjection
 
         services.AddDbContext<CorrespondenceDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<CorrespondenceDbContext>());
+        services.AddTenantTimeZoneProjection<CorrespondenceDbContext>();
+        services.AddTenantTimeZoneReconciliation<TimeZones.CorrespondenceTenantTimeZoneTokenProvider>(configuration);
+        services.AddScoped<
+            TaxVision.Correspondence.Application.Abstractions.IOfficeTimeZone,
+            TimeZones.OfficeTimeZone
+        >();
 
         services.AddScoped<ICustomerEmailAddressRepository, CustomerEmailAddressRepository>();
         services.AddScoped<ITenantBackfillStateRepository, TenantBackfillStateRepository>();

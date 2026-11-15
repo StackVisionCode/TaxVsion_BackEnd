@@ -35,6 +35,22 @@ public sealed class SignatureRequestSealingCompletedAnalyticsConsumerTests
         Assert.Equal(1, analytics.TotalSealed);
     }
 
+    /// <summary>P21: el día de la métrica es el de la oficina (21:00 de Chicago cuenta el 12, no el 13 UTC).</summary>
+    [Fact]
+    public async Task The_metric_day_is_the_office_day()
+    {
+        var analytics = new InMemoryAnalytics();
+
+        await Handle(
+            new DeliveryTestKit().Seal(),
+            analytics,
+            new DateTime(2026, 11, 13, 3, 0, 0, DateTimeKind.Utc),
+            "America/Chicago"
+        );
+
+        Assert.Equal(new DateOnly(2026, 11, 12), Assert.Single(analytics.Days));
+    }
+
     [Fact]
     public async Task Each_request_counts_on_its_own()
     {
@@ -46,7 +62,12 @@ public sealed class SignatureRequestSealingCompletedAnalyticsConsumerTests
         Assert.Equal(2, analytics.TotalSealed);
     }
 
-    private static Task Handle(DeliveryTestKit kit, InMemoryAnalytics analytics, DateTime sealedAtUtc) =>
+    private static Task Handle(
+        DeliveryTestKit kit,
+        InMemoryAnalytics analytics,
+        DateTime sealedAtUtc,
+        string zone = "Etc/UTC"
+    ) =>
         SignatureRequestSealingCompletedAnalyticsConsumer.Handle(
             new SignatureRequestSealingCompletedIntegrationEvent
             {
@@ -60,8 +81,15 @@ public sealed class SignatureRequestSealingCompletedAnalyticsConsumerTests
             analytics,
             new SavingUnitOfWork(),
             new FixedCorrelation(),
+            new OfficeZone(zone),
             CancellationToken.None
         );
+
+    private sealed class OfficeZone(string zone) : IOfficeTimeZone
+    {
+        public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
+            Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(zone));
+    }
 
     private sealed class InMemoryAnalytics : ISignatureAnalyticsRepository
     {
@@ -69,6 +97,8 @@ public sealed class SignatureRequestSealingCompletedAnalyticsConsumerTests
         private readonly HashSet<(Guid TenantId, Guid RequestId)> _sealed = [];
 
         public int TotalSealed => _snapshots.Sum(snapshot => snapshot.RequestsSealed);
+
+        public IEnumerable<DateOnly> Days => _snapshots.Select(snapshot => snapshot.Day);
 
         public Task<SignatureAnalyticsSnapshot> GetOrCreateForDayAsync(
             Guid tenantId,

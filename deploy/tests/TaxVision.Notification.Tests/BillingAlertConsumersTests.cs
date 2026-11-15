@@ -132,17 +132,19 @@ public sealed class BillingAlertConsumersTests
             harness.Dispatcher,
             new AudienceResolver(Guid.NewGuid()),
             new TestCorrelationContext(),
+            new OfficeZoneStub("America/New_York"),
             CancellationToken.None
         );
 
         var evt = Assert.IsType<InAppNotificationRequestedIntegrationEvent>(Assert.Single(harness.Publisher.Published));
         Assert.Equal("Your plan terms will change", evt.FallbackTitle);
-        Assert.Contains("December 15, 2026", evt.FallbackBody);
+        // 00:00Z del 15 es el 14 a las 19:00 en Nueva York: la campana dice el día de la oficina.
+        Assert.Contains("Starting Dec 14, 2026:", evt.FallbackBody);
         Assert.Contains("price $129.00 → $99.00 per month", evt.FallbackBody);
     }
 
     [Theory]
-    [InlineData(false, "Payment attempt failed", "We'll try again on October 23.")]
+    [InlineData(false, "Payment attempt failed", "We'll try again on Oct 23, 2026.")]
     [InlineData(true, "Payment failed — action required", "Complete the payment in Manage subscription")]
     public async Task A_failed_charge_attempt_shows_what_happens_next_in_the_bell(
         bool isFinal,
@@ -169,6 +171,7 @@ public sealed class BillingAlertConsumersTests
             harness.Dispatcher,
             new AudienceResolver(Guid.NewGuid()),
             new TestCorrelationContext(),
+            new OfficeZoneStub("America/New_York"),
             CancellationToken.None
         );
 
@@ -198,6 +201,7 @@ public sealed class BillingAlertConsumersTests
             harness.Dispatcher,
             new AudienceResolver(owner),
             new TestCorrelationContext(),
+            new OfficeZoneStub("America/New_York"),
             CancellationToken.None
         );
 

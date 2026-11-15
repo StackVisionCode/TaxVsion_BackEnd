@@ -2,9 +2,6 @@
 #pragma warning disable
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using System;
-using System.Collections.Generic;
-using TaxVision.Customer.Application.Abstractions;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -14,17 +11,11 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Options.IOptions<TaxVision.Customer.Application.Abstractions.CustomerVisibilityOptions> _optionsOfCustomerVisibilityOptions;
-        private readonly System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper> _domainEventScraperIEnumerable;
-        private readonly System.TimeProvider _timeProvider;
-        private readonly TaxVision.Customer.Application.Abstractions.ISensitiveDataProtector _sensitiveDataProtector;
 
-        public GetCustomerByIdQueryHandler1921294578(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Options.IOptions<TaxVision.Customer.Application.Abstractions.CustomerVisibilityOptions> optionsOfCustomerVisibilityOptions, System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper> domainEventScraperIEnumerable, System.TimeProvider timeProvider, TaxVision.Customer.Application.Abstractions.ISensitiveDataProtector sensitiveDataProtector)
+        public GetCustomerByIdQueryHandler1921294578(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Options.IOptions<TaxVision.Customer.Application.Abstractions.CustomerVisibilityOptions> optionsOfCustomerVisibilityOptions)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _optionsOfCustomerVisibilityOptions = optionsOfCustomerVisibilityOptions;
-            _domainEventScraperIEnumerable = domainEventScraperIEnumerable;
-            _timeProvider = timeProvider;
-            _sensitiveDataProtector = sensitiveDataProtector;
         }
 
 
@@ -32,16 +23,24 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var customerDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Customer.Infrastructure.Persistence.CustomerDbContext>(serviceScope.ServiceProvider);
-            var customerReadService = new TaxVision.Customer.Infrastructure.Persistence.CustomerReadService(customerDbContext, _sensitiveDataProtector, _timeProvider);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.TenantTimeZones.ITenantTimeZoneResolver Lifetime: Scoped ImplementationType: BuildingBlocks.TenantTimeZones.TenantTimeZoneResolver
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore Lifetime: Scoped ImplementationFactory: BuildingBlocks.TenantTimeZones.TenantTimeZonesServiceCollectionExtensions+<>c__0"1.<AddTenantTimeZoneProjection>b__0_0
+            * The service registration for BuildingBlocks.TenantTimeZones.ITenantTimeZoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var customerReadService = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Customer.Application.Abstractions.ICustomerReadService>(serviceScope.ServiceProvider);
             // The actual message body
             var getCustomerByIdQuery = (TaxVision.Customer.Application.Customers.Queries.GetById.GetCustomerByIdQuery)context.Envelope.Message;
 
             
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
-            var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(customerDbContext, context, _domainEventScraperIEnumerable);
+            var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(customerDbContext, context, domainEventScraperIEnumerable);
             await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
             // Start the actual database transaction if one does not already exist
             if (customerDbContext.Database.CurrentTransaction == null)

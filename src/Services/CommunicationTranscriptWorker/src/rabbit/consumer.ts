@@ -37,6 +37,8 @@ export interface RecordingReadyEvent {
   readonly prompt?: string | null | undefined;
   readonly maxDurationSeconds?: number | undefined;
   readonly timeoutFactorPct?: number | undefined;
+  /** P25: fecha local de la grabación (`yyyy-MM-dd`) para el nombre de los archivos. */
+  readonly recordingLocalDate?: string | undefined;
 }
 
 /**
@@ -279,6 +281,7 @@ export function toRecordingReadyEvent(
     prompt: typeof prompt === 'string' ? prompt : prompt === null ? null : undefined,
     maxDurationSeconds: positiveNumber(raw['maxDurationSeconds']),
     timeoutFactorPct: positiveNumber(raw['timeoutFactorPct']),
+    recordingLocalDate: /^\d{4}-\d{2}-\d{2}$/.test(str(raw['recordingLocalDate']) ?? '') ? str(raw['recordingLocalDate']) : undefined,
   };
 }
 

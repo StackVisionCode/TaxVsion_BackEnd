@@ -18,6 +18,7 @@ public sealed class CampaignScheduleConfiguration : IEntityTypeConfiguration<Cam
         builder.Property(s => s.NextFireAtUtc);
         builder.Property(s => s.IntervalMinutes);
         builder.Property(s => s.Frequency).HasConversion<int?>();
+        builder.Property(s => s.TimeZoneId).HasMaxLength(64);
         builder.Property(s => s.EndsAtUtc);
         builder.Property(s => s.MaxOccurrences);
         builder.Property(s => s.OccurrenceCount).IsRequired().HasDefaultValue(0);

@@ -213,7 +213,12 @@ internal static class CustomerDirectoryUpsert
             row.Apply(customer.DisplayName, customer.IsActive, observedAtUtc);
             return false;
         }
-        row = CustomerDirectoryProjection.Create(customer.TenantId, customer.CustomerId, customer.DisplayName, observedAtUtc);
+        row = CustomerDirectoryProjection.Create(
+            customer.TenantId,
+            customer.CustomerId,
+            customer.DisplayName,
+            observedAtUtc
+        );
         row.Apply(customer.DisplayName, customer.IsActive, observedAtUtc);
         db.CustomerDirectoryProjections.Add(row);
         return true;
@@ -223,5 +228,6 @@ internal static class CustomerDirectoryUpsert
 /// <summary>Token de la PlatformTenant para la reconciliación de asignaciones del kit de visibilidad.</summary>
 internal sealed class FinancialPlatformTokenProvider(IServiceTokenAcquirer tokens) : IPlatformServiceTokenProvider
 {
-    public Task<string?> GetPlatformTokenAsync(CancellationToken ct = default) => tokens.GetTokenAsync(PlatformTenant.Id, ct);
+    public Task<string?> GetPlatformTokenAsync(CancellationToken ct = default) =>
+        tokens.GetTokenAsync(PlatformTenant.Id, ct);
 }

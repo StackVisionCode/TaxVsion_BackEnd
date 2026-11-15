@@ -32,6 +32,8 @@ public static class TaskBirthAnnouncements
                     AssigneeUserId = assignee,
                     PreviousAssigneeUserId = null,
                     DueAtUtc = task.Due?.DueAtUtc,
+                    DueOn = task.Due?.DueOn,
+                    DueTimeZoneId = task.Due?.TimeZoneId,
                     AssignedByUserId = born.CreatedByUserId,
                 }
             );

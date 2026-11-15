@@ -132,6 +132,15 @@ public sealed record TenantSubscriptionStatusChangedIntegrationEvent : Integrati
     /// <summary>Fecha formateada del próximo cobro.</summary>
     public string? NextChargeDate { get; init; }
 
+    /// <summary>Instante del cobro (P19); los consumidores viejos siguen leyendo el texto.</summary>
+    public DateTime? DateChargedAtUtc { get; init; }
+
+    /// <summary>Instante del próximo cobro (P19).</summary>
+    public DateTime? NextChargeAtUtc { get; init; }
+
+    /// <summary>Qué aviso es (7 o 1 día antes del fin); null fuera de los recordatorios. Aditivo (TZ-E07).</summary>
+    public int? NoticeDaysBefore { get; init; }
+
     /// <summary>
     /// La suspensión vino del último cobro automático fallido y ese correo ya la explica
     /// (<see cref="RenewalChargeFailedIntegrationEvent"/>): no se manda además el de "suspended".

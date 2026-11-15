@@ -10,6 +10,8 @@ internal sealed class InMemoryTaskTemplateRepository(params TaskTemplate[] seed)
 {
     private readonly List<TaskTemplate> _templates = [.. seed];
 
+    public IReadOnlyList<TaskTemplate> Items => _templates;
+
     public void Add(TaskTemplate template) => _templates.Add(template);
 
     public Task<Result<TaskTemplate>> GetByIdAsync(Guid tenantId, Guid templateId, CancellationToken ct = default)

@@ -5,6 +5,7 @@ using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.RateLimiting;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,6 +17,7 @@ using TaxVision.FinancialInsights.Infrastructure.Permissions;
 using TaxVision.FinancialInsights.Infrastructure.Persistence;
 using TaxVision.FinancialInsights.Infrastructure.Persistence.Repositories;
 using TaxVision.FinancialInsights.Infrastructure.Processing;
+using TaxVision.FinancialInsights.Infrastructure.Tenants;
 using TaxVision.FinancialInsights.Infrastructure.Upstream;
 
 namespace TaxVision.FinancialInsights.Infrastructure;
@@ -53,6 +55,9 @@ public static class DependencyInjection
         AddPermissionsAndPlan(services, configuration);
         AddUpstreamClients(services, configuration);
         AddCustomerDirectory(services, configuration);
+        AddTenantDirectory(services, configuration);
+        services.AddTenantTimeZoneProjection<FinancialInsightsDbContext>();
+        services.AddTenantTimeZoneReconciliation<FinancialTenantTimeZoneTokenProvider>(configuration);
         AddProcessing(services, configuration);
         return services;
     }
@@ -61,15 +66,21 @@ public static class DependencyInjection
     private static void AddPermissionsAndPlan(IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<FinancialUserPermissionsReader>();
-        services.AddScoped<IUserPermissionsProjectionReader>(sp => sp.GetRequiredService<FinancialUserPermissionsReader>());
-        services.AddScoped<IUserPermissionsProjectionWriter>(sp => sp.GetRequiredService<FinancialUserPermissionsReader>());
-        services.AddHttpClient<IPermissionsSnapshotClient, FinancialPermissionsSnapshotClient>(http =>
+        services.AddScoped<IUserPermissionsProjectionReader>(sp =>
+            sp.GetRequiredService<FinancialUserPermissionsReader>()
+        );
+        services.AddScoped<IUserPermissionsProjectionWriter>(sp =>
+            sp.GetRequiredService<FinancialUserPermissionsReader>()
+        );
+        services
+            .AddHttpClient<IPermissionsSnapshotClient, FinancialPermissionsSnapshotClient>(http =>
             {
                 http.BaseAddress = BaseUri(configuration, "Services:Auth:BaseUrl");
                 http.Timeout = TimeSpan.FromSeconds(10);
             })
             .ConfigurePrimaryHttpMessageHandler(NoRedirects);
-        services.AddHttpClient<IServiceTokenAcquirer, FinancialServiceTokenAcquirer>(http =>
+        services
+            .AddHttpClient<IServiceTokenAcquirer, FinancialServiceTokenAcquirer>(http =>
             {
                 http.BaseAddress = BaseUri(configuration, "Services:Auth:BaseUrl");
                 http.Timeout = TimeSpan.FromSeconds(15);
@@ -82,8 +93,12 @@ public static class DependencyInjection
             sp.GetRequiredService<BuildingBlocks.Caching.ICacheService>(),
             sp.GetRequiredService<FinancialTenantPlanCodeReader>()
         ));
-        services.AddScoped<ITenantPlanCodeCacheInvalidator, TaxVision.FinancialInsights.Infrastructure.RateLimiting.TenantPlanCodeCacheInvalidator>();
-        services.AddHttpClient<HttpPlanRateLimitReader>(http =>
+        services.AddScoped<
+            ITenantPlanCodeCacheInvalidator,
+            TaxVision.FinancialInsights.Infrastructure.RateLimiting.TenantPlanCodeCacheInvalidator
+        >();
+        services
+            .AddHttpClient<HttpPlanRateLimitReader>(http =>
             {
                 http.BaseAddress = BaseUri(configuration, "SubscriptionClient:BaseUrl");
                 http.Timeout = TimeSpan.FromSeconds(30);
@@ -93,14 +108,16 @@ public static class DependencyInjection
 
     private static void AddUpstreamClients(IServiceCollection services, IConfiguration configuration)
     {
-        services.AddHttpClient<IImportFileGateway, CloudStorageImportFileGateway>(http =>
+        services
+            .AddHttpClient<IImportFileGateway, CloudStorageImportFileGateway>(http =>
             {
                 http.BaseAddress = BaseUri(configuration, "Services:CloudStorage:BaseUrl");
                 http.Timeout = TimeSpan.FromSeconds(10);
             })
             .ConfigurePrimaryHttpMessageHandler(NoRedirects);
         // Plan del tenant por M2M (internal/tenants/{id}/entitlements); el mismo BaseUrl que el catálogo de cuotas.
-        services.AddHttpClient<ITenantEntitlementsSnapshotClient, SubscriptionEntitlementsSnapshotClient>(http =>
+        services
+            .AddHttpClient<ITenantEntitlementsSnapshotClient, SubscriptionEntitlementsSnapshotClient>(http =>
             {
                 http.BaseAddress = BaseUri(configuration, "SubscriptionClient:BaseUrl");
                 http.Timeout = TimeSpan.FromSeconds(10);
@@ -118,7 +135,8 @@ public static class DependencyInjection
         services
             .AddOptions<CustomerDirectoryReconciliationOptions>()
             .Bind(configuration.GetSection(CustomerDirectoryReconciliationOptions.SectionName));
-        services.AddHttpClient<IFinancialCustomerDirectoryClient, FinancialCustomerDirectoryClient>(http =>
+        services
+            .AddHttpClient<IFinancialCustomerDirectoryClient, FinancialCustomerDirectoryClient>(http =>
             {
                 http.BaseAddress = BaseUri(configuration, "Services:Customer:BaseUrl");
                 http.Timeout = TimeSpan.FromSeconds(30);
@@ -132,10 +150,28 @@ public static class DependencyInjection
         // El compose ya define Services:Customer:BaseUrl; se reusa si la sección del kit no trae la suya.
         var customerUrl = configuration["Services:Customer:BaseUrl"];
         if (
-            string.IsNullOrWhiteSpace(configuration[$"{CustomerVisibilityReconciliationOptions.SectionName}:CustomerBaseUrl"])
-            && !string.IsNullOrWhiteSpace(customerUrl)
+            string.IsNullOrWhiteSpace(
+                configuration[$"{CustomerVisibilityReconciliationOptions.SectionName}:CustomerBaseUrl"]
+            ) && !string.IsNullOrWhiteSpace(customerUrl)
         )
             services.PostConfigure<CustomerVisibilityReconciliationOptions>(o => o.CustomerBaseUrl = customerUrl);
+    }
+
+    // Directorio de oficinas: eventos de Tenant + reconciliación periódica (siembra las oficinas anteriores al servicio).
+    private static void AddTenantDirectory(IServiceCollection services, IConfiguration configuration)
+    {
+        services
+            .AddOptions<TenantDirectoryReconciliationOptions>()
+            .Bind(configuration.GetSection(TenantDirectoryReconciliationOptions.SectionName));
+        services
+            .AddHttpClient<IFinancialTenantDirectoryClient, FinancialTenantDirectoryClient>(http =>
+            {
+                http.BaseAddress = BaseUri(configuration, "Services:Tenant:BaseUrl");
+                http.Timeout = TimeSpan.FromSeconds(30);
+            })
+            .ConfigurePrimaryHttpMessageHandler(NoRedirects);
+        services.AddScoped<TenantDirectoryReconciler>();
+        services.AddHostedService<TenantDirectoryReconciliationJob>();
     }
 
     private static void AddProcessing(IServiceCollection services, IConfiguration configuration)
@@ -144,13 +180,15 @@ public static class DependencyInjection
         services.Configure<OpenAiFinancialOptions>(configuration.GetSection(OpenAiFinancialOptions.Section));
         services.AddScoped<ImportProcessingQueue>();
         services.AddScoped<LocalStatementExtractor>();
-        services.AddHttpClient<CloudStorageStatementSource>(http =>
+        services
+            .AddHttpClient<CloudStorageStatementSource>(http =>
             {
                 http.BaseAddress = BaseUri(configuration, "Services:CloudStorage:BaseUrl");
                 http.Timeout = TimeSpan.FromSeconds(60);
             })
             .ConfigurePrimaryHttpMessageHandler(NoRedirects);
-        services.AddHttpClient<OpenAiStatementClient>(http =>
+        services
+            .AddHttpClient<OpenAiStatementClient>(http =>
             {
                 http.BaseAddress = new Uri("https://api.openai.com/v1/");
                 http.Timeout = TimeSpan.FromSeconds(120);

@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using BuildingBlocks.Domain;
+using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
@@ -50,6 +51,8 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, I
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         ApplyFailClosedTenantFilters(modelBuilder);
         base.OnModelCreating(modelBuilder);
+        // Al final: también cubre las proyecciones y tipos agregados arriba.
+        modelBuilder.UseUtcDateTimes();
     }
 
     private void ApplyFailClosedTenantFilters(ModelBuilder modelBuilder)

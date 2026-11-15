@@ -75,6 +75,9 @@ export interface AnalyticsSnapshotRow extends AnalyticsCounters, Record<Analytic
 }
 
 export interface AnalyticsRepository {
+  /** Hay al menos un día guardado (de cualquier oficina). */
+  hasAnyDay(): Promise<boolean>;
+
   incrementCounters(input: {
     tenantId: string;
     day: string;

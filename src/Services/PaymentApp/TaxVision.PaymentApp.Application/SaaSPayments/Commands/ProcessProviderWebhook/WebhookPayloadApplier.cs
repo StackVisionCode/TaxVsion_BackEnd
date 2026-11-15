@@ -19,6 +19,9 @@ internal static class WebhookPayloadApplier
     public static Result Apply(SaaSPayment payment, WebhookEventPayload payload, IPaymentAppMetrics metrics)
     {
         var nowUtc = DateTime.UtcNow;
+        // P29: éxito, reembolso y contracargo se fechan cuando lo dice el proveedor. El fallo usa la hora de
+        // procesamiento: de ella sale el próximo reintento. Un reloj adelantado no deja fechas futuras.
+        var occurredUtc = payload.ProviderOccurredAtUtc is { } provider && provider <= nowUtc ? provider : nowUtc;
 
         switch (payload.Status)
         {
@@ -26,7 +29,7 @@ internal static class WebhookPayloadApplier
                 return Result.Success();
 
             case PaymentStatus.Succeeded:
-                return payment.ApplyProviderSuccess(payload.PaidAmountCents, payload.PaidCurrency, nowUtc);
+                return payment.ApplyProviderSuccess(payload.PaidAmountCents, payload.PaidCurrency, occurredUtc);
 
             case PaymentStatus.Failed:
                 return payment.ApplyProviderFailure(payload.FailureCode, payload.FailureMessage, nowUtc);
@@ -35,7 +38,7 @@ internal static class WebhookPayloadApplier
                 return payment.CancelByAdmin("ProviderCancelled", Guid.Empty, nowUtc);
 
             case PaymentStatus.Refunded when payload.RefundedAmountCents is { } refundedCents:
-                var refund = payment.ApplyProviderRefundTotal(refundedCents, nowUtc);
+                var refund = payment.ApplyProviderRefundTotal(refundedCents, occurredUtc);
                 if (refund.IsFailure)
                     return Result.Failure(refund.Error);
                 if (refund.Value)
@@ -44,7 +47,7 @@ internal static class WebhookPayloadApplier
 
             case PaymentStatus.ChargedBack:
                 var chargedBack = payment.MarkChargedBack(
-                    nowUtc,
+                    occurredUtc,
                     payload.FailureMessage ?? "Chargeback dispute created.",
                     Guid.Empty
                 );

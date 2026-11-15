@@ -33,9 +33,11 @@ public static class SavePortalFormDraftHandler
         IFormConsentGate consentGate,
         IUnitOfWork unitOfWork,
         IClientFormsMetrics metrics,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
+        engine = new OfficeDayFormEngine(engine, (await zones.ResolveAsync(command.Context.TenantId, ct)).Zone);
         var started = Stopwatch.GetTimestamp();
         var outcome = ClientFormsMetricValues.Error;
         try

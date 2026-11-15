@@ -38,7 +38,13 @@ public sealed class ImportBatchesController(IMessageBus bus, IUserPermissionsSou
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<ImportBatchView>>(
-            new CreateImportBatchCommand(tenantId, userId, request.CustomerId, request.FileIds, await CanViewAllCustomers(ct)),
+            new CreateImportBatchCommand(
+                tenantId,
+                userId,
+                request.CustomerId,
+                request.FileIds,
+                await CanViewAllCustomers(ct)
+            ),
             ct
         );
         return Respond(result, view => StatusCode(StatusCodes.Status201Created, view));
@@ -60,7 +66,15 @@ public sealed class ImportBatchesController(IMessageBus bus, IUserPermissionsSou
             return Unauthorized();
 
         var result = await bus.InvokeAsync<PagedResult<ImportBatchSummaryView>>(
-            new ListImportBatchesQuery(tenantId, userId, await CanViewAllCustomers(ct), customerId, status, page, pageSize),
+            new ListImportBatchesQuery(
+                tenantId,
+                userId,
+                await CanViewAllCustomers(ct),
+                customerId,
+                status,
+                page,
+                pageSize
+            ),
             ct
         );
         Response.Headers.CacheControl = "no-store";

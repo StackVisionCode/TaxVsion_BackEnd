@@ -31,7 +31,10 @@ public sealed class SubscriptionEntitlementsSnapshotClient(HttpClient http, ISer
             if (!response.IsSuccessStatusCode)
                 return null;
 
-            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
+            using var json = await JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(ct),
+                cancellationToken: ct
+            );
             var root = json.RootElement;
             if (
                 !root.TryGetProperty("revisionNumber", out var revision)
@@ -48,9 +51,10 @@ public sealed class SubscriptionEntitlementsSnapshotClient(HttpClient http, ISer
                     values[entry.Name] = value.GetString()!;
             }
 
-            var planCode = root.TryGetProperty("planCode", out var plan) && plan.ValueKind == JsonValueKind.String
-                ? plan.GetString()!
-                : string.Empty;
+            var planCode =
+                root.TryGetProperty("planCode", out var plan) && plan.ValueKind == JsonValueKind.String
+                    ? plan.GetString()!
+                    : string.Empty;
             return new TenantEntitlementsSnapshot(
                 planCode,
                 revisionNumber,
@@ -58,8 +62,10 @@ public sealed class SubscriptionEntitlementsSnapshotClient(HttpClient http, ISer
                 FinancialEntitlements.ParseDocumentsPerMonth(values)
             );
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException
-            || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        catch (Exception ex)
+            when (ex is HttpRequestException or JsonException
+                || (ex is TaskCanceledException && !ct.IsCancellationRequested)
+            )
         {
             return null;
         }
