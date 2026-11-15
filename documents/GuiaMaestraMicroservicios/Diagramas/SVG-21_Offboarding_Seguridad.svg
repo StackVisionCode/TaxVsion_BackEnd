@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1488" width="1600" height="1488" font-family="Segoe UI, Arial, sans-serif">
 <title>SVG-21 · Offboarding: seguridad inmediata vs limpieza eventual</title>
-<desc>El corte de acceso ocurre dentro del comando de Auth, antes de responder. La limpieza de datos llega después por eventos. Ventanas V1-V6 detectadas en Investigaciones/Offboarding.md §3.3 (V7 y V8 son menores y se citan al pie).</desc>
+<desc>El corte de acceso ocurre dentro del comando de Auth, antes de responder. La limpieza de datos llega después por eventos. Ventanas V1-V5 detectadas en Investigaciones/Offboarding.md §3.3 (V6 y V7 son menores y se citan al pie).</desc>
 <defs><marker id="ah-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/></marker><marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2F5D9E"/></marker><marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker><marker id="ah-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B7791F"/></marker><marker id="ah-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B83232"/></marker><marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FA0"/></marker><marker id="ah-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2C7A7B"/></marker><marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/></marker></defs>
 <rect x="0" y="0" width="1600" height="1488" fill="#FFFFFF"/>
 <rect class="ctr" x="30.0" y="124.0" width="760.0" height="586.0" rx="8" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.2"/>
@@ -11,8 +11,8 @@
 <rect class="ctr" x="30.0" y="1396.0" width="1540.0" height="68.0" rx="8" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.2"/>
 <text x="40.0" y="1419.0" font-size="14" font-weight="700" fill="#111827">Leyenda</text>
 <text x="30.0" y="42.0" font-size="24" font-weight="700" fill="#111827">SVG-21 · Offboarding: seguridad inmediata vs limpieza eventual</text>
-<text x="30.0" y="68.0" font-size="14" fill="#4B5563">El corte de acceso ocurre dentro del comando de Auth, antes de responder. La limpieza de datos llega después por eventos. Ventanas V1-V6 detectadas en Investigaciones/Offboarding.md §3.3 (V7</text>
-<text x="30.0" y="88.0" font-size="14" fill="#4B5563">y V8 son menores y se citan al pie).</text>
+<text x="30.0" y="68.0" font-size="14" fill="#4B5563">El corte de acceso ocurre dentro del comando de Auth, antes de responder. La limpieza de datos llega después por eventos. Ventanas V1-V5 detectadas en Investigaciones/Offboarding.md §3.3 (V6</text>
+<text x="30.0" y="88.0" font-size="14" fill="#4B5563">y V7 son menores y se citan al pie).</text>
 <rect class="box" x="44.0" y="160.0" width="732.0" height="60.0" rx="6" fill="#FCE8E8" stroke="#B83232" stroke-width="1.5"/>
 <text x="54.0" y="182.0" font-size="13" font-weight="700" fill="#111827">User.IsActive = false + Status = Offboarded</text>
 <text x="54.0" y="204.0" font-size="13" fill="#1F2937">Login, refresh y pull de permisos fallan (Auth.UserInactive)</text>
@@ -121,48 +121,36 @@
 <text x="1090.0" y="1076.0" font-size="13" fill="#1F2937">Mitigación: acuse N/N + aviso a los 30 min</text>
 <rect class="badge" x="1076.0" y="954.0" width="251.8" height="20" rx="10.0" fill="#2C7A7B" stroke="#2C7A7B"/>
 <text x="1201.9" y="968.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Afecta a la limpieza eventual</text>
-<rect class="box" x="30.0" y="1110.0" width="504.0" height="194.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
-<text x="40.0" y="1133.0" font-size="14" font-weight="700" fill="#111827">V4 · Connectors acusa antes de purgar</text>
+<rect class="box" x="30.0" y="1110.0" width="763.0" height="194.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="1133.0" font-size="14" font-weight="700" fill="#111827">V4 · Node: caída del proceso a mitad del consumer</text>
 <text x="40.0" y="1156.0" font-size="13" fill="#1F2937"></text>
 <text x="40.0" y="1174.0" font-size="13" fill="#9CA3AF">•</text>
-<text x="54.0" y="1174.0" font-size="13" fill="#1F2937">El consumer solo reenvía PurgeOffboardedMailboxesCommand; el</text>
-<text x="54.0" y="1192.0" font-size="13" fill="#1F2937">acuse sale al reenviar</text>
+<text x="54.0" y="1174.0" font-size="13" fill="#1F2937">El inbox marca el EventId antes del handler; la reentrega se</text>
+<text x="54.0" y="1192.0" font-size="13" fill="#1F2937">descarta como duplicada</text>
 <text x="40.0" y="1210.0" font-size="13" fill="#9CA3AF">•</text>
-<text x="54.0" y="1210.0" font-size="13" fill="#1F2937">Tamaño: indefinida si la purga muere y nadie mira la DLQ</text>
+<text x="54.0" y="1210.0" font-size="13" fill="#1F2937">Tamaño: indefinida (trabajo a medias en Communication)</text>
 <text x="40.0" y="1228.0" font-size="13" fill="#9CA3AF">•</text>
-<text x="54.0" y="1228.0" font-size="13" fill="#1F2937">Mitigación: alerta de DLQ en Grafana. Hueco del acuse</text>
+<text x="54.0" y="1228.0" font-size="13" fill="#1F2937">Mitigación: el run queda Incomplete y se avisa a los 30 min.</text>
+<text x="54.0" y="1246.0" font-size="13" fill="#1F2937">Análisis de código, no reproducido</text>
 <rect class="badge" x="40.0" y="1142.0" width="251.8" height="20" rx="10.0" fill="#2C7A7B" stroke="#2C7A7B"/>
 <text x="165.9" y="1156.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Afecta a la limpieza eventual</text>
-<rect class="box" x="548.0" y="1110.0" width="504.0" height="194.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
-<text x="558.0" y="1133.0" font-size="14" font-weight="700" fill="#111827">V5 · Node: caída del proceso a mitad del consumer</text>
-<text x="558.0" y="1156.0" font-size="13" fill="#1F2937"></text>
-<text x="558.0" y="1174.0" font-size="13" fill="#9CA3AF">•</text>
-<text x="572.0" y="1174.0" font-size="13" fill="#1F2937">El inbox marca el EventId antes del handler; la reentrega se</text>
-<text x="572.0" y="1192.0" font-size="13" fill="#1F2937">descarta como duplicada</text>
-<text x="558.0" y="1210.0" font-size="13" fill="#9CA3AF">•</text>
-<text x="572.0" y="1210.0" font-size="13" fill="#1F2937">Tamaño: indefinida (trabajo a medias en Communication)</text>
-<text x="558.0" y="1228.0" font-size="13" fill="#9CA3AF">•</text>
-<text x="572.0" y="1228.0" font-size="13" fill="#1F2937">Mitigación: el run queda Incomplete y se avisa a los 30 min.</text>
-<text x="572.0" y="1246.0" font-size="13" fill="#1F2937">Análisis de código, no reproducido</text>
-<rect class="badge" x="558.0" y="1142.0" width="251.8" height="20" rx="10.0" fill="#2C7A7B" stroke="#2C7A7B"/>
-<text x="683.9" y="1156.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Afecta a la limpieza eventual</text>
-<rect class="box" x="1066.0" y="1110.0" width="504.0" height="194.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
-<text x="1076.0" y="1133.0" font-size="14" font-weight="700" fill="#111827">V6 · Proyección reactivada por UserRolesChanged</text>
-<text x="1076.0" y="1153.0" font-size="14" font-weight="700" fill="#111827">posterior</text>
-<text x="1076.0" y="1176.0" font-size="13" fill="#1F2937"></text>
-<text x="1076.0" y="1194.0" font-size="13" fill="#9CA3AF">•</text>
-<text x="1090.0" y="1194.0" font-size="13" fill="#1F2937">ApplyIfNewer pone IsActive = true; Auth no rechaza cambios de</text>
-<text x="1090.0" y="1212.0" font-size="13" fill="#1F2937">roles sobre un retirado</text>
-<text x="1076.0" y="1230.0" font-size="13" fill="#9CA3AF">•</text>
-<text x="1090.0" y="1230.0" font-size="13" fill="#1F2937">Tamaño: bajo; el retirado no obtiene token. Defensa en</text>
-<text x="1090.0" y="1248.0" font-size="13" fill="#1F2937">profundidad rota</text>
-<text x="1076.0" y="1266.0" font-size="13" fill="#9CA3AF">•</text>
-<text x="1090.0" y="1266.0" font-size="13" fill="#1F2937">Pendiente de confirmar si la UI permite cambiar roles a un</text>
-<text x="1090.0" y="1284.0" font-size="13" fill="#1F2937">retirado</text>
-<rect class="badge" x="1076.0" y="1162.0" width="251.8" height="20" rx="10.0" fill="#2C7A7B" stroke="#2C7A7B"/>
-<text x="1201.9" y="1176.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Afecta a la limpieza eventual</text>
+<rect class="box" x="807.0" y="1110.0" width="763.0" height="194.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="817.0" y="1133.0" font-size="14" font-weight="700" fill="#111827">V5 · Proyección reactivada por UserRolesChanged</text>
+<text x="817.0" y="1153.0" font-size="14" font-weight="700" fill="#111827">posterior</text>
+<text x="817.0" y="1176.0" font-size="13" fill="#1F2937"></text>
+<text x="817.0" y="1194.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="831.0" y="1194.0" font-size="13" fill="#1F2937">ApplyIfNewer pone IsActive = true; Auth no rechaza cambios de</text>
+<text x="831.0" y="1212.0" font-size="13" fill="#1F2937">roles sobre un retirado</text>
+<text x="817.0" y="1230.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="831.0" y="1230.0" font-size="13" fill="#1F2937">Tamaño: bajo; el retirado no obtiene token. Defensa en</text>
+<text x="831.0" y="1248.0" font-size="13" fill="#1F2937">profundidad rota</text>
+<text x="817.0" y="1266.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="831.0" y="1266.0" font-size="13" fill="#1F2937">Pendiente de confirmar si la UI permite cambiar roles a un</text>
+<text x="831.0" y="1284.0" font-size="13" fill="#1F2937">retirado</text>
+<rect class="badge" x="817.0" y="1162.0" width="251.8" height="20" rx="10.0" fill="#2C7A7B" stroke="#2C7A7B"/>
+<text x="942.9" y="1176.0" font-size="13" font-weight="700" text-anchor="middle" fill="#FFFFFF">Afecta a la limpieza eventual</text>
 <rect class="box" x="30.0" y="1322.0" width="1540.0" height="56.0" rx="6" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
-<text x="40.0" y="1344.0" font-size="13" fill="#1F2937">V7: caché de permisos en memoria 30 s por servicio (sin efecto práctico salvo V1). V8: la denylist y el Pub/Sub se aplican antes del SaveChanges; si el commit falla el usuario queda deslogueado pero</text>
+<text x="40.0" y="1344.0" font-size="13" fill="#1F2937">V6: caché de permisos en memoria 30 s por servicio (sin efecto práctico salvo V1). V7: la denylist y el Pub/Sub se aplican antes del SaveChanges; si el commit falla el usuario queda deslogueado pero</text>
 <text x="40.0" y="1362.0" font-size="13" fill="#1F2937">Active (falla hacia el lado seguro).</text>
 <rect class="sw" x="42.0" y="1436.0" width="30" height="16" rx="3" fill="#FCE8E8" stroke="#B83232" stroke-width="1.5"/>
 <text x="82.0" y="1449.0" font-size="13" fill="#1F2937">Corte inmediato (síncrono)</text>

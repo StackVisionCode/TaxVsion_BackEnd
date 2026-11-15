@@ -51,7 +51,7 @@
 |---|---|---|
 | **Notes** (referencia principal) | `Program.cs` completo y orden, `NotesDbContext`, factory, configuraciones, `CreateNoteCommand`, `NotesController`, consumers, repositorio con `IgnoreQueryFilters`, pruebas de arquitectura/integración | Verificada en código |
 | **Customer** | Eventos de dominio (BB-1), colas punto a punto, `TenantTimeZones`, consumers de offboarding, endpoints de reconciliación | Verificada en código |
-| **FinancialInsights** | Permisos, gate en enforce, proyecciones con `ApplyIfNewer`, pull-recovery, reconciliaciones, cuotas, módulo vendible, M2M sin caché, codegen | Verificada en código |
+| **FinancialInsights** | Permisos, gate en enforce, proyecciones con `ApplyIfNewer`, pull-recovery, reconciliaciones, cuotas, módulo vendible, M2M con caché por tenant, codegen | Verificada en código |
 | **Auth** | `PermissionCatalog`, emisión JWT y M2M, `SessionAccessCutoff`, denylist, offboarding (handler, run, acuses, barrido, participantes), reconciliación de permisos, resolución de tenant por host | Verificada en código |
 | **Subscription** | Catálogo de módulos/planes, revisiones, entitlements, endpoints internos, `EntitlementSnapshotReconciliationJob` | Verificada en código |
 | **Tenant** | `PlatformSettings`, directorio interno, coordinador WISP | Verificada en código |

@@ -149,6 +149,7 @@
 - [ ] **Flota local**: puerto libre de `scripts/start-fleet.ps1` fijado en `launchSettings.json`; misma línea en `start-fleet.ps1`, `restart-down.ps1` y `$ports` de `stop-fleet.ps1`; servicio en `$all` del script de codegen; cluster local en el Gateway; user-secrets (`ConnectionStrings:Default`, `ConnectionStrings:Redis`, `RabbitMq:Uri`, `ServiceAuthClient:*` y su contraparte en Auth); `dotnet build -c Release` del Api.
   - Verificación: `DevClientPortDefaultsTests`; arranque con `scripts\start-fleet.ps1`. · Origen: [Scripts_Locales](../Investigaciones/Scripts_Locales.md) §9.1.
 - [ ] **Probar en Static en local** cuando se toca un handler: `$env:Wolverine__CodeGeneration__TypeLoadMode = "Static"` (doble guion bajo).
+- [ ] **Registro de DI igual en todo entorno**: nada se registra solo si hay una clave; el servicio opcional se registra siempre y se apaga por propiedad (`IsEnabled`). Si no, el código pregenerado de Wolverine toma servicios scoped desde la raíz cuando la clave existe.
   - Verificación: usar cada handler una vez. · Origen: [Scripts_Locales](../Investigaciones/Scripts_Locales.md) §9.3; [Roslyn_Produccion](../Investigaciones/Roslyn_Produccion.md) §10 paso 6.
 - [ ] **Nunca leer la cadena del `.env`** en local (apunta a otra base): la configuración sale de user-secrets.
   - Origen: [Scripts_Locales](../Investigaciones/Scripts_Locales.md) §6.

@@ -108,11 +108,10 @@ Proyecciones de permisos (`IsActive=false` en ~25 servicios), directorios, traba
 | V1 | **Redis caído al chequear la denylist en .NET** → `FailOpen` por defecto deja pasar el token vigente. | `SessionDenylistOptions.cs:35` (`FailureMode = FailOpen`), `SessionDenylistMiddleware.cs:43-59`. | Hasta el `exp` del token (≤15 min). | Métrica `authz.session_denylist_unavailable`; configurable a `FailClosed` por servicio. Communication es fail-closed. |
 | V2 | **Pub/Sub perdido**: socket abierto sin expulsión. | `session-denylist-watcher.ts:31-33` (best-effort). | Hasta el `exp` del token (+5 s). | Cierre por `exp` en `session-handlers.ts`. |
 | V3 | **Acciones "en su nombre" que no usan su token**: agendados de campañas (`RunAs`), buzón personal que sigue poleando, push al teléfono, correos de audiencias por permiso, recordatorios, enlaces públicos de intake con responsable = retirado. | Consumers de Campaigns, Connectors, Notification, Reminder, Tasks.ClientForms (ver matriz). | Hasta que cada consumer procese (segundos en condiciones normales; 49/49 en ~10 s en vivo el 2026-11-04, Documentación histórica). Si un consumer está caído: hasta que vuelva o se drene la DLQ. | Acuse N/N + aviso a los 30 min. |
-| V4 | **Connectors acusa antes de purgar**: `ConnectorsUserOffboardedConsumer` solo reenvía `PurgeOffboardedMailboxesCommand`; el acuse sale al commit del reenvío, no al terminar la purga. Si la purga falla y cae a la DLQ, el run puede quedar "Completed". | `Connectors.Application/Accounts/Consumers/ConnectorsUserOffboardedConsumer.cs:13-23`; `PurgeOffboardedMailboxesHandler.cs` (`[NonTransactional]`). | Indefinida si la purga muere sin que nadie mire la DLQ. | Alerta Grafana de DLQ (README §48). **Hueco del acuse**. |
-| V5 | **Node: caída del proceso a mitad del consumer**. El inbox marca el `EventId` antes del handler y solo lo desmarca en el `catch`; si el proceso muere, la reentrega se descarta como duplicado y el paso nunca acusa. | `consumer-runtime.ts` (`tryMarkProcessed` antes del handler, `unmark` solo en `catch`); `prisma-processed-event-store.ts:13-31`. | Indefinida (trabajo a medias en Communication). | El run queda `Incomplete` y se avisa a los 30 min; no hay re-ejecución automática. Análisis de código, **no reproducido**. |
-| V6 | **Proyección de permisos reactivada por un `UserRolesChanged` posterior**: `ApplyIfNewer` pone `IsActive = true`. `AssignUserRolesHandler` y `SetUserPermissionOverrides` no rechazan a un usuario retirado. | `Billing.Domain/Permissions/AuthzUserPermissionsProjection.cs:51-63` (mismo patrón en los demás servicios); `UserManagementCommands.cs:428-520` (sin chequeo de `Status`). | Bajo: el retirado no puede obtener token (Auth `IsActive=false`). Es defensa en profundidad rota, no acceso directo. | El reconciliador de Auth solo republica activos (Documentación histórica, memoria 24-09). **Pendiente de confirmar** si la UI permite cambiar roles a un retirado (memoria: el menú se oculta para filas `removed`). |
-| V7 | Caché de permisos en memoria 30 s por servicio. | `ProjectionPermissionsSource.cs:63-73`. | ≤30 s, pero el token ya está denylisteado → sin efecto práctico salvo V1. | — |
-| V8 | El denylist y el aviso Pub/Sub se aplican **antes** del `SaveChanges`. Si el commit falla, el usuario queda deslogueado pero sigue `Active` y puede volver a entrar. | `UserManagementCommands.cs` (orden: `accessCutoff` → `hygiene` → `SaveChangesAsync`). | Falla segura hacia seguridad; el admin ve el error y reintenta. | — |
+| V4 | **Node: caída del proceso a mitad del consumer**. El inbox marca el `EventId` antes del handler y solo lo desmarca en el `catch`; si el proceso muere, la reentrega se descarta como duplicado y el paso nunca acusa. | `consumer-runtime.ts` (`tryMarkProcessed` antes del handler, `unmark` solo en `catch`); `prisma-processed-event-store.ts:13-31`. | Indefinida (trabajo a medias en Communication). | El run queda `Incomplete` y se avisa a los 30 min; no hay re-ejecución automática. Análisis de código, **no reproducido**. |
+| V5 | **Proyección de permisos reactivada por un `UserRolesChanged` posterior**: `ApplyIfNewer` pone `IsActive = true`. `AssignUserRolesHandler` y `SetUserPermissionOverrides` no rechazan a un usuario retirado. | `Billing.Domain/Permissions/AuthzUserPermissionsProjection.cs:51-63` (mismo patrón en los demás servicios); `UserManagementCommands.cs:428-520` (sin chequeo de `Status`). | Bajo: el retirado no puede obtener token (Auth `IsActive=false`). Es defensa en profundidad rota, no acceso directo. | El reconciliador de Auth solo republica activos (Documentación histórica, memoria 24-09). **Pendiente de confirmar** si la UI permite cambiar roles a un retirado (memoria: el menú se oculta para filas `removed`). |
+| V6 | Caché de permisos en memoria 30 s por servicio. | `ProjectionPermissionsSource.cs:63-73`. | ≤30 s, pero el token ya está denylisteado → sin efecto práctico salvo V1. | — |
+| V7 | El denylist y el aviso Pub/Sub se aplican **antes** del `SaveChanges`. Si el commit falla, el usuario queda deslogueado pero sigue `Active` y puede volver a entrar. | `UserManagementCommands.cs` (orden: `accessCutoff` → `hygiene` → `SaveChangesAsync`). | Falla segura hacia seguridad; el admin ve el error y reintenta. | — |
 
 ---
 
@@ -123,6 +122,7 @@ Proyecciones de permisos (`IsActive=false` en ~25 servicios), directorios, traba
 - **Coreografía** con **seguimiento orquestado ligero**: Auth no ordena a nadie; publica un hecho y lleva la cuenta de acuses. No es saga con compensación: el retiro es terminal y no se deshace.
 - **Orden**: ningún consumer asume orden respecto a otro. Ejemplos explícitos en código: `ClientRequestsUserOffboardedConsumer` salta a un asignado que todavía es el retirado (comentario en su cabecera); `CalendarUserOffboardedConsumer` dice "sin depender del orden frente al retiro en Reminder"; `UserEmailDirectoryOffboardingConsumer` usa `SetActive(false, evt.OccurredOn)` para ignorar eventos más viejos (`Notification.Application/Consumers/UserEmailDirectoryConsumers.cs:116-148`).
 - **Dentro de un servicio .NET**: Wolverine en modo clásico arma **una cadena** con todos los handlers del mensaje en serie; si uno falla, se reintenta la cadena entera (`OffboardingStepAcknowledgements.cs:19-23`). Por eso cada handler debe ser idempotente: los que ya terminaron vuelven a correr.
+- **Consumer que solo delega**: si el consumer reenvía un comando local, el acuse automático saldría antes del trabajo. Por eso se marca con `[AcknowledgesOffboardingLater]` (`BuildingBlocks/Messaging/AuthIntegrationEvents/OffboardingStepNames.cs`): la política no acusa por él y el handler que termina publica `OffboardingStepNames.CompletedBy(typeof(<Consumer>), …)` en su misma unidad con outbox, con el mismo `Service+Step`. Caso real: `ConnectorsUserOffboardedConsumer` → `PurgeOffboardedMailboxesHandler`, que acusa también cuando el empleado no tenía buzones personales.
 - **Duplicados**: idempotencia por estado ("lo resuelto sale del filtro"): consultas que solo devuelven lo que todavía apunta al retirado (p. ej. `ListByAssignedPreparerAsync`, `ListOpenByAuthorAsync`, `ListActiveByCreatorAsync`). Auth: `Offboard` idempotente; acuses idempotentes por `Service+Step`. Node: inbox `ProcessedEvent` por `(EventId, Source)`.
 - **Reintentos**: .NET `ApplyStandardFailurePolicies` — permanentes (`JsonException`, `ArgumentException`, `FormatException`, `NotSupportedException`) directo a DLQ; resto 1s/5s/15s y DLQ (`src/BuildingBlocks/Messaging/WolverineFailurePolicies.cs:61-117`). Node: mismos cooldowns con colas de espera y `nack(requeue=false)` a la DLQ (`consumer-runtime.ts`, `rabbit-connection.ts:52`).
 - **Publicación fiable**: outbox durable + confirmaciones del broker en los 27 .NET (`RabbitMqTransportExtensions.cs:38-45`; todos los `Program.cs` con `UseDurableOutboxOnAllSendingEndpoints` y `AutoApplyTransactions`, ContentScanner no usa bus). Node: outbox Prisma (`publisher.enqueue`).
@@ -133,11 +133,10 @@ Proyecciones de permisos (`IsActive=false` en ~25 servicios), directorios, traba
 
 ### 4.2 Problemas de consistencia detectados
 
-1. **Acuse ≠ trabajo terminado** cuando el consumer reenvía a otro handler (Connectors, V4). Mismo riesgo para cualquier consumer futuro que solo haga `PublishAsync` de un comando local.
-2. **Node sin transacción única**: cada paso del consumer de Communication persiste por separado; reintentos retoman, pero una caída del proceso deja el inbox marcado (V5).
-3. **Aviso de incompleto único**: tras el primer aviso no hay recordatorio ni escalado (`OffboardingRun.MarkIncomplete`, `OffboardingRun.cs:105-118`).
-4. **Volumen**: cada retiro produce 51 acuses que el fanout entrega a ~28 colas; los servicios que no los manejan los descartan (ruido "No known handler", Documentación histórica §8). Aceptable hoy; crece con cada paso.
-5. **Carrera de dos retiros del mismo usuario**: el índice único de `OffboardingRun` impide dos corridas/eventos; la respuesta HTTP del segundo no está probada (**Pendiente de confirmar**).
+1. **Node sin transacción única**: cada paso del consumer de Communication persiste por separado; reintentos retoman, pero una caída del proceso deja el inbox marcado (V4).
+2. **Aviso de incompleto único**: tras el primer aviso no hay recordatorio ni escalado (`OffboardingRun.MarkIncomplete`, `OffboardingRun.cs:105-118`).
+3. **Volumen**: cada retiro produce 51 acuses que el fanout entrega a ~28 colas; los servicios que no los manejan los descartan (ruido "No known handler", Documentación histórica §8). Aceptable hoy; crece con cada paso.
+4. **Carrera de dos retiros del mismo usuario**: el índice único de `OffboardingRun` impide dos corridas/eventos; la respuesta HTTP del segundo no está probada (**Pendiente de confirmar**).
 
 ---
 
@@ -174,15 +173,14 @@ Regla del dominio (Código verificado en `UserReferenceContractTests`): **retiro
 
 ## 7. Problemas
 
-1. **P-1 Acuse prematuro en Connectors** (V4). Código verificado.
-2. **P-2 Inbox de Node sin recuperación ante caída del proceso** (V5). Análisis de código, no reproducido.
-3. **P-3 `ApplyIfNewer` reactiva proyecciones** y Auth acepta cambios de roles/overrides sobre un retirado (V6). Código verificado; impacto bajo.
-4. **P-4 Sin re-ejecución del handover**: el aviso de incompleto obliga a intervención manual (DLQ o arreglo a mano); no hay "reintentar retiro" ni reconciliación de trabajo activo.
-5. **P-5 `FailOpen` por defecto** en la denylist de los .NET (V1). Decisión de riesgo documentada en el código.
-6. **P-6 Aviso de incompleto una sola vez**, sin escalado.
-7. **P-7 PII en el evento**: `Email` viaja en el fanout y queda en tablas de outbox/inbox de todos los servicios. Se usa en Notification (directorio por email) y en el pre-flight por email (CloudStorage, Connectors).
-8. **P-8 Huecos de pruebas** de punta a punta (ver §9).
-9. **P-9 (histórico) Pendientes declarados**: Wallet sin prueba de su consumer de permisos (Código verificado: no hay `UserLifecyclePermissionsProjectionConsumerTests` en `TaxVision.Wallet.Tests`); migraciones del retiro sin desplegar en producción (Documentación histórica, memoria; **Pendiente de confirmar** contra prod).
+1. **P-1 Inbox de Node sin recuperación ante caída del proceso** (V4). Análisis de código, no reproducido.
+2. **P-2 `ApplyIfNewer` reactiva proyecciones** y Auth acepta cambios de roles/overrides sobre un retirado (V5). Código verificado; impacto bajo.
+3. **P-3 Sin re-ejecución del handover**: el aviso de incompleto obliga a intervención manual (DLQ o arreglo a mano); no hay "reintentar retiro" ni reconciliación de trabajo activo.
+4. **P-4 `FailOpen` por defecto** en la denylist de los .NET (V1). Decisión de riesgo documentada en el código.
+5. **P-5 Aviso de incompleto una sola vez**, sin escalado.
+6. **P-6 PII en el evento**: `Email` viaja en el fanout y queda en tablas de outbox/inbox de todos los servicios. Se usa en Notification (directorio por email) y en el pre-flight por email (CloudStorage, Connectors).
+7. **P-7 Huecos de pruebas** de punta a punta (ver §9).
+8. **P-8 Pendiente declarado**: migraciones del retiro sin desplegar en producción (Documentación histórica, memoria; **Pendiente de confirmar** contra prod).
 
 ---
 
@@ -234,10 +232,10 @@ Servicios: un archivo de pruebas por consumer (ver columna "Test" de la matriz).
 | Evento repetido | Cubierto en la mayoría de consumers (`Redelivery_*`, `Reprocessing_does_not_notify_twice`, `is idempotent: a second run changes nothing`); **no uniforme** (no todos los consumers tienen un caso explícito). | Matriz. |
 | Consumer caído | **Hueco de integración**: solo unitario del barrido. | `Flagging_an_overdue_run_saves_before_publishing_the_notice_with_human_module_names`. |
 | Reintento tras fallo | Cubierto (sin acuse si falla). | `Does_not_acknowledge_when_a_handler_of_the_chain_fails`; Node `does not acknowledge when a step fails`. |
-| Fuera de orden | Parcial (Notification directorio, Signature/ClientRequests sin orden). **Hueco**: `UserRolesChanged` después del retiro (V6). | `Replayed_registered_after_offboarding_does_not_reactivate` (`TaxVision.Notification.Tests/Lifecycle/UserEmailDirectoryConsumersTests.cs:57`). |
+| Fuera de orden | Parcial (Notification directorio, Signature/ClientRequests sin orden). **Hueco**: `UserRolesChanged` después del retiro (V5). | `Replayed_registered_after_offboarding_does_not_reactivate` (`TaxVision.Notification.Tests/Lifecycle/UserEmailDirectoryConsumersTests.cs:57`). |
 | Sesión activa / JWT vigente tras retirar | Parcial: el handler llama al corte (dobles); el middleware tiene pruebas propias. **Hueco**: ninguna prueba que encadene "retirar → request con el token viejo → 401" ni en Communication "retirar → socket expulsado". | `SessionDenylistMiddlewareTests.cs`. |
 | Acceso tras desvincular (refresh/login) | **Hueco específico de retiro** (lógica compartida con suspensión, `RefreshAccessToken.cs:132`). | — |
-| Proyección actualizada | Cubierto en ~25 servicios (`UserLifecyclePermissionsProjectionConsumerTests`). **Hueco**: Wallet. | Matriz. |
+| Proyección actualizada | Cubierto en todos los servicios con proyección de permisos (`UserLifecyclePermissionsProjectionConsumerTests`). | Matriz. |
 | Histórico conservado | Parcial (Signature `A_preparer_signature_already_given_is_never_touched`, Calendar "past/cancelled no se tocan", Customer `CreatedByUserId`). | Matriz. |
 | Reconciliation posterior | Parcial: solo directorio (Customer). No existe reconciliación de handover. | `EmployeeDirectoryReconciliationTests.cs`. |
 | Aislamiento de tenants en consumers | Parcial: sucesor de otro tenant rechazado en Auth; los consumers revalidan tenant (Customer, Communication) pero no todos tienen caso. | `CustomerUserOffboardedConsumer.cs:81-92`. |
@@ -247,17 +245,16 @@ Servicios: un archivo de pruebas por consumer (ver columna "Test" de la matriz).
 
 ## 10. Recomendación
 
-1. **Acuse al terminar de verdad**: cuando un consumer solo reenvía un comando local, el paso esperado debería ser el handler que hace el trabajo (o el consumer debe esperar su resultado). Aplica hoy a Connectors.
-2. **Re-ejecución segura del handover**: un comando de Auth "republicar el retiro" (mismo `UserId`, `EventId` nuevo, `CorrelationId` del run) que los consumers ya soportan por ser idempotentes. Hoy la única vía es la DLQ.
-3. **Inbox de Node**: marcar el `EventId` en la misma unidad que el trabajo, o con estado "en curso" que expire, para que una caída no convierta la reentrega en duplicado.
-4. **Auth rechaza mutaciones de acceso sobre un retirado** (roles, overrides, reproyección) y las proyecciones no reactivan con `ApplyIfNewer` si el último evento de ciclo de vida fue un retiro.
-5. **Escalado del aviso de incompleto** (segundo aviso o tablero de runs incompletos).
-6. **Decisión pendiente**: `FailClosed` de la denylist en servicios con datos sensibles (Customer, CloudStorage, Signature).
-7. **Pruebas**: endpoint 403 por actor, carrera de dos retiros, "token viejo → 401" y "socket expulsado" a nivel de integración, `UserRolesChanged` posterior, consumer de Wallet.
+1. **Re-ejecución segura del handover**: un comando de Auth "republicar el retiro" (mismo `UserId`, `EventId` nuevo, `CorrelationId` del run) que los consumers ya soportan por ser idempotentes. Hoy la única vía es la DLQ.
+2. **Inbox de Node**: marcar el `EventId` en la misma unidad que el trabajo, o con estado "en curso" que expire, para que una caída no convierta la reentrega en duplicado.
+3. **Auth rechaza mutaciones de acceso sobre un retirado** (roles, overrides, reproyección) y las proyecciones no reactivan con `ApplyIfNewer` si el último evento de ciclo de vida fue un retiro.
+4. **Escalado del aviso de incompleto** (segundo aviso o tablero de runs incompletos).
+5. **Decisión pendiente**: `FailClosed` de la denylist en servicios con datos sensibles (Customer, CloudStorage, Signature).
+6. **Pruebas**: endpoint 403 por actor, carrera de dos retiros, "token viejo → 401" y "socket expulsado" a nivel de integración, `UserRolesChanged` posterior.
 
 ## 11. Riesgos
 
-- Ventanas V1–V8 (§3.3). Las más relevantes para datos de clientes: V3 (acciones en nombre del retirado mientras un consumer está caído) y V4 (purga de buzón personal no confirmada).
+- Ventanas V1–V7 (§3.3). La más relevante para datos de clientes: V3 (acciones en nombre del retirado mientras un consumer está caído).
 - Crecimiento: cada módulo nuevo con datos de empleados agrega pasos; el fitness test obliga a registrarlos, pero también a que el módulo exista y responda en <30 min.
 - Dependencia de Redis para el corte inmediato (denylist y Pub/Sub).
 - Migraciones del retiro en producción: **Pendiente de confirmar** (memoria dice "falta desplegar").

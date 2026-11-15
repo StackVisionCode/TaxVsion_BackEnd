@@ -70,6 +70,42 @@ public sealed class OffboardingStepAcknowledgementPolicyTests
         Assert.Empty(session.Sent.MessagesOf<UserOffboardingStepCompletedIntegrationEvent>());
     }
 
+    [Fact]
+    public async Task A_consumer_that_acknowledges_later_is_left_out_of_the_automatic_acknowledgement()
+    {
+        using var host = await StartAsync(typeof(FirstOffboardedDemoConsumer), typeof(DeferringOffboardedDemoConsumer));
+
+        var session = await host.InvokeMessageAndWaitAsync(Offboarded());
+
+        var ack = Assert.Single(session.Sent.MessagesOf<UserOffboardingStepCompletedIntegrationEvent>());
+        Assert.Equal("FirstOffboardedDemoConsumer", ack.Step);
+    }
+
+    [Fact]
+    public void The_deferred_acknowledgement_names_the_same_service_and_step_as_the_policy()
+    {
+        var userId = Guid.NewGuid();
+        var at = new DateTime(2026, 11, 15, 12, 0, 0, DateTimeKind.Utc);
+
+        var ack = OffboardingStepNames.CompletedBy(typeof(DeferringOffboardedDemoConsumer), TenantId, userId, "c", at);
+
+        Assert.Equal(OffboardingStepAcknowledgements.ServiceOf(typeof(DeferringOffboardedDemoConsumer)), ack.Service);
+        Assert.Equal(nameof(DeferringOffboardedDemoConsumer), ack.Step);
+        Assert.Equal((TenantId, userId, "c", at), (ack.TenantId, ack.UserId, ack.CorrelationId, ack.CompletedAtUtc));
+    }
+
+    [Fact]
+    public void A_consumer_not_marked_to_acknowledge_later_cannot_publish_its_own_acknowledgement() =>
+        Assert.Throws<ArgumentException>(() =>
+            OffboardingStepNames.CompletedBy(
+                typeof(FirstOffboardedDemoConsumer),
+                TenantId,
+                Guid.NewGuid(),
+                "c",
+                default
+            )
+        );
+
     [Theory]
     [InlineData(typeof(OffboardingStepAcknowledgementPolicyTests), "BuildingBlocks")]
     [InlineData(typeof(string), "System.Private.CoreLib")]
@@ -107,6 +143,12 @@ public sealed class OffboardingStepAcknowledgementPolicyTests
 public static class FirstOffboardedDemoConsumer
 {
     public static Task Handle(UserOffboardedIntegrationEvent msg) => Task.CompletedTask;
+}
+
+[AcknowledgesOffboardingLater]
+public static class DeferringOffboardedDemoConsumer
+{
+    public static void Handle(UserOffboardedIntegrationEvent msg) { }
 }
 
 public static class SecondOffboardedDemoConsumer

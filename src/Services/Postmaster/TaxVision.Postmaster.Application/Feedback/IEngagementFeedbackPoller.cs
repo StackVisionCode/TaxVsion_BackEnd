@@ -10,6 +10,9 @@ public interface IEngagementFeedbackPoller
 {
     FeedbackSource Source { get; }
 
+    /// <summary>False si al proveedor le falta configuración (ver <see cref="IDeliveryFeedbackPoller.IsEnabled"/>).</summary>
+    bool IsEnabled { get; }
+
     /// <param name="fromUtc">Inclusivo.</param>
     /// <param name="toUtc">Exclusivo.</param>
     /// <param name="maxEvents">Tope de eventos por corrida; lo que pase queda para la próxima.</param>

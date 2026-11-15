@@ -9,7 +9,10 @@ namespace TaxVision.Connectors.Application.Accounts.Consumers;
 /// <see cref="OfficeMailboxesUserOffboardedConsumer"/>).
 /// <para>Solo reenvía: la purga revoca en el proveedor y debe correr sin transacción, y este mensaje comparte handler
 /// con otros que sí la necesitan. El comando sale por el outbox de esa transacción.</para>
+/// <para>El acuse del paso lo publica la purga al confirmarse: si saliera aquí, Auth daría el paso por hecho aunque
+/// la purga fallara después.</para>
 /// </summary>
+[AcknowledgesOffboardingLater]
 public static class ConnectorsUserOffboardedConsumer
 {
     public static ValueTask Handle(UserOffboardedIntegrationEvent msg, IMessageBus bus) =>

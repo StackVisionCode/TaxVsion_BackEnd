@@ -1,7 +1,9 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Abstractions;
+using TaxVision.Connectors.Application.Accounts.Consumers;
 using TaxVision.Connectors.Application.Audit;
 using TaxVision.Connectors.Application.OAuth;
 using TaxVision.Connectors.Application.Watch;
@@ -42,9 +44,6 @@ public static class PurgeOffboardedMailboxesHandler
         using var _ = correlation.Push(command.CorrelationId);
 
         var personalMailboxes = await accounts.ListByOwnerUserAsync(command.TenantId, command.UserId, ct);
-        if (personalMailboxes.Count == 0)
-            return;
-
         var now = DateTime.UtcNow;
         var revocations = new List<(TenantEmailAccount Account, OAuthConnection Connection)>();
         await unit.RunAsync(
@@ -104,6 +103,17 @@ public static class PurgeOffboardedMailboxesHandler
                         }
                     );
                 }
+
+                // Acuse del paso del retiro, con la purga en la misma unidad (también si no había buzones).
+                await outbox.PublishAsync(
+                    OffboardingStepNames.CompletedBy(
+                        typeof(ConnectorsUserOffboardedConsumer),
+                        command.TenantId,
+                        command.UserId,
+                        command.CorrelationId,
+                        now
+                    )
+                );
                 return true;
             },
             ct

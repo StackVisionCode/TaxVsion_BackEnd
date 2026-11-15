@@ -28,13 +28,13 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Connectors.Application.Abstractions.IUserPermissionsProjectionRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var userPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Connectors.Application.Abstractions.IUserPermissionsProjectionRepository>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var tenantEmailAccountRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Connectors.Application.Accounts.ITenantEmailAccountRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
@@ -69,7 +69,7 @@ namespace Internal.Generated.WolverineHandlers
                 await TaxVision.Connectors.Application.Accounts.Consumers.OfficeMailboxesUserOffboardedConsumer.Handle(userOffboardedIntegrationEvent, tenantEmailAccountRepository, unitOfWork, context, correlationContext, _loggerOfTenantEmailAccount, cancellation).ConfigureAwait(false);
 
                 // Acuse del retiro por handler (OffboardingStepAcknowledgementPolicy)
-                await BuildingBlocks.Web.Hosting.OffboardingStepAcknowledger.PublishAsync(userOffboardedIntegrationEvent, context, new BuildingBlocks.Web.Hosting.OffboardingStep[] { new BuildingBlocks.Web.Hosting.OffboardingStep("Connectors", "ConnectorsUserOffboardedConsumer"), new BuildingBlocks.Web.Hosting.OffboardingStep("Connectors", "OfficeMailboxesUserOffboardedConsumer"), new BuildingBlocks.Web.Hosting.OffboardingStep("Connectors", "UserLifecyclePermissionsProjectionConsumer") }, cancellation).ConfigureAwait(false);
+                await BuildingBlocks.Web.Hosting.OffboardingStepAcknowledger.PublishAsync(userOffboardedIntegrationEvent, context, new BuildingBlocks.Web.Hosting.OffboardingStep[] { new BuildingBlocks.Web.Hosting.OffboardingStep("Connectors", "OfficeMailboxesUserOffboardedConsumer"), new BuildingBlocks.Web.Hosting.OffboardingStep("Connectors", "UserLifecyclePermissionsProjectionConsumer") }, cancellation).ConfigureAwait(false);
                 
                 // Added by EF Core Transaction Middleware
                 var result_of_SaveChangesAsync = await connectorsDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);

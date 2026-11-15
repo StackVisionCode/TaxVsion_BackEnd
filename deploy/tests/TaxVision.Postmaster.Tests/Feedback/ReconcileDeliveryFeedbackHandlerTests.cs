@@ -32,6 +32,8 @@ public sealed class ReconcileDeliveryFeedbackHandlerTests
 
         public FeedbackSource Source => FeedbackSource.Smtp2Go;
 
+        public bool IsEnabled => true;
+
         public Task<IReadOnlyList<TranslatedFeedback>> PollAsync(
             IReadOnlyList<PendingDeliveryRef> pending,
             CancellationToken ct

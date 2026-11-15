@@ -523,16 +523,8 @@ services:
       ServiceAuth__Clients__0__Permissions__1: cloudstorage.file.download
       ServiceAuth__Clients__0__Permissions__2: cloudstorage.file.view
       ServiceAuth__Clients__0__Permissions__3: scribe.render
-      # SMS: el worker de Notification (u orquestador de comms) llama POST /sms/messages, gateado
-      # por [HasPermission(SmsPermissions.Send)] — el token M2M debe llevar sms.send como claim
-      # "perm" (bypass de actor Service en ProjectionPermissionsSource). Mismo patron que scribe.render.
-      ServiceAuth__Clients__0__Permissions__4: sms.send
-      ServiceAuth__Clients__0__Permissions__5: catalog.read
-      ServiceAuth__Clients__0__Permissions__6: catalog.write
-      ServiceAuth__Clients__0__Permissions__7: catalog.delete
-      ServiceAuth__Clients__0__Permissions__8: inventory.read
-      ServiceAuth__Clients__0__Permissions__9: inventory.write
-      ServiceAuth__Clients__0__Permissions__10: inventory.adjust
+      # Solo lo que Notification usa: un permiso de más dejaría su secreto enviar SMS o tocar catálogo e
+      # inventario (NotificationServiceClientPermissionsDeployWiringTests).
       # Cliente de servicio (M2M) para el worker de Transcripts de Communication (Fase 6):
       # descarga la grabacion, sube el .txt transcrito, mismos permisos de CloudStorage.
       ServiceAuth__Clients__1__ClientId: ${COMMUNICATION_TRANSCRIPT_WORKER_CLIENT_ID:-communication-transcript-worker}

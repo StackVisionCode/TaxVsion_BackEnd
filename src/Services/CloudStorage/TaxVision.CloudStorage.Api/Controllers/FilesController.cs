@@ -293,9 +293,10 @@ public sealed class FilesController(
         return new EmptyResult();
     }
 
+    // Service: Customer (archivo de una importación procesada) y Tenant (logo reemplazado) borran lo que subieron.
     [HttpDelete("{fileId:guid}")]
     [HasPermission(CloudStoragePermissions.FileDelete)]
-    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin, ActorType.Service)]
     [RateLimit("cloudstorage.g.file_manage")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid fileId, CancellationToken ct)

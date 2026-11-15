@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.FinancialInsights.Infrastructure.Permissions;
 using Xunit;
 
@@ -42,12 +43,37 @@ public sealed class PermissionsSnapshotClientTests
                 }
             )
             .Build();
-        var client = new FinancialPermissionsSnapshotClient(http, config);
+        var client = new FinancialPermissionsSnapshotClient(
+            http,
+            new FinancialServiceTokenAcquirer(http, config, NullLogger<FinancialServiceTokenAcquirer>.Instance)
+        );
         var snapshot = await client.FetchSnapshotAsync(tenant, user);
         Assert.Equal(4, snapshot?.PermissionsVersion);
         Assert.Contains("financial.import", snapshot!.PermissionCodes);
         Assert.Equal(role, Assert.Single(snapshot.RoleIds));
         Assert.Equal(2, calls.Count);
+
+        // El segundo snapshot del mismo tenant reutiliza el token: solo va a Auth por el snapshot.
+        await client.FetchSnapshotAsync(tenant, user);
+        Assert.Equal(1, calls.Count(path => path == "/auth/service-token"));
+    }
+
+    [Fact]
+    public async Task Without_a_service_token_there_is_no_snapshot()
+    {
+        using var http = new HttpClient(
+            new Handler(_ => throw new InvalidOperationException("Auth must not be called"))
+        )
+        {
+            BaseAddress = new Uri("https://auth.test/"),
+        };
+        var noCredentials = new ConfigurationBuilder().Build();
+        var client = new FinancialPermissionsSnapshotClient(
+            http,
+            new FinancialServiceTokenAcquirer(http, noCredentials, NullLogger<FinancialServiceTokenAcquirer>.Instance)
+        );
+
+        Assert.Null(await client.FetchSnapshotAsync(Guid.NewGuid(), Guid.NewGuid()));
     }
 
     private static HttpResponseMessage Json(string content) =>

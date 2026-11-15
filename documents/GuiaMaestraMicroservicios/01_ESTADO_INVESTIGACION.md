@@ -19,7 +19,7 @@
 |---|---|---|
 | A | Inventario de proyectos, guías y documentación | Hecho (2026-11-15) |
 | B–C | Investigación por tema con evidencia | Hecho (2026-11-15) |
-| D | Consolidación de contradicciones | Hecho: 58 contradicciones resueltas y ~85 decisiones pendientes (`Referencias/Decisiones_Arquitectonicas.md`) |
+| D | Consolidación de contradicciones | Hecho: 58 contradicciones resueltas y ~82 decisiones pendientes (`Referencias/Decisiones_Arquitectonicas.md`) |
 | E | Superguía | Hecho: 37 capítulos + anexo |
 | F | Diagramas SVG | Hecho: 23 SVG, XML válido, sin recursos externos |
 | G | Checklists | Hecho: 10 checklists, 322 ítems |

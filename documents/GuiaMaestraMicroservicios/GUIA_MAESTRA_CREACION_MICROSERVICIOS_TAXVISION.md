@@ -100,7 +100,7 @@ Todos esos fallos **ya ocurrieron** (ver [cap. 36](#cap-36)). La guía convierte
 |---|---|---|
 | **Notes** (principal) | Estructura, capas, `Program.cs`, `Result`/`Error`, consumers con guarda de tenant, proyecciones RBAC/plan/directorio, filtro fail-closed | Comentarios con fases y narrativa; mensajes de `NoteErrors` en español |
 | **Customer** | Eventos de dominio (`AggregateRoot` + `UseTaxVisionDomainEvents`), colas punto a punto, `TenantTimeZones` | `DateTime.UtcNow` dentro del agregado |
-| **FinancialInsights** | El servicio más nuevo: permisos con pull-recovery, gate de módulo, cuotas por plan, reconciliaciones, módulo vendible | Acquirer M2M sin caché; reconciliaciones sin `ReconciliationRetry` |
+| **FinancialInsights** | El servicio más nuevo: permisos con pull-recovery, gate de módulo, cuotas por plan, reconciliaciones, módulo vendible | Reconciliaciones sin `ReconciliationRetry` |
 | **Reminder** | Agregado rico (transiciones, `RowVersion`, índice de idempotencia), Quartz | Cableado de Wolverine (sin BB-1/BB-2) |
 | **Calendar** | Acquirer M2M con caché; prueba de rutas en runtime (`IntegrationEventRoutingTests`) | Conversor UTC propio (no usa `UseUtcDateTimes`) |
 
@@ -1097,7 +1097,6 @@ Reconciliaciones, pull-recovery de permisos, catálogo de cuotas, host de oficin
 - Auth registra 32 clientes (`ServiceAuth__Clients__0..31` en compose; el 31 es FinancialInsights).
 - Claves de configuración del llamador heterogéneas: 18 servicios usan `ServiceAuthClient:{ClientId,ClientSecret}`, 6 usan `{Servicio}:ServiceAuth:*`.
 - Endpoints cross-tenant que exigen PlatformTenant: `internal/customers/reconciliation`, `internal/customers/assignments/reconciliation`, `internal/users/*/reconciliation`. **Sin** esa comprobación: `internal/tenants/directory`, `internal/tenants/{t}/users/{u}/permissions-snapshot`, `internal/tenants/{t}/entitlements` (estos dos usan el `tenantId` de la ruta).
-- FinancialInsights no cachea tokens (un POST por uso).
 
 #### Cómo integrarlo en un servicio nuevo
 1. **Cliente propio** `{servicio}-worker` en Auth con los **mínimos** permisos/scopes: compose de `auth-api` (`ServiceAuth__Clients__<N>__*`, índice `N` nuevo y sin repetir) y user-secrets locales de Auth (`ServiceAuth:Clients:<N>:*`).
@@ -1465,7 +1464,7 @@ Un empleado que se va no puede seguir viendo datos de clientes ni puede quedar t
 
 **Flujo asíncrono:** cada servicio consume `UserOffboardedIntegrationEvent` (Node: alias `auth.user.offboarded.v1`) y deja sus datos coherentes. **Tu servicio nunca corta el acceso**: eso ya pasó cuando te llega el evento.
 
-**Acuse N/N:** en .NET, `UseTaxVisionRabbitMq` enciende `AcknowledgeOffboardingSteps()`: la política inserta un postprocesador que publica un acuse por **clase handler** (`Service` = segundo tramo del ensamblado, `Step` = nombre de la clase), dentro de la misma transacción; si un handler lanza, no sale ningún acuse de esa cadena. En Node el acuse se encola a mano. Auth registra acuses (idempotente por `Service+Step`); `OffboardingRunsSweepJob` (cada 5 min) marca incompleta una corrida a los **30 min** y publica `UserOffboardingIncompleteIntegrationEvent` → Notification avisa a los admins (una sola vez). El CRM muestra "Handover status N/N".
+**Acuse N/N:** en .NET, `UseTaxVisionRabbitMq` enciende `AcknowledgeOffboardingSteps()`: la política inserta un postprocesador que publica un acuse por **clase handler** (`Service` = segundo tramo del ensamblado, `Step` = nombre de la clase), dentro de la misma transacción; si un handler lanza, no sale ningún acuse de esa cadena. Un consumer que solo delega el trabajo (reenvía un comando local) se marca con `[AcknowledgesOffboardingLater]`: la política no acusa por él y el handler que termina publica `OffboardingStepNames.CompletedBy(typeof(<Consumer>), …)` en su misma unidad con outbox, con el mismo `Service+Step` (Connectors: `PurgeOffboardedMailboxesHandler`). En Node el acuse se encola a mano. Auth registra acuses (idempotente por `Service+Step`); `OffboardingRunsSweepJob` (cada 5 min) marca incompleta una corrida a los **30 min** y publica `UserOffboardingIncompleteIntegrationEvent` → Notification avisa a los admins (una sola vez). El CRM muestra "Handover status N/N".
 
 ![SVG-20 Offboarding por servicio](Diagramas/SVG-20_Offboarding_Servicios.svg)
 
@@ -1497,18 +1496,17 @@ Si la corrige otro servicio por evento derivado: `HandledBy = "Servicio:Clase"` 
 
 **Seguridad inmediata vs limpieza eventual.** Al instante: `IsActive=false` (login/refresh/pull de permisos fallan), denylist del `sid` (TTL 20 min), middleware de denylist en los .NET (401), Communication fail-closed, Pub/Sub de expulsión de sockets, cierre de sockets al `exp`, revocación en BD, MFA purgado. Eventual: proyecciones, directorios, trabajo activo, credenciales de terceros, avisos privados.
 
-**Ventanas de acceso indebido conocidas (V1–V8):**
+**Ventanas de acceso indebido conocidas (V1–V7):**
 
 | # | Ventana | Tamaño | Mitigación |
 |---|---|---|---|
 | V1 | Redis caído al chequear denylist en .NET (`FailOpen`) | ≤ 15 min | Métrica; configurable a `FailClosed` |
 | V2 | Pub/Sub perdido: socket abierto | hasta `exp` + 5 s | Cierre por `exp` |
 | V3 | Acciones "en su nombre" sin su token (agendados de campañas, buzón que polea, push, recordatorios, intake links) mientras un consumer no corre | segundos; indefinido si un consumer está caído | Acuse N/N + aviso a 30 min |
-| V4 | Connectors acusa al **reenviar** el comando de purga, no al purgar | indefinida si la purga muere en la DLQ | Alerta de DLQ |
-| V5 | Node: caída a mitad del consumer deja el `EventId` marcado y el paso no acusa | indefinida | Run `Incomplete` + aviso |
-| V6 | `UserRolesChanged` posterior reactiva la proyección (`ApplyIfNewer` → `IsActive=true`) | bajo (sin token posible) | Reconciliador de Auth solo republica activos |
-| V7 | Caché de permisos 30 s | ≤ 30 s | Token ya denylisteado |
-| V8 | Denylist y Pub/Sub antes del `SaveChanges` | falla hacia seguridad | El admin reintenta |
+| V4 | Node: caída a mitad del consumer deja el `EventId` marcado y el paso no acusa | indefinida | Run `Incomplete` + aviso |
+| V5 | `UserRolesChanged` posterior reactiva la proyección (`ApplyIfNewer` → `IsActive=true`) | bajo (sin token posible) | Reconciliador de Auth solo republica activos |
+| V6 | Caché de permisos 30 s | ≤ 30 s | Token ya denylisteado |
+| V7 | Denylist y Pub/Sub antes del `SaveChanges` | falla hacia seguridad | El admin reintenta |
 
 #### Implementación actual en TaxVision
 - Registro: `src/Services/Auth/Application/Offboarding/OffboardingParticipants.cs:25-143` (27 servicios, 51 pasos). Pre-flight: 10 rutas `offboarding-impact` con `users.manage` (Calendar, Campaigns, CloudStorage, Communication, Connectors, Correspondence, Customer, Signature, Tasks, Tenant); descubrible en `GET /auth/offboarding/participants`.
@@ -1521,8 +1519,8 @@ Si la corrige otro servicio por evento derivado: `HandledBy = "Servicio:Clase"` 
 | Calendar | Revoca feed iCal, reasigna o cancela citas, quita de demos públicas | Participa |
 | Campaigns | Agendados al sucesor (`campaigns.send`) o pausa con aviso | Participa |
 | CloudStorage | Revoca share links; conexión de oficina **a revisión** (no se corta a ciegas) | Participa |
-| Communication (Node) | Reuniones, grupos, chats, tickets, grabaciones; acuse a mano | Participa (riesgo V5) |
-| Connectors | Purga buzones personales; buzones de oficina a revisión | **Participación incompleta** (V4) |
+| Communication (Node) | Reuniones, grupos, chats, tickets, grabaciones; acuse a mano | Participa (riesgo V4) |
+| Connectors | Purga buzones personales y acusa al terminar la purga; buzones de oficina a revisión | Participa |
 | Correspondence | Borradores al sucesor o se descartan | Participa |
 | Customer | Preparador → sucesor o desasigna; revoca accesos; snapshot de asignaciones | Participa |
 | Notes | Registra retirado; override de edición para `notes.view_all` | Participa |
@@ -1531,10 +1529,9 @@ Si la corrige otro servicio por evento derivado: `HandledBy = "Servicio:Clase"` 
 | Signature | Archiva perfiles; borradores/preparador al sucesor o aviso | Participa (D-2 pendiente) |
 | Tasks (+ Client Forms) | Tareas, series, timers, avisos, intake links, form requests | Participa |
 | Tenant | Coordinador WISP queda vacante + aviso | Participa |
-| Billing, Catalog, Documents, FinancialInsights, Growth, Inventory, PaymentApp, PaymentClient, Postmaster, Scribe, Sms, Subscription | Proyección de permisos inactiva | Participa |
-| Wallet | Proyección inactiva | **Participación incompleta** (sin prueba del consumer) |
+| Billing, Catalog, Documents, FinancialInsights, Growth, Inventory, PaymentApp, PaymentClient, Postmaster, Scribe, Sms, Subscription, Wallet | Proyección de permisos inactiva | Participa |
 | ContentScanner, Gateway | Sin datos de empleado | No participa |
-| Recorder, TranscriptWorker | Workers | No participa (pendiente confirmar que no persisten ids) |
+| Recorder, TranscriptWorker | Workers sin ids de usuario propios (Redis solo para la cola y la idempotencia) | No participa |
 
 #### Cómo integrarlo en un servicio nuevo (15 pasos)
 1. **Inventario de referencias**: toda propiedad `Guid`/`Guid?` persistida que encaje con el patrón del fitness (`*UserId`, `*By`, `*ByActorId`, `ActorId`, `SenderId`, `Owner*Id`, `Assigned*Id`, `Assignee*Id`, `Responsible*Id`, `Host*Id`, `Organizer*Id`, `Preparer*Id`, `RunAs*Id`, `Successor*Id`, `Coordinator*Id`, `Caller*Id`, `Callee*Id`, `Agent*Id`, `Invitee*Id`, `Author*Id`; excluye los que terminan en `Tenant|File|Customer|PortalUser|Participant|Signer|Session|Version|Template|Message|Folder` + `Id`). En Node: campos del `schema.prisma`.
@@ -1544,7 +1541,7 @@ Si la corrige otro servicio por evento derivado: `HandledBy = "Servicio:Clase"` 
 5. **Usar el evento existente** `UserOffboardedIntegrationEvent` (campos: `TenantId`, `UserId`, `SuccessorUserId?`, `OffboardedByUserId?`, `RemovedAtUtc`, `OccurredOn`, `CorrelationId`, `Email` solo si de verdad identificas por email). No inventes otro. Retiro ⊇ suspensión.
 6. **Consumer** `public static class <Recurso>UserOffboardedConsumer` con `Handle(UserOffboardedIntegrationEvent msg, …)` en `Application/.../Consumers`; `correlation.Push(msg.CorrelationId ?? EventId)`; sucesor revalidado localmente; lotes con keyset por `Id`; guardar antes de publicar derivados. Un consumer por responsabilidad (cada uno acusa por separado).
 7. **Eventos derivados** propios en `BuildingBlocks/Messaging/<Svc>IntegrationEvents/` con `[MessageIdentity]` y `PublishMessage<T>()`; nunca un campo `required` nuevo en un evento vivo.
-8. **Wolverine**: `UseTaxVisionRabbitMq` (enciende el acuse), outbox, transacciones, `ApplyStandardFailurePolicies`, cola enlazada, `IntegrationEventTenantMiddleware`. Si el consumer solo **reenvía** un comando local, el acuse sale antes del trabajo: evítalo o registra como paso el handler que trabaja.
+8. **Wolverine**: `UseTaxVisionRabbitMq` (enciende el acuse), outbox, transacciones, `ApplyStandardFailurePolicies`, cola enlazada, `IntegrationEventTenantMiddleware`. Si el consumer solo **reenvía** un comando local, márcalo con `[AcknowledgesOffboardingLater]` y publica el acuse desde el handler que termina el trabajo con `OffboardingStepNames.CompletedBy(...)`, en la misma unidad con outbox (patrón Connectors).
 9. **Idempotencia por estado**: consultas que solo devuelven lo que todavía apunta al retirado; operaciones sin efecto si ya están hechas. Todos los handlers del mensaje en un servicio corren en una cadena: si uno falla, los demás se repiten.
 10. **Histórico**: no tocar `Provenance`, auditoría, documentos firmados, cadenas HMAC, runs enviados.
 11. **Orden y duplicados**: no asumir orden; para proyecciones con estado, `OccurredOn` o versión.
@@ -1583,16 +1580,14 @@ Auth (dueño, run, acuses), Session denylist, proyecciones de permisos, Notifica
 
 #### Errores históricos
 - **Entrada de FinancialInsights dejó el gate rojo** por contratos de offboarding (referencias sin anotar).
-- **P-1 Connectors** acusa al reenviar, no al purgar (V4).
-- **P-2 Inbox de Node** sin recuperación ante caída (V5).
-- **P-3** `ApplyIfNewer` reactiva proyecciones y Auth acepta cambios de roles sobre un retirado (V6).
-- **P-4** Sin re-ejecución del handover: la única vía es la DLQ.
-- **P-6** Aviso de incompleto una sola vez, sin escalado.
-- **P-7** El `Email` viaja en el evento y queda en outbox/inbox de todos los servicios.
-- Wallet sin prueba de su consumer de permisos.
+- **P-1 Inbox de Node** sin recuperación ante caída (V4).
+- **P-2** `ApplyIfNewer` reactiva proyecciones y Auth acepta cambios de roles sobre un retirado (V5).
+- **P-3** Sin re-ejecución del handover: la única vía es la DLQ.
+- **P-5** Aviso de incompleto una sola vez, sin escalado.
+- **P-6** El `Email` viaja en el evento y queda en outbox/inbox de todos los servicios.
 
 #### Pruebas
-Existentes (Auth): `OffboardUserHandlerPathsTests`, `UserManagementCommandsTests`, `UserLifecycleTests`, `OffboardingRunTrackingTests` (16), `OffboardedEmailReuseTests`, `LastAdminGuardConcurrencyIntegrationTests`. Fitness obligatorios (BuildingBlocks): `UserReferenceContractTests` (12 casos), `OffboardingParticipantsContractTests` (7, incluye `The_registry_lists_exactly_the_real_offboarding_consumers`), `OffboardingStepAcknowledgementPolicyTests`. Huecos conocidos: 403 por actor en el endpoint de retiro, carrera de dos retiros, "token viejo → 401" y "socket expulsado" a nivel de integración, `UserRolesChanged` posterior, consumer de Wallet.
+Existentes (Auth): `OffboardUserHandlerPathsTests`, `UserManagementCommandsTests`, `UserLifecycleTests`, `OffboardingRunTrackingTests` (16), `OffboardedEmailReuseTests`, `LastAdminGuardConcurrencyIntegrationTests`. Fitness obligatorios (BuildingBlocks): `UserReferenceContractTests` (12 casos), `OffboardingParticipantsContractTests` (7, incluye `The_registry_lists_exactly_the_real_offboarding_consumers`), `OffboardingStepAcknowledgementPolicyTests`. Huecos conocidos: 403 por actor en el endpoint de retiro, carrera de dos retiros, "token viejo → 401" y "socket expulsado" a nivel de integración, `UserRolesChanged` posterior.
 
 #### Checklist
 - [ ] Todas las referencias anotadas (`[UserReference]` / `@userReference`).
@@ -1956,6 +1951,7 @@ Incidente del 2026-11-13: Tasks llegó a 3,5 GB en producción. El heap .NET seg
 - `dotnet run -- codegen write/preview` **no sirve** en TaxVision: los servicios terminan en `app.Run()`, el argumento se ignora y el host arranca entero.
 - Imágenes .NET con `ENV MALLOC_ARENA_MAX=2` (lo exige `DotnetImageMallocArenaTests`).
 - Wolverine 6.14 **no valida al arrancar** que exista el código pregenerado: si falta el tipo de un handler, revienta el primer mensaje de ese tipo.
+- **La forma del contenedor no depende de la configuración.** El código se genera una vez y corre en todos los entornos; el generador decide por el registro de DI cómo obtiene cada dependencia. Un servicio que solo se registra si hay una clave (API key, URL) queda, en el código generado sin esa clave, como lista vacía inyectada por constructor desde la raíz; con la clave son servicios *scoped* que no se pueden tomar de la raíz (en Development, `ValidateScopes` impide crear el handler; en Production quedan atrapados de por vida en el handler). Se registra siempre y se apaga por propiedad: patrón Postmaster, `IDeliveryFeedbackPoller.IsEnabled` (`Smtp2GoActivityFeedbackPoller` sin API key) y `DeliveryFeedbackCapabilities` que solo ofrece los habilitados.
 
 #### Implementación actual en TaxVision
 26 servicios + MailboxListener con `UseTaxVisionCodeGeneration`; 26 `PreGeneratedHandlerCodeTests`; `WolverineFx.RuntimeCompilation` sigue referenciado (Roslyn en la imagen, no se usa en Static). **Ninguna prueba exige** que un `Program.cs` nuevo llame `UseTaxVisionCodeGeneration` ni que el servicio tenga su `PreGeneratedHandlerCodeTests` (hueco; Decisión pendiente).
@@ -2033,6 +2029,7 @@ Wolverine/JasperFx 6.14, compose (`ASPNETCORE_ENVIRONMENT`), `start-fleet.ps1`, 
 - `codegen preview` arrancó el servicio entero (escuchó Rabbit y procesó pendientes).
 - El informe del incidente decía "guardarraíl en el gate del CI": desde 2026-11-13 el CI no corre pruebas; **el gate local es la única barrera**.
 - Memorias viejas que dicen "la codegen es Dynamic": desactualizadas.
+- Registro condicional por configuración (pollers de SMTP2GO en Postmaster): el código generado sin API key tomaba los pollers por constructor desde la raíz y, con la key, los handlers de avisos de entrega (webhook, rebotes y reconciliación) no se podían crear en Development.
 
 #### Pruebas
 `PreGeneratedHandlerCodeTests` (26 servicios), `PreGeneratedCodeRules`, `WolverineCodeGenerationExtensionsTests`, `DotnetImageMallocArenaTests`. Corren en el gate (el filtro no excluye `.Architecture.`).
@@ -2042,6 +2039,7 @@ Wolverine/JasperFx 6.14, compose (`ASPNETCORE_ENVIRONMENT`), `start-fleet.ps1`, 
 - [ ] Servicio en `$all` del script.
 - [ ] `<Svc>RoutingHostFactory` + `PreGeneratedHandlerCodeTests` vistos en rojo y luego verdes.
 - [ ] `Internal/Generated` regenerado en el mismo cambio que el handler.
+- [ ] Ningún registro de DI condicionado a la configuración: se registra siempre y se apaga por propiedad. [si el servicio tiene integraciones opcionales] Prueba con el host de producción, la clave puesta y `ValidateScopes = true` que construya todos los handlers (patrón `PreGeneratedHandlerCodeTests` de Postmaster).
 - [ ] `MALLOC_ARENA_MAX=2` en la imagen.
 
 ---
@@ -3412,8 +3410,7 @@ Checklist imprimible: [Checklists/Nuevo_Microservicio.md](Checklists/Nuevo_Micro
 | Reconciliación que nunca repara (solo warnings) | URL por defecto a `localhost` dentro del contenedor | URL interna explícita en compose | [15](#cap-15) |
 | Empleados sin clientes visibles | Proyección de asignaciones vacía (kit sin reconciliación o URL) | Kit `CustomerVisibility` completo | [14](#cap-14), [15](#cap-15) |
 | Trabajo a nombre de un empleado retirado / gate rojo al entrar un servicio | Referencias sin `[UserReference]` o servicio fuera de `OffboardingParticipants` | Procedimiento de 15 pasos | [16](#cap-16) |
-| "Handover status" en N-1/N tras 30 min | Consumer caído, en DLQ, o acuse ausente (Node V5) | Revisar DLQ y logs `Offboarding step … rejected` | [16](#cap-16) |
-| Run "Completed" pero buzones sin purgar | Acuse al reenviar, no al purgar (Connectors V4) | Registrar como paso el handler que trabaja | [16](#cap-16) |
+| "Handover status" en N-1/N tras 30 min | Consumer caído, en DLQ, o acuse ausente (Node V4) | Revisar DLQ y logs `Offboarding step … rejected` | [16](#cap-16) |
 | 404 de Angular en un link público de correo | Ruta pública sin regla en Caddy antes de `@spa_nav` | Regla + `CaddyPublicNavigationRouteTests` | [27](#cap-27) |
 | IP de Docker en auditoría, sesiones y rate limit | Sin transform de `CF-Connecting-IP` o sin client IP forwarding | `UseTaxVisionClientIp` + transform del gateway | [26](#cap-26), [27](#cap-27) |
 | socket.io en long-polling roto detrás de Cloudflare | Falta `UseWebSockets()` antes de `MapReverseProxy()` | Orden del gateway | [26](#cap-26) |

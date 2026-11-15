@@ -5,7 +5,7 @@ namespace TaxVision.Postmaster.Infrastructure.Feedback;
 
 /// <summary>
 /// Sale de lo que esté registrado en DI: sumar un proveedor es registrar su traductor (push), su poller
-/// (pull) o ambos. Sin cambios en el handler.
+/// (pull) o ambos. Sin cambios en el handler. Un poller sin configuración (<c>IsEnabled = false</c>) no se ofrece.
 /// </summary>
 public sealed class DeliveryFeedbackCapabilities(
     IEnumerable<IDeliveryFeedbackTranslator> translators,
@@ -16,9 +16,12 @@ public sealed class DeliveryFeedbackCapabilities(
     private readonly Dictionary<FeedbackSource, IDeliveryFeedbackTranslator> _translators = translators.ToDictionary(
         t => t.Source
     );
-    private readonly Dictionary<FeedbackSource, IDeliveryFeedbackPoller> _pollers = pollers.ToDictionary(p => p.Source);
-    private readonly Dictionary<FeedbackSource, IEngagementFeedbackPoller> _engagementPollers =
-        engagementPollers.ToDictionary(p => p.Source);
+    private readonly Dictionary<FeedbackSource, IDeliveryFeedbackPoller> _pollers = pollers
+        .Where(p => p.IsEnabled)
+        .ToDictionary(p => p.Source);
+    private readonly Dictionary<FeedbackSource, IEngagementFeedbackPoller> _engagementPollers = engagementPollers
+        .Where(p => p.IsEnabled)
+        .ToDictionary(p => p.Source);
 
     public bool SupportsPush(FeedbackSource source) => _translators.ContainsKey(source);
 

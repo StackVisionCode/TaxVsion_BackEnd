@@ -36,8 +36,8 @@
   - Verificación: prueba del consumer (paso 14); `HandlerNamingContractTests` (nombre singular). · Origen: paso 6.
 - [ ] **7. Eventos derivados** [si el cambio interesa a otro servicio]: contrato en `src/BuildingBlocks/Messaging/<Servicio>IntegrationEvents/` con `[MessageIdentity]` y `PublishMessage<T>().ToRabbitExchange("taxvision-events")`. Nunca un campo `required` nuevo en un evento vivo.
   - Verificación: `MessageIdentityTests`, `EventRoutingContractTests` (BB). · Origen: paso 7.
-- [ ] **8. Wolverine/RabbitMQ**: `UseTaxVisionRabbitMq(uri)` (enciende el acuse automático), `PersistMessagesWithSqlServer`, `UseDurableOutboxOnAllSendingEndpoints`, `UseEntityFrameworkCoreTransactions`, `AutoApplyTransactions`, `ApplyStandardFailurePolicies`, cola `<servicio>-events` enlazada con `UseDurableInbox()` e `IntegrationEventTenantMiddleware`. Si el consumer solo reenvía un comando local, el acuse sale antes del trabajo: registrar como paso el handler que hace el trabajo.
-  - Verificación: `Program.cs`; `OffboardingStepAcknowledgementPolicyTests` (BB). · Origen: paso 8; [Offboarding](../Investigaciones/Offboarding.md) V4.
+- [ ] **8. Wolverine/RabbitMQ**: `UseTaxVisionRabbitMq(uri)` (enciende el acuse automático), `PersistMessagesWithSqlServer`, `UseDurableOutboxOnAllSendingEndpoints`, `UseEntityFrameworkCoreTransactions`, `AutoApplyTransactions`, `ApplyStandardFailurePolicies`, cola `<servicio>-events` enlazada con `UseDurableInbox()` e `IntegrationEventTenantMiddleware`. Si el consumer solo reenvía un comando local: `[AcknowledgesOffboardingLater]` en el consumer y `OffboardingStepNames.CompletedBy(...)` publicado por el handler que termina el trabajo, en su misma unidad con outbox.
+  - Verificación: `Program.cs`; `OffboardingStepAcknowledgementPolicyTests` (BB). · Origen: paso 8; [Offboarding](../Investigaciones/Offboarding.md) §4.1.
 - [ ] **9. Idempotencia por estado**: consultas que solo devuelven lo que todavía apunta al retirado; operaciones de dominio sin efecto si ya están hechas. Todos los handlers del mensaje corren en una cadena: si uno falla, los demás se repiten.
   - Verificación: prueba de reentrega (paso 14). · Origen: paso 9.
 - [ ] **10. Histórico intacto**: no tocar `Provenance`, auditoría, documentos firmados/sellados, cadenas HMAC, runs enviados, `CreatedByUserId`.
@@ -74,7 +74,7 @@ Estado actual según la investigación: *Cubierto*, *Parcial* o *Hueco*. Para un
 - [ ] **Reintento tras fallo** (servicio) — si un handler de la cadena lanza, no sale acuse.
   - Verificación: `OffboardingStepAcknowledgementPolicyTests.Does_not_acknowledge_when_a_handler_of_the_chain_fails`. Estado: Cubierto. · Origen: §9.2.
 - [ ] **Fuera de orden** (servicio) — un evento más viejo no reactiva; `UserRolesChanged` posterior al retiro no reactiva la proyección.
-  - Verificación: patrón `Replayed_registered_after_offboarding_does_not_reactivate` (Notification). Estado: Parcial; **Hueco** para `UserRolesChanged` posterior (V6). · Origen: §3.3 V6 y §9.2.
+  - Verificación: patrón `Replayed_registered_after_offboarding_does_not_reactivate` (Notification). Estado: Parcial; **Hueco** para `UserRolesChanged` posterior (V5). · Origen: §3.3 V5 y §9.2.
 - [ ] **Sesión activa** — tras retirar, el socket queda expulsado (Communication) y los .NET responden 401.
   - Verificación: `SessionAccessCutoffTests` (dobles) y `SessionDenylistMiddlewareTests`. Estado: **Hueco** de prueba encadenada "retirar → socket expulsado". · Origen: §9.2; [Session_Denylist](../Investigaciones/Session_Denylist.md).
 - [ ] **JWT vigente** — request con el token viejo tras retirar → 401 `Auth.SessionRevoked`.
@@ -82,7 +82,7 @@ Estado actual según la investigación: *Cubierto*, *Parcial* o *Hueco*. Para un
 - [ ] **Acceso tras desvincular** `[nivel Auth]` — refresh/login fallan (`RefreshAccessToken.cs:132`, `user is null || !user.IsActive`).
   - Verificación: lógica compartida con suspensión. Estado: **Hueco específico de retiro**. · Origen: §3.1 y §9.2.
 - [ ] **Proyección actualizada** (servicio) — `IsActive=false` en la proyección de permisos.
-  - Verificación: `UserLifecyclePermissionsProjectionConsumerTests` del servicio. Estado: Cubierto en ~25 servicios; **Hueco** en Wallet. · Origen: §9.2.
+  - Verificación: `UserLifecyclePermissionsProjectionConsumerTests` del servicio. Estado: Cubierto en todos los servicios con proyección de permisos. · Origen: §9.2.
 - [ ] **Histórico conservado** (servicio) — `Provenance` intacto.
   - Verificación: patrón `A_preparer_signature_already_given_is_never_touched` (Signature). Estado: Parcial. · Origen: §9.2.
 - [ ] **Reconciliation** — reconciliaciones de directorio solo marcan inactivo; no existe reconciliación de handover.

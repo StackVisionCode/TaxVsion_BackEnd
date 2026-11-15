@@ -47,7 +47,7 @@ Paquetes comunes a casi todos: xunit 2.9.3, runner 3.1.5, Test.Sdk 17.14.1. Colu
 | Subscription.Tests | 191 | 31 | 2 | 3 | EF InMemory, NetArchTest, Mvc.Testing, Jwt |
 | Tasks.Tests | 190 | 15 | 5 | 6 | EF InMemory, NetArchTest, Mvc.Testing, Jwt |
 | Tenant.Tests | 83 | 20 | 0 | 4 | Mvc.Testing, EF InMemory, NetArchTest, Jwt |
-| Wallet.Tests | 45 | 13 | 0 | 2 | EF InMemory, NetArchTest, Mvc.Testing |
+| Wallet.Tests | 46 | 13 | 0 | 2 | EF InMemory, NetArchTest, Mvc.Testing |
 
 ("Jwt" = `System.IdentityModel.Tokens.Jwt 8.19.1`; "Mvc.Testing" = `Microsoft.AspNetCore.Mvc.Testing 10.0.9`; "NetArchTest" = `NetArchTest.Rules 1.3.2`; "EF InMemory" = `Microsoft.EntityFrameworkCore.InMemory 10.0.9`.)
 

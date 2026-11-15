@@ -104,8 +104,7 @@
 <text x="960.0" y="854.0" font-size="13" fill="#1F2328" text-anchor="start">ServiceOnly sin allowlist de cliente o scope (SEC-001)</text>
 <text x="960.0" y="872.0" font-size="13" fill="#1F2328" text-anchor="start">Claves de config heterogéneas: una errata da token null</text>
 <text x="960.0" y="890.0" font-size="13" fill="#1F2328" text-anchor="start">(ServiceAuthClient:* frente a {Servicio}:ServiceAuth:*)</text>
-<text x="960.0" y="908.0" font-size="13" fill="#1F2328" text-anchor="start">FinancialInsights no cachea tokens (un POST por uso)</text>
-<text x="960.0" y="926.0" font-size="13" fill="#1F2328" text-anchor="start">Sin revocación M2M (sin sid): rotar el secreto en ambos lados</text>
+<text x="960.0" y="908.0" font-size="13" fill="#1F2328" text-anchor="start">Sin revocación M2M (sin sid): rotar el secreto en ambos lados</text>
 <rect x="30" y="958" width="1540" height="62" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
 <text x="42" y="978" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
 <rect x="42" y="987" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>

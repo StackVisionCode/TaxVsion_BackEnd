@@ -28,7 +28,7 @@
 - Contrato compartido `IServiceTokenAcquirer.GetTokenAsync(Guid tenantId)` — `src/BuildingBlocks/BuildingBlocks.Infrastructure/Security/IServiceTokenAcquirer.cs:10-13`.
 - Helper HTTP común `HttpClient.RequestServiceTokenAsync(clientId, secret, tenantId)` → `ServiceTokenGrant(AccessToken, ExpiresAtUtc)`; lanza `ServiceTokenAcquisitionException` en fallo de red/HTTP/JSON y **re-lanza la cancelación del llamador** (BB-16) — `ServiceTokenHttpAcquisition.cs:22-63`, `ServiceTokenGrant.cs`.
 - Caché: `ExpiringValueCache<TKey,TValue>(refreshBuffer)` (`src/BuildingBlocks/Security/ExpiringValueCache.cs:14-34`). Patrón correcto en Calendar: caché **estática** por `tenantId` con margen de 30 s (porque `AddHttpClient<>` registra el acquirer como transient) — `src/Services/Calendar/TaxVision.Calendar.Infrastructure/RateLimiting/ServiceTokenAcquirer.cs:35-72`.
-- FinancialInsights: `FinancialServiceTokenAcquirer` **sin caché** (un `POST auth/service-token` por cada uso) — `src/Services/FinancialInsights/TaxVision.FinancialInsights.Infrastructure/Permissions/FinancialServiceTokenAcquirer.cs:14-30`; `FinancialPermissionsSnapshotClient` pide su propio token en cada pull — `FinancialPermissionsSnapshotClient.cs:12-29`.
+- FinancialInsights: `FinancialServiceTokenAcquirer` con la misma caché **estática** por `tenantId` y margen de 30 s; `FinancialPermissionsSnapshotClient` toma el token de ese acquirer, no pide uno propio — `src/Services/FinancialInsights/TaxVision.FinancialInsights.Infrastructure/Permissions/{FinancialServiceTokenAcquirer, FinancialPermissionsSnapshotClient}.cs`.
 - Clave de configuración del cliente (no hay convención única): 18 servicios usan `ServiceAuthClient:{ClientId,ClientSecret}` (FI: `FinancialServiceTokenAcquirer.cs:16-17`; Calendar: `ServiceAuthClientOptions.SectionName = "ServiceAuthClient"`), y 6 usan `{Servicio}:ServiceAuth:*` (Correspondence, Postmaster, Reminder, Scribe, Signature, Subscription) — conteo en `deploy/docker/docker-compose.yml`.
 - URL de Auth: FI usa `Services:Auth:BaseUrl` (`DependencyInjection.cs:78,85`); Calendar `ServiceAuthClient:AuthBaseUrl` (default `http://localhost:5124`).
 
@@ -73,10 +73,9 @@
 1. **PlatformTenant no es una frontera entre clientes**: Auth emite token de `PlatformTenant` a cualquier cliente registrado (`IssueServiceToken.cs:26-51`). La comprobación `tenantId == PlatformTenant.Id` en los destinos solo prueba "es un cliente M2M que pidió la plataforma".
 2. **Inconsistencia en endpoints cross-tenant**: Customer y Auth (reconciliaciones) exigen PlatformTenant; Tenant (`directory`), Auth (`permissions-snapshot`) y Subscription (`entitlements`) no. **[Decisión pendiente]**.
 3. **`ServiceOnly` sin allowlist de cliente/scope** en la mayoría de destinos (SEC-001). Cualquier secreto M2M filtrado abre todos los `internal/*` con `ServiceOnly`.
-4. **FinancialInsights no cachea tokens** (`FinancialServiceTokenAcquirer.cs:14-30`): carga extra a Auth y latencia en cada pull de permisos, lectura de directorio, entitlements y plan-rate-limits.
-5. **Claves de configuración heterogéneas** (`ServiceAuthClient:*` vs `{Servicio}:ServiceAuth:*`): una errata no rompe el arranque, el acquirer devuelve `null` en silencio (`ServiceTokenAcquirer.cs:48-52` de Calendar lo loguea; FI devuelve null sin log en `FinancialServiceTokenAcquirer.cs:18-19`).
-6. **Un solo acquirer para destinos con modelos distintos** (Subscription funnelea Growth-scopes y ServiceOnly por el mismo cliente; memoria `project_subscription_m2m_serviceauth_and_pullrecovery_gap.md`).
-7. **Sin revocación de tokens M2M** (no hay `sid`); el corte es rotar el secreto en Auth y en el llamador a la vez.
+4. **Claves de configuración heterogéneas** (`ServiceAuthClient:*` vs `{Servicio}:ServiceAuth:*`): una errata no rompe el arranque, el acquirer devuelve `null` en silencio (`ServiceTokenAcquirer.cs:48-52` de Calendar lo loguea; FI devuelve null sin log en `FinancialServiceTokenAcquirer.cs:26-27`).
+5. **Un solo acquirer para destinos con modelos distintos** (Subscription funnelea Growth-scopes y ServiceOnly por el mismo cliente; memoria `project_subscription_m2m_serviceauth_and_pullrecovery_gap.md`).
+6. **Sin revocación de tokens M2M** (no hay `sid`); el corte es rotar el secreto en Auth y en el llamador a la vez.
 
 ---
 

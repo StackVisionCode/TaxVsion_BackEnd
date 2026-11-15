@@ -10,5 +10,11 @@ public interface IDeliveryFeedbackPoller
 {
     FeedbackSource Source { get; }
 
+    /// <summary>
+    /// False si al proveedor le falta configuración (p. ej. sin API key). El poller se registra igual: la forma del
+    /// contenedor no puede depender de la configuración porque el código de Wolverine se genera una sola vez.
+    /// </summary>
+    bool IsEnabled { get; }
+
     Task<IReadOnlyList<TranslatedFeedback>> PollAsync(IReadOnlyList<PendingDeliveryRef> pending, CancellationToken ct);
 }

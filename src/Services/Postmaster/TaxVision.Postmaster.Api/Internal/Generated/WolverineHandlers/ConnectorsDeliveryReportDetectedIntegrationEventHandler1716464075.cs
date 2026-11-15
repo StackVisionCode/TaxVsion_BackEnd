@@ -23,6 +23,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -32,11 +33,23 @@ namespace Internal.Generated.WolverineHandlers
             var unmatchedDeliveryFeedbackRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Feedback.IUnmatchedDeliveryFeedbackRepository>(serviceScope.ServiceProvider);
             var deliveryFeedbackReceiptRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackReceiptRepository>(serviceScope.ServiceProvider);
             var sentMessageRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Sending.ISentMessageRepository>(serviceScope.ServiceProvider);
+            
+            /*
+            * Dependency: Descriptor: ServiceType: System.Collections.Generic.IEnumerable"1[TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller] Lifetime: Scoped ImplementationType: System.Collections.Generic.IEnumerable"1[TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller]
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller Lifetime: Scoped ImplementationFactory: TaxVision.Postmaster.Infrastructure.DependencyInjection+<>c.<AddDeliveryFeedback>b__5_3
+            * The service registration for TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * 
+            * Dependency: Descriptor: ServiceType: System.Collections.Generic.IEnumerable"1[TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller] Lifetime: Scoped ImplementationType: System.Collections.Generic.IEnumerable"1[TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller]
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller Lifetime: Scoped ImplementationFactory: TaxVision.Postmaster.Infrastructure.DependencyInjection+<>c.<AddDeliveryFeedback>b__5_4
+            * The service registration for TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
             var deliveryFeedbackCapabilities = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackCapabilities>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var connectorsDeliveryReportDetectedIntegrationEvent = (BuildingBlocks.Messaging.ConnectorsIntegrationEvents.ConnectorsDeliveryReportDetectedIntegrationEvent)context.Envelope.Message;
 

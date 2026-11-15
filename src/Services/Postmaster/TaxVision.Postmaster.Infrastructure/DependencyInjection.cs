@@ -201,8 +201,10 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Avisos de entrega por proveedor: el traductor del webhook siempre; la consulta de respaldo solo si
-    /// hay API key (sin ella queda apagada y el webhook sigue funcionando).
+    /// Avisos de entrega por proveedor: el traductor del webhook siempre; la consulta de respaldo se registra
+    /// siempre y sin API key queda apagada (<c>IsEnabled = false</c>) mientras el webhook sigue funcionando.
+    /// Registrar según la configuración cambiaría la forma del contenedor y el código pregenerado de Wolverine
+    /// tomaría los pollers scoped desde la raíz.
     /// </summary>
     private static void AddDeliveryFeedback(IServiceCollection services, IConfiguration configuration)
     {
@@ -224,11 +226,7 @@ public static class DependencyInjection
             )
             .ValidateOnStart();
 
-        var smtp2GoSection = configuration.GetSection(Smtp2GoFeedbackOptions.SectionName);
-        services.Configure<Smtp2GoFeedbackOptions>(smtp2GoSection);
-        if (string.IsNullOrWhiteSpace(smtp2GoSection[nameof(Smtp2GoFeedbackOptions.ApiKey)]))
-            return;
-
+        services.Configure<Smtp2GoFeedbackOptions>(configuration.GetSection(Smtp2GoFeedbackOptions.SectionName));
         services.AddHttpClient<Smtp2GoActivityFeedbackPoller>(
             (sp, http) =>
             {
