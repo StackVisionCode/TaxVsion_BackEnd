@@ -62,21 +62,44 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         return task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task);
     }
 
-    // Visibilidad por asignación (P2): una tarea es visible para el actor si NO tiene cliente (interna), la
-    // tiene asignada, la creó, o su cliente está asignado a él en la proyección local. IgnoreQueryFilters +
-    // tenant explícito en el subquery (scope de Wolverine sin tenant ambiental). null = sin restricción.
+    // Visibilidad por asignación. Una tarea raíz se ve si el actor la tiene asignada, la creó, su cliente está
+    // asignado a él o es de la bandeja común (sin cliente y sin asignar). Una subtarea sigue a su madre: se ve
+    // si es trabajo propio o si se ve la madre. Se desenrolla hasta la abuela porque TaskItem.MaxDepth = 2.
+    // IgnoreQueryFilters + tenant explícito (scope de Wolverine sin tenant ambiental). null = sin restricción.
     private IQueryable<TaskItem> ApplyVisibility(IQueryable<TaskItem> query, Guid tenantId, Guid? assignedToUserId)
     {
-        if (assignedToUserId is not { } assignee)
+        if (assignedToUserId is not { } me)
             return query;
+
+        var myClients = context
+            .Set<CustomerAssignmentProjection>()
+            .IgnoreQueryFilters()
+            .Where(a => a.TenantId == tenantId && a.UserId == me);
+        var tasks = OfTenant(tenantId);
+
         return query.Where(t =>
-            t.Reference.CustomerId == null
-            || t.AssigneeUserId == assignee
-            || t.CreatedByUserId == assignee
-            || context
-                .Set<CustomerAssignmentProjection>()
-                .IgnoreQueryFilters()
-                .Any(a => a.TenantId == tenantId && a.UserId == assignee && a.CustomerId == t.Reference.CustomerId)
+            t.AssigneeUserId == me
+            || t.CreatedByUserId == me
+            || myClients.Any(a => a.CustomerId == t.Reference.CustomerId)
+            || (t.ParentTaskId == null && t.Reference.CustomerId == null && t.AssigneeUserId == null)
+            || tasks.Any(p =>
+                p.Id == t.ParentTaskId
+                && (
+                    p.AssigneeUserId == me
+                    || p.CreatedByUserId == me
+                    || myClients.Any(a => a.CustomerId == p.Reference.CustomerId)
+                    || (p.ParentTaskId == null && p.Reference.CustomerId == null && p.AssigneeUserId == null)
+                    || tasks.Any(g =>
+                        g.Id == p.ParentTaskId
+                        && (
+                            g.AssigneeUserId == me
+                            || g.CreatedByUserId == me
+                            || myClients.Any(a => a.CustomerId == g.Reference.CustomerId)
+                            || (g.Reference.CustomerId == null && g.AssigneeUserId == null)
+                        )
+                    )
+                )
+            )
         );
     }
 

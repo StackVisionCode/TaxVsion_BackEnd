@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 864" width="1600" height="864" font-family="Segoe UI, Arial, sans-serif">
+<title>SVG-23 · Pipeline de calidad real: del cambio al despliegue</title>
+<desc>Estado al 2026-11-15: el workflow deploy.yml no corre pruebas (decisión del dueño del 2026-11-13). Toda la calidad depende del gate local y de las .Integration. corridas por quien hace el cambio. Fuentes: CI_CD_Secrets.md, Testing_*.md, AGENTS.md.</desc>
+<defs><marker id="ah-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/></marker><marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2F5D9E"/></marker><marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker><marker id="ah-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B7791F"/></marker><marker id="ah-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B83232"/></marker><marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FA0"/></marker><marker id="ah-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2C7A7B"/></marker><marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/></marker></defs>
+<rect x="0" y="0" width="1600" height="864" fill="#FFFFFF"/>
+<rect class="ctr" x="30.0" y="746.0" width="1540.0" height="94.0" rx="8" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.2"/>
+<text x="40.0" y="769.0" font-size="14" font-weight="700" fill="#111827">Leyenda</text>
+<text x="30.0" y="42.0" font-size="24" font-weight="700" fill="#111827">SVG-23 · Pipeline de calidad real: del cambio al despliegue</text>
+<text x="30.0" y="68.0" font-size="14" fill="#4B5563">Estado al 2026-11-15: el workflow deploy.yml no corre pruebas (decisión del dueño del 2026-11-13). Toda la calidad depende del gate local y de las .Integration. corridas por quien hace el</text>
+<text x="30.0" y="88.0" font-size="14" fill="#4B5563">cambio. Fuentes: CI_CD_Secrets.md, Testing_*.md, AGENTS.md.</text>
+<rect class="box" x="30.0" y="172.0" width="276.0" height="116.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="40.0" y="195.0" font-size="14" font-weight="700" fill="#111827">1 · Prueba primero</text>
+<text x="40.0" y="218.0" font-size="13" fill="#1F2937">Escribir la prueba del cambio</text>
+<text x="40.0" y="236.0" font-size="13" fill="#1F2937">(clase por clase, sin números de</text>
+<text x="40.0" y="254.0" font-size="13" fill="#1F2937">fase)</text>
+<rect class="box" x="346.0" y="172.0" width="276.0" height="116.0" rx="6" fill="#FCE8E8" stroke="#B83232" stroke-width="1.5"/>
+<text x="356.0" y="195.0" font-size="14" font-weight="700" fill="#111827">2 · Rojo</text>
+<text x="356.0" y="218.0" font-size="13" fill="#1F2937">Correrla: tiene que fallar con el</text>
+<text x="356.0" y="236.0" font-size="13" fill="#1F2937">código actual y se muestra la</text>
+<text x="356.0" y="254.0" font-size="13" fill="#1F2937">salida</text>
+<rect class="box" x="662.0" y="172.0" width="276.0" height="116.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="672.0" y="195.0" font-size="14" font-weight="700" fill="#111827">3 · Arreglo mínimo</text>
+<text x="672.0" y="218.0" font-size="13" fill="#1F2937">Sin refactors extra; dominio con</text>
+<text x="672.0" y="236.0" font-size="13" fill="#1F2937">Result / Error</text>
+<rect class="box" x="978.0" y="172.0" width="276.0" height="116.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="988.0" y="195.0" font-size="14" font-weight="700" fill="#111827">4 · CSharpier</text>
+<text x="988.0" y="218.0" font-size="13" fill="#1F2937">dotnet csharpier format sobre lo</text>
+<text x="988.0" y="236.0" font-size="13" fill="#1F2937">tocado (printWidth 120)</text>
+<text x="988.0" y="254.0" font-size="13" font-style="italic" fill="#4B5563">Puede romper fitness de tamaño</text>
+<rect class="box" x="1294.0" y="172.0" width="276.0" height="116.0" rx="6" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="1304.0" y="195.0" font-size="14" font-weight="700" fill="#111827">5 · Gate local exacto</text>
+<text x="1304.0" y="218.0" font-size="13" fill="#1F2937">dotnet test TaxVision.slnx con el</text>
+<text x="1304.0" y="236.0" font-size="13" fill="#1F2937">filtro !~.Integration. &amp;</text>
+<text x="1304.0" y="254.0" font-size="13" fill="#1F2937">!~.Persistence. &amp;</text>
+<text x="1304.0" y="272.0" font-size="13" fill="#1F2937">!~ReminderRetentionJobTests</text>
+<rect class="box" x="1294.0" y="358.0" width="276.0" height="154.0" rx="6" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="1304.0" y="381.0" font-size="14" font-weight="700" fill="#111827">6 · .Integration. del</text>
+<text x="1304.0" y="401.0" font-size="14" font-weight="700" fill="#111827">servicio</text>
+<text x="1304.0" y="424.0" font-size="13" fill="#1F2937">Contra SQL local si se tocó</text>
+<text x="1304.0" y="442.0" font-size="13" fill="#1F2937">persistencia o un handler recibe</text>
+<text x="1304.0" y="460.0" font-size="13" fill="#1F2937">una dependencia nueva</text>
+<text x="1304.0" y="478.0" font-size="13" font-style="italic" fill="#4B5563">Migración creada y aplicada en</text>
+<text x="1304.0" y="496.0" font-size="13" font-style="italic" fill="#4B5563">local</text>
+<rect class="box" x="978.0" y="358.0" width="276.0" height="154.0" rx="6" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="988.0" y="381.0" font-size="14" font-weight="700" fill="#111827">7 · Wiring de despliegue</text>
+<text x="988.0" y="404.0" font-size="13" fill="#1F2937">Deploy/*Tests leen compose,</text>
+<text x="988.0" y="422.0" font-size="13" fill="#1F2937">Dockerfile, Caddyfile y deploy.yml</text>
+<text x="988.0" y="440.0" font-size="13" fill="#1F2937">(ya dentro del gate)</text>
+<text x="988.0" y="458.0" font-size="13" font-style="italic" fill="#4B5563">Pensar en Linux: el runner es</text>
+<text x="988.0" y="476.0" font-size="13" font-style="italic" fill="#4B5563">Linux</text>
+<rect class="box" x="662.0" y="358.0" width="276.0" height="154.0" rx="6" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="672.0" y="381.0" font-size="14" font-weight="700" fill="#111827">8 · Commit y push del dueño</text>
+<text x="672.0" y="404.0" font-size="13" fill="#1F2937">Solo el dueño hace commit y push;</text>
+<text x="672.0" y="422.0" font-size="13" fill="#1F2937">el push a main despliega</text>
+<rect class="box" x="346.0" y="358.0" width="276.0" height="154.0" rx="6" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
+<text x="356.0" y="381.0" font-size="14" font-weight="700" fill="#111827">9 · deploy.yml</text>
+<text x="356.0" y="404.0" font-size="13" fill="#1F2937">Jobs stage y deploy: build,</text>
+<text x="356.0" y="422.0" font-size="13" fill="#1F2937">migraciones, up -d</text>
+<text x="356.0" y="440.0" font-size="13" fill="#B83232">Sin pruebas hoy</text>
+<rect class="box" x="30.0" y="358.0" width="276.0" height="154.0" rx="6" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="40.0" y="381.0" font-size="14" font-weight="700" fill="#111827">10 · Verificación</text>
+<text x="40.0" y="401.0" font-size="14" font-weight="700" fill="#111827">post-deploy</text>
+<text x="40.0" y="424.0" font-size="13" fill="#1F2937">Healthcheck /health/ready en el</text>
+<text x="40.0" y="442.0" font-size="13" fill="#1F2937">dominio de la API</text>
+<text x="40.0" y="460.0" font-size="13" fill="#1F2937">(TAXVISION_DOMAIN), logs "code</text>
+<text x="40.0" y="478.0" font-size="13" fill="#1F2937">generation mode is Static" y</text>
+<text x="40.0" y="496.0" font-size="13" fill="#1F2937">prueba manual en vivo</text>
+<rect class="box" x="30.0" y="552.0" width="255.0" height="170.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="575.0" font-size="14" font-weight="700" fill="#111827">Reglas del ciclo</text>
+<text x="40.0" y="598.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="54.0" y="598.0" font-size="13" fill="#1F2937">Infraestructura real solo en</text>
+<text x="54.0" y="616.0" font-size="13" fill="#1F2937">namespace .Integration. (si</text>
+<text x="54.0" y="634.0" font-size="13" fill="#1F2937">no, rompe en Linux)</text>
+<text x="40.0" y="652.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="54.0" y="652.0" font-size="13" fill="#1F2937">Cerrar VBCSCompiler y</text>
+<text x="54.0" y="670.0" font-size="13" fill="#1F2937">testhost al terminar</text>
+<text x="40.0" y="688.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="54.0" y="688.0" font-size="13" fill="#1F2937">Sin commit, push, stash ni</text>
+<text x="54.0" y="706.0" font-size="13" fill="#1F2937">cambio de rama por agentes</text>
+<rect class="box" x="300.0" y="552.0" width="520.0" height="98.0" rx="6" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="310.0" y="575.0" font-size="14" font-weight="700" fill="#111827">Decisión del dueño (vigente)</text>
+<text x="310.0" y="598.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="324.0" y="598.0" font-size="13" fill="#1F2937">Sin pruebas en CI desde 2026-11-13 (no reabrir): saturaban</text>
+<text x="324.0" y="616.0" font-size="13" fill="#1F2937">el runner, que es la misma VM de producción</text>
+<text x="310.0" y="634.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="324.0" y="634.0" font-size="13" fill="#1F2937">Hoy un push a main con pruebas rojas despliega igual</text>
+<polygon points="802,561 811,570 802,579 793,570" fill="#6B4FA0"/>
+<rect class="box" x="1060.0" y="552.0" width="510.0" height="80.0" rx="6" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="1070.0" y="575.0" font-size="14" font-weight="700" fill="#111827">Servicios Node</text>
+<text x="1070.0" y="598.0" font-size="13" fill="#2C7A7B">•</text>
+<text x="1084.0" y="598.0" font-size="13" fill="#1F2937">Vitest de Communication, Recorder y TranscriptWorker, en local</text>
+<text x="1070.0" y="616.0" font-size="13" fill="#2C7A7B">•</text>
+<text x="1084.0" y="616.0" font-size="13" fill="#1F2937">No entran al .slnx ni al gate de .NET</text>
+<rect class="sw" x="42.0" y="786.0" width="30" height="16" rx="3" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="82.0" y="799.0" font-size="13" fill="#1F2937">Trabajo del desarrollador</text>
+<rect class="sw" x="291.5" y="786.0" width="30" height="16" rx="3" fill="#FCE8E8" stroke="#B83232" stroke-width="1.5"/>
+<text x="331.5" y="799.0" font-size="13" fill="#1F2937">Prueba en rojo</text>
+<rect class="sw" x="458.5" y="786.0" width="30" height="16" rx="3" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="498.5" y="799.0" font-size="13" fill="#1F2937">Verde / verificación</text>
+<rect class="sw" x="670.5" y="786.0" width="30" height="16" rx="3" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="710.5" y="799.0" font-size="13" fill="#1F2937">Integración local</text>
+<rect class="sw" x="860.0" y="786.0" width="30" height="16" rx="3" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="900.0" y="799.0" font-size="13" fill="#1F2937">Wiring / Node</text>
+<rect class="sw" x="1019.5" y="786.0" width="30" height="16" rx="3" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="1059.5" y="799.0" font-size="13" fill="#1F2937">Acción o decisión del dueño</text>
+<rect class="sw" x="1284.0" y="786.0" width="30" height="16" rx="3" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
+<text x="1324.0" y="799.0" font-size="13" fill="#1F2937">CI sin pruebas</text>
+<path class="leg" d="M 42.0 820.0 L 72.0 820.0" stroke="#374151" stroke-width="1.8" marker-end="url(#ah-dark)"/>
+<text x="82.0" y="825.0" font-size="13" fill="#1F2937">Siguiente paso</text>
+<path class="leg" d="M 209.0 820.0 L 239.0 820.0" stroke="#B83232" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#ah-red)"/>
+<text x="249.0" y="825.0" font-size="13" fill="#1F2937">Bucle por fallo</text>
+<polygon points="398.5,811 407.5,820 398.5,829 389.5,820" fill="#6B4FA0"/>
+<text x="423.5" y="825.0" font-size="13" fill="#1F2937">Requiere aprobación</text>
+<path class="arw" d="M 306.0 212.0 L 346.0 212.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 622.0 212.0 L 662.0 212.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 938.0 212.0 L 978.0 212.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 1254.0 212.0 L 1294.0 212.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 1432.0 288.0 L 1432.0 358.0" fill="none" stroke="#2E7D4F" stroke-width="1.6" marker-end="url(#ah-green)"/>
+<path class="arw" d="M 1294.0 398.0 L 1254.0 398.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 978.0 398.0 L 938.0 398.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 662.0 398.0 L 622.0 398.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 346.0 398.0 L 306.0 398.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 1432.0 172.0 L 1432.0 146.0 L 800.0 146.0 L 800.0 172.0" fill="none" stroke="#B83232" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah-red)"/>
+<path class="arw" d="M 1570.0 382.0 L 1585.0 382.0 L 1585.0 336.0 L 830.0 336.0 L 830.0 288.0" fill="none" stroke="#B83232" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah-red)"/>
+<path class="arw" d="M 484.0 552.0 L 484.0 512.0" fill="none" stroke="#6B4FA0" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah-purple)"/>
+<rect class="lbl" x="1442.2" y="297.0" width="47.5" height="22.0" rx="3" fill="#FFFFFF" fill-opacity="0.95" stroke="none"/>
+<text class="lbl" x="1466.0" y="311.0" font-size="13" text-anchor="middle" fill="#2E7D4F">verde</text>
+<rect class="lbl" x="994.8" y="135.0" width="242.5" height="22.0" rx="3" fill="#FFFFFF" fill-opacity="0.95" stroke="none"/>
+<text class="lbl" x="1116.0" y="149.0" font-size="13" text-anchor="middle" fill="#B83232">gate en rojo: volver al arreglo</text>
+<rect class="lbl" x="995.0" y="325.0" width="310.0" height="22.0" rx="3" fill="#FFFFFF" fill-opacity="0.95" stroke="none"/>
+<text class="lbl" x="1150.0" y="339.0" font-size="13" text-anchor="middle" fill="#B83232">.Integration. en rojo: volver al arreglo</text>
+</svg>

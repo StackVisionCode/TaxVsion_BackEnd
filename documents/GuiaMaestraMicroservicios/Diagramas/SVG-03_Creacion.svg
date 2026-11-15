@@ -1,0 +1,165 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 900" width="1500" height="900" font-family="Segoe UI, Arial, sans-serif">
+<title>Creación de un microservicio, de principio a fin</title>
+<desc>Trece pasos en orden; cada uno tiene un punto de control (prueba o guardarraíl) que debe quedar en verde antes de seguir</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1500" height="900" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">Creación de un microservicio, de principio a fin</text>
+<text x="30" y="66" font-size="14" fill="#555B63">Trece pasos en orden; cada uno tiene un punto de control (prueba o guardarraíl) que debe quedar en verde antes de seguir</text>
+<rect x="48" y="110" width="264" height="118" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="58.0" y="136.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">1 · Decidir</text>
+<text x="58.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">¿Invariante propio? (ADR-022)</text>
+<text x="58.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">¿Nadie lo llama en su write</text>
+<text x="58.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">path? (ADR-018)</text>
+<text x="58.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">Worker si cambia el cómputo</text>
+<rect x="48" y="236" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="58.0" y="260.0" font-size="13" fill="#1F2328" text-anchor="start">Si no hace falta: ampliar un</text>
+<text x="58.0" y="278.0" font-size="13" fill="#1F2328" text-anchor="start">servicio existente (Growth)</text>
+<rect x="332" y="110" width="264" height="118" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="342.0" y="136.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">2 · Estructura + tests</text>
+<text x="342.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">Domain / Application /</text>
+<text x="342.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">Infrastructure / Api + .slnx</text>
+<text x="342.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">TaxVision.&lt;Svc&gt;.Tests</text>
+<text x="342.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">Referencia: Notes (y Customer)</text>
+<rect x="332" y="236" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="342.0" y="260.0" font-size="13" fill="#1F2328" text-anchor="start">LayeringRulesBase heredada</text>
+<text x="342.0" y="278.0" font-size="13" fill="#1F2328" text-anchor="start">PreGeneratedHandlerCodeTests</text>
+<rect x="616" y="110" width="264" height="118" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="626.0" y="136.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">3 · Dominio</text>
+<text x="626.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">Agregados ricos (AggregateRoot)</text>
+<text x="626.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">Result / Error, sin excepciones</text>
+<text x="626.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">IDomainEvent en el agregado</text>
+<text x="626.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">Hora recibida (TimeProvider)</text>
+<rect x="616" y="236" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="626.0" y="260.0" font-size="13" fill="#1F2328" text-anchor="start">T-DOM: rojo → verde</text>
+<text x="626.0" y="278.0" font-size="13" fill="#1F2328" text-anchor="start">Domain sin EF, ASP.NET ni Wolverine</text>
+<rect x="900" y="110" width="264" height="118" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="910.0" y="136.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">4 · Persistencia</text>
+<text x="910.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">DbContext = IUnitOfWork</text>
+<text x="910.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">Filtro de tenant fail-closed</text>
+<text x="910.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">UseUtcDateTimes()</text>
+<text x="910.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">Migración + apply-migrations.sh</text>
+<rect x="900" y="236" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="910.0" y="260.0" font-size="13" fill="#1F2328" text-anchor="start">UtcDateTimesTests</text>
+<text x="910.0" y="278.0" font-size="13" fill="#1F2328" text-anchor="start">Migración aplicada en local</text>
+<rect x="1184" y="110" width="264" height="118" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1194.0" y="136.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">5 · Seguridad</text>
+<text x="1194.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">JWT + JwtTenantContext</text>
+<text x="1194.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">SessionDenylistMiddleware</text>
+<text x="1194.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">[AllowActorTypes], [HasPermission]</text>
+<text x="1194.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">&lt;Svc&gt;Permissions.cs + catálogo</text>
+<rect x="1184" y="236" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1194.0" y="260.0" font-size="13" fill="#1F2328" text-anchor="start">&lt;Svc&gt;ArchitectureTests</text>
+<text x="1194.0" y="278.0" font-size="13" fill="#1F2328" text-anchor="start">[RateLimit] en cada acción</text>
+<rect x="1184" y="360" width="264" height="118" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="1194.0" y="386.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">6 · Eventos</text>
+<text x="1194.0" y="406.0" font-size="13" fill="#1F2328" text-anchor="start">Contratos en BB.Messaging</text>
+<text x="1194.0" y="424.0" font-size="13" fill="#1F2328" text-anchor="start">[MessageIdentity] estable</text>
+<text x="1194.0" y="442.0" font-size="13" fill="#1F2328" text-anchor="start">PublishMessage&lt;T&gt;() al fanout</text>
+<text x="1194.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">Cola &lt;svc&gt;-events + inbox</text>
+<rect x="1184" y="486" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="1194.0" y="510.0" font-size="13" fill="#1F2328" text-anchor="start">EventRoutingContractTests</text>
+<text x="1194.0" y="528.0" font-size="13" fill="#1F2328" text-anchor="start">HandlerNamingContractTests</text>
+<rect x="900" y="360" width="264" height="118" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="910.0" y="386.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">7 · Proyecciones</text>
+<text x="910.0" y="406.0" font-size="13" fill="#1F2328" text-anchor="start">Permisos, plan, zona y</text>
+<text x="910.0" y="424.0" font-size="13" fill="#1F2328" text-anchor="start">asignaciones (ApplyIfNewer)</text>
+<text x="910.0" y="442.0" font-size="13" fill="#1F2328" text-anchor="start">Reconciliación M2M al arrancar</text>
+<text x="910.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">ReconciliationRetry (2 min)</text>
+<rect x="900" y="486" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="910.0" y="510.0" font-size="13" fill="#1F2328" text-anchor="start">ReconciliationRetryTests</text>
+<text x="910.0" y="528.0" font-size="13" fill="#1F2328" text-anchor="start">Compose: URL interna explícita</text>
+<rect x="616" y="360" width="264" height="118" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="626.0" y="386.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">8 · Offboarding</text>
+<text x="626.0" y="406.0" font-size="13" fill="#1F2328" text-anchor="start">[UserReference] en campos</text>
+<text x="626.0" y="424.0" font-size="13" fill="#1F2328" text-anchor="start">que apuntan a un empleado</text>
+<text x="626.0" y="442.0" font-size="13" fill="#1F2328" text-anchor="start">Consumer UserOffboarded</text>
+<text x="626.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">Acuse StepCompleted (N/N)</text>
+<rect x="616" y="486" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="626.0" y="510.0" font-size="13" fill="#1F2328" text-anchor="start">Fitness Offboarding/ (BB.Tests)</text>
+<text x="626.0" y="528.0" font-size="13" fill="#1F2328" text-anchor="start">UserReferenceContractTests</text>
+<rect x="332" y="360" width="264" height="118" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="342.0" y="386.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">9 · Comercialización</text>
+<text x="342.0" y="406.0" font-size="13" fill="#1F2328" text-anchor="start">Módulo en Subscription</text>
+<text x="342.0" y="424.0" font-size="13" fill="#1F2328" text-anchor="start">Prefijo en PermissionModuleMap</text>
+<text x="342.0" y="442.0" font-size="13" fill="#1F2328" text-anchor="start">Revisión de catálogo</text>
+<text x="342.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">AddModuleGate + features.ts</text>
+<rect x="332" y="486" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="342.0" y="510.0" font-size="13" fill="#1F2328" text-anchor="start">ModuleCatalogKnownModulesTests</text>
+<text x="342.0" y="528.0" font-size="13" fill="#1F2328" text-anchor="start">Gate valida módulos al arrancar</text>
+<rect x="48" y="360" width="264" height="118" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="58.0" y="386.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">10 · Notificaciones</text>
+<text x="58.0" y="406.0" font-size="13" fill="#1F2328" text-anchor="start">Evento propio con TenantId</text>
+<text x="58.0" y="424.0" font-size="13" fill="#1F2328" text-anchor="start">Consumer en Notification</text>
+<text x="58.0" y="442.0" font-size="13" fill="#1F2328" text-anchor="start">Plantilla sembrada en Scribe</text>
+<text x="58.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">Fechas con ScribeDates</text>
+<rect x="48" y="486" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="58.0" y="510.0" font-size="13" fill="#1F2328" text-anchor="start">Variables declaradas + versión</text>
+<text x="58.0" y="528.0" font-size="13" fill="#1F2328" text-anchor="start">Scribe antes que Notification</text>
+<rect x="48" y="610" width="264" height="118" rx="8" ry="8" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.6"/>
+<text x="58.0" y="636.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">11 · Gateway / Cloudflare</text>
+<text x="58.0" y="656.0" font-size="13" fill="#1F2328" text-anchor="start">Ruta /&lt;prefijo&gt;/{**catch-all}</text>
+<text x="58.0" y="674.0" font-size="13" fill="#1F2328" text-anchor="start">Cluster http://&lt;svc&gt;-api:8080</text>
+<text x="58.0" y="692.0" font-size="13" fill="#1F2328" text-anchor="start">internal/* nunca expuesto</text>
+<text x="58.0" y="710.0" font-size="13" fill="#1F2328" text-anchor="start">Hostname: lo agrega el senior</text>
+<rect x="48" y="736" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="58.0" y="760.0" font-size="13" fill="#1F2328" text-anchor="start">InternalSurfaceGuard → 404</text>
+<text x="58.0" y="778.0" font-size="13" fill="#1F2328" text-anchor="start">InternalRouteConvention (fitness)</text>
+<rect x="332" y="610" width="264" height="118" rx="8" ry="8" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.6"/>
+<text x="342.0" y="636.0" font-size="14" font-weight="700" fill="#5B6675" text-anchor="start">12 · Docker / CI</text>
+<text x="342.0" y="656.0" font-size="13" fill="#1F2328" text-anchor="start">Dockerfile: TZ, MALLOC_ARENA_MAX</text>
+<text x="342.0" y="674.0" font-size="13" fill="#1F2328" text-anchor="start">Compose: expose 8080, sin ports</text>
+<text x="342.0" y="692.0" font-size="13" fill="#1F2328" text-anchor="start">Secrets en production-extra</text>
+<text x="342.0" y="710.0" font-size="13" fill="#1F2328" text-anchor="start">deploy.yml + servicio migrations</text>
+<rect x="332" y="736" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="342.0" y="760.0" font-size="13" fill="#1F2328" text-anchor="start">Pruebas Deploy/: MallocArena,</text>
+<text x="342.0" y="778.0" font-size="13" fill="#1F2328" text-anchor="start">ProductionExtraSecrets, compose</text>
+<rect x="616" y="610" width="264" height="118" rx="8" ry="8" fill="#E3F4E8" stroke="#1E7B45" stroke-width="1.6"/>
+<text x="626.0" y="636.0" font-size="14" font-weight="700" fill="#1E7B45" text-anchor="start">13 · Producción</text>
+<text x="626.0" y="656.0" font-size="13" fill="#1F2328" text-anchor="start">Gate local completo en verde</text>
+<text x="626.0" y="674.0" font-size="13" fill="#1F2328" text-anchor="start">Commit y push: solo el dueño</text>
+<text x="626.0" y="692.0" font-size="13" fill="#1F2328" text-anchor="start">Log: code generation Static</text>
+<text x="626.0" y="710.0" font-size="13" fill="#1F2328" text-anchor="start">/health/ready en verde</text>
+<rect x="616" y="736" width="264" height="56" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="626.0" y="760.0" font-size="13" fill="#1F2328" text-anchor="start">El CI no corre pruebas:</text>
+<text x="626.0" y="778.0" font-size="13" fill="#1F2328" text-anchor="start">el gate se corre en local</text>
+<path d="M 312.0 169.0 L 332.0 169.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 596.0 169.0 L 616.0 169.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 880.0 169.0 L 900.0 169.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1164.0 169.0 L 1184.0 169.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1184.0 419.0 L 1164.0 419.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 900.0 419.0 L 880.0 419.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 616.0 419.0 L 596.0 419.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 332.0 419.0 L 312.0 419.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 312.0 669.0 L 332.0 669.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 596.0 669.0 L 616.0 669.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1448.0 169.0 L 1476.0 169.0 L 1476.0 419.0 L 1448.0 419.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 48.0 419.0 L 24.0 419.0 L 24.0 669.0 L 48.0 669.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="900" y="610" width="548" height="114" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="912" y="630" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<rect x="912" y="639" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="950" y="652" font-size="13" fill="#1F2328">Paso de código</text>
+<rect x="1066.51" y="639" width="30" height="16" rx="3" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.4"/>
+<text x="1104.51" y="652" font-size="13" fill="#1F2328">Paso de mensajería</text>
+<rect x="1251.31" y="639" width="30" height="16" rx="3" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.4"/>
+<text x="1289.31" y="652" font-size="13" fill="#1F2328">Gateway</text>
+<rect x="912" y="665" width="30" height="16" rx="3" fill="#EEF0F3" stroke="#5B6675" stroke-width="1.4"/>
+<text x="950" y="678" font-size="13" fill="#1F2328">Despliegue</text>
+<rect x="1040.38" y="665" width="30" height="16" rx="3" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.4"/>
+<text x="1078.38" y="678" font-size="13" fill="#1F2328">Decisión</text>
+<rect x="1154.2" y="665" width="30" height="16" rx="3" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.4" stroke-dasharray="4 3"/>
+<text x="1192.2" y="678" font-size="13" fill="#1F2328">Punto de control</text>
+<rect x="912" y="691" width="30" height="16" rx="3" fill="#E3F4E8" stroke="#1E7B45" stroke-width="1.4"/>
+<text x="950" y="704" font-size="13" fill="#1F2328">Producción</text>
+<path d="M 1040.38 699 L 1068.38 699" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="1078.38" y="704" font-size="13" fill="#1F2328">Orden de los pasos</text>
+<rect x="900" y="728" width="548" height="66" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="910.0" y="752.0" font-size="13" fill="#1F2328" text-anchor="start">Ciclo de cada ítem: prueba en rojo → arreglo mínimo → verde → gate.</text>
+<text x="910.0" y="770.0" font-size="13" fill="#1F2328" text-anchor="start">Las pruebas .Integration. se corren aparte contra la base local.</text>
+<text x="30" y="888" font-size="13" fill="#555B63" font-style="italic">Fuentes: Arquitectura.md · Auth_RBAC.md · Wolverine_RabbitMQ.md · Proyecciones.md · Reconciliation.md · Offboarding.md · Modulos_Planes_Addons.md · Scribe_Templates.md · Docker_Deploy.md · CI_CD_Secrets.md</text>
+</svg>

@@ -31,6 +31,9 @@ public sealed class Smtp2GoActivityFeedbackPoller(
 
     public FeedbackSource Source => FeedbackSource.Smtp2Go;
 
+    // Sin API key la consulta de respaldo queda apagada; el webhook sigue funcionando solo.
+    public bool IsEnabled => !string.IsNullOrWhiteSpace(options.Value.ApiKey);
+
     public async Task<IReadOnlyList<TranslatedFeedback>> PollAsync(
         IReadOnlyList<PendingDeliveryRef> pending,
         CancellationToken ct

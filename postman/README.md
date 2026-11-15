@@ -66,7 +66,7 @@ Se guardan a nivel colección; los scripts de test las rellenan solas:
 | Variable | Origen |
 |---|---|
 | `gateway` | `http://localhost:5047` (fijo). |
-| `authService` | `http://localhost:5124`; solo para endpoints internos no publicados por Gateway. |
+| `authService` | `http://localhost:5124`; Auth directo, para lo que el Gateway no publica (el grant **Service token** y los endpoints internos). |
 | `platformTenantId` | Tenant de plataforma usado por reconciliaciones M2M cross-tenant. |
 | `tenantId` | tu tenant. |
 | `serviceClientId` / `serviceClientSecret` | credencial M2M (del `.env`). |
@@ -77,7 +77,8 @@ Se guardan a nivel colección; los scripts de test las rellenan solas:
 
 ## Flujo recomendado (end-to-end)
 
-1. **Auth → Service token (M2M)** — puebla `{{serviceToken}}` (lo usan SMS/Catalog/Inventory).
+1. **Auth → Service token (M2M)** — puebla `{{serviceToken}}` (lo usan SMS/Catalog/Inventory). Va directo a
+   Auth (`{{authService}}`): el Gateway responde 404 al grant M2M, que solo se pide dentro de la red.
 2. **Catalog → Categories → Create category** — guarda `{{categoryId}}`.
 3. **Catalog → Items → Create item** — guarda `{{catalogItemId}}`. Si `kind = Product` y
    `trackInventory = true`, Inventory abre un `StockLevel` automáticamente (vía evento).

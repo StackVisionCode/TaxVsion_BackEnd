@@ -135,6 +135,7 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenGenerator, JwtTokenGenerator>();
         services.AddScoped<IAuthSessionIssuer, AuthSessionIssuer>();
         services.AddScoped<ILoginThrottler, LoginThrottler>();
+        services.AddScoped<IServiceClientThrottler, ServiceClientThrottler>();
 
         // AUTH-7: colaboradores de login y retiro. Ninguno recibe IMessageBus ni guarda: eso es del handler.
         services.AddScoped<TaxVision.Auth.Application.Common.AuthAuditTrail>();

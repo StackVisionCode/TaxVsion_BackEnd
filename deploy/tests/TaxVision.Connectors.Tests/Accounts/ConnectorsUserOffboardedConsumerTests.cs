@@ -29,4 +29,11 @@ public sealed class ConnectorsUserOffboardedConsumerTests
             Assert.Single(bus.Published)
         );
     }
+
+    // Si lo acusara la política, Auth daría el paso por hecho con la purga todavía pendiente.
+    [Fact]
+    public void The_acknowledgement_is_left_to_the_purge() =>
+        Assert.True(
+            typeof(ConnectorsUserOffboardedConsumer).IsDefined(typeof(AcknowledgesOffboardingLaterAttribute), false)
+        );
 }

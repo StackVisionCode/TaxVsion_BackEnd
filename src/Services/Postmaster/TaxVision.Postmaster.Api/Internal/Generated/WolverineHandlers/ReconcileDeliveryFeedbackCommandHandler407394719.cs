@@ -2,7 +2,6 @@
 #pragma warning disable
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -12,29 +11,34 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.Postmaster.Application.Feedback.Commands.ReconcileDeliveryFeedback.ReconcileDeliveryFeedbackCommand> _loggerForMessage;
-        private readonly System.Collections.Generic.IEnumerable<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller> _deliveryFeedbackPollerIEnumerable;
-        private readonly System.Collections.Generic.IEnumerable<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackTranslator> _deliveryFeedbackTranslatorIEnumerable;
-        private readonly System.Collections.Generic.IEnumerable<TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller> _engagementFeedbackPollerIEnumerable;
 
-        public ReconcileDeliveryFeedbackCommandHandler407394719(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Postmaster.Application.Feedback.Commands.ReconcileDeliveryFeedback.ReconcileDeliveryFeedbackCommand> loggerForMessage, System.Collections.Generic.IEnumerable<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller> deliveryFeedbackPollerIEnumerable, System.Collections.Generic.IEnumerable<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackTranslator> deliveryFeedbackTranslatorIEnumerable, System.Collections.Generic.IEnumerable<TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller> engagementFeedbackPollerIEnumerable)
+        public ReconcileDeliveryFeedbackCommandHandler407394719(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Postmaster.Application.Feedback.Commands.ReconcileDeliveryFeedback.ReconcileDeliveryFeedbackCommand> loggerForMessage)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _loggerForMessage = loggerForMessage;
-            _deliveryFeedbackPollerIEnumerable = deliveryFeedbackPollerIEnumerable;
-            _deliveryFeedbackTranslatorIEnumerable = deliveryFeedbackTranslatorIEnumerable;
-            _engagementFeedbackPollerIEnumerable = engagementFeedbackPollerIEnumerable;
         }
 
 
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var postmasterDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Infrastructure.Persistence.PostmasterDbContext>(serviceScope.ServiceProvider);
-            var sentMessageRepository = new TaxVision.Postmaster.Infrastructure.Persistence.Repositories.SentMessageRepository(postmasterDbContext);
-            var deliveryFeedbackCapabilities = new TaxVision.Postmaster.Infrastructure.Feedback.DeliveryFeedbackCapabilities(_deliveryFeedbackTranslatorIEnumerable, _deliveryFeedbackPollerIEnumerable, _engagementFeedbackPollerIEnumerable);
+            var sentMessageRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Sending.ISentMessageRepository>(serviceScope.ServiceProvider);
+            
+            /*
+            * Dependency: Descriptor: ServiceType: System.Collections.Generic.IEnumerable"1[TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller] Lifetime: Scoped ImplementationType: System.Collections.Generic.IEnumerable"1[TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller]
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller Lifetime: Scoped ImplementationFactory: TaxVision.Postmaster.Infrastructure.DependencyInjection+<>c.<AddDeliveryFeedback>b__5_3
+            * The service registration for TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackPoller is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * 
+            * Dependency: Descriptor: ServiceType: System.Collections.Generic.IEnumerable"1[TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller] Lifetime: Scoped ImplementationType: System.Collections.Generic.IEnumerable"1[TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller]
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller Lifetime: Scoped ImplementationFactory: TaxVision.Postmaster.Infrastructure.DependencyInjection+<>c.<AddDeliveryFeedback>b__5_4
+            * The service registration for TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var deliveryFeedbackCapabilities = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackCapabilities>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var reconcileDeliveryFeedbackCommand = (TaxVision.Postmaster.Application.Feedback.Commands.ReconcileDeliveryFeedback.ReconcileDeliveryFeedbackCommand)context.Envelope.Message;
 

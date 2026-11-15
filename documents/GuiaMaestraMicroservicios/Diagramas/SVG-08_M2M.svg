@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1060" width="1600" height="1060" font-family="Segoe UI, Arial, sans-serif">
+<title>M2M entre microservicios (client credentials)</title>
+<desc>Registro del cliente en Auth → IServiceTokenAcquirer con caché → POST auth/service-token → llamada a internal/* con ServiceOnly</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1600" height="1060" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">M2M entre microservicios (client credentials)</text>
+<text x="30" y="66" font-size="14" fill="#555B63">Registro del cliente en Auth → IServiceTokenAcquirer con caché → POST auth/service-token → llamada a internal/* con ServiceOnly</text>
+<rect x="30" y="100" width="440" height="500" rx="10" ry="10" fill="#E9F5EC" fill-opacity="0.55" stroke="#2E7D4F" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="42" y="122" font-size="14" font-weight="700" fill="#2E7D4F">Servicio llamador</text>
+<rect x="48" y="140" width="404" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="58.0" y="166.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Configuración del llamador</text>
+<text x="58.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">ServiceAuthClient:ClientId / ClientSecret</text>
+<text x="58.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">Services:Auth:BaseUrl = http://auth-api:8080/</text>
+<text x="58.0" y="222.0" font-size="13" fill="#1F2328" text-anchor="start">Local: user-secrets · Prod: .env de deploy.yml</text>
+<rect x="48" y="270" width="404" height="114" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="58.0" y="296.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">IServiceTokenAcquirer</text>
+<text x="58.0" y="316.0" font-size="13" fill="#1F2328" text-anchor="start">GetTokenAsync(tenantId)</text>
+<text x="58.0" y="334.0" font-size="13" fill="#1F2328" text-anchor="start">Caché ExpiringValueCache estática por tenant,</text>
+<text x="58.0" y="352.0" font-size="13" fill="#1F2328" text-anchor="start">margen de 30 s (patrón Calendar)</text>
+<text x="58.0" y="370.0" font-size="13" fill="#1F2328" text-anchor="start">Miss → RequestServiceTokenAsync</text>
+<rect x="48" y="480" width="404" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="58.0" y="506.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">HttpClient tipado</text>
+<text x="58.0" y="526.0" font-size="13" fill="#1F2328" text-anchor="start">AllowAutoRedirect = false · timeout explícito</text>
+<text x="58.0" y="544.0" font-size="13" fill="#1F2328" text-anchor="start">Authorization: Bearer &lt;token M2M&gt;</text>
+<text x="58.0" y="562.0" font-size="13" fill="#1F2328" text-anchor="start">Solo lectura: fallo → null (decide el llamador)</text>
+<path d="M 250.0 236.0 L 250.0 270.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 250.0 384.0 L 250.0 480.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="590" y="100" width="420" height="400" rx="10" ry="10" fill="#E3EAF5" fill-opacity="0.55" stroke="#1F4E8C" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="602" y="122" font-size="14" font-weight="700" fill="#1F4E8C">Auth (emisor)</text>
+<rect x="608" y="140" width="384" height="96" rx="8" ry="8" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.6"/>
+<text x="618.0" y="166.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">Registro del cliente (config, no BD)</text>
+<text x="618.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">ServiceAuth:Clients:N:{ClientId, Secret,</text>
+<text x="618.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">Permissions, Audience, Scopes}</text>
+<text x="618.0" y="222.0" font-size="13" fill="#1F2328" text-anchor="start">Compose auth-api: ServiceAuth__Clients__N__*</text>
+<rect x="608" y="270" width="384" height="96" rx="8" ry="8" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.6"/>
+<text x="618.0" y="296.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">POST auth/service-token</text>
+<text x="618.0" y="316.0" font-size="13" fill="#1F2328" text-anchor="start">[AllowAnonymous] · [RateLimitExempt]</text>
+<text x="618.0" y="334.0" font-size="13" fill="#1F2328" text-anchor="start">Secreto con FixedTimeEquals;</text>
+<text x="618.0" y="352.0" font-size="13" fill="#1F2328" text-anchor="start">misma respuesta si el cliente no existe</text>
+<rect x="608" y="384" width="384" height="78" rx="8" ry="8" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.6"/>
+<text x="618.0" y="410.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">Token emitido (10 min)</text>
+<text x="618.0" y="430.0" font-size="13" fill="#1F2328" text-anchor="start">actor_type=Service · client_id · tenant_id</text>
+<text x="618.0" y="448.0" font-size="13" fill="#1F2328" text-anchor="start">perm × N · scope × N · sin sid ni perm_v</text>
+<path d="M 800.0 236.0 L 800.0 270.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 800.0 366.0 L 800.0 384.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 452.0 300.0 L 608.0 300.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="507.3" y="290.0" width="45.4" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="530.0" y="304.5" font-size="13" fill="#444B55" text-anchor="middle">POST</text>
+<path d="M 608.0 423.0 L 530.0 423.0 L 530.0 360.0 L 452.0 360.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="484.2" y="382.0" width="91.6" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="530.0" y="396.5" font-size="13" fill="#444B55" text-anchor="middle">accessToken</text>
+<path d="M 452.0 528.0 L 1148.0 528.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="663.2" y="518.0" width="273.5" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="800.0" y="532.5" font-size="13" fill="#444B55" text-anchor="middle">GET http://&lt;dueño&gt;-api:8080/internal/...</text>
+<rect x="1130" y="100" width="440" height="640" rx="10" ry="10" fill="#E9F5EC" fill-opacity="0.55" stroke="#2E7D4F" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="1142" y="122" font-size="14" font-weight="700" fill="#2E7D4F">Servicio dueño (destino)</text>
+<rect x="1148" y="140" width="404" height="132" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="1158.0" y="166.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Ejemplos reales de internal/*</text>
+<text x="1158.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">Auth  internal/tenants/{t}/primary-host</text>
+<text x="1158.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">Auth  .../users/{u}/permissions-snapshot</text>
+<text x="1158.0" y="222.0" font-size="13" fill="#1F2328" text-anchor="start">Subscription  internal/tenants/{id}/entitlements</text>
+<text x="1158.0" y="240.0" font-size="13" fill="#1F2328" text-anchor="start">Customer  internal/customers/reconciliation</text>
+<text x="1158.0" y="258.0" font-size="13" fill="#1F2328" text-anchor="start">Tenant  internal/tenants/directory</text>
+<rect x="1148" y="300" width="404" height="114" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="1158.0" y="326.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Scopes y audiencia propia</text>
+<text x="1158.0" y="346.0" font-size="13" fill="#1F2328" text-anchor="start">Growth, Billing, Documents, Payments:</text>
+<text x="1158.0" y="364.0" font-size="13" fill="#1F2328" text-anchor="start">[HasServiceScope] (prefijo service-scope:)</text>
+<text x="1158.0" y="382.0" font-size="13" fill="#1F2328" text-anchor="start">Audience taxvision-growth, etc.</text>
+<text x="1158.0" y="400.0" font-size="13" fill="#1F2328" text-anchor="start">Destino: Jwt__ValidAudiences__1</text>
+<rect x="1148" y="470" width="404" height="114" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6"/>
+<text x="1158.0" y="496.0" font-size="14" font-weight="700" fill="#475569" text-anchor="start">Controller interno</text>
+<text x="1158.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">[Route("internal/...")]</text>
+<text x="1158.0" y="534.0" font-size="13" fill="#1F2328" text-anchor="start">[Authorize(Policy = "ServiceOnly")]</text>
+<text x="1158.0" y="552.0" font-size="13" fill="#1F2328" text-anchor="start">[AllowActorTypes(ActorType.Service)]</text>
+<text x="1158.0" y="570.0" font-size="13" fill="#1F2328" text-anchor="start">[RateLimitExempt("...")]</text>
+<rect x="1148" y="610" width="404" height="114" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6"/>
+<text x="1158.0" y="636.0" font-size="14" font-weight="700" fill="#475569" text-anchor="start">Tenant y permisos en el destino</text>
+<text x="1158.0" y="656.0" font-size="13" fill="#1F2328" text-anchor="start">Por tenant: User.TryGetTenantId()</text>
+<text x="1158.0" y="674.0" font-size="13" fill="#1F2328" text-anchor="start">Cross-tenant: exige PlatformTenant.Id</text>
+<text x="1158.0" y="692.0" font-size="13" fill="#1F2328" text-anchor="start">(Customer y Auth; Tenant y Subscription no)</text>
+<text x="1158.0" y="710.0" font-size="13" fill="#1F2328" text-anchor="start">[HasPermission] lee el claim perm</text>
+<path d="M 1350.0 584.0 L 1350.0 610.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="590" y="600" width="420" height="78" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="600.0" y="626.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">Gateway (Internet)</text>
+<text x="600.0" y="646.0" font-size="13" fill="#1F2328" text-anchor="start">InternalSurfaceGuardMiddleware: 404 a internal/*</text>
+<text x="600.0" y="664.0" font-size="13" fill="#1F2328" text-anchor="start">y al grant POST /auth/service-token (ADR-019)</text>
+<rect x="30" y="790" width="900" height="150" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="40.0" y="816.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">Cuándo M2M y cuándo eventos</text>
+<text x="40.0" y="836.0" font-size="13" fill="#1F2328" text-anchor="start">Avisar un hecho sin esperar respuesta → evento por taxvision-events</text>
+<text x="40.0" y="854.0" font-size="13" fill="#1F2328" text-anchor="start">Dato de otro servicio que se lee en cada request → proyección local (ApplyIfNewer)</text>
+<text x="40.0" y="872.0" font-size="13" fill="#1F2328" text-anchor="start">Rellenar una proyección o recuperar eventos perdidos → M2M internal/* en un job</text>
+<text x="40.0" y="890.0" font-size="13" fill="#1F2328" text-anchor="start">Consulta síncrona que no admite retraso → M2M directo</text>
+<text x="40.0" y="908.0" font-size="13" fill="#1F2328" text-anchor="start">Orden de trabajo a un único servicio → cola dedicada sin fanout</text>
+<text x="40.0" y="926.0" font-size="13" fill="#1F2328" text-anchor="start">En el camino de la request se lee la proyección local, no M2M</text>
+<rect x="950" y="790" width="620" height="150" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="960.0" y="816.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">Riesgos verificados</text>
+<text x="960.0" y="836.0" font-size="13" fill="#1F2328" text-anchor="start">PlatformTenant no distingue clientes: Auth lo emite a cualquiera</text>
+<text x="960.0" y="854.0" font-size="13" fill="#1F2328" text-anchor="start">ServiceOnly sin allowlist de cliente o scope (SEC-001)</text>
+<text x="960.0" y="872.0" font-size="13" fill="#1F2328" text-anchor="start">Claves de config heterogéneas: una errata da token null</text>
+<text x="960.0" y="890.0" font-size="13" fill="#1F2328" text-anchor="start">(ServiceAuthClient:* frente a {Servicio}:ServiceAuth:*)</text>
+<text x="960.0" y="908.0" font-size="13" fill="#1F2328" text-anchor="start">Sin revocación M2M (sin sid): rotar el secreto en ambos lados</text>
+<rect x="30" y="958" width="1540" height="62" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="42" y="978" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<rect x="42" y="987" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="80" y="1000" font-size="13" fill="#1F2328">Servicio</text>
+<rect x="152.82999999999998" y="987" width="30" height="16" rx="3" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.4"/>
+<text x="190.82999999999998" y="1000" font-size="13" fill="#1F2328">Auth</text>
+<rect x="240.51999999999998" y="987" width="30" height="16" rx="3" fill="#EEF2F7" stroke="#475569" stroke-width="1.4"/>
+<text x="278.52" y="1000" font-size="13" fill="#1F2328">Autorización M2M</text>
+<rect x="412.19" y="987" width="30" height="16" rx="3" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.4"/>
+<text x="450.19" y="1000" font-size="13" fill="#1F2328">Ejemplos / variantes</text>
+<rect x="603.36" y="987" width="30" height="16" rx="3" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.4"/>
+<text x="641.36" y="1000" font-size="13" fill="#1F2328">Regla de decisión</text>
+<rect x="773.73" y="987" width="30" height="16" rx="3" fill="#FDECEC" stroke="#C0392B" stroke-width="1.4"/>
+<text x="811.73" y="1000" font-size="13" fill="#1F2328">Bloqueo o riesgo</text>
+<path d="M 936.82 995 L 964.82 995" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="974.82" y="1000" font-size="13" fill="#1F2328">Llamada / flujo</text>
+<text x="30" y="1048" font-size="13" fill="#555B63" font-style="italic">Fuentes: M2M_ServiceAuth.md · Auth_RBAC.md · Reconciliation.md · Wolverine_RabbitMQ.md · Gateway_YARP.md</text>
+</svg>

@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 860" width="1600" height="860" font-family="Segoe UI, Arial, sans-serif">
+<title>Links por oficina en correos y avisos</title>
+<desc>Notification compone las URLs: host de la oficina (slug del evento o primary-host de Auth) + TenantEmailLinks; si no hay host, link degradado y el correo sale igual</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1600" height="860" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">Links por oficina en correos y avisos</text>
+<text x="30" y="66" font-size="14" fill="#555B63">Notification compone las URLs: host de la oficina (slug del evento o primary-host de Auth) + TenantEmailLinks; si no hay host, link degradado y el correo sale igual</text>
+<rect x="30" y="110" width="230" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="136.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Servicio X</text>
+<text x="40.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">Publica su evento con</text>
+<text x="40.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">TenantId (y el slug si</text>
+<text x="40.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">lo conoce)</text>
+<rect x="290" y="110" width="270" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="300.0" y="136.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Consumer en Notification</text>
+<text x="300.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">Decide destinatarios</text>
+<text x="300.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">Destino por actor:</text>
+<text x="300.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">AuthAccountCopy.IsPortal</text>
+<rect x="590" y="110" width="270" height="96" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="600.0" y="136.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">¿El evento trae el slug?</text>
+<text x="600.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">Ej.: InvitationCreatedConsumer,</text>
+<text x="600.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">SeatSlotEmailConsumers</text>
+<rect x="900" y="110" width="280" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="910.0" y="136.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">TenantHost(slug)</text>
+<text x="910.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">IPlatformSettings.Current</text>
+<text x="910.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">Dominio vigente, no un</text>
+<text x="910.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">FQDN guardado</text>
+<path d="M 260.0 158.0 L 290.0 158.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 560.0 158.0 L 590.0 158.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 860.0 158.0 L 900.0 158.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="867.7" y="148.0" width="24.6" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="880.0" y="162.5" font-size="13" fill="#444B55" text-anchor="middle">sí</text>
+<rect x="590" y="270" width="270" height="96" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="600.0" y="296.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">ITenantHostResolver</text>
+<text x="600.0" y="316.0" font-size="13" fill="#1F2328" text-anchor="start">Caché TenantHostCache 15 min</text>
+<text x="600.0" y="334.0" font-size="13" fill="#1F2328" text-anchor="start">Nunca lanza: null si falla</text>
+<text x="600.0" y="352.0" font-size="13" fill="#1F2328" text-anchor="start">Se invalida por rename</text>
+<rect x="900" y="270" width="280" height="114" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6"/>
+<text x="910.0" y="296.0" font-size="14" font-weight="700" fill="#475569" text-anchor="start">Auth (M2M)</text>
+<text x="910.0" y="316.0" font-size="13" fill="#1F2328" text-anchor="start">GET internal/tenants/{id}/</text>
+<text x="910.0" y="334.0" font-size="13" fill="#1F2328" text-anchor="start">primary-host · ServiceOnly</text>
+<text x="910.0" y="352.0" font-size="13" fill="#1F2328" text-anchor="start">Subdominio primario activo</text>
+<text x="910.0" y="370.0" font-size="13" fill="#1F2328" text-anchor="start">→ (Host, TimeZoneId)</text>
+<path d="M 725.0 206.0 L 725.0 270.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="712.7" y="228.0" width="24.6" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="725.0" y="242.5" font-size="13" fill="#444B55" text-anchor="middle">no</text>
+<path d="M 860.0 318.0 L 900.0 318.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1220" y="110" width="350" height="256" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1230.0" y="136.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">TenantEmailLinks (Notification)</text>
+<text x="1230.0" y="156.0" font-size="13" fill="#1F2328" text-anchor="start">StaffBase(host) → https://{host}</text>
+<text x="1230.0" y="174.0" font-size="13" fill="#1F2328" text-anchor="start">ClientBase(host) → https://{host}/portal</text>
+<text x="1230.0" y="192.0" font-size="13" fill="#1F2328" text-anchor="start">(ClientPathPrefix = "/portal")</text>
+<text x="1230.0" y="210.0" font-size="13" fill="#1F2328" text-anchor="start">Helpers: SigningLink, ClientForm,</text>
+<text x="1230.0" y="228.0" font-size="13" fill="#1F2328" text-anchor="start">SignatureDeliveryPage, PublicShare*</text>
+<text x="1230.0" y="264.0" font-size="13" fill="#1F2328" text-anchor="start">Agregar helpers aquí;</text>
+<text x="1230.0" y="282.0" font-size="13" fill="#1F2328" text-anchor="start">no concatenar URLs</text>
+<path d="M 1180.0 158.0 L 1220.0 158.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1180.0 318.0 L 1220.0 318.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="590" y="420" width="270" height="96" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="600.0" y="446.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">Sin host: base fija</text>
+<text x="600.0" y="466.0" font-size="13" fill="#1F2328" text-anchor="start">PortalOptions.BaseUrl /</text>
+<text x="600.0" y="484.0" font-size="13" fill="#1F2328" text-anchor="start">ClientBaseUrl (PORTAL_BASE_URL)</text>
+<text x="600.0" y="502.0" font-size="13" fill="#1F2328" text-anchor="start">Link degradado; el correo sale</text>
+<path d="M 725.0 366.0 L 725.0 420.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="708.4" y="383.0" width="33.1" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="725.0" y="397.5" font-size="13" fill="#444B55" text-anchor="middle">null</text>
+<path d="M 860.0 468.0 L 1200.0 468.0 L 1200.0 340.0 L 1220.0 340.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="998.2" y="458.0" width="63.6" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
+<text x="1030.0" y="472.5" font-size="13" fill="#444B55" text-anchor="middle">base fija</text>
+<rect x="590" y="590" width="300" height="96" rx="8" ry="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="600.0" y="616.0" font-size="14" font-weight="700" fill="#2F6DB5" text-anchor="start">Personal → CRM</text>
+<text x="600.0" y="636.0" font-size="13" fill="#1F2328" text-anchor="start">https://{slug}.{dominio}/...</text>
+<text x="600.0" y="654.0" font-size="13" fill="#1F2328" text-anchor="start">/reset-password?token=...</text>
+<text x="600.0" y="672.0" font-size="13" fill="#1F2328" text-anchor="start">/accept-invitation?token=...</text>
+<rect x="910" y="590" width="320" height="96" rx="8" ry="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="920.0" y="616.0" font-size="14" font-weight="700" fill="#2F6DB5" text-anchor="start">Cliente → portal</text>
+<text x="920.0" y="636.0" font-size="13" fill="#1F2328" text-anchor="start">https://{slug}.{dominio}/portal/...</text>
+<text x="920.0" y="654.0" font-size="13" fill="#1F2328" text-anchor="start">/client/auth/reset-password/new?token=</text>
+<text x="920.0" y="672.0" font-size="13" fill="#1F2328" text-anchor="start">/client/documents</text>
+<rect x="1250" y="590" width="320" height="96" rx="8" ry="8" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="1260.0" y="616.0" font-size="14" font-weight="700" fill="#2F6DB5" text-anchor="start">Públicos por token</text>
+<text x="1260.0" y="636.0" font-size="13" fill="#1F2328" text-anchor="start">/signature/public/{token} · /d/{token}</text>
+<text x="1260.0" y="654.0" font-size="13" fill="#1F2328" text-anchor="start">/s/{token} · /storage/public/{token}</text>
+<text x="1260.0" y="672.0" font-size="13" fill="#1F2328" text-anchor="start">/f/{token} · /pay/{token} · /rsvp#token=</text>
+<path d="M 1395.0 366.0 L 1395.0 556.0" fill="none" stroke="#444B55" stroke-width="1.7"/>
+<path d="M 740.0 556.0 L 1410.0 556.0" fill="none" stroke="#444B55" stroke-width="1.7"/>
+<path d="M 740.0 556.0 L 740.0 590.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1070.0 556.0 L 1070.0 590.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1410.0 556.0 L 1410.0 590.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="250" width="530" height="150" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="40.0" y="276.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">Reglas para un servicio nuevo</text>
+<text x="40.0" y="296.0" font-size="13" fill="#1F2328" text-anchor="start">No arma links de correo: publica el evento y</text>
+<text x="40.0" y="314.0" font-size="13" fill="#1F2328" text-anchor="start">Notification compone la URL</text>
+<text x="40.0" y="332.0" font-size="13" fill="#1F2328" text-anchor="start">Tokens: los emite el servicio dueño; Notification</text>
+<text x="40.0" y="350.0" font-size="13" fill="#1F2328" text-anchor="start">solo los inserta (cuenta: ProtectedToken cifrado)</text>
+<text x="40.0" y="368.0" font-size="13" fill="#1F2328" text-anchor="start">Expiración tipada: ScribeDates.Instant(ExpiresAtUtc)</text>
+<text x="40.0" y="386.0" font-size="13" fill="#1F2328" text-anchor="start">Confidential → cola postmaster-events (sin fanout)</text>
+<rect x="30" y="420" width="530" height="132" rx="8" ry="8" fill="#FDECEC" stroke="#C0392B" stroke-width="1.6"/>
+<text x="40.0" y="446.0" font-size="14" font-weight="700" fill="#C0392B" text-anchor="start">Fallos seguros y riesgos</text>
+<text x="40.0" y="466.0" font-size="13" fill="#1F2328" text-anchor="start">El resolver nunca lanza: un link degradado es mejor</text>
+<text x="40.0" y="484.0" font-size="13" fill="#1F2328" text-anchor="start">que un consumer en la cola de errores</text>
+<text x="40.0" y="502.0" font-size="13" fill="#1F2328" text-anchor="start">PORTAL_BASE_URL por defecto apunta a localhost:4200</text>
+<text x="40.0" y="520.0" font-size="13" fill="#1F2328" text-anchor="start">?email= en la query de PublicShare* (logs, Referer)</text>
+<text x="40.0" y="538.0" font-size="13" fill="#1F2328" text-anchor="start">Calendar cachea el host 30 min sin invalidación</text>
+<rect x="30" y="730" width="1540" height="62" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="42" y="750" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<rect x="42" y="759" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="80" y="772" font-size="13" fill="#1F2328">Paso en Notification / servicio</text>
+<rect x="292.71000000000004" y="759" width="30" height="16" rx="3" fill="#EEF2F7" stroke="#475569" stroke-width="1.4"/>
+<text x="330.71000000000004" y="772" font-size="13" fill="#1F2328">Llamada M2M</text>
+<rect x="441.11" y="759" width="30" height="16" rx="3" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.4"/>
+<text x="479.11" y="772" font-size="13" fill="#1F2328">Decisión / regla</text>
+<rect x="601.99" y="759" width="30" height="16" rx="3" fill="#E8F1FB" stroke="#2F6DB5" stroke-width="1.4"/>
+<text x="639.99" y="772" font-size="13" fill="#1F2328">URL resultante</text>
+<rect x="753.64" y="759" width="30" height="16" rx="3" fill="#FDECEC" stroke="#C0392B" stroke-width="1.4"/>
+<text x="791.64" y="772" font-size="13" fill="#1F2328">Riesgo</text>
+<path d="M 855.89 767 L 883.89 767" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="893.89" y="772" font-size="13" fill="#1F2328">Flujo</text>
+<text x="30" y="848" font-size="13" fill="#555B63" font-style="italic">Fuentes: Tenant_Links.md · Tenant_Subdomains.md · Scribe_Templates.md · Notification_Email.md</text>
+</svg>

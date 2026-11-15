@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1005" width="1600" height="1005" font-family="Segoe UI, Arial, sans-serif">
+<title>SVG-18 · Checklist de producción de un microservicio nuevo</title>
+<desc>Bloques en el orden en que se suelen cerrar. Cada casilla sale de una investigación verificada en código; lo marcado "dueño" requiere su decisión o acción (commit, push, secrets, venta).</desc>
+<defs><marker id="ah-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/></marker><marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2F5D9E"/></marker><marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker><marker id="ah-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B7791F"/></marker><marker id="ah-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B83232"/></marker><marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FA0"/></marker><marker id="ah-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2C7A7B"/></marker><marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/></marker></defs>
+<rect x="0" y="0" width="1600" height="1005" fill="#FFFFFF"/>
+<rect class="ctr" x="30.0" y="887.0" width="1540.0" height="94.0" rx="8" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.2"/>
+<text x="40.0" y="910.0" font-size="14" font-weight="700" fill="#111827">Leyenda · cada casilla se marca con su evidencia (prueba, archivo o salida del comando)</text>
+<text x="30.0" y="42.0" font-size="24" font-weight="700" fill="#111827">SVG-18 · Checklist de producción de un microservicio nuevo</text>
+<text x="30.0" y="68.0" font-size="14" fill="#4B5563">Bloques en el orden en que se suelen cerrar. Cada casilla sale de una investigación verificada en código; lo marcado "dueño" requiere su decisión o acción (commit, push, secrets, venta).</text>
+<rect class="box" x="30.0" y="106.0" width="373.0" height="261.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="40.0" y="130.0" font-size="15" font-weight="700" fill="#111827">Arquitectura</text>
+<rect class="chk" x="40.0" y="142.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="153.0" font-size="13" fill="#1F2937">4 capas: Domain, Application,</text>
+<text x="60.0" y="171.0" font-size="13" fill="#1F2937">Infrastructure, Api + &lt;Svc&gt;LayeringTests</text>
+<text x="60.0" y="189.0" font-size="13" fill="#1F2937">(LayeringRulesBase)</text>
+<rect class="chk" x="40.0" y="196.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="207.0" font-size="13" fill="#1F2937">Dominio devuelve Result / Error; sin</text>
+<text x="60.0" y="225.0" font-size="13" fill="#1F2937">excepciones de negocio</text>
+<rect class="chk" x="40.0" y="232.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="243.0" font-size="13" fill="#1F2937">AssemblyMarker + IncludeAssembly en</text>
+<text x="60.0" y="261.0" font-size="13" fill="#1F2937">Program.cs</text>
+<rect class="chk" x="40.0" y="268.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="279.0" font-size="13" fill="#1F2937">Codegen Static: UseTaxVisionCodeGeneration +</text>
+<text x="60.0" y="297.0" font-size="13" fill="#1F2937">Internal/Generated al día</text>
+<rect class="chk" x="40.0" y="304.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="315.0" font-size="13" fill="#1F2937">Proyectos registrados en TaxVision.slnx</text>
+<rect class="box" x="419.0" y="106.0" width="373.0" height="261.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="429.0" y="130.0" font-size="15" font-weight="700" fill="#111827">Persistencia</text>
+<rect class="chk" x="429.0" y="142.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="449.0" y="153.0" font-size="13" fill="#1F2937">DbContext propio y variable</text>
+<text x="449.0" y="171.0" font-size="13" fill="#1F2937">&lt;SVC&gt;_DB_CONNECTION</text>
+<rect class="chk" x="429.0" y="178.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="449.0" y="189.0" font-size="13" fill="#1F2937">modelBuilder.UseUtcDateTimes() +</text>
+<text x="449.0" y="207.0" font-size="13" fill="#1F2937">UtcDateTimesTests</text>
+<rect class="chk" x="429.0" y="214.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="449.0" y="225.0" font-size="13" fill="#1F2937">Migración creada y aplicada en local</text>
+<text x="449.0" y="243.0" font-size="13" fill="#1F2937">(migrate-local.ps1 -Apply)</text>
+<rect class="chk" x="429.0" y="250.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="449.0" y="261.0" font-size="13" fill="#1F2937">*_DB_CONNECTION en el servicio migrations +</text>
+<text x="449.0" y="279.0" font-size="13" fill="#1F2937">apply_migration en apply-migrations.sh</text>
+<rect class="chk" x="429.0" y="286.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="449.0" y="297.0" font-size="13" fill="#1F2937">Repositorios con IgnoreQueryFilters() +</text>
+<text x="449.0" y="315.0" font-size="13" fill="#1F2937">TenantId explícito</text>
+<rect class="box" x="808.0" y="106.0" width="373.0" height="261.0" rx="6" fill="#FCE8E8" stroke="#B83232" stroke-width="1.5"/>
+<text x="818.0" y="130.0" font-size="15" font-weight="700" fill="#111827">Seguridad</text>
+<rect class="chk" x="818.0" y="142.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B83232" stroke-width="1.4"/>
+<text x="838.0" y="153.0" font-size="13" fill="#1F2937">[Authorize] + [AllowActorTypes] +</text>
+<text x="838.0" y="171.0" font-size="13" fill="#1F2937">[HasPermission] + [RateLimit] en cada acción</text>
+<rect class="chk" x="818.0" y="178.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B83232" stroke-width="1.4"/>
+<text x="838.0" y="189.0" font-size="13" fill="#1F2937">Authorization:PermissionsSource = Projection</text>
+<text x="838.0" y="207.0" font-size="13" fill="#1F2937">+ pull-recovery</text>
+<rect class="chk" x="818.0" y="214.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B83232" stroke-width="1.4"/>
+<text x="838.0" y="225.0" font-size="13" fill="#1F2937">SessionDenylist registrado (401</text>
+<text x="838.0" y="243.0" font-size="13" fill="#1F2937">Auth.SessionRevoked)</text>
+<rect class="chk" x="818.0" y="250.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B83232" stroke-width="1.4"/>
+<text x="838.0" y="261.0" font-size="13" fill="#1F2937">AddTaxVisionClientIpForwarding +</text>
+<text x="838.0" y="279.0" font-size="13" fill="#1F2937">UseTaxVisionClientIp</text>
+<rect class="chk" x="818.0" y="286.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B83232" stroke-width="1.4"/>
+<text x="838.0" y="297.0" font-size="13" fill="#1F2937">Nada bajo internal enrutado por el gateway</text>
+<rect class="box" x="1197.0" y="106.0" width="373.0" height="261.0" rx="6" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="1207.0" y="130.0" font-size="15" font-weight="700" fill="#111827">Integración (Wolverine / RabbitMQ)</text>
+<rect class="chk" x="1207.0" y="142.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="1227.0" y="153.0" font-size="13" fill="#1F2937">UseTaxVisionRabbitMq +</text>
+<text x="1227.0" y="171.0" font-size="13" fill="#1F2937">PersistMessagesWithSqlServer + outbox</text>
+<text x="1227.0" y="189.0" font-size="13" fill="#1F2937">durable + AutoApplyTransactions</text>
+<rect class="chk" x="1207.0" y="196.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="1227.0" y="207.0" font-size="13" fill="#1F2937">Cola &lt;svc&gt;-events ligada a taxvision-events</text>
+<text x="1227.0" y="225.0" font-size="13" fill="#1F2937">con UseDurableInbox</text>
+<rect class="chk" x="1207.0" y="232.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="1227.0" y="243.0" font-size="13" fill="#1F2937">PublishMessage&lt;T&gt;() +</text>
+<text x="1227.0" y="261.0" font-size="13" fill="#1F2937">ToRabbitExchange("taxvision-events") por</text>
+<text x="1227.0" y="279.0" font-size="13" fill="#1F2937">evento publicado</text>
+<rect class="chk" x="1207.0" y="286.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="1227.0" y="297.0" font-size="13" fill="#1F2937">Guardar antes de publicar</text>
+<text x="1227.0" y="315.0" font-size="13" fill="#1F2937">(SaveBeforePublishTests)</text>
+<rect class="chk" x="1207.0" y="322.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="1227.0" y="333.0" font-size="13" fill="#1F2937">ApplyStandardFailurePolicies +</text>
+<text x="1227.0" y="351.0" font-size="13" fill="#1F2937">IntegrationEventTenantMiddleware</text>
+<rect class="box" x="30.0" y="383.0" width="373.0" height="243.0" rx="6" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="40.0" y="407.0" font-size="15" font-weight="700" fill="#111827">Offboarding</text>
+<rect class="chk" x="40.0" y="419.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="60.0" y="430.0" font-size="13" fill="#1F2937">Cada Guid de empleado anotado con</text>
+<text x="60.0" y="448.0" font-size="13" fill="#1F2937">[UserReference(Kind, HandledBy)]</text>
+<rect class="chk" x="40.0" y="455.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="60.0" y="466.0" font-size="13" fill="#1F2937">Consumer de UserOffboardedIntegrationEvent</text>
+<text x="60.0" y="484.0" font-size="13" fill="#1F2937">idempotente y sin orden asumido</text>
+<rect class="chk" x="40.0" y="491.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="60.0" y="502.0" font-size="13" fill="#1F2937">Retiro ⊇ suspensión (si maneja</text>
+<text x="60.0" y="520.0" font-size="13" fill="#1F2937">UserDeactivated)</text>
+<rect class="chk" x="40.0" y="527.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="60.0" y="538.0" font-size="13" fill="#1F2937">Pasos en OffboardingParticipants + GET</text>
+<text x="60.0" y="556.0" font-size="13" fill="#1F2937">offboarding-impact si hay ActiveWork /</text>
+<text x="60.0" y="574.0" font-size="13" fill="#1F2937">Credential / Private</text>
+<rect class="chk" x="40.0" y="581.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="60.0" y="592.0" font-size="13" fill="#1F2937">El acuse refleja el trabajo terminado, no un</text>
+<text x="60.0" y="610.0" font-size="13" fill="#1F2937">reenvío</text>
+<rect class="box" x="419.0" y="383.0" width="373.0" height="243.0" rx="6" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="429.0" y="407.0" font-size="15" font-weight="700" fill="#111827">Comercialización</text>
+<rect class="chk" x="429.0" y="419.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B7791F" stroke-width="1.4"/>
+<text x="449.0" y="430.0" font-size="13" fill="#1F2937">Dueño: ¿se vende? y modo inicial del gate</text>
+<rect class="chk" x="429.0" y="437.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B7791F" stroke-width="1.4"/>
+<text x="449.0" y="448.0" font-size="13" fill="#1F2937">Prefijo en PermissionModuleMap +</text>
+<text x="449.0" y="466.0" font-size="13" fill="#1F2937">AddModuleGate</text>
+<rect class="chk" x="429.0" y="473.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B7791F" stroke-width="1.4"/>
+<text x="449.0" y="484.0" font-size="13" fill="#1F2937">Revisión de catálogo en Subscription +</text>
+<text x="449.0" y="502.0" font-size="13" fill="#1F2937">ModuleCatalogKnownModulesTests</text>
+<rect class="chk" x="429.0" y="509.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B7791F" stroke-width="1.4"/>
+<text x="449.0" y="520.0" font-size="13" fill="#1F2937">Proyección de entitlements + invalidador de</text>
+<text x="449.0" y="538.0" font-size="13" fill="#1F2937">la caché de módulos</text>
+<rect class="chk" x="429.0" y="545.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#B7791F" stroke-width="1.4"/>
+<text x="449.0" y="556.0" font-size="13" fill="#1F2937">Flag en compose ${VAR:-false} + deploy.yml</text>
+<text x="449.0" y="574.0" font-size="13" fill="#1F2937">(ModuleGateDeployWiringTests)</text>
+<rect class="box" x="808.0" y="383.0" width="373.0" height="243.0" rx="6" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="818.0" y="407.0" font-size="15" font-weight="700" fill="#111827">Notificaciones</text>
+<rect class="chk" x="818.0" y="419.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="838.0" y="430.0" font-size="13" fill="#1F2937">Evento propio con TenantId (no existe un</text>
+<text x="838.0" y="448.0" font-size="13" fill="#1F2937">NotificationRequested genérico)</text>
+<rect class="chk" x="818.0" y="455.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="838.0" y="466.0" font-size="13" fill="#1F2937">Consumer en Notification: destinatarios,</text>
+<text x="838.0" y="484.0" font-size="13" fill="#1F2937">canal y links por oficina</text>
+<rect class="chk" x="818.0" y="491.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="838.0" y="502.0" font-size="13" fill="#1F2937">Plantilla en Scribe: EventKey → TemplateKey,</text>
+<text x="838.0" y="520.0" font-size="13" fill="#1F2937">layout system-base o tenant-base</text>
+<rect class="chk" x="818.0" y="527.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="838.0" y="538.0" font-size="13" fill="#1F2937">Fechas como $instant / $date</text>
+<rect class="chk" x="818.0" y="545.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="838.0" y="556.0" font-size="13" fill="#1F2937">Idempotencia por destinatario (TenantId,</text>
+<text x="838.0" y="574.0" font-size="13" fill="#1F2937">RelatedEventId, TemplateKey, To)</text>
+<rect class="box" x="1197.0" y="383.0" width="373.0" height="243.0" rx="6" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
+<text x="1207.0" y="407.0" font-size="15" font-weight="700" fill="#111827">Operaciones</text>
+<rect class="chk" x="1207.0" y="419.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B7280" stroke-width="1.4"/>
+<text x="1227.0" y="430.0" font-size="13" fill="#1F2937">Dockerfile con ENV TZ=Etc/UTC y</text>
+<text x="1227.0" y="448.0" font-size="13" fill="#1F2937">MALLOC_ARENA_MAX=2</text>
+<rect class="chk" x="1207.0" y="455.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B7280" stroke-width="1.4"/>
+<text x="1227.0" y="466.0" font-size="13" fill="#1F2937">Bloque compose: expose 8080, sin ports:,</text>
+<text x="1227.0" y="484.0" font-size="13" fill="#1F2937">restart: unless-stopped, TZ</text>
+<rect class="chk" x="1207.0" y="491.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B7280" stroke-width="1.4"/>
+<text x="1227.0" y="502.0" font-size="13" fill="#1F2937">URLs internas http://&lt;svc&gt;-api:8080 (nunca</text>
+<text x="1227.0" y="520.0" font-size="13" fill="#1F2937">localhost)</text>
+<rect class="chk" x="1207.0" y="527.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B7280" stroke-width="1.4"/>
+<text x="1227.0" y="538.0" font-size="13" fill="#1F2937">/health/live y /health/ready; healthcheck +</text>
+<text x="1227.0" y="556.0" font-size="13" fill="#1F2937">curl solo si otro lo espera</text>
+<rect class="chk" x="1207.0" y="563.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B7280" stroke-width="1.4"/>
+<text x="1227.0" y="574.0" font-size="13" fill="#1F2937">Flota local: start, stop, restart-down y</text>
+<text x="1227.0" y="592.0" font-size="13" fill="#1F2937">codegen actualizados</text>
+<rect class="box" x="30.0" y="642.0" width="373.0" height="225.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="40.0" y="666.0" font-size="15" font-weight="700" fill="#111827">Gateway</text>
+<rect class="chk" x="40.0" y="678.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="689.0" font-size="13" fill="#1F2937">Ruta /&lt;prefijo&gt;/{**catch-all} + cluster con</text>
+<text x="60.0" y="707.0" font-size="13" fill="#1F2937">health check activo a /health/live</text>
+<rect class="chk" x="40.0" y="714.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="725.0" font-size="13" fill="#1F2937">Entrada en LoadShedding:Criticality</text>
+<rect class="chk" x="40.0" y="732.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="743.0" font-size="13" fill="#1F2937">Override del destino en compose + depends_on</text>
+<text x="60.0" y="761.0" font-size="13" fill="#1F2937">(también docker-compose.local.yml)</text>
+<rect class="chk" x="40.0" y="768.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="779.0" font-size="13" fill="#1F2937">Públicos sensibles en PreAuthByIp;</text>
+<text x="60.0" y="797.0" font-size="13" fill="#1F2937">MaxRequestBodySize si aplica</text>
+<rect class="chk" x="40.0" y="804.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="1.4"/>
+<text x="60.0" y="815.0" font-size="13" fill="#1F2937">Prefijo sin choque con buckets de MinIO</text>
+<rect class="box" x="419.0" y="642.0" width="373.0" height="225.0" rx="6" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="429.0" y="666.0" font-size="15" font-weight="700" fill="#111827">Cloudflare</text>
+<rect class="chk" x="429.0" y="678.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="449.0" y="689.0" font-size="13" fill="#1F2937">Path nuevo bajo host existente: sin cambio</text>
+<text x="449.0" y="707.0" font-size="13" fill="#1F2937">en Cloudflare</text>
+<rect class="chk" x="429.0" y="714.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="449.0" y="725.0" font-size="13" fill="#1F2937">Abierto desde el navegador en host de</text>
+<text x="449.0" y="743.0" font-size="13" fill="#1F2937">oficina: regla en Caddy +</text>
+<text x="449.0" y="761.0" font-size="13" fill="#1F2937">CaddyPublicNavigationRouteTests</text>
+<rect class="chk" x="429.0" y="768.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="449.0" y="779.0" font-size="13" fill="#1F2937">Hostname nuevo o puerto no HTTP: solicitud</text>
+<text x="449.0" y="797.0" font-size="13" fill="#1F2937">al senior (SVG-14)</text>
+<rect class="chk" x="429.0" y="804.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="449.0" y="815.0" font-size="13" fill="#1F2937">Sin dominios literales</text>
+<text x="449.0" y="833.0" font-size="13" fill="#1F2937">(PlatformDomainSingleSourceDeployTests)</text>
+<rect class="chk" x="429.0" y="840.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#6B4FA0" stroke-width="1.4"/>
+<text x="449.0" y="851.0" font-size="13" fill="#1F2937">Verificación con dig y curl -I /health/live</text>
+<rect class="box" x="808.0" y="642.0" width="373.0" height="225.0" rx="6" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="818.0" y="666.0" font-size="15" font-weight="700" fill="#111827">Testing</text>
+<rect class="chk" x="818.0" y="678.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="838.0" y="689.0" font-size="13" fill="#1F2937">Proyecto deploy/tests/TaxVision.&lt;Svc&gt;.Tests</text>
+<text x="838.0" y="707.0" font-size="13" fill="#1F2937">en el .slnx</text>
+<rect class="chk" x="818.0" y="714.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="838.0" y="725.0" font-size="13" fill="#1F2937">Fitness comunes: Layering,</text>
+<text x="838.0" y="743.0" font-size="13" fill="#1F2937">PreGeneratedHandlerCode, UtcDateTimes,</text>
+<text x="838.0" y="761.0" font-size="13" fill="#1F2937">Architecture</text>
+<rect class="chk" x="818.0" y="768.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="838.0" y="779.0" font-size="13" fill="#1F2937">Infraestructura real solo en namespace</text>
+<text x="838.0" y="797.0" font-size="13" fill="#1F2937">.Integration.</text>
+<rect class="chk" x="818.0" y="804.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="838.0" y="815.0" font-size="13" fill="#1F2937">CSharpier antes del gate; gate local exacto</text>
+<text x="838.0" y="833.0" font-size="13" fill="#1F2937">en verde</text>
+<rect class="chk" x="818.0" y="840.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2C7A7B" stroke-width="1.4"/>
+<text x="838.0" y="851.0" font-size="13" fill="#1F2937">.Integration. del servicio contra SQL local</text>
+<rect class="box" x="1197.0" y="642.0" width="373.0" height="225.0" rx="6" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="1207.0" y="666.0" font-size="15" font-weight="700" fill="#111827">Producción</text>
+<rect class="chk" x="1207.0" y="678.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="1227.0" y="689.0" font-size="13" fill="#1F2937">Secrets nuevos en production-extra +</text>
+<text x="1227.0" y="707.0" font-size="13" fill="#1F2937">ProductionExtraSecretsDeployTests (dueño)</text>
+<rect class="chk" x="1207.0" y="714.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="1227.0" y="725.0" font-size="13" fill="#1F2937">Cliente M2M en auth-api + *_CLIENT_SECRET</text>
+<text x="1227.0" y="743.0" font-size="13" fill="#1F2937">escrito en deploy.yml</text>
+<rect class="chk" x="1207.0" y="750.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="1227.0" y="761.0" font-size="13" fill="#1F2937">Commit y push a main los hace el dueño</text>
+<rect class="chk" x="1207.0" y="768.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="1227.0" y="779.0" font-size="13" fill="#1F2937">Healthcheck del deploy + log "code</text>
+<text x="1227.0" y="797.0" font-size="13" fill="#1F2937">generation mode is Static"</text>
+<rect class="chk" x="1207.0" y="804.0" width="12" height="12" rx="2" fill="#FFFFFF" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="1227.0" y="815.0" font-size="13" fill="#1F2937">Verificación manual en vivo (sin E2E</text>
+<text x="1227.0" y="833.0" font-size="13" fill="#1F2937">automatizado)</text>
+<rect class="sw" x="42.0" y="927.0" width="30" height="16" rx="3" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="82.0" y="940.0" font-size="13" fill="#1F2937">Arquitectura, persistencia, gateway</text>
+<rect class="sw" x="366.5" y="927.0" width="30" height="16" rx="3" fill="#FCE8E8" stroke="#B83232" stroke-width="1.5"/>
+<text x="406.5" y="940.0" font-size="13" fill="#1F2937">Seguridad</text>
+<rect class="sw" x="496.0" y="927.0" width="30" height="16" rx="3" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="536.0" y="940.0" font-size="13" fill="#1F2937">Integración y testing</text>
+<rect class="sw" x="715.5" y="927.0" width="30" height="16" rx="3" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="755.5" y="940.0" font-size="13" fill="#1F2937">Offboarding y Cloudflare</text>
+<rect class="sw" x="957.5" y="927.0" width="30" height="16" rx="3" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="997.5" y="940.0" font-size="13" fill="#1F2937">Comercialización (decide el dueño)</text>
+<rect class="sw" x="1274.5" y="927.0" width="30" height="16" rx="3" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="1314.5" y="940.0" font-size="13" fill="#1F2937">Notificaciones y producción</text>
+<rect class="sw" x="42.0" y="953.0" width="30" height="16" rx="3" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
+<text x="82.0" y="966.0" font-size="13" fill="#1F2937">Operaciones</text>
+</svg>

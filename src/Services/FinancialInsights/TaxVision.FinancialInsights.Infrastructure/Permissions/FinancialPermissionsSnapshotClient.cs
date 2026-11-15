@@ -2,11 +2,11 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
-using Microsoft.Extensions.Configuration;
 
 namespace TaxVision.FinancialInsights.Infrastructure.Permissions;
 
-public sealed class FinancialPermissionsSnapshotClient(HttpClient http, IConfiguration configuration)
+// El token sale del adquiridor con caché: un snapshot por usuario no implica pedir un token nuevo cada vez.
+public sealed class FinancialPermissionsSnapshotClient(HttpClient http, IServiceTokenAcquirer tokens)
     : IPermissionsSnapshotClient
 {
     public async Task<RemotePermissionsSnapshot?> FetchSnapshotAsync(
@@ -15,18 +15,18 @@ public sealed class FinancialPermissionsSnapshotClient(HttpClient http, IConfigu
         CancellationToken ct = default
     )
     {
-        var clientId = configuration["ServiceAuthClient:ClientId"];
-        var secret = configuration["ServiceAuthClient:ClientSecret"];
-        if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(secret) || http.BaseAddress is null)
+        if (http.BaseAddress is null)
             return null;
         try
         {
-            var grant = await http.RequestServiceTokenAsync(clientId, secret, tenantId, ct);
+            var token = await tokens.GetTokenAsync(tenantId, ct);
+            if (token is null)
+                return null;
             using var request = new HttpRequestMessage(
                 HttpMethod.Get,
                 $"internal/tenants/{tenantId:D}/users/{userId:D}/permissions-snapshot"
             );
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", grant.AccessToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             using var response = await http.SendAsync(request, ct);
             if (!response.IsSuccessStatusCode)
                 return null;

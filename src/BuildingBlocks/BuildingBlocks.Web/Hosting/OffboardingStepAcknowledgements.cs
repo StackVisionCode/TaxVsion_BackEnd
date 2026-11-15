@@ -34,18 +34,8 @@ public static class OffboardingStepAcknowledgements
         return options;
     }
 
-    /// <summary>
-    /// Servicio dueño de un handler: el segundo tramo del ensamblado (<c>TaxVision.Calendar.Application</c> →
-    /// <c>Calendar</c>), que coincide con la carpeta de src/Services. Fuera de esa convención, el nombre del
-    /// ensamblado completo.
-    /// </summary>
-    public static string ServiceOf(Type handlerType)
-    {
-        ArgumentNullException.ThrowIfNull(handlerType);
-        var name = handlerType.Assembly.GetName().Name ?? handlerType.Assembly.FullName ?? "unknown";
-        var parts = name.Split('.');
-        return parts.Length > 1 && parts[0] == "TaxVision" ? parts[1] : name;
-    }
+    /// <summary>Servicio dueño de un handler (ver <see cref="OffboardingStepNames.ServiceOf"/>).</summary>
+    public static string ServiceOf(Type handlerType) => OffboardingStepNames.ServiceOf(handlerType);
 }
 
 /// <summary>Un paso a acusar: servicio + clase del handler.</summary>
@@ -102,6 +92,8 @@ public sealed class OffboardingStepAcknowledgementPolicy : IHandlerPolicy
         var steps = chain
             .Handlers.Select(h => h.HandlerType)
             .Distinct()
+            // Los que delegan el trabajo acusan al terminarlo, no aquí.
+            .Where(t => !t.IsDefined(typeof(AcknowledgesOffboardingLaterAttribute), inherit: false))
             .Select(t => new OffboardingStep(OffboardingStepAcknowledgements.ServiceOf(t), t.Name))
             // Orden fijo: el código pregenerado tiene que salir igual en cada codegen.
             .OrderBy(step => step.Service, StringComparer.Ordinal)

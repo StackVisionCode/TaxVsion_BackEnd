@@ -1,6 +1,8 @@
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
+using TaxVision.Connectors.Application.Accounts.Consumers;
 using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Domain.Watch;
@@ -102,8 +104,34 @@ public sealed class PurgeOffboardedMailboxesHandlerTests
         Assert.Empty(harness.Imap.Credentials);
         Assert.Empty(harness.Smtp.Credentials);
         Assert.Contains("refresh-token", harness.ProviderClient.RevokedRefreshTokens);
-        Assert.Single(harness.Bus.Published);
+        Assert.Single(harness.Bus.Published.OfType<ConnectorsTenantEmailAccountDisconnectedIntegrationEvent>());
         Assert.Single(harness.Audit.Entries);
+    }
+
+    // El paso del retiro se acusa cuando la purga quedó guardada, no cuando el consumer la reenvió.
+    [Fact]
+    public async Task The_offboarding_step_is_acknowledged_with_the_purge_committed()
+    {
+        var tenantId = Guid.NewGuid();
+        var leaver = Guid.NewGuid();
+        var harness = new Harness();
+        harness.SeedConnectedMailbox(tenantId, leaver, "leaver@gmail.com");
+        var openAtAck = new List<bool>();
+        harness.Bus.OnPublish = message =>
+        {
+            if (message is UserOffboardingStepCompletedIntegrationEvent)
+                openAtAck.Add(harness.Unit.IsOpen);
+        };
+
+        await harness.Run(tenantId, leaver);
+
+        var ack = Assert.Single(harness.Bus.Published.OfType<UserOffboardingStepCompletedIntegrationEvent>());
+        Assert.Equal(
+            ("Connectors", nameof(ConnectorsUserOffboardedConsumer), tenantId, leaver, "corr-offboard"),
+            (ack.Service, ack.Step, ack.TenantId, ack.UserId, ack.CorrelationId)
+        );
+        Assert.Equal([true], openAtAck);
+        Assert.True(harness.Unit.Committed);
     }
 
     [Fact]
@@ -120,7 +148,7 @@ public sealed class PurgeOffboardedMailboxesHandlerTests
 
         await harness.Run(tenantId, leaver);
 
-        Assert.Equal([true, true], openAtPublish);
+        Assert.Equal([true, true, true], openAtPublish);
         Assert.True(harness.Unit.Committed);
         Assert.Equal(1, harness.UnitOfWork.SaveChangesCallCount);
         Assert.All(
@@ -171,19 +199,22 @@ public sealed class PurgeOffboardedMailboxesHandlerTests
         Assert.Equal(TenantEmailAccountStatus.Active, office.Status);
         Assert.Equal(TenantEmailAccountStatus.Active, others.Status);
         Assert.Equal(2, harness.OAuth.Connections.Count);
-        Assert.Empty(harness.Bus.Published);
+        Assert.Empty(harness.Bus.Published.OfType<ConnectorsTenantEmailAccountDisconnectedIntegrationEvent>());
     }
 
+    // Sin buzones personales no hay nada que purgar, pero el paso igual se cumple: sin acuse quedaría incompleto.
     [Fact]
-    public async Task No_personal_mailboxes_is_a_noop()
+    public async Task No_personal_mailboxes_purges_nothing_but_still_acknowledges_the_step()
     {
         var tenantId = Guid.NewGuid();
         var harness = new Harness();
 
         await harness.Run(tenantId, Guid.NewGuid());
 
-        Assert.Empty(harness.Bus.Published);
-        Assert.Equal(0, harness.UnitOfWork.SaveChangesCallCount);
+        Assert.Empty(harness.Bus.Published.OfType<ConnectorsTenantEmailAccountDisconnectedIntegrationEvent>());
+        Assert.Empty(harness.Audit.Entries);
+        Assert.Single(harness.Bus.Published.OfType<UserOffboardingStepCompletedIntegrationEvent>());
+        Assert.True(harness.Unit.Committed);
     }
 
     [Fact]

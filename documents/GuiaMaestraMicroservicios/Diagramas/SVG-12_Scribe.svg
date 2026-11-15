@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1180" width="1600" height="1180" font-family="Segoe UI, Arial, sans-serif">
+<title>Scribe: de EventKey a correo renderizado</title>
+<desc>Scribe es dueño de plantillas y render Fluid/Liquid; Notification es su único cliente de render (M2M); Postmaster recibe el HTML ya armado</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1600" height="1180" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">Scribe: de EventKey a correo renderizado</text>
+<text x="30" y="66" font-size="14" fill="#555B63">Scribe es dueño de plantillas y render Fluid/Liquid; Notification es su único cliente de render (M2M); Postmaster recibe el HTML ya armado</text>
+<rect x="30" y="100" width="400" height="820" rx="10" ry="10" fill="#E9F5EC" fill-opacity="0.55" stroke="#2E7D4F" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="42" y="122" font-size="14" font-weight="700" fill="#2E7D4F">Notification (cliente del render)</text>
+<rect x="48" y="140" width="364" height="76" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="58.0" y="166.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Consumer en Notification</text>
+<text x="58.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">Constante EventKey del consumer</text>
+<text x="58.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">ej. tenant.wisp_review_due.v1</text>
+<rect x="48" y="250" width="364" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="58.0" y="276.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Fechas tipadas (ScribeDates)</text>
+<text x="58.0" y="296.0" font-size="13" fill="#1F2328" text-anchor="start">Instant(DateTime) → {"$instant": "…Z"}</text>
+<text x="58.0" y="314.0" font-size="13" fill="#1F2328" text-anchor="start">Date(DateOnly) → {"$date": "yyyy-MM-dd"}</text>
+<text x="58.0" y="332.0" font-size="13" fill="#1F2328" text-anchor="start">ScribeReader.From(idioma, zona)</text>
+<rect x="48" y="380" width="364" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="58.0" y="406.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">IScribeRenderClient.RenderAsync</text>
+<text x="58.0" y="426.0" font-size="13" fill="#1F2328" text-anchor="start">Token M2M por tenant</text>
+<text x="58.0" y="444.0" font-size="13" fill="#1F2328" text-anchor="start">400/404/422 con código → RenderRejected</text>
+<text x="58.0" y="462.0" font-size="13" fill="#1F2328" text-anchor="start">Resto → error transitorio</text>
+<rect x="48" y="780" width="364" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="58.0" y="806.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">EnsureRendered + ToDispatchRequest</text>
+<text x="58.0" y="826.0" font-size="13" fill="#1F2328" text-anchor="start">Rechazo → error queue sin reintento</text>
+<text x="58.0" y="844.0" font-size="13" fill="#1F2328" text-anchor="start">Transitorio → reintento</text>
+<text x="58.0" y="862.0" font-size="13" fill="#1F2328" text-anchor="start">→ pedido de envío a Postmaster</text>
+<path d="M 230.0 216.0 L 230.0 250.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 230.0 344.0 L 230.0 380.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="470" y="100" width="680" height="970" rx="10" ry="10" fill="#F3EAFB" fill-opacity="0.55" stroke="#7B4BA8" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="482" y="122" font-size="14" font-weight="700" fill="#7B4BA8">Scribe · FluidTemplateRenderer.RenderAsync</text>
+<rect x="488" y="140" width="644" height="94" rx="8" ry="8" fill="#EEF2F7" stroke="#475569" stroke-width="1.6"/>
+<text x="498.0" y="166.0" font-size="14" font-weight="700" fill="#475569" text-anchor="start">POST scribe/render</text>
+<text x="498.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">[AllowActorTypes(Service)] · [HasPermission(scribe.render)]</text>
+<text x="498.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">[RateLimit("scribe.j.render")] · cuerpo: EventKey, TenantId,</text>
+<text x="498.0" y="222.0" font-size="13" fill="#1F2328" text-anchor="start">Locale, Variables, LogoScope, Channel, Audience, TimeZoneId</text>
+<rect x="488" y="256" width="644" height="76" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="498.0" y="282.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">1 · Mapping (EventTemplateResolver)</text>
+<text x="498.0" y="302.0" font-size="13" fill="#1F2328" text-anchor="start">EventKey → TemplateKey · prioridad: Tenant+Locale &gt; Tenant &gt;</text>
+<text x="498.0" y="320.0" font-size="13" fill="#1F2328" text-anchor="start">System+Locale &gt; System · sin mapping → NoMapping</text>
+<path d="M 810.0 234.0 L 810.0 256.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="488" y="354" width="644" height="94" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="498.0" y="380.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">2 · Plantilla publicada (PublishedTemplateReader)</text>
+<text x="498.0" y="400.0" font-size="13" fill="#1F2328" text-anchor="start">Override Tenant con el mismo TemplateKey gana a System</text>
+<text x="498.0" y="418.0" font-size="13" fill="#1F2328" text-anchor="start">Solo versiones Published · sin versión → NoPublishedVersion</text>
+<text x="498.0" y="436.0" font-size="13" fill="#1F2328" text-anchor="start">IgnoreQueryFilters: aísla el TenantId del cuerpo</text>
+<path d="M 810.0 332.0 L 810.0 354.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="488" y="470" width="644" height="76" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="498.0" y="496.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">3 · Layout pineado</text>
+<text x="498.0" y="516.0" font-size="13" fill="#1F2328" text-anchor="start">system-base → DispatchScope System</text>
+<text x="498.0" y="534.0" font-size="13" fill="#1F2328" text-anchor="start">tenant-base → logo de la oficina y TenantPreferred</text>
+<path d="M 810.0 448.0 L 810.0 470.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="488" y="568" width="644" height="76" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="498.0" y="594.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">4 · Zona del lector (ReaderZoneAsync)</text>
+<text x="498.0" y="614.0" font-size="13" fill="#1F2328" text-anchor="start">Zona pedida si es IANA válida → zona de la oficina</text>
+<text x="498.0" y="632.0" font-size="13" fill="#1F2328" text-anchor="start">(ITenantTimeZoneResolver, caché 5 min) → UTC rotulado</text>
+<path d="M 810.0 546.0 L 810.0 568.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="488" y="666" width="644" height="76" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="498.0" y="692.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">5 · NormalizeVariables</text>
+<text x="498.0" y="712.0" font-size="13" fill="#1F2328" text-anchor="start">{"$instant"} y {"$date"} → ZonedDate en zona e idioma del lector</text>
+<text x="498.0" y="730.0" font-size="13" fill="#1F2328" text-anchor="start">Inyecta tenant_name, tenant_address, product_name, platform_*</text>
+<path d="M 810.0 644.0 L 810.0 666.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="488" y="764" width="644" height="76" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="498.0" y="790.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">6 · Render Fluid</text>
+<text x="498.0" y="810.0" font-size="13" fill="#1F2328" text-anchor="start">Timeout 5 s → 503 (Notification reintenta)</text>
+<text x="498.0" y="828.0" font-size="13" fill="#1F2328" text-anchor="start">MaxRecursion 100 · MaxSteps 10000</text>
+<path d="M 810.0 742.0 L 810.0 764.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="488" y="862" width="644" height="76" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="498.0" y="888.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">RenderedContent</text>
+<text x="498.0" y="908.0" font-size="13" fill="#1F2328" text-anchor="start">Subject, Html, Text, InlineAssets, DispatchScope,</text>
+<text x="498.0" y="926.0" font-size="13" fill="#1F2328" text-anchor="start">TemplateKey, VersionNumber, LayoutVersionNumber</text>
+<path d="M 810.0 840.0 L 810.0 862.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 412.0 427.0 L 450.0 427.0 L 450.0 187.0 L 488.0 187.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 488.0 900.0 L 450.0 900.0 L 450.0 827.0 L 412.0 827.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1190" y="100" width="380" height="820" rx="10" ry="10" fill="#F6EFE6" fill-opacity="0.55" stroke="#8A5A2B" stroke-width="1.4" stroke-dasharray="7 5"/>
+<text x="1202" y="122" font-size="14" font-weight="700" fill="#8A5A2B">Siembra y administración</text>
+<rect x="1208" y="140" width="344" height="94" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="1218.0" y="166.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">NotificationTemplateSeedSource</text>
+<text x="1218.0" y="186.0" font-size="13" fill="#1F2328" text-anchor="start">NotificationTemplateSeed(EventKey,</text>
+<text x="1218.0" y="204.0" font-size="13" fill="#1F2328" text-anchor="start">TemplateKey, Subject, Html, Variables,</text>
+<text x="1218.0" y="222.0" font-size="13" fill="#1F2328" text-anchor="start">ContentVersion, LayoutKey, Channel)</text>
+<rect x="1208" y="266" width="344" height="94" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="1218.0" y="292.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">ContentHash (SHA-256)</text>
+<text x="1218.0" y="312.0" font-size="13" fill="#1F2328" text-anchor="start">Asunto, HTML, texto, variables,</text>
+<text x="1218.0" y="330.0" font-size="13" fill="#1F2328" text-anchor="start">layout y canal (fines de línea</text>
+<text x="1218.0" y="348.0" font-size="13" fill="#1F2328" text-anchor="start">normalizados)</text>
+<rect x="1208" y="392" width="344" height="94" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="1218.0" y="418.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">ScribeNotificationTemplateSeeder</text>
+<text x="1218.0" y="438.0" font-size="13" fill="#1F2328" text-anchor="start">Al arrancar: hash distinto → publica</text>
+<text x="1218.0" y="456.0" font-size="13" fill="#1F2328" text-anchor="start">versión nueva · re-pinea el layout</text>
+<text x="1218.0" y="474.0" font-size="13" fill="#1F2328" text-anchor="start">ContentVersion = solo etiqueta legible</text>
+<rect x="1208" y="518" width="344" height="130" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
+<text x="1218.0" y="544.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">Plantillas en BD (EmailTemplate)</text>
+<text x="1218.0" y="564.0" font-size="13" fill="#1F2328" text-anchor="start">Scope System o Tenant · versiones</text>
+<text x="1218.0" y="582.0" font-size="13" fill="#1F2328" text-anchor="start">Draft → validate → publish</text>
+<text x="1218.0" y="600.0" font-size="13" fill="#1F2328" text-anchor="start">Preflight: placeholders declarados</text>
+<text x="1218.0" y="618.0" font-size="13" fill="#1F2328" text-anchor="start">+ EmailHtmlSafetyValidator</text>
+<text x="1218.0" y="636.0" font-size="13" fill="#1F2328" text-anchor="start">Las publicadas las lee el paso 2</text>
+<rect x="1208" y="680" width="344" height="94" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="1218.0" y="706.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">Despliegue</text>
+<text x="1218.0" y="726.0" font-size="13" fill="#1F2328" text-anchor="start">Scribe antes que Notification</text>
+<text x="1218.0" y="744.0" font-size="13" fill="#1F2328" text-anchor="start">(un Scribe viejo imprime el</text>
+<text x="1218.0" y="762.0" font-size="13" fill="#1F2328" text-anchor="start">marcador como texto raro)</text>
+<path d="M 1380.0 234.0 L 1380.0 266.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1380.0 360.0 L 1380.0 392.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1380.0 486.0 L 1380.0 518.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1208.0 583.0 L 1170.0 583.0 L 1170.0 401.0 L 1132.0 401.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="940" width="400" height="96" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="40.0" y="966.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">EventKey ≠ [MessageIdentity]</text>
+<text x="40.0" y="986.0" font-size="13" fill="#1F2328" text-anchor="start">Deben coincidir la constante del</text>
+<text x="40.0" y="1004.0" font-size="13" fill="#1F2328" text-anchor="start">consumer, el seed y el mapping;</text>
+<text x="40.0" y="1022.0" font-size="13" fill="#1F2328" text-anchor="start">no la identidad del evento CLR</text>
+<rect x="1190" y="940" width="380" height="96" rx="8" ry="8" fill="#F7F7F8" stroke="#8C8C96" stroke-width="1.6"/>
+<text x="1200.0" y="966.0" font-size="14" font-weight="700" fill="#1F2328" text-anchor="start">Admin (scribe/templates)</text>
+<text x="1200.0" y="986.0" font-size="13" fill="#1F2328" text-anchor="start">Actores TenantEmployee/Admin,</text>
+<text x="1200.0" y="1004.0" font-size="13" fill="#1F2328" text-anchor="start">PlatformAdmin · dispatch-scope:</text>
+<text x="1200.0" y="1022.0" font-size="13" fill="#1F2328" text-anchor="start">solo PlatformAdmin</text>
+<rect x="30" y="1086" width="1540" height="62" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="42" y="1106" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<rect x="42" y="1115" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="80" y="1128" font-size="13" fill="#1F2328">Notification</text>
+<rect x="172.98000000000002" y="1115" width="30" height="16" rx="3" fill="#EEF2F7" stroke="#475569" stroke-width="1.4"/>
+<text x="210.98000000000002" y="1128" font-size="13" fill="#1F2328">Entrada M2M</text>
+<rect x="314.23" y="1115" width="30" height="16" rx="3" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.4"/>
+<text x="352.23" y="1128" font-size="13" fill="#1F2328">Paso del render</text>
+<rect x="470.04" y="1115" width="30" height="16" rx="3" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.4"/>
+<text x="508.04" y="1128" font-size="13" fill="#1F2328">Plantillas / salida</text>
+<rect x="643.79" y="1115" width="30" height="16" rx="3" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.4"/>
+<text x="681.79" y="1128" font-size="13" fill="#1F2328">Regla</text>
+<path d="M 738.76 1123 L 766.76 1123" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="776.76" y="1128" font-size="13" fill="#1F2328">Flujo</text>
+<text x="30" y="1168" font-size="13" fill="#555B63" font-style="italic">Fuentes: Scribe_Templates.md · Notification_Email.md · Tenant_Links.md</text>
+</svg>

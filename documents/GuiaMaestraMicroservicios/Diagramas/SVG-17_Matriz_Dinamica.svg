@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1302" width="1600" height="1302" font-family="Segoe UI, Arial, sans-serif">
+<title>SVG-17 · Matriz dinámica: qué capacidades exige cada tipo de servicio</title>
+<desc>Se lee por filas: un servicio suma las filas que le aplican (siempre la última). Celdas derivadas de las investigaciones Auth_RBAC, Offboarding, Proyecciones, Reconciliation, Modulos_Planes_Addons, M2M_ServiceAuth, Gateway_YARP, Cloudflare, Notification_* y Testing_*.</desc>
+<defs><marker id="ah-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/></marker><marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2F5D9E"/></marker><marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker><marker id="ah-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B7791F"/></marker><marker id="ah-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B83232"/></marker><marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FA0"/></marker><marker id="ah-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2C7A7B"/></marker><marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/></marker></defs>
+<rect x="0" y="0" width="1600" height="1302" fill="#FFFFFF"/>
+<rect class="ctr" x="30.0" y="948.0" width="1540.0" height="68.0" rx="8" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.2"/>
+<text x="40.0" y="971.0" font-size="14" font-weight="700" fill="#111827">Leyenda de símbolos</text>
+<text x="30.0" y="42.0" font-size="24" font-weight="700" fill="#111827">SVG-17 · Matriz dinámica: qué capacidades exige cada tipo de servicio</text>
+<text x="30.0" y="68.0" font-size="14" fill="#4B5563">Se lee por filas: un servicio suma las filas que le aplican (siempre la última). Celdas derivadas de las investigaciones Auth_RBAC, Offboarding, Proyecciones, Reconciliation,</text>
+<text x="30.0" y="88.0" font-size="14" fill="#4B5563">Modulos_Planes_Addons, M2M_ServiceAuth, Gateway_YARP, Cloudflare, Notification_* y Testing_*.</text>
+<rect class="box" x="30.0" y="126.0" width="280.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="40.0" y="149.0" font-size="14" font-weight="700" fill="#111827">Tipo de servicio  → </text>
+<text x="40.0" y="169.0" font-size="14" font-weight="700" fill="#111827">capacidad</text>
+<rect class="box" x="310.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="373.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">JWT / RBAC /</text>
+<text x="373.0" y="160.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">denylist</text>
+<rect class="box" x="436.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="499.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Offboarding</text>
+<rect class="box" x="562.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="625.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Proyecciones +</text>
+<text x="625.0" y="160.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">reconciliation</text>
+<rect class="box" x="688.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="751.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Módulos /</text>
+<text x="751.0" y="160.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">planes</text>
+<rect class="box" x="814.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="877.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">M2M</text>
+<rect class="box" x="940.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="1003.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Wolverine /</text>
+<text x="1003.0" y="160.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">RabbitMQ</text>
+<rect class="box" x="1066.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="1129.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">YARP +</text>
+<text x="1129.0" y="160.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Cloudflare</text>
+<rect class="box" x="1192.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="1255.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Scribe /</text>
+<text x="1255.0" y="160.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Notification</text>
+<rect class="box" x="1318.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="1381.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Zona horaria</text>
+<rect class="box" x="1444.0" y="126.0" width="126.0" height="70.0" rx="0" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="1507.0" y="142.0" font-size="13" font-weight="700" text-anchor="middle" fill="#111827">Tests</text>
+<rect class="box" x="30.0" y="196.0" width="280.0" height="56.0" rx="0" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="218.0" font-size="13" fill="#1F2937">Con usuarios humanos (CRM /</text>
+<text x="40.0" y="236.0" font-size="13" fill="#1F2937">portal)</text>
+<rect x="310" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="373.0" cy="224.0" r="8" fill="#2E7D4F"/>
+<rect x="436" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="499.0" cy="224.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 499.0 216.0 A 8 8 0 0 0 499.0 232.0 Z" fill="#B7791F"/>
+<rect x="562" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="625.0" cy="224.0" r="8" fill="#2E7D4F"/>
+<rect x="688" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="751.0" cy="224.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 751.0 216.0 A 8 8 0 0 0 751.0 232.0 Z" fill="#B7791F"/>
+<rect x="814" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="877.0" cy="224.0" r="8" fill="#2E7D4F"/>
+<rect x="940" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1003.0" cy="224.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1129.0" cy="224.0" r="8" fill="#2E7D4F"/>
+<rect x="1192" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1255.0" cy="224.0" r="7" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="2"/>
+<rect x="1318" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1381.0" cy="224.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 1381.0 216.0 A 8 8 0 0 0 1381.0 232.0 Z" fill="#B7791F"/>
+<rect x="1444" y="196" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1507.0" cy="224.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="252.0" width="280.0" height="56.0" rx="0" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.5"/>
+<text x="40.0" y="274.0" font-size="13" fill="#1F2937">Guarda recursos de empleados (Guid</text>
+<text x="40.0" y="292.0" font-size="13" fill="#1F2937">de usuario)</text>
+<rect x="310" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 365.0 280.0 L 381.0 280.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="436" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="499.0" cy="280.0" r="8" fill="#2E7D4F"/>
+<rect x="562" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="625.0" cy="280.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 625.0 272.0 A 8 8 0 0 0 625.0 288.0 Z" fill="#B7791F"/>
+<rect x="688" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 743.0 280.0 L 759.0 280.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 869.0 280.0 L 885.0 280.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="940" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1003.0" cy="280.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1129.0" cy="280.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 1129.0 272.0 A 8 8 0 0 0 1129.0 288.0 Z" fill="#B7791F"/>
+<rect x="1192" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1255.0" cy="280.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 1255.0 272.0 A 8 8 0 0 0 1255.0 288.0 Z" fill="#B7791F"/>
+<rect x="1318" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1373.0 280.0 L 1389.0 280.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1444" y="252" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1507.0" cy="280.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="308.0" width="280.0" height="56.0" rx="0" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="330.0" font-size="13" fill="#1F2937">Usa datos de otro bounded context</text>
+<rect x="310" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 365.0 336.0 L 381.0 336.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="436" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 491.0 336.0 L 507.0 336.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="562" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="625.0" cy="336.0" r="8" fill="#2E7D4F"/>
+<rect x="688" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 743.0 336.0 L 759.0 336.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="877.0" cy="336.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 877.0 328.0 A 8 8 0 0 0 877.0 344.0 Z" fill="#B7791F"/>
+<rect x="940" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1003.0" cy="336.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1121.0 336.0 L 1137.0 336.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1192" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1247.0 336.0 L 1263.0 336.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1318" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1373.0 336.0 L 1389.0 336.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1444" y="308" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1507.0" cy="336.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="364.0" width="280.0" height="56.0" rx="0" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.5"/>
+<text x="40.0" y="386.0" font-size="13" fill="#1F2937">Comercializable (módulo vendible)</text>
+<rect x="310" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="373.0" cy="392.0" r="8" fill="#2E7D4F"/>
+<rect x="436" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 491.0 392.0 L 507.0 392.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="562" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="625.0" cy="392.0" r="8" fill="#2E7D4F"/>
+<rect x="688" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<polygon points="751.0,383.0 760.0,392.0 751.0,401.0 742.0,392.0" fill="#6B4FA0"/>
+<rect x="814" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="877.0" cy="392.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 877.0 384.0 A 8 8 0 0 0 877.0 400.0 Z" fill="#B7791F"/>
+<rect x="940" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1003.0" cy="392.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1121.0 392.0 L 1137.0 392.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1192" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1247.0 392.0 L 1263.0 392.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1318" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1373.0 392.0 L 1389.0 392.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1444" y="364" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1507.0" cy="392.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="420.0" width="280.0" height="56.0" rx="0" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="442.0" font-size="13" fill="#1F2937">Llama o expone M2M (internal/*)</text>
+<rect x="310" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="373.0" cy="448.0" r="8" fill="#2E7D4F"/>
+<rect x="436" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 491.0 448.0 L 507.0 448.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="562" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 617.0 448.0 L 633.0 448.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="688" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 743.0 448.0 L 759.0 448.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="877.0" cy="448.0" r="8" fill="#2E7D4F"/>
+<rect x="940" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 995.0 448.0 L 1011.0 448.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1066" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1121.0 448.0 L 1137.0 448.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1192" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1247.0 448.0 L 1263.0 448.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1318" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1373.0 448.0 L 1389.0 448.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1444" y="420" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1507.0" cy="448.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="476.0" width="280.0" height="56.0" rx="0" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.5"/>
+<text x="40.0" y="498.0" font-size="13" fill="#1F2937">Consume eventos de integración</text>
+<rect x="310" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 365.0 504.0 L 381.0 504.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="436" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 491.0 504.0 L 507.0 504.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="562" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="625.0" cy="504.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 625.0 496.0 A 8 8 0 0 0 625.0 512.0 Z" fill="#B7791F"/>
+<rect x="688" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 743.0 504.0 L 759.0 504.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 869.0 504.0 L 885.0 504.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="940" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1003.0" cy="504.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1121.0 504.0 L 1137.0 504.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1192" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1247.0 504.0 L 1263.0 504.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1318" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1373.0 504.0 L 1389.0 504.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1444" y="476" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1507.0" cy="504.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="532.0" width="280.0" height="56.0" rx="0" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="554.0" font-size="13" fill="#1F2937">Expone endpoints externos (vía</text>
+<text x="40.0" y="572.0" font-size="13" fill="#1F2937">gateway)</text>
+<rect x="310" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="373.0" cy="560.0" r="8" fill="#2E7D4F"/>
+<rect x="436" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 491.0 560.0 L 507.0 560.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="562" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 617.0 560.0 L 633.0 560.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="688" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 743.0 560.0 L 759.0 560.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 869.0 560.0 L 885.0 560.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="940" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 995.0 560.0 L 1011.0 560.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1066" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1129.0" cy="560.0" r="8" fill="#2E7D4F"/>
+<rect x="1192" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1247.0 560.0 L 1263.0 560.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1318" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1373.0 560.0 L 1389.0 560.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1444" y="532" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1507.0" cy="560.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="588.0" width="280.0" height="56.0" rx="0" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.5"/>
+<text x="40.0" y="610.0" font-size="13" fill="#1F2937">Worker sin API pública</text>
+<rect x="310" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 365.0 616.0 L 381.0 616.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="436" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="499.0" cy="616.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 499.0 608.0 A 8 8 0 0 0 499.0 624.0 Z" fill="#B7791F"/>
+<rect x="562" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="625.0" cy="616.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 625.0 608.0 A 8 8 0 0 0 625.0 624.0 Z" fill="#B7791F"/>
+<rect x="688" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 743.0 616.0 L 759.0 616.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="877.0" cy="616.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 877.0 608.0 A 8 8 0 0 0 877.0 624.0 Z" fill="#B7791F"/>
+<rect x="940" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1003.0" cy="616.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 1003.0 608.0 A 8 8 0 0 0 1003.0 624.0 Z" fill="#B7791F"/>
+<rect x="1066" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1121.0 616.0 L 1137.0 616.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1192" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1247.0 616.0 L 1263.0 616.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1318" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1373.0 616.0 L 1389.0 616.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1444" y="588" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1507.0" cy="616.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="644.0" width="280.0" height="56.0" rx="0" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="666.0" font-size="13" fill="#1F2937">Envía emails</text>
+<rect x="310" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 365.0 672.0 L 381.0 672.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="436" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 491.0 672.0 L 507.0 672.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="562" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 617.0 672.0 L 633.0 672.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="688" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 743.0 672.0 L 759.0 672.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 869.0 672.0 L 885.0 672.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="940" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1003.0" cy="672.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1121.0 672.0 L 1137.0 672.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1192" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1255.0" cy="672.0" r="8" fill="#2E7D4F"/>
+<rect x="1318" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1381.0" cy="672.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 1381.0 664.0 A 8 8 0 0 0 1381.0 680.0 Z" fill="#B7791F"/>
+<rect x="1444" y="644" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1507.0" cy="672.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="700.0" width="280.0" height="56.0" rx="0" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.5"/>
+<text x="40.0" y="722.0" font-size="13" fill="#1F2937">Envía SMS</text>
+<rect x="310" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 365.0 728.0 L 381.0 728.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="436" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 491.0 728.0 L 507.0 728.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="562" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 617.0 728.0 L 633.0 728.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="688" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 743.0 728.0 L 759.0 728.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 869.0 728.0 L 885.0 728.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="940" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1003.0" cy="728.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1121.0 728.0 L 1137.0 728.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1192" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1255.0" cy="728.0" r="8" fill="#2E7D4F"/>
+<rect x="1318" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1373.0 728.0 L 1389.0 728.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1444" y="700" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1507.0" cy="728.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="756.0" width="280.0" height="56.0" rx="0" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="778.0" font-size="13" fill="#1F2937">Envía push / in-app</text>
+<rect x="310" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 365.0 784.0 L 381.0 784.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="436" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 491.0 784.0 L 507.0 784.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="562" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 617.0 784.0 L 633.0 784.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="688" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 743.0 784.0 L 759.0 784.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 869.0 784.0 L 885.0 784.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="940" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1003.0" cy="784.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1121.0 784.0 L 1137.0 784.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1192" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1255.0" cy="784.0" r="8" fill="#2E7D4F"/>
+<rect x="1318" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<path d="M 1373.0 784.0 L 1389.0 784.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1444" y="756" width="126" height="56" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1"/>
+<circle cx="1507.0" cy="784.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="812.0" width="280.0" height="56.0" rx="0" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.5"/>
+<text x="40.0" y="834.0" font-size="13" fill="#1F2937">Datos temporales de oficina</text>
+<text x="40.0" y="852.0" font-size="13" fill="#1F2937">(fechas civiles, vencimientos)</text>
+<rect x="310" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 365.0 840.0 L 381.0 840.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="436" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 491.0 840.0 L 507.0 840.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="562" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="625.0" cy="840.0" r="8" fill="#2E7D4F"/>
+<rect x="688" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 743.0 840.0 L 759.0 840.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="814" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="877.0" cy="840.0" r="8" fill="#2E7D4F"/>
+<rect x="940" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1003.0" cy="840.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1121.0 840.0 L 1137.0 840.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1192" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<path d="M 1247.0 840.0 L 1263.0 840.0" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="1318" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1381.0" cy="840.0" r="8" fill="#2E7D4F"/>
+<rect x="1444" y="812" width="126" height="56" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1"/>
+<circle cx="1507.0" cy="840.0" r="8" fill="#2E7D4F"/>
+<rect class="box" x="30.0" y="868.0" width="280.0" height="56.0" rx="0" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="40.0" y="890.0" font-size="13" fill="#1F2937">TODO servicio (base común)</text>
+<rect x="310" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="373.0" cy="896.0" r="8" fill="#2E7D4F"/>
+<rect x="436" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="499.0" cy="896.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 499.0 888.0 A 8 8 0 0 0 499.0 904.0 Z" fill="#B7791F"/>
+<rect x="562" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="625.0" cy="896.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 625.0 888.0 A 8 8 0 0 0 625.0 904.0 Z" fill="#B7791F"/>
+<rect x="688" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="751.0" cy="896.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 751.0 888.0 A 8 8 0 0 0 751.0 904.0 Z" fill="#B7791F"/>
+<rect x="814" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="877.0" cy="896.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 877.0 888.0 A 8 8 0 0 0 877.0 904.0 Z" fill="#B7791F"/>
+<rect x="940" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="1003.0" cy="896.0" r="8" fill="#2E7D4F"/>
+<rect x="1066" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="1129.0" cy="896.0" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 1129.0 888.0 A 8 8 0 0 0 1129.0 904.0 Z" fill="#B7791F"/>
+<rect x="1192" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="1255.0" cy="896.0" r="7" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="2"/>
+<rect x="1318" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="1381.0" cy="896.0" r="8" fill="#2E7D4F"/>
+<rect x="1444" y="868" width="126" height="56" fill="#FFF4E0" stroke="#B7791F" stroke-width="1"/>
+<circle cx="1507.0" cy="896.0" r="8" fill="#2E7D4F"/>
+<circle cx="57" cy="996" r="8" fill="#2E7D4F"/>
+<text x="82.0" y="1001.0" font-size="13" fill="#1F2937">Obligatoria</text>
+<circle cx="201.5" cy="996" r="8" fill="#FFFFFF" stroke="#B7791F" stroke-width="2"/>
+<path d="M 201.5 988 A 8 8 0 0 0 201.5 1004 Z" fill="#B7791F"/>
+<text x="226.5" y="1001.0" font-size="13" fill="#1F2937">Bajo condición</text>
+<circle cx="368.5" cy="996" r="7" fill="#FFFFFF" stroke="#2F5D9E" stroke-width="2"/>
+<text x="393.5" y="1001.0" font-size="13" fill="#1F2937">Opcional</text>
+<path d="M 482.5 996 L 498.5 996" stroke="#9CA3AF" stroke-width="2.5" stroke-linecap="round"/>
+<text x="515.5" y="1001.0" font-size="13" fill="#1F2937">No aplica</text>
+<polygon points="620.0,987 629.0,996 620.0,1005 611.0,996" fill="#6B4FA0"/>
+<text x="645.0" y="1001.0" font-size="13" fill="#1F2937">Requiere aprobación del dueño</text>
+<rect class="box" x="30.0" y="1036.0" width="762.0" height="224.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="1059.0" font-size="14" font-weight="700" fill="#111827">Condiciones y notas (1/2)</text>
+<text x="40.0" y="1082.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="54.0" y="1082.0" font-size="13" fill="#1F2937">JWT / RBAC: [Authorize] + [AllowActorTypes] + [HasPermission] + [RateLimit] en cada acción;</text>
+<text x="54.0" y="1100.0" font-size="13" fill="#1F2937">permisos en modo Projection con pull-recovery (por eso M2M es obligatoria para humanos). Denylist</text>
+<text x="54.0" y="1118.0" font-size="13" fill="#1F2937">de sesión en los 26 .NET.</text>
+<text x="40.0" y="1136.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="54.0" y="1136.0" font-size="13" fill="#1F2937">Offboarding: participa si guarda un Guid de empleado clasificado ActiveWork, Credential o Private</text>
+<text x="54.0" y="1154.0" font-size="13" fill="#1F2937">(consumer + pre-flight offboarding-impact) o si tiene proyección de permisos. Solo Provenance: no</text>
+<text x="54.0" y="1172.0" font-size="13" fill="#1F2937">participa.</text>
+<text x="40.0" y="1190.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="54.0" y="1190.0" font-size="13" fill="#1F2937">Proyecciones: dueño único, evento con versión, ApplyIfNewer, IgnoreQueryFilters + tenant del</text>
+<text x="54.0" y="1208.0" font-size="13" fill="#1F2937">evento y reparación (pull o reconciliación con token de PlatformTenant).</text>
+<text x="40.0" y="1226.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="54.0" y="1226.0" font-size="13" fill="#1F2937">Módulos: decidir si se vende y el modo inicial del gate es del dueño; luego PermissionModuleMap,</text>
+<text x="54.0" y="1244.0" font-size="13" fill="#1F2937">AddModuleGate, revisión de catálogo en Subscription y flag en compose + deploy.yml.</text>
+<rect class="box" x="808.0" y="1036.0" width="762.0" height="242.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="818.0" y="1059.0" font-size="14" font-weight="700" fill="#111827">Condiciones y notas (2/2)</text>
+<text x="818.0" y="1082.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="832.0" y="1082.0" font-size="13" fill="#1F2937">YARP + Cloudflare: ruta, cluster, Criticality y override en compose. Cloudflare solo cambia con</text>
+<text x="832.0" y="1100.0" font-size="13" fill="#1F2937">hostname nuevo, puerto no HTTP o Turnstile (lo configura el senior, ver SVG-14).</text>
+<text x="818.0" y="1118.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="832.0" y="1118.0" font-size="13" fill="#1F2937">M2M: endpoints bajo internal/* nunca pasan por el gateway (404). Cliente {svc}-worker en Auth y</text>
+<text x="832.0" y="1136.0" font-size="13" fill="#1F2937">*_CLIENT_SECRET en production-extra.</text>
+<text x="818.0" y="1154.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="832.0" y="1154.0" font-size="13" fill="#1F2937">Workers: Recorder, TranscriptWorker y ContentScanner no se enrutan en el gateway; el worker de</text>
+<text x="832.0" y="1172.0" font-size="13" fill="#1F2937">transcripción usa token M2M; ContentScanner no usa bus.</text>
+<text x="818.0" y="1190.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="832.0" y="1190.0" font-size="13" fill="#1F2937">Notificaciones: el servicio publica su propio evento con TenantId; Notification decide</text>
+<text x="832.0" y="1208.0" font-size="13" fill="#1F2937">destinatarios y canal; Scribe renderiza; Postmaster o Sms envían. Fechas como $instant / $date</text>
+<text x="832.0" y="1226.0" font-size="13" fill="#1F2937">(zona de quien lee).</text>
+<text x="818.0" y="1244.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="832.0" y="1244.0" font-size="13" fill="#1F2937">Zona horaria: kit BuildingBlocks.TenantTimeZones (proyección + reconciliación);</text>
+<text x="832.0" y="1262.0" font-size="13" fill="#1F2937">AddTimeZoneSelfCheck y UseUtcDateTimes en el DbContext (faltan Calendar, Signature y Tasks).</text>
+</svg>

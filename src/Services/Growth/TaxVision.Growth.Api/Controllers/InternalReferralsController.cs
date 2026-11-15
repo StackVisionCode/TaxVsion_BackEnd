@@ -31,26 +31,6 @@ namespace TaxVision.Growth.Api.Controllers;
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalReferralsController(IMessageBus bus) : ControllerBase
 {
-    public sealed record QualifyReferralRequest(
-        Guid AttributionId,
-        Guid QualifyingEventId,
-        Guid PaymentId,
-        QualifyingPaymentSource PaymentSource,
-        long PaymentAmountCents,
-        string PaymentCurrency,
-        bool IsFirstSuccessfulPayment,
-        DateTime PaymentSucceededAtUtc
-    );
-
-    /// <summary>Atribución del alta (pre-tenant). El código de referido solo identifica quién recomendó: no cambia el precio.</summary>
-    public sealed record OnboardingAttributionRequest(string ReferralCode, ReferralShareChannel? Channel, Guid? ShareId)
-    {
-        public override string ToString() =>
-            $"{nameof(OnboardingAttributionRequest)} {{ ReferralCode = <redacted>, Channel = {Channel}, ShareId = {ShareId} }}";
-    }
-
-    public sealed record OnboardingAttributionResponse(Guid AttributionId, string Status);
-
     public sealed record ConfirmGrantRequest(Guid AttemptId, string MaterializedBenefitReference);
 
     public sealed record ConfirmClawbackRequest(Guid AttemptId, string ReversalReference);

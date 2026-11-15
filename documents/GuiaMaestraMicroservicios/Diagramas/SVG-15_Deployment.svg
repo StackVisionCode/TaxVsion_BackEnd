@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1358" width="1600" height="1358" font-family="Segoe UI, Arial, sans-serif">
+<title>SVG-15 · Despliegue a producción: .github/workflows/deploy.yml</title>
+<desc>Dos jobs sobre runner self-hosted (la misma VM que corre la flota). Se partió en dos porque un job solo ve un environment y ambos llegaron al tope de 100 secrets. Imágenes construidas en la VM con tag :dev (sin registry).</desc>
+<defs><marker id="ah-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/></marker><marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2F5D9E"/></marker><marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker><marker id="ah-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B7791F"/></marker><marker id="ah-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B83232"/></marker><marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FA0"/></marker><marker id="ah-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2C7A7B"/></marker><marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/></marker></defs>
+<rect x="0" y="0" width="1600" height="1358" fill="#FFFFFF"/>
+<rect class="ctr" x="30.0" y="204.0" width="480.0" height="490.0" rx="8" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.2"/>
+<text x="40.0" y="227.0" font-size="14" font-weight="700" fill="#111827">Job stage · environment: production · 30 min</text>
+<rect class="ctr" x="540.0" y="204.0" width="570.0" height="1038.0" rx="8" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.2"/>
+<text x="550.0" y="227.0" font-size="14" font-weight="700" fill="#111827">Job deploy · environment: production-extra · needs: stage · 45</text>
+<text x="550.0" y="247.0" font-size="14" font-weight="700" fill="#111827">min</text>
+<rect class="ctr" x="30.0" y="1266.0" width="1540.0" height="68.0" rx="8" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.2"/>
+<text x="40.0" y="1289.0" font-size="14" font-weight="700" fill="#111827">Leyenda</text>
+<text x="30.0" y="42.0" font-size="24" font-weight="700" fill="#111827">SVG-15 · Despliegue a producción: .github/workflows/deploy.yml</text>
+<text x="30.0" y="68.0" font-size="14" fill="#4B5563">Dos jobs sobre runner self-hosted (la misma VM que corre la flota). Se partió en dos porque un job solo ve un environment y ambos llegaron al tope de 100 secrets. Imágenes construidas en la</text>
+<text x="30.0" y="88.0" font-size="14" fill="#4B5563">VM con tag :dev (sin registry).</text>
+<rect class="box" x="30.0" y="112.0" width="1080.0" height="62.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="135.0" font-size="14" font-weight="700" fill="#111827">Disparo</text>
+<text x="40.0" y="158.0" font-size="13" fill="#9CA3AF">•</text>
+<text x="54.0" y="158.0" font-size="13" fill="#1F2937">push a main o workflow_dispatch · concurrency: production-deploy (sin cancelar) · runs-on: self-hosted</text>
+<rect class="box" x="44.0" y="240.0" width="452.0" height="40.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="54.0" y="263.0" font-size="14" font-weight="700" fill="#111827">actions/checkout@v4</text>
+<rect class="box" x="44.0" y="298.0" width="452.0" height="62.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="54.0" y="321.0" font-size="14" font-weight="700" fill="#111827">Valida TAXVISION_BASE_DOMAIN y TAXVISION_DOMAIN</text>
+<text x="54.0" y="344.0" font-size="13" fill="#1F2937">Sin ellos el job se corta</text>
+<rect class="box" x="44.0" y="378.0" width="452.0" height="62.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="54.0" y="401.0" font-size="14" font-weight="700" fill="#111827">Write production .env (1/3, 2/3, 3/3)</text>
+<text x="54.0" y="424.0" font-size="13" fill="#1F2937">Heredoc en 3 pasos: un run no pasa de 21 000 caracteres</text>
+<rect class="box" x="44.0" y="458.0" width="452.0" height="80.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="54.0" y="481.0" font-size="14" font-weight="700" fill="#111827">Decodifica archivos a TAXVISION_SECRETS_DIR</text>
+<text x="54.0" y="504.0" font-size="13" fill="#1F2937">jwt-private.pem, jwt-public.pem, signature-sealing.pfx,</text>
+<text x="54.0" y="522.0" font-size="13" fill="#1F2937">firebase-service-account.json · chmod 600</text>
+<rect class="box" x="44.0" y="556.0" width="452.0" height="62.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="54.0" y="579.0" font-size="14" font-weight="700" fill="#111827">Copia el .env a deploy-staging del runner</text>
+<text x="54.0" y="602.0" font-size="13" fill="#1F2937">No usa artifacts: expondrían secrets en la UI</text>
+<rect class="box" x="44.0" y="636.0" width="452.0" height="40.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="54.0" y="659.0" font-size="14" font-weight="700" fill="#111827">Si falla: borra el .env staged</text>
+<rect class="box" x="554.0" y="260.0" width="542.0" height="62.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="564.0" y="283.0" font-size="14" font-weight="700" fill="#111827">Carga el .env staged</text>
+<text x="564.0" y="306.0" font-size="13" fill="#1F2937">Error si no existe</text>
+<rect class="box" x="554.0" y="338.0" width="542.0" height="98.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="564.0" y="361.0" font-size="14" font-weight="700" fill="#111827">Append production-extra secrets to .env</text>
+<text x="564.0" y="384.0" font-size="13" fill="#1F2937">FinancialInsights, Turnstile, CAMPAIGN_EMAIL_*,</text>
+<text x="564.0" y="402.0" font-size="13" fill="#1F2937">Drive/OneDrive/Dropbox, RECORDER_MINIO_SECRET,</text>
+<text x="564.0" y="420.0" font-size="13" fill="#1F2937">CONTENT_SCANNER_API_KEY, CALENDAR_SERVICE_CLIENT_SECRET</text>
+<rect class="box" x="554.0" y="452.0" width="542.0" height="62.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="564.0" y="475.0" font-size="14" font-weight="700" fill="#111827">Escribe signature-signer-jwt.pem</text>
+<text x="564.0" y="498.0" font-size="13" fill="#1F2937">Falla con error claro si falta SIGNATURE_SIGNER_JWT_PEM_B64</text>
+<rect class="box" x="554.0" y="530.0" width="542.0" height="98.0" rx="6" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="564.0" y="553.0" font-size="14" font-weight="700" fill="#111827">Build de imágenes en tandas de 3</text>
+<text x="564.0" y="576.0" font-size="13" fill="#1F2937">docker compose config --format json + python3 lista los servicios con</text>
+<text x="564.0" y="594.0" font-size="13" fill="#1F2937">build: · --profile tools incluye la imagen migrations · tandas por</text>
+<text x="564.0" y="612.0" font-size="13" fill="#1F2937">OOM (exit 137)</text>
+<rect class="box" x="554.0" y="644.0" width="542.0" height="62.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="564.0" y="667.0" font-size="14" font-weight="700" fill="#111827">Reconcilia credenciales de RabbitMQ</text>
+<text x="564.0" y="690.0" font-size="13" fill="#1F2937">rabbitmqctl change_password / add_user / set_permissions</text>
+<rect class="box" x="554.0" y="722.0" width="542.0" height="62.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="564.0" y="745.0" font-size="14" font-weight="700" fill="#111827">run --rm minio-provision</text>
+<text x="564.0" y="768.0" font-size="13" fill="#1F2937">Cuentas MinIO con alcance</text>
+<rect class="box" x="554.0" y="800.0" width="542.0" height="62.0" rx="6" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="564.0" y="823.0" font-size="14" font-weight="700" fill="#111827">run --rm migrations</text>
+<text x="564.0" y="846.0" font-size="13" fill="#1F2937">EF Core: 25 servicios + FinancialInsights si su variable tiene valor</text>
+<rect class="box" x="554.0" y="878.0" width="542.0" height="40.0" rx="6" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="564.0" y="901.0" font-size="14" font-weight="700" fill="#111827">run --rm communication-api npx prisma migrate deploy</text>
+<rect class="box" x="554.0" y="934.0" width="542.0" height="62.0" rx="6" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="564.0" y="957.0" font-size="14" font-weight="700" fill="#111827">docker compose up -d --remove-orphans</text>
+<text x="564.0" y="980.0" font-size="13" fill="#1F2937">No toca volúmenes</text>
+<rect class="box" x="554.0" y="1012.0" width="542.0" height="40.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="564.0" y="1035.0" font-size="14" font-weight="700" fill="#111827">docker image prune -f · builder prune --filter until=24h</text>
+<rect class="box" x="554.0" y="1068.0" width="542.0" height="80.0" rx="6" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="564.0" y="1091.0" font-size="14" font-weight="700" fill="#111827">Healthcheck: 20 intentos cada 5 s</text>
+<text x="564.0" y="1114.0" font-size="13" fill="#1F2937">https://${TAXVISION_DOMAIN}/health/ready · si falla vuelca ps,</text>
+<text x="564.0" y="1132.0" font-size="13" fill="#1F2937">readiness y logs</text>
+<rect class="box" x="554.0" y="1164.0" width="542.0" height="62.0" rx="6" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
+<text x="564.0" y="1187.0" font-size="14" font-weight="700" fill="#111827">if: always() · borra el .env staged y el del workspace</text>
+<text x="564.0" y="1210.0" font-size="13" fill="#1F2937">En la VM no queda .env</text>
+<rect class="box" x="1150.0" y="112.0" width="420.0" height="134.0" rx="6" fill="#FCE8E8" stroke="#B83232" stroke-width="1.5"/>
+<text x="1160.0" y="135.0" font-size="14" font-weight="700" fill="#111827">El CI no corre pruebas</text>
+<text x="1160.0" y="158.0" font-size="13" fill="#B83232">•</text>
+<text x="1174.0" y="158.0" font-size="13" fill="#1F2937">Sin dotnet test ni setup-dotnet desde el 2026-11-13</text>
+<text x="1174.0" y="176.0" font-size="13" fill="#1F2937">(decisión del dueño: saturaba el runner)</text>
+<text x="1160.0" y="194.0" font-size="13" fill="#B83232">•</text>
+<text x="1174.0" y="194.0" font-size="13" fill="#1F2937">El gate se corre en local antes de que el dueño</text>
+<text x="1174.0" y="212.0" font-size="13" fill="#1F2937">haga push a main</text>
+<text x="1160.0" y="230.0" font-size="13" fill="#B83232">•</text>
+<text x="1174.0" y="230.0" font-size="13" fill="#1F2937">Un push con pruebas rojas despliega igual</text>
+<rect class="box" x="1150.0" y="268.0" width="420.0" height="224.0" rx="6" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="1160.0" y="291.0" font-size="14" font-weight="700" fill="#111827">Secrets · environment production (job stage)</text>
+<text x="1160.0" y="314.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="1174.0" y="314.0" font-size="13" fill="#1F2937">&lt;SVC&gt;_DB_CONNECTION, SQLSERVER_HOST/PORT,</text>
+<text x="1174.0" y="332.0" font-size="13" fill="#1F2937">RABBITMQ_*, MINIO_ROOT_*, &lt;SVC&gt;_MINIO_SECRET</text>
+<text x="1160.0" y="350.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="1174.0" y="350.0" font-size="13" fill="#1F2937">&lt;SVC&gt;_SERVICE_CLIENT_ID/SECRET,</text>
+<text x="1174.0" y="368.0" font-size="13" fill="#1F2937">ENCRYPTION_MASTER_KEY, MFA_ENCRYPTION_KEY</text>
+<text x="1160.0" y="386.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="1174.0" y="386.0" font-size="13" fill="#1F2937">JWT_*_PEM_B64, SIGNATURE_SEALING_PFX_B64,</text>
+<text x="1174.0" y="404.0" font-size="13" fill="#1F2937">FIREBASE_SERVICE_ACCOUNT_JSON_B64</text>
+<text x="1160.0" y="422.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="1174.0" y="422.0" font-size="13" fill="#1F2937">TAXVISION_DOMAIN, TAXVISION_BASE_DOMAIN,</text>
+<text x="1174.0" y="440.0" font-size="13" fill="#1F2937">CLOUDFLARE_DNS_API_TOKEN</text>
+<text x="1160.0" y="458.0" font-size="13" fill="#B83232">Lleno (tope 100). 223 referencias en stage: confirmar</text>
+<text x="1160.0" y="476.0" font-size="13" fill="#B83232">repo vs environment (decisión pendiente)</text>
+<rect class="box" x="1150.0" y="514.0" width="420.0" height="172.0" rx="6" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="1160.0" y="537.0" font-size="14" font-weight="700" fill="#111827">Secrets · environment production-extra (job</text>
+<text x="1160.0" y="557.0" font-size="14" font-weight="700" fill="#111827">deploy)</text>
+<text x="1160.0" y="580.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="1174.0" y="580.0" font-size="13" fill="#1F2937">Secret nuevo va aquí y se escribe en el paso Append</text>
+<text x="1174.0" y="598.0" font-size="13" fill="#1F2937">production-extra secrets to .env</text>
+<text x="1160.0" y="616.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="1174.0" y="616.0" font-size="13" fill="#1F2937">Su nombre se agrega al [InlineData] de</text>
+<text x="1174.0" y="634.0" font-size="13" fill="#1F2937">ProductionExtraSecretsDeployTests</text>
+<text x="1160.0" y="652.0" font-size="13" fill="#6B4FA0">•</text>
+<text x="1174.0" y="652.0" font-size="13" fill="#1F2937">*_CLIENT_SECRET leído por compose →</text>
+<text x="1174.0" y="670.0" font-size="13" fill="#1F2937">ServiceClientSecretsDeployWiringTests</text>
+<rect class="box" x="1150.0" y="708.0" width="420.0" height="170.0" rx="6" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="1160.0" y="731.0" font-size="14" font-weight="700" fill="#111827">Contenedor migrations (profile tools)</text>
+<text x="1160.0" y="754.0" font-size="13" fill="#B7791F">•</text>
+<text x="1174.0" y="754.0" font-size="13" fill="#1F2937">Imagen deploy/docker/migrations: sdk 10.0.300, COPY</text>
+<text x="1174.0" y="772.0" font-size="13" fill="#1F2937">. ., dotnet tool restore, dotnet build</text>
+<text x="1174.0" y="790.0" font-size="13" fill="#1F2937">TaxVision.slnx -c Release</text>
+<text x="1160.0" y="808.0" font-size="13" fill="#B7791F">•</text>
+<text x="1174.0" y="808.0" font-size="13" fill="#1F2937">apply-migrations.sh con set -eu: dotnet ef database</text>
+<text x="1174.0" y="826.0" font-size="13" fill="#1F2937">update --no-build por servicio</text>
+<text x="1160.0" y="844.0" font-size="13" fill="#B83232">Falta una *_DB_CONNECTION en el servicio migrations →</text>
+<text x="1160.0" y="862.0" font-size="13" fill="#B83232">se cortan todas las migraciones</text>
+<rect class="box" x="1150.0" y="900.0" width="420.0" height="134.0" rx="6" fill="#FCE8E8" stroke="#B83232" stroke-width="1.5"/>
+<text x="1160.0" y="923.0" font-size="14" font-weight="700" fill="#111827">Huecos verificados</text>
+<text x="1160.0" y="946.0" font-size="13" fill="#B83232">•</text>
+<text x="1174.0" y="946.0" font-size="13" fill="#1F2937">El healthcheck final solo prueba Caddy → Gateway:</text>
+<text x="1174.0" y="964.0" font-size="13" fill="#1F2937">/health/ready del gateway no tiene checks ready</text>
+<text x="1160.0" y="982.0" font-size="13" fill="#B83232">•</text>
+<text x="1174.0" y="982.0" font-size="13" fill="#1F2937">Sin rollback automatizado ni tags por commit (todo</text>
+<text x="1174.0" y="1000.0" font-size="13" fill="#1F2937">:dev)</text>
+<text x="1160.0" y="1018.0" font-size="13" fill="#B83232">•</text>
+<text x="1174.0" y="1018.0" font-size="13" fill="#1F2937">DOTNET_INSTALL_DIR declarado y sin uso</text>
+<rect class="sw" x="42.0" y="1306.0" width="30" height="16" rx="3" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="82.0" y="1319.0" font-size="13" fill="#1F2937">Paso del workflow</text>
+<rect class="sw" x="231.5" y="1306.0" width="30" height="16" rx="3" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="271.5" y="1319.0" font-size="13" fill="#1F2937">Build de imágenes</text>
+<rect class="sw" x="421.0" y="1306.0" width="30" height="16" rx="3" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="461.0" y="1319.0" font-size="13" fill="#1F2937">Migraciones</text>
+<rect class="sw" x="565.5" y="1306.0" width="30" height="16" rx="3" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="605.5" y="1319.0" font-size="13" fill="#1F2937">Arranque y verificación</text>
+<rect class="sw" x="800.0" y="1306.0" width="30" height="16" rx="3" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="840.0" y="1319.0" font-size="13" fill="#1F2937">Secrets por environment</text>
+<rect class="sw" x="1034.5" y="1306.0" width="30" height="16" rx="3" fill="#FCE8E8" stroke="#B83232" stroke-width="1.5"/>
+<text x="1074.5" y="1319.0" font-size="13" fill="#1F2937">Riesgo o hueco</text>
+<rect class="sw" x="1201.5" y="1306.0" width="30" height="16" rx="3" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
+<text x="1241.5" y="1319.0" font-size="13" fill="#1F2937">Limpieza</text>
+<path class="leg" d="M 1323.5 1314.0 L 1353.5 1314.0" stroke="#6B4FA0" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#ah-purple)"/>
+<text x="1363.5" y="1319.0" font-size="13" fill="#1F2937">Lectura de secrets</text>
+<path class="arw" d="M 270.0 280.0 L 270.0 298.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 270.0 360.0 L 270.0 378.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 270.0 440.0 L 270.0 458.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 270.0 538.0 L 270.0 556.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 270.0 618.0 L 270.0 636.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 825.0 322.0 L 825.0 338.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 436.0 L 825.0 452.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 514.0 L 825.0 530.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 628.0 L 825.0 644.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 706.0 L 825.0 722.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 784.0 L 825.0 800.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 862.0 L 825.0 878.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 918.0 L 825.0 934.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 996.0 L 825.0 1012.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 1052.0 L 825.0 1068.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 825.0 1148.0 L 825.0 1164.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 270.0 174.0 L 270.0 204.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
+<path class="arw" d="M 510.0 587.0 L 530.0 587.0 L 530.0 291.0 L 554.0 291.0" fill="none" stroke="#2F5D9E" stroke-width="1.6" marker-end="url(#ah-blue)"/>
+<path class="arw" d="M 1150.0 298.0 L 1118.0 298.0 L 1118.0 192.0 L 430.0 192.0 L 430.0 204.0" fill="none" stroke="#6B4FA0" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah-purple)"/>
+<path class="arw" d="M 1150.0 600.0 L 1110.0 600.0" fill="none" stroke="#6B4FA0" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah-purple)"/>
+<path class="arw" d="M 1150.0 793.0 L 1096.0 831.0" fill="none" stroke="#B7791F" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah-amber)"/>
+<rect class="lbl" x="1101.8" y="259.0" width="32.5" height="22.0" rx="3" fill="#FFFFFF" fill-opacity="0.95" stroke="none"/>
+<text class="lbl" x="1118.0" y="273.0" font-size="13" text-anchor="middle" fill="#6B4FA0">lee</text>
+<rect class="lbl" x="1113.8" y="575.0" width="32.5" height="22.0" rx="3" fill="#FFFFFF" fill-opacity="0.95" stroke="none"/>
+<text class="lbl" x="1130.0" y="589.0" font-size="13" text-anchor="middle" fill="#6B4FA0">lee</text>
+</svg>

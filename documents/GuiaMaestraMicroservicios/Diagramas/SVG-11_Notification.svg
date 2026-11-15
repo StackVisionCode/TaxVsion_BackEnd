@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1260" width="1600" height="1260" font-family="Segoe UI, Arial, sans-serif">
+<title>Notification: orquestación multicanal</title>
+<desc>Cada servicio publica su propio evento; un consumer de Notification decide destinatarios y canales; cada canal tiene su dueño, su gate y su idempotencia</desc>
+<defs>
+<marker id="arr-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#444B55"/></marker>
+<marker id="arr-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#C0392B"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7B4BA8"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker>
+<marker id="arr-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8C8C96"/></marker>
+</defs>
+<rect x="0" y="0" width="1600" height="1260" fill="#FFFFFF"/>
+<text x="30" y="40" font-size="24" font-weight="700" fill="#1F2328">Notification: orquestación multicanal</text>
+<text x="30" y="66" font-size="14" fill="#555B63">Cada servicio publica su propio evento; un consumer de Notification decide destinatarios y canales; cada canal tiene su dueño, su gate y su idempotencia</text>
+<rect x="30" y="100" width="300" height="78" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="126.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Servicio X (dominio)</text>
+<text x="40.0" y="146.0" font-size="13" fill="#1F2328" text-anchor="start">Publica su propio evento con TenantId</text>
+<text x="40.0" y="164.0" font-size="13" fill="#1F2328" text-anchor="start">(no existe NotificationRequested)</text>
+<rect x="370" y="100" width="260" height="78" rx="8" ry="8" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.6"/>
+<text x="380.0" y="126.0" font-size="14" font-weight="700" fill="#7B4BA8" text-anchor="start">taxvision-events</text>
+<text x="380.0" y="146.0" font-size="13" fill="#1F2328" text-anchor="start">→ cola notification-events</text>
+<text x="380.0" y="164.0" font-size="13" fill="#1F2328" text-anchor="start">inbox durable · paralelo 5</text>
+<rect x="670" y="100" width="900" height="78" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="680.0" y="126.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Consumer en Notification (decide)</text>
+<text x="680.0" y="146.0" font-size="13" fill="#1F2328" text-anchor="start">1. Destinatarios: IRecipientResolver, IUserEmailResolver, proyecciones · 2. Links: ITenantHostResolver + TenantEmailLinks</text>
+<text x="680.0" y="164.0" font-size="13" fill="#1F2328" text-anchor="start">3. Canales según NotificationCatalog (AllowedChannels); el correo se renderiza primero (lo único que puede lanzar)</text>
+<path d="M 330.0 139.0 L 370.0 139.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 630.0 139.0 L 670.0 139.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<path d="M 1120.0 178.0 L 1120.0 214.0" fill="none" stroke="#444B55" stroke-width="1.7"/>
+<path d="M 207.5 214.0 L 1392.5 214.0" fill="none" stroke="#444B55" stroke-width="1.7"/>
+<rect x="30" y="236" width="355" height="34" rx="6" ry="6" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.4"/>
+<text x="207.5" y="257.5" font-size="13" font-weight="700" fill="#1F2328" text-anchor="middle">Email</text>
+<path d="M 207.5 214.0 L 207.5 236.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="300" width="355" height="76" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="326.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Render en Scribe (M2M)</text>
+<text x="40.0" y="346.0" font-size="13" fill="#1F2328" text-anchor="start">POST scribe/render · EnsureRendered</text>
+<text x="40.0" y="364.0" font-size="13" fill="#1F2328" text-anchor="start">Rechazo → error queue; transitorio → reintento</text>
+<path d="M 207.5 270.0 L 207.5 300.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="406" width="355" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="432.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">QueueEmailAsync (gateway)</text>
+<text x="40.0" y="452.0" font-size="13" fill="#1F2328" text-anchor="start">Gate si trae RecipientUserId + Category</text>
+<text x="40.0" y="470.0" font-size="13" fill="#1F2328" text-anchor="start">Idempotencia (TenantId, RelatedEventId,</text>
+<text x="40.0" y="488.0" font-size="13" fill="#1F2328" text-anchor="start">TemplateKey, To)</text>
+<path d="M 207.5 376.0 L 207.5 406.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="530" width="355" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="556.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Log y publicación</text>
+<text x="40.0" y="576.0" font-size="13" fill="#1F2328" text-anchor="start">NotificationLog Pending + intento Queued</text>
+<text x="40.0" y="594.0" font-size="13" fill="#1F2328" text-anchor="start">Guarda → notifications.email_send_requested.v1</text>
+<text x="40.0" y="612.0" font-size="13" fill="#1F2328" text-anchor="start">Confidential → cola postmaster-events</text>
+<path d="M 207.5 500.0 L 207.5 530.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="654" width="355" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="680.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Postmaster</text>
+<text x="40.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">Dedup (TenantId + IdempotencyKey)</text>
+<text x="40.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">Carril System / TenantPreferred / Tenant</text>
+<text x="40.0" y="736.0" font-size="13" fill="#1F2328" text-anchor="start">Envío real fuera de la transacción</text>
+<path d="M 207.5 624.0 L 207.5 654.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="778" width="355" height="76" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="40.0" y="804.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Callbacks a Notification</text>
+<text x="40.0" y="824.0" font-size="13" fill="#1F2328" text-anchor="start">Sent · Delivered · failed · bounced ·</text>
+<text x="40.0" y="842.0" font-size="13" fill="#1F2328" text-anchor="start">suppressed · provider_not_configured</text>
+<path d="M 207.5 748.0 L 207.5 778.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="425" y="236" width="355" height="34" rx="6" ry="6" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.4"/>
+<text x="602.5" y="257.5" font-size="13" font-weight="700" fill="#1F2328" text-anchor="middle">SMS</text>
+<path d="M 602.5 214.0 L 602.5 236.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="425" y="300" width="355" height="76" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="435.0" y="326.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">SendSmsAsync (dispatcher)</text>
+<text x="435.0" y="346.0" font-size="13" fill="#1F2328" text-anchor="start">Categoría obligatoria</text>
+<text x="435.0" y="364.0" font-size="13" fill="#1F2328" text-anchor="start">Gate: usuario inactivo + preferencia Sms</text>
+<path d="M 602.5 270.0 L 602.5 300.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="425" y="406" width="355" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="435.0" y="432.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">IntegrationEventSmsSender</text>
+<text x="435.0" y="452.0" font-size="13" fill="#1F2328" text-anchor="start">Publica SmsSendRequestedIntegrationEvent</text>
+<text x="435.0" y="470.0" font-size="13" fill="#1F2328" text-anchor="start">IdempotencyKey = SHA-256 de</text>
+<text x="435.0" y="488.0" font-size="13" fill="#1F2328" text-anchor="start">tenant|teléfono|templateKey|token</text>
+<path d="M 602.5 376.0 L 602.5 406.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="425" y="530" width="355" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="435.0" y="556.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Servicio Sms</text>
+<text x="435.0" y="576.0" font-size="13" fill="#1F2328" text-anchor="start">SmsSendRequestedConsumer → SendSmsBatch</text>
+<text x="435.0" y="594.0" font-size="13" fill="#1F2328" text-anchor="start">E.164 · STOP por (tenant, teléfono)</text>
+<text x="435.0" y="612.0" font-size="13" fill="#1F2328" text-anchor="start">EnforceContactPolicy = false (ya decidió)</text>
+<path d="M 602.5 500.0 L 602.5 530.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="425" y="654" width="355" height="76" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="435.0" y="680.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Proveedor global con failover</text>
+<text x="435.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">infobip · twilio · textmaxx · generic ·</text>
+<text x="435.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">fake (solo con opt-in)</text>
+<path d="M 602.5 624.0 L 602.5 654.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="425" y="760" width="355" height="76" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="435.0" y="786.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Estado de entrega</text>
+<text x="435.0" y="806.0" font-size="13" fill="#1F2328" text-anchor="start">DLR y webhooks solo en Sms</text>
+<text x="435.0" y="824.0" font-size="13" fill="#1F2328" text-anchor="start">Notification no los consume (Campaigns sí)</text>
+<path d="M 602.5 730.0 L 602.5 760.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="820" y="236" width="355" height="34" rx="6" ry="6" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.4"/>
+<text x="997.5" y="257.5" font-size="13" font-weight="700" fill="#1F2328" text-anchor="middle">In-app (campana)</text>
+<path d="M 997.5 214.0 L 997.5 236.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="820" y="300" width="355" height="76" rx="8" ry="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.6"/>
+<text x="830.0" y="326.0" font-size="14" font-weight="700" fill="#B7791F" text-anchor="start">RecordInAppAsync</text>
+<text x="830.0" y="346.0" font-size="13" fill="#1F2328" text-anchor="start">Gate InApp · kind del catálogo</text>
+<text x="830.0" y="364.0" font-size="13" fill="#1F2328" text-anchor="start">NotificationLog Sent → guarda</text>
+<path d="M 997.5 270.0 L 997.5 300.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="820" y="406" width="355" height="76" rx="8" ry="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.6"/>
+<text x="830.0" y="432.0" font-size="14" font-weight="700" fill="#B7791F" text-anchor="start">notification.inapp.requested.v1</text>
+<text x="830.0" y="452.0" font-size="13" fill="#1F2328" text-anchor="start">Outbox · InAppSourceGate evita</text>
+<text x="830.0" y="470.0" font-size="13" fill="#1F2328" text-anchor="start">duplicados con consumers Node legacy</text>
+<path d="M 997.5 376.0 L 997.5 406.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="820" y="512" width="355" height="94" rx="8" ry="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.6"/>
+<text x="830.0" y="538.0" font-size="14" font-weight="700" fill="#B7791F" text-anchor="start">Communication (Node)</text>
+<text x="830.0" y="558.0" font-size="13" fill="#1F2328" text-anchor="start">Valida con zod · NotificationEntry</text>
+<text x="830.0" y="576.0" font-size="13" fill="#1F2328" text-anchor="start">Único (TenantId, SourceEventId, UserId)</text>
+<text x="830.0" y="594.0" font-size="13" fill="#1F2328" text-anchor="start">GroupKey: actualiza en vez de duplicar</text>
+<path d="M 997.5 482.0 L 997.5 512.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="820" y="636" width="355" height="94" rx="8" ry="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.6"/>
+<text x="830.0" y="662.0" font-size="14" font-weight="700" fill="#B7791F" text-anchor="start">Socket</text>
+<text x="830.0" y="682.0" font-size="13" fill="#1F2328" text-anchor="start">Room t:{tenantId}:u:{userId}</text>
+<text x="830.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">notification.received | updated</text>
+<text x="830.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">unread_count_changed</text>
+<path d="M 997.5 606.0 L 997.5 636.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="820" y="760" width="355" height="76" rx="8" ry="8" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.6"/>
+<text x="830.0" y="786.0" font-size="14" font-weight="700" fill="#B7791F" text-anchor="start">CRM y portal</text>
+<text x="830.0" y="806.0" font-size="13" fill="#1F2328" text-anchor="start">GET /communication/notifications</text>
+<text x="830.0" y="824.0" font-size="13" fill="#1F2328" text-anchor="start">/since · /unread-count · read-all</text>
+<path d="M 997.5 730.0 L 997.5 760.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1215" y="236" width="355" height="34" rx="6" ry="6" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="1392.5" y="257.5" font-size="13" font-weight="700" fill="#1F2328" text-anchor="middle">Push</text>
+<path d="M 1392.5 214.0 L 1392.5 236.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1215" y="300" width="355" height="76" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1225.0" y="326.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Registro de dispositivos</text>
+<text x="1225.0" y="346.0" font-size="13" fill="#1F2328" text-anchor="start">POST notifications/push/devices</text>
+<text x="1225.0" y="364.0" font-size="13" fill="#1F2328" text-anchor="start">UserId y TenantId salen del JWT</text>
+<path d="M 1392.5 270.0 L 1392.5 300.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1215" y="406" width="355" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1225.0" y="432.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">DispatchPushAsync</text>
+<text x="1225.0" y="452.0" font-size="13" fill="#1F2328" text-anchor="start">Gate Push · dispositivos activos</text>
+<text x="1225.0" y="470.0" font-size="13" fill="#1F2328" text-anchor="start">SkipWhenNoDevices · dedupe por</text>
+<text x="1225.0" y="488.0" font-size="13" fill="#1F2328" text-anchor="start">evento, kind y destinatario</text>
+<path d="M 1392.5 376.0 L 1392.5 406.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1215" y="530" width="355" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1225.0" y="556.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">FcmPushSender</text>
+<text x="1225.0" y="576.0" font-size="13" fill="#1F2328" text-anchor="start">Firebase Admin, FCM HTTP v1</text>
+<text x="1225.0" y="594.0" font-size="13" fill="#1F2328" text-anchor="start">Android, iOS (token FCM) y Web</text>
+<text x="1225.0" y="612.0" font-size="13" fill="#1F2328" text-anchor="start">Sin credencial → no-op con log</text>
+<path d="M 1392.5 500.0 L 1392.5 530.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="1215" y="654" width="355" height="94" rx="8" ry="8" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.6"/>
+<text x="1225.0" y="680.0" font-size="14" font-weight="700" fill="#2E7D4F" text-anchor="start">Limpieza de tokens</text>
+<text x="1225.0" y="700.0" font-size="13" fill="#1F2328" text-anchor="start">TokenInvalid → revoca ese dispositivo</text>
+<text x="1225.0" y="718.0" font-size="13" fill="#1F2328" text-anchor="start">UserDeactivated / UserOffboarded →</text>
+<text x="1225.0" y="736.0" font-size="13" fill="#1F2328" text-anchor="start">revoca todos</text>
+<path d="M 1392.5 624.0 L 1392.5 654.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<rect x="30" y="894" width="760" height="150" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="40.0" y="920.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">Gate común (DispatchChannelGate → NotificationDeliveryGate)</text>
+<text x="40.0" y="940.0" font-size="13" fill="#1F2328" text-anchor="start">1. Usuario inactivo (directorio local; sin fila = activo)</text>
+<text x="40.0" y="958.0" font-size="13" fill="#1F2328" text-anchor="start">2. Preferencia por canal y categoría: AccountSecurity nunca se apaga;</text>
+<text x="40.0" y="976.0" font-size="13" fill="#1F2328" text-anchor="start">   lo obligatorio por catálogo pasa; sin UserId pasa</text>
+<text x="40.0" y="994.0" font-size="13" fill="#1F2328" text-anchor="start">CustomerContactPolicyFilter (Email/SMS): solo avisos no críticos</text>
+<text x="40.0" y="1012.0" font-size="13" fill="#1F2328" text-anchor="start">Categorías: AccountSecurity, DocumentsAndSignatures, StorageAndQuota,</text>
+<text x="40.0" y="1030.0" font-size="13" fill="#1F2328" text-anchor="start">Billing, Collaboration, Reminders, ClientRequests, Calendar</text>
+<rect x="810" y="894" width="760" height="150" rx="8" ry="8" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.6"/>
+<text x="820.0" y="920.0" font-size="14" font-weight="700" fill="#9A7B00" text-anchor="start">Idempotencia por canal</text>
+<text x="820.0" y="940.0" font-size="13" fill="#1F2328" text-anchor="start">Email: (TenantId, RelatedEventId, TemplateKey, To) + IdempotencyKey en Postmaster</text>
+<text x="820.0" y="958.0" font-size="13" fill="#1F2328" text-anchor="start">SMS: token estable (EventId) → clave SHA-256 con el teléfono</text>
+<text x="820.0" y="976.0" font-size="13" fill="#1F2328" text-anchor="start">In-app: (TenantId, SourceEventId, UserId) + GroupKey</text>
+<text x="820.0" y="994.0" font-size="13" fill="#1F2328" text-anchor="start">Push: dedupe por evento, kind y destinatario</text>
+<text x="820.0" y="1012.0" font-size="13" fill="#1F2328" text-anchor="start">Re-entrega del evento: el inbox durable la descarta</text>
+<text x="820.0" y="1030.0" font-size="13" fill="#1F2328" text-anchor="start">Reintentos: 1 s, 5 s, 15 s; luego cola de errores</text>
+<rect x="30" y="1064" width="1540" height="62" rx="8" fill="#FFFFFF" stroke="#B8BCC4" stroke-width="1.2"/>
+<text x="42" y="1084" font-size="14" font-weight="700" fill="#1F2328">Leyenda</text>
+<rect x="42" y="1093" width="30" height="16" rx="3" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="80" y="1106" font-size="13" fill="#1F2328">Paso en .NET</text>
+<rect x="186.63" y="1093" width="30" height="16" rx="3" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.4"/>
+<text x="224.63" y="1106" font-size="13" fill="#1F2328">Paso en Node (Communication)</text>
+<rect x="439.55" y="1093" width="30" height="16" rx="3" fill="#F3EAFB" stroke="#7B4BA8" stroke-width="1.4"/>
+<text x="477.55" y="1106" font-size="13" fill="#1F2328">Canal / mensajería</text>
+<rect x="622.1400000000001" y="1093" width="30" height="16" rx="3" fill="#FFF8D6" stroke="#9A7B00" stroke-width="1.4"/>
+<text x="660.1400000000001" y="1106" font-size="13" fill="#1F2328">Regla común</text>
+<path d="M 761.96 1101 L 789.96 1101" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
+<text x="799.96" y="1106" font-size="13" fill="#1F2328">Flujo</text>
+<text x="30" y="1248" font-size="13" fill="#555B63" font-style="italic">Fuentes: Notification_Email.md · Notification_SMS.md · Notification_InApp_Push.md · Scribe_Templates.md</text>
+</svg>
