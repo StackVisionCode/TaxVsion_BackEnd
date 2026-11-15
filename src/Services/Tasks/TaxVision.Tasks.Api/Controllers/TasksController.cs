@@ -400,6 +400,23 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>Vuelve a Not Started (tablero). Una tarea cerrada se reabre antes con <c>/reopen</c>.</summary>
+    [HttpPost("{id:guid}/not-started")]
+    [HasPermission(TasksPermissions.Write)]
+    [RateLimit("task.g.update")]
+    [ProducesResponseType<TaskResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> MoveToNotStarted(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<TaskResponse>>(
+            new MoveTaskToNotStartedCommand(tenantId, id, userId, await HasManageAllAsync(ct)),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpPost("{id:guid}/complete")]
     [HasPermission(TasksPermissions.Write)]
     [RateLimit("task.g.update")]

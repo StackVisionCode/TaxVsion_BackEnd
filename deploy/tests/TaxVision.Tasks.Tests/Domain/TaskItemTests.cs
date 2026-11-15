@@ -245,6 +245,73 @@ public sealed class TaskItemTests
         Assert.Equal("Task.InvalidTransition", result.Error.Code);
     }
 
+    // ── Volver a Not Started (tablero) ────────────────────────────────────────────────────
+
+    [Fact]
+    public void An_InProgress_task_can_go_back_to_NotStarted()
+    {
+        var task = NewTask();
+        task.Start(UserId, Now);
+
+        var result = task.MoveToNotStarted(UserId, Now);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaskItemStatus.NotStarted, task.Status);
+        Assert.Single(task.DomainEvents.OfType<TaskMovedToNotStartedDomainEvent>());
+    }
+
+    /// <summary>Si se completa desde Not Started y se reabre, vuelve a Not Started y no a In Progress.</summary>
+    [Fact]
+    public void Going_back_to_NotStarted_forgets_the_start_so_a_later_reopen_resumes_NotStarted()
+    {
+        var task = NewTask();
+        task.Start(UserId, Now);
+        task.MoveToNotStarted(UserId, Now);
+        task.Complete(UserId, Now);
+
+        task.Reopen(UserId, Now);
+
+        Assert.Null(task.StartedAtUtc);
+        Assert.Equal(TaskItemStatus.NotStarted, task.Status);
+    }
+
+    [Fact]
+    public void Leaving_WaitingOnClient_for_NotStarted_is_allowed()
+    {
+        var task = NewTask();
+        task.MoveToWaitingOnClient(Note("W-2"), null, UserId, Now);
+
+        var result = task.MoveToNotStarted(UserId, Now);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaskItemStatus.NotStarted, task.Status);
+    }
+
+    [Fact]
+    public void Moving_a_NotStarted_task_to_NotStarted_is_a_no_op()
+    {
+        var task = NewTask();
+
+        var result = task.MoveToNotStarted(UserId, Now);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(task.DomainEvents.OfType<TaskMovedToNotStartedDomainEvent>());
+    }
+
+    [Theory]
+    [InlineData("complete")]
+    [InlineData("cancel")]
+    public void A_closed_task_must_be_reopened_before_going_to_NotStarted(string close)
+    {
+        var task = NewTask();
+        _ = close == "complete" ? task.Complete(UserId, Now) : task.Cancel("No longer needed", UserId, Now);
+
+        var result = task.MoveToNotStarted(UserId, Now);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Task.InvalidTransition", result.Error.Code);
+    }
+
     // ── Petición al cliente ───────────────────────────────────────────────────────────────
 
     /// <summary>

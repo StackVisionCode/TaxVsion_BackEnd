@@ -35,4 +35,7 @@ public sealed record TaskReference
 
         return Result.Success(new TaskReference(customerId, taxYear));
     }
+
+    /// <summary>Tipo owned de EF: cada fila necesita su propia instancia, aunque los valores sean los mismos.</summary>
+    internal TaskReference CopyForNewRow() => new(CustomerId, TaxYear);
 }

@@ -9,7 +9,8 @@ namespace BuildingBlocks.TenantTimeZones;
 
 /// <summary>
 /// Corre el reconciliador al arrancar (siembra la proyección de las oficinas existentes) y luego cada
-/// <see cref="TenantTimeZoneReconciliationOptions.IntervalHours"/>. Scope propio por pasada; un fallo no tumba el servicio.
+/// <see cref="TenantTimeZoneReconciliationOptions.IntervalHours"/>; si una pasada no termina, reintenta en minutos.
+/// Scope propio por pasada; un fallo no tumba el servicio.
 /// </summary>
 public sealed class TenantTimeZoneReconciliationJob(
     IServiceProvider serviceProvider,
@@ -31,10 +32,10 @@ public sealed class TenantTimeZoneReconciliationJob(
         var interval = TimeSpan.FromHours(Math.Max(1, options.IntervalHours));
         while (!stoppingToken.IsCancellationRequested)
         {
-            await RunOnceSafeAsync(Math.Clamp(options.PageSize, 1, 200), stoppingToken);
+            var completed = await RunOnceSafeAsync(Math.Clamp(options.PageSize, 1, 200), stoppingToken);
             try
             {
-                await Task.Delay(interval, stoppingToken);
+                await Task.Delay(ReconciliationRetry.NextDelay(completed, interval), stoppingToken);
             }
             catch (TaskCanceledException)
             {
@@ -43,7 +44,8 @@ public sealed class TenantTimeZoneReconciliationJob(
         }
     }
 
-    private async Task RunOnceSafeAsync(int pageSize, CancellationToken ct)
+    /// <summary>true si la pasada terminó; false si Tenant no respondió o falló, para reintentar pronto.</summary>
+    private async Task<bool> RunOnceSafeAsync(int pageSize, CancellationToken ct)
     {
         try
         {
@@ -62,14 +64,19 @@ public sealed class TenantTimeZoneReconciliationJob(
                 );
 
                 if (!outcome.TenantReachable)
-                    logger.LogWarning("Time zone reconciliation could not reach Tenant; applied {Count} before stopping.", outcome.Applied);
+                    logger.LogWarning(
+                        "Time zone reconciliation could not reach Tenant; applied {Count} before stopping.",
+                        outcome.Applied
+                    );
                 else if (outcome.Applied > 0)
                     logger.LogInformation("Time zone reconciliation applied {Count} office zone(s).", outcome.Applied);
+                return outcome.TenantReachable;
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogError(ex, "TenantTimeZoneReconciliationJob iteration failed.");
+            return false;
         }
     }
 

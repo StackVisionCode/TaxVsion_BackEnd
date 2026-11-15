@@ -20,6 +20,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Tasks.Application.Attachments.Abstractions.ITaskFileScanStatusClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
@@ -30,7 +31,6 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Tasks.Infrastructure.Persistence.Repositories.ClientRequestRepository is not public, so requires service location
             */
             var clientRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.ClientRequests.Abstractions.IClientRequestRepository>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var submitClientDocumentCommand = (TaxVision.Tasks.Application.ClientRequests.Commands.SubmitClientDocumentCommand)context.Envelope.Message;
 

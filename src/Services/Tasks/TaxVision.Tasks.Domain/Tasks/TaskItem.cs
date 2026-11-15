@@ -125,7 +125,8 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
             Priority = priority,
             CreatedByUserId = createdByUserId,
             AssigneeUserId = assigneeUserId,
-            Reference = reference,
+            // Copia propia: la del padre (subtarea) o TaskReference.None no pueden compartirse entre filas.
+            Reference = reference.CopyForNewRow(),
             Due = due,
             Estimated = estimated,
             CreatedAtUtc = nowUtc,
@@ -217,6 +218,26 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         Status = TaskItemStatus.InProgress;
 
         AddDomainEvent(new TaskStartedDomainEvent(Id, TenantId, byUserId, nowUtc));
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Volver a Not Started desde el tablero (In Progress o Waiting on Client). Una tarea cerrada se reabre primero.
+    /// Olvida el inicio: si después se completa y se reabre, <see cref="Reopen"/> la devuelve a Not Started.
+    /// </summary>
+    public Result MoveToNotStarted(Guid byUserId, DateTime nowUtc)
+    {
+        if (IsClosed)
+            return Result.Failure(TaskErrors.InvalidTransition(Status, nameof(MoveToNotStarted)));
+
+        if (Status == TaskItemStatus.NotStarted)
+            return Result.Success();
+
+        var previous = Status;
+        Status = TaskItemStatus.NotStarted;
+        StartedAtUtc = null;
+
+        AddDomainEvent(new TaskMovedToNotStartedDomainEvent(Id, TenantId, previous, byUserId, nowUtc));
         return Result.Success();
     }
 
