@@ -23,6 +23,8 @@ Variante con eventos de dominio: Customer mapea `b.Ignore(c => c.DomainEvents)` 
 
 Registro (Código verificado, `src/Services/Notes/TaxVision.Notes.Infrastructure/DependencyInjection.cs:42-48`): `AddDbContext<NotesDbContext>(o => o.UseSqlServer(connectionString))` con `ConnectionStrings:Default` obligatorio; `AddScoped<IUnitOfWork>(p => p.GetRequiredService<NotesDbContext>())`. Ningún DbContext usa `EnableRetryOnFailure` (requisito de `TransactionalJobUnit`, `DEVS/Guia_BuildingBlocks_Ola2.md:118-121`; el libro p. 23 explica que el modo transaccional de Wolverine es incompatible con esa estrategia).
 
+**MARS (Código verificado):** EF Core desactiva los savepoints cuando la cadena trae `MultipleActiveResultSets=True`. Growth los necesita: `SqlBusinessIdempotencyExecutor` (`src/Services/Growth/TaxVision.Growth.Infrastructure/Idempotency/SqlBusinessIdempotencyExecutor.cs`) crea un savepoint dentro de la transacción del handler y, si la transacción no los admite, responde `Growth.Idempotency.SavepointsRequired` (503 en `ErrorHttpMapping`). `GrowthDbContext` se registra con `GrowthConnectionString.WithoutMars` (`Persistence/GrowthConnectionString.cs`) en `AddGrowthInfrastructure` y en `GrowthDbContextFactory`, así que la cadena de cada entorno no cambia el comportamiento. Pruebas: `GrowthDbConnectionTests` (unitaria) y `GrowthIdempotencySavepointIntegrationTests` (SQL real, cadena con MARS dentro de una transacción).
+
 ### Mappings (Código verificado)
 
 - Un `IEntityTypeConfiguration<T>` `sealed` por entidad en `Persistence/Configurations/`.

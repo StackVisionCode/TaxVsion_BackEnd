@@ -78,7 +78,7 @@ public sealed class ReferralProvisioningApplicationTests
                 MinimumPaymentCurrency: "usd",
                 WaitingPeriodDays: 45,
                 MaximumRewardsPerReferrerPerCalendarYear: 8,
-                RewardType: ReferralRewardType.SubscriptionTrialExtension,
+                RewardType: ReferralRewardType.WalletCredit,
                 RewardDefinitionKey: "referrals.explicit"
             ),
             GrowthTestData.ActorId,

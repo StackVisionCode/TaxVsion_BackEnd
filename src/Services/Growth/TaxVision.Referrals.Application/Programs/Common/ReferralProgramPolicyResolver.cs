@@ -19,6 +19,16 @@ internal static class ReferralProgramPolicyResolver
     {
         var rewardType = input?.RewardType ?? baseline.RewardType;
 
+        // Solo WalletCredit se entrega hoy (Growth → Wallet). Los premios de suscripción no tienen quien los
+        // aplique en Subscription: un programa así dejaría premios trabados. El dominio los conserva para después.
+        if (rewardType != ReferralRewardType.WalletCredit)
+            return Result.Failure<ReferralProgramPolicy>(
+                new Error(
+                    "ReferralPolicy.RewardTypeNotAvailable",
+                    "This reward type is not available yet. Use WalletCredit."
+                )
+            );
+
         // El porcentaje/tope/moneda del premio solo aplican a WalletCredit; para los tipos no
         // monetarios se envían vacíos (la policy rechaza montos sobre un premio no monetario).
         var isWalletCredit = rewardType == ReferralRewardType.WalletCredit;
