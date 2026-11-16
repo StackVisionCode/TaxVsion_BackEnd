@@ -244,6 +244,64 @@ public sealed class ReferralProgramAdministrationTests
         Assert.Equal("ReferralProgram.NotFound", empty.Error.Code);
     }
 
+    // Solo WalletCredit tiene entrega (Growth → Wallet). Los demás tipos crearían premios que nadie entrega.
+    [Theory]
+    [InlineData(ReferralRewardType.SubscriptionFeatureGrant)]
+    [InlineData(ReferralRewardType.SubscriptionTrialExtension)]
+    [InlineData(ReferralRewardType.FutureSubscriptionDiscount)]
+    public async Task Create_rejects_a_reward_type_that_is_not_delivered_yet(ReferralRewardType rewardType)
+    {
+        var programs = new InMemoryReferralProgramRepository();
+
+        var result = await CreateTenantReferralProgramHandler.Handle(
+            new CreateTenantReferralProgramCommand(
+                "NOT-DELIVERED",
+                "Reward not delivered yet",
+                GrowthTestData.NowUtc,
+                GrowthTestData.NowUtc.AddYears(1),
+                new TenantReferralProgramPolicyInput(RewardType: rewardType),
+                GrowthTestData.ActorId,
+                $"create-{rewardType}"
+            ),
+            programs,
+            new FakeReferralIdempotencyExecutor(programs),
+            Clock,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("ReferralPolicy.RewardTypeNotAvailable", result.Error.Code);
+        Assert.Empty(programs.Items);
+    }
+
+    [Theory]
+    [InlineData(ReferralRewardType.SubscriptionFeatureGrant)]
+    [InlineData(ReferralRewardType.SubscriptionTrialExtension)]
+    [InlineData(ReferralRewardType.FutureSubscriptionDiscount)]
+    public async Task Update_rejects_switching_to_a_reward_type_that_is_not_delivered_yet(ReferralRewardType rewardType)
+    {
+        var program = ActiveProgram();
+        var programs = new InMemoryReferralProgramRepository(program);
+
+        var result = await UpdateTenantReferralProgramPolicyHandler.Handle(
+            new UpdateTenantReferralProgramPolicyCommand(
+                program.Id,
+                new TenantReferralProgramPolicyInput(RewardType: rewardType),
+                GrowthTestData.ActorId,
+                $"update-{rewardType}"
+            ),
+            programs,
+            new FakeReferralIdempotencyExecutor(programs),
+            Clock,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("ReferralPolicy.RewardTypeNotAvailable", result.Error.Code);
+        Assert.Equal(ReferralRewardType.WalletCredit, program.Policy.RewardType);
+        Assert.Equal(1, program.PolicyVersion);
+    }
+
     private static ReferralProgram ActiveProgram()
     {
         var program = DraftProgram();

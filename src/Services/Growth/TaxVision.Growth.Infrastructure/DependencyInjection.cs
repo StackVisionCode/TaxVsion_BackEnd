@@ -35,7 +35,9 @@ public static class DependencyInjection
             configuration.GetConnectionString("Default")
             ?? throw new InvalidOperationException("Connection string 'Default' is missing.");
 
-        services.AddDbContext<GrowthDbContext>(options => options.UseSqlServer(connectionString));
+        services.AddDbContext<GrowthDbContext>(options =>
+            options.UseSqlServer(GrowthConnectionString.WithoutMars(connectionString))
+        );
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<GrowthDbContext>());
         services.AddScoped<ICodeDefinitionRepository, CodeDefinitionRepository>();
         services.AddScoped<ICodeQuoteRepository, CodeQuoteRepository>();

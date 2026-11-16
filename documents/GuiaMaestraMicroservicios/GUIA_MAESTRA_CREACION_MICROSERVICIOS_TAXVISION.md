@@ -761,6 +761,7 @@ El filtro de tenant es la red de seguridad del aislamiento entre oficinas; la co
 - **Filtro fail-closed**: `EffectiveTenantId => HasTenant ? TenantId : Guid.Empty` como miembro de la instancia (EF cachea el modelo por tipo; cerrar sobre el servicio congelaría el primer tenant); se aplica a todo `ITenantOwned`.
 - **`SaveChangesAsync`** traduce `DbUpdateConcurrencyException` → `ConflictException("Persistence.ConcurrencyConflict")` y `SqlException` 2601/2627 → `ConflictException("Persistence.UniqueConstraint")`.
 - **Ningún DbContext usa `EnableRetryOnFailure`** (incompatible con la transacción de Wolverine y con `TransactionalJobUnit`).
+- **Sin MARS cuando el servicio usa savepoints.** Con `MultipleActiveResultSets=True`, EF Core desactiva los savepoints (`SavepointsDisabledBecauseOfMARS`). Growth abre un savepoint dentro de la transacción de Wolverine para su idempotencia de negocio (`SqlBusinessIdempotencyExecutor`, que sin él responde `Growth.Idempotency.SavepointsRequired` → 503). Por eso `GrowthDbContext` se registra con `GrowthConnectionString.WithoutMars(conn)`, en `AddGrowthInfrastructure` y en su factory de diseño, sin depender de cómo venga `GROWTH_DB_CONNECTION` en cada entorno. Ningún servicio necesita MARS: no se leen dos resultados a la vez por conexión.
 - **`IgnoreQueryFilters()`** solo si se cumple una de 4 condiciones: (a) el id sale del JWT del propio actor; (b) validación post-fetch del `TenantId`; (c) lookup por secreto global no adivinable; (d) operación cross-tenant deliberada con gate estricto. Si es el único control de aislamiento, es un IDOR: agrega `tenantId` a la firma. Hace falta en handlers vía `bus.InvokeAsync`, consumers, jobs y endpoints anónimos (Wolverine corre en un scope nuevo cuyo `TenantContext` puede estar vacío).
 - **Migraciones**: las crea el desarrollador con `dotnet ef migrations add`, se aplican **en local de inmediato** con `scripts/migrate-local.ps1`, y en producción las aplica **el contenedor `migrations` del deploy**. **Los servicios no migran al arrancar** (no hay `Database.Migrate`/`MigrateAsync`/`EnsureCreated` en `src/`); al arrancar solo Wolverine crea sus tablas `wolverine_*`.
 
@@ -776,7 +777,7 @@ El filtro de tenant es la red de seguridad del aislamiento entre oficinas; la co
 1. `Persistence/<Svc>DbContext.cs` con la forma de Notes (fragmento abajo).
 2. `Persistence/<Svc>DbContextFactory.cs` copiado de Notes (`ConnectionStrings__Default` + `ITenantContext` de diseño).
 3. `Persistence/Configurations/`: un `IEntityTypeConfiguration<T>` `sealed` por entidad; `ValueGeneratedNever()` en hijas con Guid de dominio; `IsRowVersion()` en raíces con escritura concurrente; `builder.Ignore(...)` en propiedades calculadas y en `DomainEvents`.
-4. `DependencyInjection.cs`: `AddDbContext<XDbContext>(o => o.UseSqlServer(conn))` + `AddScoped<IUnitOfWork>(p => p.GetRequiredService<XDbContext>())`.
+4. `DependencyInjection.cs`: `AddDbContext<XDbContext>(o => o.UseSqlServer(conn))` + `AddScoped<IUnitOfWork>(p => p.GetRequiredService<XDbContext>())`. [si usa savepoints dentro del handler] la cadena pasa sin MARS, como `GrowthConnectionString.WithoutMars`, y una prueba de integración contra SQL lo cubre con una cadena que trae MARS (patrón `GrowthIdempotencySavepointIntegrationTests`).
 5. Crear `InitialCreate` **aunque el DbContext esté vacío** y aplicarla: `./scripts/migrate-local.ps1 -Apply -Yes -Service <Svc>`. La cadena de desarrollo sale de los **user-secrets del servicio**, no de `.env`.
 6. Producción, **cuatro lugares**: bloque `apply_migration` en `deploy/docker/migrations/apply-migrations.sh`; `<SVC>_DB_CONNECTION` (con `:?`) en el servicio `migrations` del compose; la misma variable en `<svc>-api`; y la variable en el `.env` que arma `deploy.yml` (secret en GitHub, lo carga el dueño, ver [cap. 30](#cap-30)).
 7. Nombres de migración sin número de fase; las ya aplicadas **no se renombran**.
@@ -878,6 +879,7 @@ Wolverine (transacción y tablas `wolverine_*`), kits de BuildingBlocks (tablas 
 - [ ] `InitialCreate` creada **y aplicada en local**.
 - [ ] Cuatro lugares de producción tocados.
 - [ ] `IgnoreQueryFilters()` solo con una de las 4 condiciones y comentario breve que diga cuál.
+- [ ] [si usa savepoints] conexión sin MARS forzada en el registro del DbContext y probada contra SQL.
 - [ ] Antes de un índice único sobre tabla con datos: consulta previa de duplicados (solo `SELECT`).
 
 ---
@@ -3406,6 +3408,7 @@ Checklist imprimible: [Checklists/Nuevo_Microservicio.md](Checklists/Nuevo_Micro
 | 401 `Auth.InvalidClient` "tres capas después" | Clave de user-secrets M2M mal escrita | Clave exacta del `SectionName` | [13](#cap-13) |
 | M2M de un servicio apagado en producción sin error | `*_CLIENT_SECRET` no escrito en `deploy.yml` (Calendar E-12) | `ServiceClientSecretsDeployWiringTests` | [13](#cap-13), [30](#cap-30) |
 | 503 "not configured" con el secret cargado | Secret en el job equivocado (Google Drive) | `production-extra` + job `deploy` + prueba | [30](#cap-30) |
+| 503 `Growth.Idempotency.SavepointsRequired` | Cadena de conexión con MARS: EF desactiva los savepoints que usa la idempotencia de negocio | DbContext registrado sin MARS (`GrowthConnectionString.WithoutMars`) | [10](#cap-10) |
 | Proyecciones vacías durante horas tras un deploy | Reconciliación corrió antes que Auth y esperó 12 h | `ReconciliationRetry` | [15](#cap-15) |
 | Reconciliación que nunca repara (solo warnings) | URL por defecto a `localhost` dentro del contenedor | URL interna explícita en compose | [15](#cap-15) |
 | Empleados sin clientes visibles | Proyección de asignaciones vacía (kit sin reconciliación o URL) | Kit `CustomerVisibility` completo | [14](#cap-14), [15](#cap-15) |

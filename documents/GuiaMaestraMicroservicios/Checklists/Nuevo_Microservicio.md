@@ -69,6 +69,8 @@
 - [ ] **`<Svc>DbContext`** con filtro fail-closed sobre `ITenantOwned` y `UseUtcDateTimes()` como **última** línea de `OnModelCreating`; implementa `IUnitOfWork`.
   - Verificación: `UtcDateTimesTests`; `TenantIsolationTests`. · Origen: [Migraciones](../Investigaciones/Migraciones.md) "Paso a paso" 1 y "Buenas prácticas".
 - [ ] **`<Svc>DbContextFactory`** copiado de Notes (`ConnectionStrings__Default`).
+- [ ] [si abre savepoints dentro del handler] **Cadena sin MARS** forzada al registrar el DbContext (EF desactiva los savepoints con MARS), como `GrowthConnectionString.WithoutMars`, con prueba de integración contra SQL.
+  - Verificación: patrón `GrowthDbConnectionTests` y `GrowthIdempotencySavepointIntegrationTests`. · Origen: [Migraciones](../Investigaciones/Migraciones.md) §DbContext.
   - Verificación: `dotnet ef migrations add` funciona. · Origen: [Migraciones](../Investigaciones/Migraciones.md) "Paso a paso" 2.
 - [ ] **Configuraciones**: una por entidad; `ValueGeneratedNever()` en hijas con Guid de dominio; `IsRowVersion()` en raíces con escritura concurrente; `Ignore()` en calculadas.
   - Verificación: prueba `EntityState.Added` fuera de `Persistence/`; revisar la migración generada. · Origen: [Migraciones](../Investigaciones/Migraciones.md) "Paso a paso" 3; [Guardrails](../Referencias/Guardrails.md) #9-#10.
