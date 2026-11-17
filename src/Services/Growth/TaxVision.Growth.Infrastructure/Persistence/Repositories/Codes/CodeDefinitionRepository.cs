@@ -62,6 +62,28 @@ public sealed class CodeDefinitionRepository(GrowthDbContext dbContext, ITenantC
         await dbContext.CodeDefinitions.AddAsync(definition, ct);
     }
 
+    // Lectura entre oficinas solo de ids: cada cierre se hace después con el tenant de ese código.
+    public async Task<IReadOnlyList<ExpiredCodeRef>> GetExpiredOpenAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        await dbContext
+            .CodeDefinitions.IgnoreQueryFilters()
+            .Where(definition =>
+                definition.ExpiresAtUtc != null
+                && definition.ExpiresAtUtc <= nowUtc
+                && (
+                    definition.Status == CodeDefinitionStatus.Draft
+                    || definition.Status == CodeDefinitionStatus.Active
+                    || definition.Status == CodeDefinitionStatus.Suspended
+                )
+            )
+            .OrderBy(definition => definition.ExpiresAtUtc)
+            .Take(batchSize)
+            .Select(definition => new ExpiredCodeRef(definition.TenantId, definition.Id))
+            .ToListAsync(ct);
+
     private IQueryable<CodeDefinition> ApplicableDefinitions(Guid consumingTenantId) =>
         dbContext
             .CodeDefinitions.IgnoreQueryFilters()

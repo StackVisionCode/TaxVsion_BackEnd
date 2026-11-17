@@ -30,9 +30,26 @@ public static class ReceiptRenderData
 
     public static string Money(long amountCents) => (amountCents / 100m).ToString("N2", CultureInfo.InvariantCulture);
 
-    /// <summary>P7: fecha y hora en la zona de quien paga, con el formato único; sin zona, UTC rotulado.</summary>
+    /// <summary>Subtotal bruto, una fila por descuento y si hay alguno. Sin descuentos, el subtotal es lo pagado.</summary>
+    public static Dictionary<string, object> Totals(long paidCents, IReadOnlyList<ReceiptDiscount> discounts)
+    {
+        var rows = discounts.Where(discount => discount.AmountCents > 0).ToList();
+        return new()
+        {
+            ["subtotal"] = Money(paidCents + rows.Sum(discount => discount.AmountCents)),
+            ["hasDiscounts"] = rows.Count > 0,
+            ["discounts"] = rows.Select(discount => new Dictionary<string, object>
+                {
+                    ["label"] = discount.Label,
+                    ["amount"] = Money(discount.AmountCents),
+                })
+                .ToList(),
+        };
+    }
+
+    /// <summary>P7: el día del pago en la zona de quien paga, sin hora (como los recibos de la industria).</summary>
     public static string PaidAt(DateTime paidAtUtc, string? timeZoneId) =>
-        ZonedTimeFormatter.DateTime(paidAtUtc, ResolvedTimeZone.Resolve(timeZoneId));
+        ZonedTimeFormatter.Date(paidAtUtc, ResolvedTimeZone.Resolve(timeZoneId));
 
     /// <summary>Día del cobro para quien paga: nombre del archivo y carpeta del año.</summary>
     public static DateOnly PaidDay(DateTime paidAtUtc, string? timeZoneId) =>
@@ -51,3 +68,6 @@ public static class ReceiptRenderData
         return string.Empty;
     }
 }
+
+/// <summary>Una fila de descuento del recibo: cómo se muestra (código enmascarado) y cuánto restó.</summary>
+public sealed record ReceiptDiscount(string Label, long AmountCents);

@@ -21,6 +21,14 @@ public sealed class TenantAddOnConfiguration : IEntityTypeConfiguration<TenantAd
         builder.Property(addOn => addOn.CancellationReason).HasMaxLength(500);
         builder.Property(addOn => addOn.SuspensionReason).HasMaxLength(500);
 
+        // Bajada de tamaño programada para la renovación.
+        builder.Property(addOn => addOn.PendingAddOnCode).HasMaxLength(50);
+        builder.Property(addOn => addOn.PendingUnitPriceAmount).HasPrecision(18, 4);
+        builder.Property(addOn => addOn.PendingUnitPriceCurrency).HasMaxLength(3);
+        builder.Ignore(addOn => addOn.PendingUnitPrice);
+        builder.Ignore(addOn => addOn.HasScheduledTierChange);
+        builder.Property(addOn => addOn.TierChangeSkippedReason).HasMaxLength(100);
+
         builder.OwnsOne(
             addOn => addOn.UnitPrice,
             money =>

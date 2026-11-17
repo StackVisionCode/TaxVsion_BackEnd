@@ -34,6 +34,13 @@ public sealed class CodeDefinitionConfiguration : IEntityTypeConfiguration<CodeD
         builder.Property(definition => definition.OwnerScope).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(definition => definition.Name).HasMaxLength(200).IsRequired();
         builder.Property(definition => definition.Kind).HasConversion<string>().HasMaxLength(30).IsRequired();
+        // Los códigos de antes solo se usan al registrarse.
+        builder
+            .Property(definition => definition.UsableOn)
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .HasDefaultValue(CodeUsageContext.Signup)
+            .IsRequired();
         builder
             .Property(definition => definition.CodeHash)
             .HasConversion(hash => hash.Value, value => CodeTokenHash.Create(value).Value)

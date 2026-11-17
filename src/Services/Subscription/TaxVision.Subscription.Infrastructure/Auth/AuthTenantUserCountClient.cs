@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.Auth;
 
@@ -14,7 +15,7 @@ namespace TaxVision.Subscription.Infrastructure.Auth;
 /// </summary>
 internal sealed class AuthTenantUserCountClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     ILogger<AuthTenantUserCountClient> logger
 ) : ITenantUserCountClient
 {

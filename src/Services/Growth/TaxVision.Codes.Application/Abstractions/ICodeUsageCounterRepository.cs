@@ -20,4 +20,13 @@ public interface ICodeUsageCounterRepository
         DateTime nowUtc,
         CancellationToken ct = default
     );
+
+    /// <summary>Lee un contador sin bloquearlo ni crearlo (cotización); null si no existe o es de otro tenant.</summary>
+    Task<CodeUsageCounter?> FindReadOnlyAsync(
+        Guid tenantId,
+        Guid codeDefinitionId,
+        CodeUsageDimension dimension,
+        CodeUsageScopeKey scopeKey,
+        CancellationToken ct = default
+    );
 }

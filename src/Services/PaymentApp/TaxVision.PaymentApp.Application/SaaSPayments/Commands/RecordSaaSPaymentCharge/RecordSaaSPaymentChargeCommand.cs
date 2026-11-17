@@ -159,25 +159,33 @@ public static class RecordSaaSPaymentChargeHandler
         SaaSPayment payment,
         RecordSaaSPaymentChargeCommand command,
         IMessageBus bus
-    ) =>
-        await bus.PublishAsync(
-            new TenantSubscriptionStatusChangedIntegrationEvent
-            {
-                TenantId = payment.TenantId,
-                CorrelationId = command.CorrelationId,
-                TenantSubscriptionId = payment.TargetAggregateId,
-                Status = "Active",
-                PreviousStatus = "Active",
-                Reason = nameof(SubscriptionChangeReason.RecurringChargeSucceeded),
-                Amount = (payment.Amount.AmountCents / 100m).ToString(
-                    "F2",
-                    System.Globalization.CultureInfo.InvariantCulture
-                ),
-                DateCharged = DateTime.UtcNow.ToString(
-                    "MMMM d, yyyy",
-                    System.Globalization.CultureInfo.InvariantCulture
-                ),
-                DateChargedAtUtc = DateTime.UtcNow,
-            }
-        );
+    ) => await bus.PublishAsync(RecurringChargeSucceededEmail(payment, command.CorrelationId, DateTime.UtcNow));
+
+    /// <summary>El correo del cobro automático: lo cobrado, qué fue y, si hubo, el descuento con su etiqueta.</summary>
+    public static TenantSubscriptionStatusChangedIntegrationEvent RecurringChargeSucceededEmail(
+        SaaSPayment payment,
+        string? correlationId,
+        DateTime nowUtc
+    )
+    {
+        var discounted = payment.DiscountSource is not null && payment.DiscountAmountCents is > 0;
+        return new TenantSubscriptionStatusChangedIntegrationEvent
+        {
+            TenantId = payment.TenantId,
+            CorrelationId = correlationId,
+            TenantSubscriptionId = payment.TargetAggregateId,
+            Status = "Active",
+            PreviousStatus = "Active",
+            Reason = nameof(SubscriptionChangeReason.RecurringChargeSucceeded),
+            Amount = Formatted(payment.Amount.AmountCents),
+            DateCharged = nowUtc.ToString("MMMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture),
+            DateChargedAtUtc = nowUtc,
+            ItemDescription = payment.Concept?.DisplayName,
+            DiscountAmount = discounted ? Formatted(payment.DiscountAmountCents!.Value) : null,
+            DiscountLabel = discounted ? payment.DiscountLabel : null,
+        };
+    }
+
+    private static string Formatted(long cents) =>
+        (cents / 100m).ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 }

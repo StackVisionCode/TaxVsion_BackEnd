@@ -15,7 +15,11 @@ public sealed record PlanChangeCheckoutClientRequest(
     string Method,
     // Detalle del cobro y cómo se ve en el historial; opcionales.
     IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null,
-    string? ConceptDisplayName = null
+    string? ConceptDisplayName = null,
+    // Descuento vigente de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );
 
 public sealed record PlanChangeCheckoutClientResult(

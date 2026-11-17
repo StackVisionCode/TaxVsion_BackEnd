@@ -113,7 +113,8 @@ public static class RequestPlanChangeHandler
                 command.RequestedByUserId,
                 nowUtc,
                 command.WantsHostedCheckout,
-                quote.Lines
+                quote.Lines,
+                quote.Discount
             );
             if (upgradeResult.IsFailure)
                 return Result.Failure<PlanChangeRequested>(upgradeResult.Error);
@@ -172,7 +173,10 @@ public static class RequestPlanChangeHandler
                     ],
                     PlanChangeQuote.IsCycleSwitch(subscription, change)
                         ? $"Switch to {(change.EffectiveCycle == TaxVision.Subscription.Domain.ValueObjects.BillingCycle.Yearly ? "yearly" : "monthly")} billing"
-                        : null
+                        : null,
+                    awaitingPayment.DiscountAmountCents,
+                    awaitingPayment.DiscountSource,
+                    awaitingPayment.DiscountLabel
                 );
             }
             else
@@ -202,6 +206,9 @@ public static class RequestPlanChangeHandler
                         ConceptDisplayName = PlanChangeQuote.IsCycleSwitch(subscription, change)
                             ? $"Switch to {(change.EffectiveCycle == TaxVision.Subscription.Domain.ValueObjects.BillingCycle.Yearly ? "yearly" : "monthly")} billing"
                             : null,
+                        DiscountAmountCents = awaitingPayment.DiscountAmountCents,
+                        DiscountSource = awaitingPayment.DiscountSource,
+                        DiscountLabel = awaitingPayment.DiscountLabel,
                     }
                 );
             }

@@ -19,6 +19,7 @@ public sealed class SubscriptionRenewalIntentConfiguration : IEntityTypeConfigur
         builder.Property(intent => intent.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(intent => intent.SaaSPaymentId);
         builder.Property(intent => intent.CheckoutUrl).HasMaxLength(2048);
+        builder.Property(intent => intent.CheckoutProvider).HasMaxLength(30);
         builder.Property(intent => intent.CheckoutExpiresAtUtc);
         builder.Property(intent => intent.RequestedByUserId).IsRequired();
         builder.Property(intent => intent.CreatedAtUtc).IsRequired();
@@ -30,6 +31,23 @@ public sealed class SubscriptionRenewalIntentConfiguration : IEntityTypeConfigur
         builder.Property(intent => intent.CancelReason).HasMaxLength(500);
         builder.Property(intent => intent.FailureReason).HasMaxLength(1000);
         builder.Property(intent => intent.RowVersion).IsRowVersion();
+
+        builder.Property(intent => intent.IncludesPlan).HasDefaultValue(true).HasSentinel(true).IsRequired();
+        // Asientos y add-ons que cubre el pago de lo vencido.
+        builder.OwnsMany(
+            intent => intent.Items,
+            item =>
+            {
+                item.ToTable("SubscriptionRenewalIntentItems");
+                item.WithOwner().HasForeignKey("SubscriptionRenewalIntentId");
+                item.HasKey(i => i.Id);
+                item.Property(i => i.Id).ValueGeneratedNever();
+                item.Property(i => i.Kind).HasMaxLength(SubscriptionRenewalIntentItem.KindMaxLength).IsRequired();
+                item.Property(i => i.TargetId).IsRequired();
+                item.Property(i => i.AmountCents).IsRequired();
+            }
+        );
+        builder.Navigation(intent => intent.Items).UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasIndex(intent => intent.TenantId);
         builder.HasIndex(intent => intent.SaaSPaymentId);

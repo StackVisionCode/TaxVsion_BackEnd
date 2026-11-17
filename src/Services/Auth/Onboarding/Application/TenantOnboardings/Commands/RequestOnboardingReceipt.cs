@@ -27,7 +27,10 @@ public sealed record RequestOnboardingReceiptCommand(
     // Nombre de la oficina del registro. El recibo del pago se pide antes del registro (null); un
     // reenvío posterior ya lo conoce.
     string? OfficeName = null,
-    string? TimeZoneId = null
+    string? TimeZoneId = null,
+    // Precio de lista y cada descuento del alta (filas del recibo). Null sin códigos.
+    long? GrossAmountCents = null,
+    IReadOnlyList<TaxVision.Auth.Onboarding.Domain.TenantOnboardings.OnboardingReceiptDiscount>? Discounts = null
 );
 
 public static class RequestOnboardingReceiptHandler
@@ -58,7 +61,9 @@ public static class RequestOnboardingReceiptHandler
                 IdempotencyKey: $"onb-receipt:{command.OnboardingId:N}",
                 command.CorrelationId,
                 command.OfficeName,
-                command.TimeZoneId
+                command.TimeZoneId,
+                command.GrossAmountCents,
+                command.Discounts
             ),
             ct
         );

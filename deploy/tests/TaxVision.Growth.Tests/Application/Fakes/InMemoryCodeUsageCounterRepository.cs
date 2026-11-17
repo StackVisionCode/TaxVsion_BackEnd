@@ -34,6 +34,14 @@ internal sealed class InMemoryCodeUsageCounterRepository : ICodeUsageCounterRepo
         return Task.FromResult(created);
     }
 
+    public Task<CodeUsageCounter?> FindReadOnlyAsync(
+        Guid tenantId,
+        Guid codeDefinitionId,
+        CodeUsageDimension dimension,
+        CodeUsageScopeKey scopeKey,
+        CancellationToken ct = default
+    ) => Task.FromResult(_counters.GetValueOrDefault((tenantId, codeDefinitionId, dimension, scopeKey.Value)));
+
     internal CodeUsageCounter Get(
         Guid tenantId,
         Guid definitionId,

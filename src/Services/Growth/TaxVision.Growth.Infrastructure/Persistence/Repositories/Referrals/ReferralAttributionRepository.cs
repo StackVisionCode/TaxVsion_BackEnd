@@ -37,6 +37,13 @@ public sealed class ReferralAttributionRepository(GrowthDbContext dbContext, ITe
                     ct
                 );
 
+    public Task<ReferralAttribution?> GetForReviewAsync(Guid attributionId, CancellationToken ct = default) =>
+        attributionId == Guid.Empty
+            ? Task.FromResult<ReferralAttribution?>(null)
+            : dbContext
+                .ReferralAttributions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(attribution => attribution.Id == attributionId, ct);
+
     public async Task AddAsync(ReferralAttribution attribution, CancellationToken ct = default)
     {
         TenantRepositoryGuard.EnsureMatches(tenantContext, attribution.TenantId);

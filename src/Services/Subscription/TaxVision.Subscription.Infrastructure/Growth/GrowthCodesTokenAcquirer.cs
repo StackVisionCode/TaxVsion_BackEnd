@@ -6,30 +6,37 @@ using Microsoft.Extensions.Options;
 namespace TaxVision.Subscription.Infrastructure.Growth;
 
 /// <summary>
-/// Adquisición y caché de tokens M2M (grant client-credentials) por tenant contra Growth.
-/// Mismo patrón que CorrespondenceServiceTokenAcquirer/SignatureServiceTokenAcquirer.
+/// Credenciales del cliente <c>subscription-growth</c>: Auth le da audiencia <c>taxvision-growth</c> y los scopes de
+/// códigos, que exige <c>internal/codes</c>. Distinto del cliente general de Subscription (audiencia amplia).
 /// </summary>
-internal interface IGrowthServiceTokenAcquirer
+public sealed class GrowthCodesAuthOptions
+{
+    public const string SectionName = "Subscription:GrowthAuth";
+
+    public string ClientId { get; set; } = string.Empty;
+    public string ClientSecret { get; set; } = string.Empty;
+}
+
+/// <summary>Token M2M por oficina para el canje de códigos en Growth.</summary>
+internal interface IGrowthCodesTokenAcquirer
 {
     Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default);
 }
 
-internal sealed class GrowthServiceTokenAcquirer(
+internal sealed class GrowthCodesTokenAcquirer(
     HttpClient http,
-    IOptions<ServiceAuthClientOptions> options,
-    ILogger<GrowthServiceTokenAcquirer> logger
-) : IGrowthServiceTokenAcquirer
+    IOptions<GrowthCodesAuthOptions> options,
+    ILogger<GrowthCodesTokenAcquirer> logger
+) : IGrowthCodesTokenAcquirer
 {
-    private static readonly TimeSpan RefreshBuffer = TimeSpan.FromSeconds(30);
-
-    private static readonly ExpiringValueCache<Guid, string> _cache = new(RefreshBuffer);
+    private static readonly ExpiringValueCache<Guid, string> _cache = new(TimeSpan.FromSeconds(30));
 
     public async Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default)
     {
         var opt = options.Value;
         if (string.IsNullOrWhiteSpace(opt.ClientId) || string.IsNullOrWhiteSpace(opt.ClientSecret))
         {
-            logger.LogWarning("Subscription:ServiceAuth is not configured; cannot acquire a Growth service token.");
+            logger.LogWarning("Subscription:GrowthAuth is not configured; code redemption is unavailable.");
             return null;
         }
 
@@ -47,7 +54,7 @@ internal sealed class GrowthServiceTokenAcquirer(
         }
         catch (ServiceTokenAcquisitionException ex)
         {
-            logger.LogWarning(ex, "Could not acquire a Growth service token for tenant {TenantId}.", tenantId);
+            logger.LogWarning(ex, "Could not acquire a Growth codes token for tenant {TenantId}.", tenantId);
             return null;
         }
     }

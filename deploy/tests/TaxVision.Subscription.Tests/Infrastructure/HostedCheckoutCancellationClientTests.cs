@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
 using TaxVision.Subscription.Infrastructure.PaymentApp;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Tests.Infrastructure;
 
@@ -89,7 +90,7 @@ public sealed class HostedCheckoutCancellationClientTests
 
     private static HttpMessageHandler HandlerThatThrows(Exception ex) => new StubHandler(_ => throw ex);
 
-    private sealed class FakeTokenAcquirer(string? token) : IGrowthServiceTokenAcquirer
+    private sealed class FakeTokenAcquirer(string? token) : ISubscriptionServiceTokenAcquirer
     {
         public Task<string?> GetTokenAsync(Guid tenantId, CancellationToken ct = default) => Task.FromResult(token);
     }

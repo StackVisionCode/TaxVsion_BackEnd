@@ -664,6 +664,67 @@
             "description": "Estado de la intención de renovación (Pending/Paid/Provisioned/Failed) — se poll-ea al volver del checkout hasta Provisioned/Failed."
           },
           "response": []
+        },
+        {
+          "name": "GetMyDiscount",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/discount",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "discount"
+              ]
+            },
+            "description": "El descuento vigente de la oficina (owner, superficie Account). 204 si no tiene."
+          },
+          "response": []
+        },
+        {
+          "name": "RedeemDiscountCode",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SPRING25\"\n}"
+            },
+            "url": {
+              "raw": "{{UrlBase}}/subscriptions/me/discount/redeem",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "subscriptions",
+                "me",
+                "discount",
+                "redeem"
+              ]
+            },
+            "description": "El owner canjea un código de la plataforma: Growth cotiza, reserva y confirma en el acto y queda como descuento de la suscripción. 409 Subscription.Discount.AlreadyActive si ya tiene uno; los errores Codes.* de Growth pasan tal cual (404 no existe o no aplica, 409 límite, 410 vencido); 503 Subscription.DiscountCode.Unavailable si Growth no responde."
+          },
+          "response": []
         }
       ]
     },
@@ -2893,6 +2954,113 @@
             "description": "Extiende sin cobro el período de un add-on. Solo PlatformAdmin (subscription.renew)."
           },
           "response": []
+        },
+        {
+          "name": "ApplyDiscount (PlatformAdmin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/tenants/{{tenantId}}/discount",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "tenants",
+                "{{tenantId}}",
+                "discount"
+              ]
+            },
+            "description": "Da un descuento a la suscripción de la oficina sin código (retención o acuerdo). `duration`: Once (solo la próxima renovación), Months (con `durationMonths` 1–36) o Forever. `appliesTo`: Base o BaseSeatsAddOns. `reason` es obligatorio y queda en la auditoría con el actor. Si ya hay un descuento vigente responde 409 `Subscription.Discount.AlreadyActive`; con `replace: true` lo reemplaza. Para un monto fijo: `amountCents` + `currency` y `percentBasisPoints: null`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"percentBasisPoints\": 2000,\n  \"amountCents\": null,\n  \"currency\": null,\n  \"duration\": \"Months\",\n  \"durationMonths\": 3,\n  \"appliesTo\": \"Base\",\n  \"reason\": \"Retention deal\",\n  \"replace\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "GetDiscount (PlatformAdmin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/tenants/{{tenantId}}/discount",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "tenants",
+                "{{tenantId}}",
+                "discount"
+              ]
+            },
+            "description": "El descuento vigente de la oficina. 204 si no tiene."
+          }
+        },
+        {
+          "name": "EndDiscount (PlatformAdmin)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/admin/subscription/tenants/{{tenantId}}/discount",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "admin",
+                "subscription",
+                "tenants",
+                "{{tenantId}}",
+                "discount"
+              ]
+            },
+            "description": "Termina el descuento vigente (queda en la auditoría con el motivo). 409 `Subscription.Discount.NotActive` si no hay ninguno.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Deal finished\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
         },
         {
           "name": "PreviewSubscriberMigration (PlatformAdmin) — D11",

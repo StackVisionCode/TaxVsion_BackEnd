@@ -33,6 +33,7 @@ public static class CreatePlanChangeCheckoutHandler
         IPurchaseIntentAmountVerifier intentVerifier,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
+        ICheckoutReturnUrlGuard returnUrls,
         CancellationToken ct
     )
     {
@@ -69,6 +70,7 @@ public static class CreatePlanChangeCheckoutHandler
             metrics,
             correlation,
             logger,
+            returnUrls,
             ct
         );
 
@@ -107,7 +109,10 @@ public static class CreatePlanChangeCheckoutHandler
                         command.Provider,
                         descriptor,
                         actorUserId: Guid.Empty,
-                        nowUtc
+                        nowUtc,
+                        discountAmountCents: command.DiscountAmountCents,
+                        discountSource: command.DiscountSource,
+                        discountLabel: command.DiscountLabel
                     )
                     .WithConceptFor(SaaSPaymentType.PlanChangeCheckout, displayName: command.ConceptDisplayName)
                     .WithLines(command.Lines),

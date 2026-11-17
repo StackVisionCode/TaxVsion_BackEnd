@@ -34,7 +34,13 @@ public sealed class InternalSubscriptionRenewalCheckoutController(IMessageBus bu
         PaymentProviderCode? Provider = null,
         PaymentMethodKind? Method = null,
         /// <summary>SEC-M1.C — HMAC emitido por Subscription que PaymentApp verifica localmente.</summary>
-        string? AmountSignature = null
+        string? AmountSignature = null,
+        // Descuento de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+        long? DiscountAmountCents = null,
+        string? DiscountSource = null,
+        string? DiscountLabel = null,
+        // Pago de lo vencido: una línea por cosa, con a qué pertenece.
+        IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null
     );
 
     [HttpPost("checkout")]
@@ -59,7 +65,11 @@ public sealed class InternalSubscriptionRenewalCheckoutController(IMessageBus bu
                 request.IdempotencyKey,
                 request.Provider ?? PaymentProviderCode.Stripe,
                 request.Method ?? PaymentMethodKind.Card,
-                request.AmountSignature
+                request.AmountSignature,
+                DiscountAmountCents: request.DiscountAmountCents,
+                DiscountSource: request.DiscountSource,
+                DiscountLabel: request.DiscountLabel,
+                Lines: request.Lines
             ),
             ct
         );

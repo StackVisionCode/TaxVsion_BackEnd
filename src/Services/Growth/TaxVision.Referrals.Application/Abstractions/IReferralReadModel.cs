@@ -18,7 +18,11 @@ public sealed record ReferralInviteRow(
     long? RewardAmountCents,
     string? RewardCurrency,
     ReferralRewardCaseStatus? RewardStatus,
-    DateTime? RewardEligibleAtUtc
+    DateTime? RewardEligibleAtUtc,
+    // Nombre de la oficina referida; null mientras el alta no crea la oficina.
+    string? RefereeName = null,
+    // Oficina real del referido, una vez que el alta la crea.
+    Guid? RefereeTenantId = null
 );
 
 /// <summary>Un envío del código con los registros y pagos que produjo.</summary>

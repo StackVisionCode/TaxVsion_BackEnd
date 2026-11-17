@@ -21,12 +21,58 @@ public sealed record AddOnCheckoutReservation(
     string Currency,
     int Quantity,
     string AddOnName,
-    StartAddOnCheckoutResponse? OpenCheckout = null
+    StartAddOnCheckoutResponse? OpenCheckout = null,
+    long? DiscountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null,
+    // Checkout de otro proveedor que se canceló para abrir este; el inicio cierra su sesión.
+    Guid? ReplacedPaymentId = null,
+    Guid? ReplacedIntentId = null
 );
 
 public static class ReserveAddOnCheckoutHandler
 {
     public static async Task<Result<AddOnCheckoutReservation>> Handle(
+        ReserveAddOnCheckoutCommand reservation,
+        AddOnPurchaseEligibility eligibility,
+        IAddOnPurchaseIntentRepository intents,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var replaced = await ReplaceOtherProviderAsync(reservation, intents, unitOfWork, ct);
+        var reserved = await ReserveAsync(reservation, eligibility, intents, unitOfWork, ct);
+        return replaced is null || reserved.IsFailure
+            ? reserved
+            : Result.Success(
+                reserved.Value with
+                {
+                    ReplacedPaymentId = replaced.PaymentId,
+                    ReplacedIntentId = replaced.IntentId,
+                }
+            );
+    }
+
+    // Un checkout abierto con otro proveedor se cancela (y se guarda) antes de reservar el nuevo.
+    private static async Task<ReplacedCheckout?> ReplaceOtherProviderAsync(
+        ReserveAddOnCheckoutCommand reservation,
+        IAddOnPurchaseIntentRepository intents,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var nowUtc = DateTime.UtcNow;
+        var command = reservation.Request;
+        var open = await intents.GetOpenByTenantAsync(command.TenantId, command.AddOnCode.Trim(), nowUtc, ct);
+        if (open is null || !open.IsOpen(nowUtc) || open.OpenedWith(command.Provider))
+            return null;
+
+        open.Cancel(command.RequestedByUserId, nowUtc, CheckoutProviderSwitch.Reason);
+        await unitOfWork.SaveChangesAsync(ct);
+        return open.SaaSPaymentId is { } paymentId ? new ReplacedCheckout(open.Id, paymentId) : null;
+    }
+
+    private static async Task<Result<AddOnCheckoutReservation>> ReserveAsync(
         ReserveAddOnCheckoutCommand reservation,
         AddOnPurchaseEligibility eligibility,
         IAddOnPurchaseIntentRepository intents,
@@ -55,29 +101,56 @@ public static class ReserveAddOnCheckoutHandler
             unattached is not null
             && unattached.Matches(definition.Code.Value, command.Quantity, subscription.BillingCycle, command.AutoRenew)
         )
-            return Reserved(unattached, definition);
+            return Reserved(
+                unattached,
+                definition,
+                AddOnCheckoutPricing.Price(subscription, definition, command.Quantity, DateTime.UtcNow)
+            );
 
         var prepared = PrepareIntent(command, subscription, definition);
         if (prepared.IsFailure)
             return Result.Failure<AddOnCheckoutReservation>(prepared.Error);
 
-        var intent = prepared.Value;
+        var (intent, charge) = prepared.Value;
         await intents.AddAsync(intent, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Reserved(intent, definition);
-    }
-
-    private static Result<AddOnCheckoutReservation> Reserved(AddOnPurchaseIntent intent, AddOnDefinition definition) =>
-        Result.Success(
+        return Result.Success(
             new AddOnCheckoutReservation(
                 intent.Id,
                 intent.ProratedTotal.Cents,
                 intent.ProratedTotal.Currency,
                 intent.Quantity,
-                definition.Name
+                definition.Name,
+                DiscountCents: charge.DiscountCents,
+                DiscountSource: charge.Source,
+                DiscountLabel: charge.Label
             )
         );
+    }
+
+    // El intent guarda el neto; el descuento se toma del precio recién calculado si ese neto coincide.
+    private static Result<AddOnCheckoutReservation> Reserved(
+        AddOnPurchaseIntent intent,
+        AddOnDefinition definition,
+        Result<AddOnCheckoutPrice> priced
+    )
+    {
+        var charge =
+            priced.IsSuccess && priced.Value.Charge.NetCents == intent.ProratedTotal.Cents ? priced.Value.Charge : null;
+        return Result.Success(
+            new AddOnCheckoutReservation(
+                intent.Id,
+                intent.ProratedTotal.Cents,
+                intent.ProratedTotal.Currency,
+                intent.Quantity,
+                definition.Name,
+                DiscountCents: charge?.DiscountCents,
+                DiscountSource: charge?.Source,
+                DiscountLabel: charge?.Label
+            )
+        );
+    }
 
     /// <summary>
     /// Guard del doble cobro: mientras la sesión anterior de ESE add-on siga viva, la misma compra devuelve esa
@@ -122,46 +195,39 @@ public static class ReserveAddOnCheckoutHandler
         );
     }
 
-    private static Result<AddOnPurchaseIntent> PrepareIntent(
+    private static Result<(AddOnPurchaseIntent Intent, DiscountedCharge Charge)> PrepareIntent(
         StartAddOnCheckoutCommand command,
         TenantSubscription subscription,
         AddOnDefinition definition
     )
     {
-        // Co-terminación: el add-on hereda el ciclo del plan y su precio se resuelve para ese ciclo.
-        var billingCycle = subscription.BillingCycle;
-        var unitPrice = definition.ResolveUnitPrice(billingCycle, command.Quantity);
-        if (unitPrice.IsFailure)
-            return Result.Failure<AddOnPurchaseIntent>(unitPrice.Error);
+        var nowUtc = DateTime.UtcNow;
+        var priced = AddOnCheckoutPricing.Price(subscription, definition, command.Quantity, nowUtc);
+        if (priced.IsFailure)
+            return Result.Failure<(AddOnPurchaseIntent, DiscountedCharge)>(priced.Error);
 
-        var prorated = ProrationCalculator.InitialPeriod(
-            unitPrice.Value,
-            subscription.CurrentPeriodStartUtc,
-            subscription.CurrentPeriodEndUtc,
-            DateTime.UtcNow
-        );
-        if (prorated.IsFailure)
-            return Result.Failure<AddOnPurchaseIntent>(prorated.Error);
-
-        var totalCents = (long)Math.Round(prorated.Value.Amount * 100m, MidpointRounding.AwayFromZero);
-        if (totalCents <= 0)
-            return Result.Failure<AddOnPurchaseIntent>(
+        var (unitPrice, billingCycle, charge) = priced.Value;
+        if (charge.GrossCents <= 0)
+            return Result.Failure<(AddOnPurchaseIntent, DiscountedCharge)>(
                 new Error(
                     "AddOn.Checkout.NothingToCharge",
                     "This add-on is free for the current period; use the direct purchase instead of checkout."
                 )
             );
 
-        return AddOnPurchaseIntent.Create(
+        var intent = AddOnPurchaseIntent.Create(
             command.TenantId,
             definition,
             command.Quantity,
             command.AutoRenew,
-            unitPrice.Value,
+            unitPrice,
             billingCycle,
-            Money.FromCents(totalCents, unitPrice.Value.Currency),
+            Money.FromCents(charge.NetCents, unitPrice.Currency),
             command.RequestedByUserId,
-            DateTime.UtcNow
+            nowUtc
         );
+        return intent.IsFailure
+            ? Result.Failure<(AddOnPurchaseIntent, DiscountedCharge)>(intent.Error)
+            : Result.Success((intent.Value, charge));
     }
 }

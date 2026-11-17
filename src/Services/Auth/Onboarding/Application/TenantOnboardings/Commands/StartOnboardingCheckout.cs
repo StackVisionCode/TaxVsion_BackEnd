@@ -101,6 +101,11 @@ public static class StartOnboardingCheckoutHandler
         // (best-effort: un fallo no bloquea el alta; el referido paga igual el precio completo) y la engancha al alta.
         await DeclareReferralAsync(onboarding, command, bus, correlation, ct);
 
+        // Reintento con una reserva de código vencida: se renueva antes de cobrar o no se cobra.
+        var renewal = await ExpiredReservationRenewal.RenewAsync(onboarding, reserver, growth, logger, ct);
+        if (renewal.IsFailure)
+            return Result.Failure<StartOnboardingCheckoutResponse>(renewal.Error);
+
         var codes = BuildCodeInputs(command);
         if (codes.Count > 0 && onboarding.CodeReservations.Count == 0)
         {
@@ -114,7 +119,6 @@ public static class StartOnboardingCheckoutHandler
                 outcome.TotalDiscountCents,
                 outcome.NetAmountCents,
                 outcome.Currency,
-                referralAttributionId: onboarding.ReferralAttributionId,
                 outcome.Reservations,
                 DateTime.UtcNow
             );
@@ -167,7 +171,20 @@ public static class StartOnboardingCheckoutHandler
                 Currency: onboarding.Currency,
                 CodeReservationId: primaryReservation?.CodeReservationId,
                 PromotionSnapshotHash: primaryReservation?.SnapshotHash,
-                PlanDisplayName: planDisplayName
+                PlanDisplayName: planDisplayName,
+                // Misma condición con la que se declara el referido: Growth reintenta si la atribución tarda.
+                ReferralDeclared: OnboardingReferralInput.CodeOf(command.ReferralCode) is not null,
+                Promotions:
+                [
+                    .. onboarding
+                        .CodeReservations.OrderBy(reservation => reservation.Order)
+                        .Select(reservation => new PaymentAppCheckoutPromotion(
+                            reservation.CodeReservationId,
+                            reservation.DiscountCents,
+                            reservation.SnapshotHash,
+                            reservation.Order
+                        )),
+                ]
             ),
             ct
         );
@@ -269,7 +286,8 @@ public static class StartOnboardingCheckoutHandler
         CancellationToken ct
     )
     {
-        if (string.IsNullOrWhiteSpace(command.ReferralCode))
+        var referralCode = OnboardingReferralInput.CodeOf(command.ReferralCode);
+        if (referralCode is null)
             return;
 
         bus.TenantId = PlatformTenant.Id.ToString();
@@ -282,8 +300,8 @@ public static class StartOnboardingCheckoutHandler
                     ? onboarding.Id.ToString("N")
                     : correlation.CorrelationId,
                 OnboardingId = onboarding.Id,
-                ReferralCode = command.ReferralCode.Trim(),
-                Channel = string.IsNullOrWhiteSpace(command.ReferralChannel) ? null : command.ReferralChannel.Trim(),
+                ReferralCode = referralCode,
+                Channel = OnboardingReferralInput.ChannelOf(command.ReferralChannel),
                 ShareId = command.ReferralShareId,
             }
         );
@@ -303,4 +321,23 @@ public static class StartOnboardingCheckoutHandler
             );
         return codes;
     }
+}
+
+/// <summary>Datos del link de referido tal como llegan de la URL: lo que no tiene forma posible se descarta.</summary>
+internal static class OnboardingReferralInput
+{
+    private static readonly System.Text.RegularExpressions.Regex Code = new(
+        "^[A-Za-z0-9-]{4,32}$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant
+    );
+
+    private static readonly System.Text.RegularExpressions.Regex Channel = new(
+        "^[a-z]{2,20}$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant
+    );
+
+    public static string? CodeOf(string? raw) => raw?.Trim() is { } code && Code.IsMatch(code) ? code : null;
+
+    public static string? ChannelOf(string? raw) =>
+        raw?.Trim().ToLowerInvariant() is { } channel && Channel.IsMatch(channel) ? channel : null;
 }

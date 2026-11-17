@@ -106,7 +106,7 @@ public sealed class OnboardingSuccessCompleter(
                     PaidAtUtc = paidAtUtc,
                     RegistrationUrlBase = onboardingOptions.Value.RegistrationUrlBase,
                     CorrelationId = correlationId,
-                }
+                }.WithDiscountOf(onboarding)
             );
             onboarding.MarkRegistrationEmailSent(DateTime.UtcNow);
         }
@@ -134,7 +134,8 @@ public sealed class OnboardingSuccessCompleter(
                 r.Code,
                 r.DiscountCents,
                 r.SnapshotHash,
-                r.Order
+                r.Order,
+                r.PaymentReferenceId
             ))
             .ToList();
 
@@ -154,7 +155,6 @@ public sealed class OnboardingSuccessCompleter(
                 net,
                 receiptCurrency,
                 settlement,
-                onboarding.ReferralAttributionId,
                 reservations
             )
         );
@@ -174,7 +174,9 @@ public sealed class OnboardingSuccessCompleter(
                 providerPaymentReference,
                 paymentMethodMasked,
                 correlationId,
-                TimeZoneId: onboarding.TimeZoneId
+                TimeZoneId: onboarding.TimeZoneId,
+                GrossAmountCents: onboarding.ReceiptGrossAmountCents(),
+                Discounts: onboarding.ReceiptDiscounts()
             )
         );
 

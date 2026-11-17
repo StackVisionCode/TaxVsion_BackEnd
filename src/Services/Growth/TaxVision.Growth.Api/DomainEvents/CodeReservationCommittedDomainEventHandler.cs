@@ -6,7 +6,8 @@ namespace TaxVision.Growth.Api.DomainEvents;
 
 /// <summary>
 /// La reserva se confirmó: devuelve el aviso de integración (cascada por el outbox). Corre después del commit,
-/// desde la cola domain-events. Todo lo que lleva el aviso viene en el evento; no relee el agregado.
+/// desde la cola domain-events. Todo lo que lleva el aviso viene en el evento; no relee el agregado. Hoy ningún
+/// servicio lo consume (Communication lo ignora): se publica como rastro del canje para auditoría y reportes.
 /// </summary>
 public static class CodeReservationCommittedDomainEventHandler
 {

@@ -63,7 +63,16 @@ public sealed class ReferralReadModel(GrowthDbContext db, ITenantContext tenantC
                 reward == null ? null : reward.RewardAmountCents,
                 reward == null ? null : reward.RewardCurrency,
                 reward == null ? null : reward.Status,
-                reward == null ? null : reward.EligibleAtUtc
+                reward == null ? null : reward.EligibleAtUtc,
+                db.ReferredOffices.IgnoreQueryFilters()
+                    .Where(office =>
+                        office.OnboardingId == attribution.RefereeId
+                        || office.TenantId == attribution.RefereeId
+                        || office.TenantId == attribution.RefereeTenantId
+                    )
+                    .Select(office => office.DisplayName ?? office.Name)
+                    .FirstOrDefault(),
+                attribution.RefereeTenantId
             )
         )
             .Skip((page - 1) * size)

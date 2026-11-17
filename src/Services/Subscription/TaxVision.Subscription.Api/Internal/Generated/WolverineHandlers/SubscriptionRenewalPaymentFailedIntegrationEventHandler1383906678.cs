@@ -23,17 +23,19 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            var tenantAddOnRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ITenantAddOnRepository>(serviceScope.ServiceProvider);
+            var subscriptionSeatRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ISubscriptionSeatRepository>(serviceScope.ServiceProvider);
             var planRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.IPlanRepository>(serviceScope.ServiceProvider);
             var subscriptionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ISubscriptionRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var subscriptionRenewalPaymentFailedIntegrationEvent = (BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SubscriptionRenewalPaymentFailedIntegrationEvent)context.Envelope.Message;
 
@@ -56,7 +58,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Subscription.Application.Subscriptions.IntegrationEvents.SubscriptionRenewalPaymentFailedConsumer");
                 
                 // The actual message execution
-                await TaxVision.Subscription.Application.Subscriptions.IntegrationEvents.SubscriptionRenewalPaymentFailedConsumer.Handle(subscriptionRenewalPaymentFailedIntegrationEvent, subscriptionRepository, planRepository, unitOfWork, context, correlationContext, _loggerOfTenantSubscription, cancellation).ConfigureAwait(false);
+                await TaxVision.Subscription.Application.Subscriptions.IntegrationEvents.SubscriptionRenewalPaymentFailedConsumer.Handle(subscriptionRenewalPaymentFailedIntegrationEvent, subscriptionRepository, planRepository, subscriptionSeatRepository, tenantAddOnRepository, unitOfWork, context, correlationContext, _loggerOfTenantSubscription, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

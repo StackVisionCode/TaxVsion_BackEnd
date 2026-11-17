@@ -42,6 +42,14 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
     public BillingCycle BillingCycle { get; private set; }
     public SubscriptionRenewalIntentStatus Status { get; private set; }
     public Guid? SaaSPaymentId { get; private set; }
+
+    /// <summary>Proveedor con el que se abrió el checkout (Stripe | PayPal).</summary>
+    public string? CheckoutProvider { get; private set; }
+
+    /// <summary>¿El checkout abierto es del proveedor que se pide? Uno sin proveedor (de antes) se reemplaza.</summary>
+    public bool OpenedWith(string? provider) =>
+        string.Equals(CheckoutProvider, provider, StringComparison.OrdinalIgnoreCase);
+
     public string? CheckoutUrl { get; private set; }
 
     /// <summary>Cuándo caduca la sesión del proveedor. Mientras no caduque, esta intención sigue siendo
@@ -67,7 +75,48 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
     /// <summary>Token de concurrencia: el consumidor del pago y el job de reconciliación no aprovisionan dos veces.</summary>
     public byte[] RowVersion { get; private set; } = [];
 
+    private readonly List<SubscriptionRenewalIntentItem> _items = [];
+
     private SubscriptionRenewalIntent() { }
+
+    /// <summary>"Pay what's due": con el plan al día se pagan solo asientos y add-ons. Las de antes, siempre el plan.</summary>
+    public bool IncludesPlan { get; private set; } = true;
+
+    /// <summary>Asientos y add-ons que cubre este pago; vacío en la renovación del plan solo.</summary>
+    public IReadOnlyCollection<SubscriptionRenewalIntentItem> Items => _items;
+
+    /// <summary>Pago de lo vencido: el plan (si va) más los asientos y add-ons elegidos, en un solo checkout.</summary>
+    public static Result<SubscriptionRenewalIntent> CreateForDue(
+        Guid tenantId,
+        Money amount,
+        BillingCycle billingCycle,
+        bool includesPlan,
+        IReadOnlyList<SubscriptionRenewalIntentItem> items,
+        Guid requestedByUserId,
+        DateTime nowUtc
+    )
+    {
+        if (!includesPlan && items.Count == 0)
+            return Result.Failure<SubscriptionRenewalIntent>(
+                new Error("SubscriptionRenewalIntent.NothingToCharge", "Choose at least one item to pay.")
+            );
+
+        var created = Create(tenantId, amount, billingCycle, requestedByUserId, nowUtc);
+        if (created.IsFailure)
+            return created;
+
+        created.Value.IncludesPlan = includesPlan;
+        created.Value._items.AddRange(items);
+        return created;
+    }
+
+    /// <summary>¿Cubre exactamente lo mismo? Para reusar un intento sin checkout en vez de crear otro.</summary>
+    public bool Covers(bool includesPlan, IReadOnlyList<SubscriptionRenewalIntentItem> items) =>
+        IncludesPlan == includesPlan
+        && _items
+            .Select(item => (item.Kind, item.TargetId))
+            .OrderBy(x => x.TargetId)
+            .SequenceEqual(items.Select(item => (item.Kind, item.TargetId)).OrderBy(x => x.TargetId));
 
     public static Result<SubscriptionRenewalIntent> Create(
         Guid tenantId,
@@ -108,7 +157,13 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
     }
 
     /// <summary>Guarda la referencia al pago y la URL de checkout una vez creada la sesión en PaymentApp.</summary>
-    public Result AttachCheckout(Guid saaSPaymentId, string checkoutUrl, DateTime expiresAtUtc, DateTime nowUtc)
+    public Result AttachCheckout(
+        Guid saaSPaymentId,
+        string checkoutUrl,
+        DateTime expiresAtUtc,
+        DateTime nowUtc,
+        string? provider = null
+    )
     {
         if (Status != SubscriptionRenewalIntentStatus.Pending)
             return Result.Failure(
@@ -118,6 +173,7 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
         SaaSPaymentId = saaSPaymentId;
         CheckoutUrl = checkoutUrl;
         CheckoutExpiresAtUtc = expiresAtUtc;
+        CheckoutProvider = string.IsNullOrWhiteSpace(provider) ? null : provider.Trim();
         Touch(nowUtc);
         return Result.Success();
     }
@@ -227,4 +283,27 @@ public sealed class SubscriptionRenewalIntent : TenantEntity
     }
 
     private void Touch(DateTime nowUtc) => UpdatedAtUtc = nowUtc;
+}
+
+/// <summary>Un asiento o add-on que cubre el pago de lo vencido, con lo que se cobró por él.</summary>
+public sealed class SubscriptionRenewalIntentItem
+{
+    public const string SeatKind = "Seat";
+    public const string AddOnKind = "AddOn";
+    public const int KindMaxLength = 20;
+
+    private SubscriptionRenewalIntentItem() { }
+
+    public SubscriptionRenewalIntentItem(string kind, Guid targetId, long amountCents)
+    {
+        Id = Guid.NewGuid();
+        Kind = kind;
+        TargetId = targetId;
+        AmountCents = amountCents;
+    }
+
+    public Guid Id { get; private set; }
+    public string Kind { get; private set; } = default!;
+    public Guid TargetId { get; private set; }
+    public long AmountCents { get; private set; }
 }

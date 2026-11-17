@@ -11,5 +11,7 @@ public sealed record SeatCheckoutStatusResponse(
     int Quantity,
     long ProratedTotalCents,
     string Currency,
-    string? CheckoutUrl
+    string? CheckoutUrl,
+    // Con qué proveedor se abrió (Stripe | PayPal); null en las de antes.
+    string? CheckoutProvider = null
 );

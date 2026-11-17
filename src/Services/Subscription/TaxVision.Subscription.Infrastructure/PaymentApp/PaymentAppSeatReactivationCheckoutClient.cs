@@ -7,6 +7,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 
@@ -16,7 +17,7 @@ namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 /// <see cref="PurchaseIntentKind.SeatReactivation"/>.</summary>
 internal sealed class PaymentAppSeatReactivationCheckoutClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     IPurchaseIntentAmountSigner amountSigner,
     ILogger<PaymentAppSeatReactivationCheckoutClient> logger
 ) : ISeatReactivationCheckoutClient
@@ -70,6 +71,9 @@ internal sealed class PaymentAppSeatReactivationCheckoutClient(
                         provider = request.Provider,
                         method = request.Method,
                         amountSignature,
+                        discountAmountCents = request.DiscountAmountCents,
+                        discountSource = request.DiscountSource,
+                        discountLabel = request.DiscountLabel,
                     },
                     options: Json
                 ),

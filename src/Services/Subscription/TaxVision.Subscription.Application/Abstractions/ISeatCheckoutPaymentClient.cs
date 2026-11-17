@@ -15,7 +15,11 @@ public sealed record SeatCheckoutClientRequest(
     string Method,
     /// <summary>Unidades y precio unitario, para el recibo. PaymentApp los ignora si no cuadran.</summary>
     int? Quantity = null,
-    long? UnitAmountCents = null
+    long? UnitAmountCents = null,
+    // Descuento vigente de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );
 
 public sealed record SeatCheckoutClientResult(

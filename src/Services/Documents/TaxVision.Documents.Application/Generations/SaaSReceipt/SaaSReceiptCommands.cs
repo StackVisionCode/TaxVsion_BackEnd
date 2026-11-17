@@ -28,8 +28,23 @@ public sealed record SaaSReceiptPayload(
     /// la misma razón que "Billed to"; sin líneas, el recibo muestra la fila única de siempre.</summary>
     IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null,
     /// <summary>Zona de la oficina que paga (P7). Opcional al final: un comando viejo sale en UTC rotulado.</summary>
-    string? TimeZoneId = null
-);
+    string? TimeZoneId = null,
+    /// <summary>Descuento del cobro (ya restado de lo pagado) y su etiqueta. Opcionales al final por los comandos viejos.</summary>
+    long? DiscountAmountCents = null,
+    string? DiscountLabel = null
+)
+{
+    /// <summary>La fila de descuento del recibo. Las líneas de cobros viejos ya suman lo pagado: ahí no se resta otra vez.</summary>
+    public IReadOnlyList<Receipts.ReceiptDiscount> DiscountRows()
+    {
+        if (DiscountAmountCents is not > 0)
+            return [];
+        if (Lines is { Count: > 0 } && Lines.Sum(line => line.Quantity * line.UnitAmountCents) == AmountPaidCents)
+            return [];
+        var label = string.IsNullOrWhiteSpace(DiscountLabel) ? "Discount" : DiscountLabel.Trim();
+        return [new Receipts.ReceiptDiscount(label, DiscountAmountCents.Value)];
+    }
+}
 
 /// <summary>Registra la generación del recibo de una compra SaaS. Responde 202: el PDF se produce después.</summary>
 public sealed record GenerateSaaSReceiptDocumentCommand(

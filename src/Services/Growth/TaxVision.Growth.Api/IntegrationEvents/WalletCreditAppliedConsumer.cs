@@ -2,7 +2,9 @@ using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Referrals.Application.Abstractions;
+using TaxVision.Referrals.Application.Rewards;
 using TaxVision.Referrals.Application.Rewards.ClawbackWalletCreditReward;
+using TaxVision.Referrals.Application.Rewards.GetReferralRewardNotice;
 using TaxVision.Referrals.Application.Rewards.GrantWalletCreditReward;
 using Wolverine;
 
@@ -50,6 +52,13 @@ public static class WalletCreditAppliedConsumer
                 ct
             );
             EnsureApplied(credited);
+            if (credited.Value == ConfirmWalletCreditRewardOutcome.Granted)
+                await NotifyAsync(
+                    bus,
+                    message,
+                    reward => ReferralRewardEvents.Granted(reward, ledgerEntryId, message.CorrelationId),
+                    ct
+                );
             return;
         }
 
@@ -68,6 +77,29 @@ public static class WalletCreditAppliedConsumer
             ct
         );
         EnsureApplied(reversed);
+        if (reversed.Value == ConfirmWalletReversalOutcome.Reversed)
+            await NotifyAsync(
+                bus,
+                message,
+                reward => ReferralRewardEvents.Reversed(reward, message.EventId, message.CorrelationId),
+                ct
+            );
+    }
+
+    // Aviso al referidor, solo la primera vez (una reentrega no vuelve a avisar).
+    private static async Task NotifyAsync<T>(
+        IMessageBus bus,
+        WalletCreditAppliedIntegrationEvent message,
+        Func<ReferralRewardNotice, T> build,
+        CancellationToken ct
+    )
+    {
+        var reward = await bus.InvokeAsync<Result<ReferralRewardNotice?>>(
+            new GetReferralRewardNoticeQuery(message.TenantId, message.ReferenceId),
+            ct
+        );
+        if (reward.IsSuccess && reward.Value is { } found)
+            await bus.PublishAsync(build(found));
     }
 
     private static void EnsureApplied<T>(Result<T> result)

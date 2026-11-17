@@ -15,7 +15,11 @@ public sealed record SeatReactivationCheckoutClientRequest(
     string CancelUrl,
     string IdempotencyKey,
     string Provider,
-    string Method
+    string Method,
+    // Descuento vigente de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );
 
 /// <summary>Cliente M2M contra PaymentApp para crear la sesión de checkout de reactivación de un seat

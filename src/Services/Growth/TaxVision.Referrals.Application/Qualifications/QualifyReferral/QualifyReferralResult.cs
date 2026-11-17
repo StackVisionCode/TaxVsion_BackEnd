@@ -7,5 +7,7 @@ public sealed record QualifyReferralResult(
     ReferralQualificationDecision Decision,
     string? RejectionReasonCode,
     Guid? RewardCaseId,
-    bool WasReplay
+    bool WasReplay,
+    // El premio creado al calificar, para avisarle al referidor; null si no hubo premio.
+    Rewards.ReferralRewardNotice? Reward = null
 );

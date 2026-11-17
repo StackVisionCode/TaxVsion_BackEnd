@@ -65,7 +65,8 @@ public sealed class WalletController(IMessageBus bus) : ControllerBase
     public sealed record TopUpRequest(
         long AmountCents,
         string? Currency,
-        string PayerEmail,
+        // Se ignora (el pagador sale del token); se acepta para no romper clientes desplegados.
+        string? PayerEmail,
         string SuccessUrl,
         string CancelUrl,
         string? Provider,
@@ -82,6 +83,11 @@ public sealed class WalletController(IMessageBus bus) : ControllerBase
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+        if (!User.TryGetEmail(out var payerEmail))
+            return StatusCode(
+                StatusCodes.Status400BadRequest,
+                new Error("Checkout.MissingPayerEmail", "The signed-in user has no email to bill.")
+            );
 
         var result = await TopUpCheckoutFlow.RunAsync(
             bus,
@@ -90,7 +96,7 @@ public sealed class WalletController(IMessageBus bus) : ControllerBase
                 userId,
                 request.AmountCents,
                 request.Currency ?? "USD",
-                request.PayerEmail,
+                payerEmail,
                 request.SuccessUrl,
                 request.CancelUrl,
                 request.Provider ?? "Stripe",

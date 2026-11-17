@@ -15,7 +15,7 @@ namespace TaxVision.Subscription.Domain.Subscriptions;
 /// explícito con su propia precondición — no existe un ChangeStatus(...) genérico. Las transiciones que se
 /// anuncian registran <see cref="SubscriptionStatusChangedDomainEvent"/>.
 /// </summary>
-public sealed class TenantSubscription : AggregateRoot
+public sealed partial class TenantSubscription : AggregateRoot
 {
     private readonly List<TenantSubscriptionRenewal> _renewals = [];
     private readonly List<PlanChangeRequest> _planChangeRequests = [];
@@ -249,6 +249,8 @@ public sealed class TenantSubscription : AggregateRoot
         PlanCode = newPlan.Code.Value;
         if (newBillingCycle is not null)
             BillingCycle = newBillingCycle.Value;
+        // Un descuento limitado al plan anterior no sigue en el plan nuevo.
+        EndDiscountIfPlanNotCovered(PlanCode, nowUtc);
         Touch(actorUserId, nowUtc);
         return Result.Success();
     }
@@ -497,7 +499,8 @@ public sealed class TenantSubscription : AggregateRoot
         Guid actorUserId,
         DateTime nowUtc,
         bool usesHostedCheckout = false,
-        IReadOnlyList<PlanChangeLine>? lines = null
+        IReadOnlyList<PlanChangeLine>? lines = null,
+        PlanChangeDiscount? discount = null
     )
     {
         if (!IsOneOf(Status, SubscriptionStatus.Trialing, SubscriptionStatus.Active))
@@ -544,7 +547,8 @@ public sealed class TenantSubscription : AggregateRoot
             chargeAmountCents,
             chargeCurrency,
             paymentIdempotencyKey,
-            usesHostedCheckout
+            usesHostedCheckout,
+            discount
         );
         if (requestResult.IsFailure)
             return Result.Failure(requestResult.Error);
@@ -581,6 +585,10 @@ public sealed class TenantSubscription : AggregateRoot
         var request = FindPlanChangeRequestById(requestId);
         if (request is null)
             return Result.Failure(new Error("PlanChangeRequest.NotFound", "Plan change request does not exist."));
+
+        // El cobro usó el código de un solo cobro que esperaba la renovación: no se vuelve a aplicar.
+        if (request.DiscountAmountCents is > 0)
+            ConsumePendingOnceDiscount(nowUtc);
 
         var previousCycle = BillingCycle;
         var switchResult = ChangePlan(toPlan, toPlanVersion, request.ToBillingCycle, actorUserId, nowUtc);

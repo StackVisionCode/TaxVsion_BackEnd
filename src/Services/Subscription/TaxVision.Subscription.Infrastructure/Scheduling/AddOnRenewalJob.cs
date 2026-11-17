@@ -3,9 +3,13 @@ using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.AddOns.TierChange;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Application.Subscriptions;
+using TaxVision.Subscription.Application.Subscriptions.Renewals;
+using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Infrastructure.Persistence;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
@@ -36,7 +40,8 @@ public sealed class AddOnRenewalJob(
 
         // El job es el origen de la traza: un id por pasada, para seguir junto todo lo que publique.
         var correlationId = Guid.NewGuid().ToString("N");
-        await RenewAsync([.. due.Select(addOn => (addOn.Id, addOn.TenantId))], nowUtc, correlationId, ct);
+        var usedBytes = await MeasureScheduledTierChangesAsync(services, due, ct);
+        await RenewAsync([.. due.Select(addOn => (addOn.Id, addOn.TenantId))], nowUtc, correlationId, ct, usedBytes);
         logger.LogInformation("AddOnRenewalJob processed {Count} due add-on(s).", due.Count);
     }
 
@@ -44,13 +49,42 @@ public sealed class AddOnRenewalJob(
         IReadOnlyList<(Guid TenantAddOnId, Guid TenantId)> addOns,
         DateTime nowUtc,
         string correlationId,
+        CancellationToken ct,
+        IReadOnlyDictionary<Guid, long?>? usedBytesByTenant = null
+    ) =>
+        RunUnitsAsync(
+            addOns,
+            (addOn, unit, token) =>
+                RenewOneAsync(
+                    unit,
+                    addOn,
+                    usedBytesByTenant?.GetValueOrDefault(addOn.TenantId),
+                    nowUtc,
+                    correlationId,
+                    token
+                ),
+            ct
+        );
+
+    // Bajadas programadas: el uso se mide aquí, antes de abrir las transacciones de cada unidad (BB-8).
+    private static async Task<IReadOnlyDictionary<Guid, long?>> MeasureScheduledTierChangesAsync(
+        IServiceProvider services,
+        IReadOnlyList<TenantAddOn> due,
         CancellationToken ct
-    ) => RunUnitsAsync(addOns, (addOn, unit, token) => RenewOneAsync(unit, addOn, nowUtc, correlationId, token), ct);
+    )
+    {
+        var usage = services.GetRequiredService<IStorageUsageClient>();
+        var used = new Dictionary<Guid, long?>();
+        foreach (var tenantId in due.Where(a => a.HasScheduledTierChange).Select(a => a.TenantId).Distinct())
+            used[tenantId] = await usage.GetUsedBytesAsync(tenantId, ct);
+        return used;
+    }
 
     // La renovación en Processing y su AddOnRenewalDue (el cobro) se confirman juntos o no se confirma nada.
     private static async Task<bool> RenewOneAsync(
         JobUnitContext<SubscriptionDbContext> unit,
         (Guid TenantAddOnId, Guid TenantId) item,
+        long? usedBytes,
         DateTime nowUtc,
         string correlationId,
         CancellationToken ct
@@ -94,6 +128,18 @@ public sealed class AddOnRenewalJob(
         if (subscription.HoldsExtraRenewals(addOn.CurrentPeriodEndUtc))
             return false;
 
+        // Termina con el plan: lo renueva el job del plan en el mismo cobro.
+        if (RenewalBundle.Includes(subscription, addOn))
+            return false;
+
+        // La bajada programada se decide antes de cobrar: el cobro sale ya con el tamaño que quede.
+        var tierChange = await ResolveScheduledTierChangeAsync(unit, addOn, usedBytes, nowUtc, ct);
+        if (tierChange == ScheduledTierChangeOutcome.Postponed)
+        {
+            logger.LogWarning("Renewal of add-on {TenantAddOnId} postponed: storage usage unavailable.", addOn.Id);
+            return false;
+        }
+
         var newPeriodEndUtc = subscription.NextCoTermEnd(addOn.CurrentPeriodEndUtc);
 
         var idempotencyKey = IdempotencyKeyFactory.AddOnRenewal(addOn.Id, addOn.CurrentPeriodEndUtc);
@@ -108,7 +154,18 @@ public sealed class AddOnRenewalJob(
             return false;
         }
 
-        var amountCents = (long)Math.Round(addOn.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero);
+        // P-1: precio × cantidad, como dice el aviso de renovación.
+        var grossCents =
+            (long)Math.Round(addOn.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero) * addOn.Quantity;
+        // El descuento vigente que cubre add-ons se mira con la fecha de inicio del período nuevo.
+        var charge = DiscountedCharge.For(
+            subscription,
+            DiscountChargeKind.AddOns,
+            grossCents,
+            addOn.UnitPrice.Currency,
+            addOn.CurrentPeriodEndUtc
+        );
+        var amountCents = charge.NetCents;
         await unit.PublishAsync(
             new AddOnRenewalDueIntegrationEvent
             {
@@ -121,9 +178,39 @@ public sealed class AddOnRenewalJob(
                 IdempotencyKey = idempotencyKey,
                 AmountCents = amountCents,
                 Currency = addOn.UnitPrice.Currency,
+                DiscountAmountCents = charge.DiscountCents,
+                DiscountSource = charge.Source,
+                DiscountLabel = charge.Label,
             }
         );
         unit.Services.GetRequiredService<ISubscriptionMetrics>().RecordAddOnBilled(addOn.AddOnCode, amountCents);
+        if (tierChange == ScheduledTierChangeOutcome.Applied)
+            await unit.PublishAsync(new RecalculateEntitlementsCommand(item.TenantId));
         return true;
+    }
+
+    private static async Task<ScheduledTierChangeOutcome> ResolveScheduledTierChangeAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
+        TenantAddOn addOn,
+        long? usedBytes,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        if (!addOn.HasScheduledTierChange)
+            return ScheduledTierChangeOutcome.None;
+
+        var definitions = unit.Services.GetRequiredService<IAddOnDefinitionRepository>();
+        var current = await definitions.GetByIdAsync(addOn.AddOnDefinitionId, ct);
+        var pending = await definitions.GetByIdAsync(addOn.PendingAddOnDefinitionId!.Value, ct);
+        if (current is null || pending is null)
+            return ScheduledTierChangeOutcome.Postponed;
+
+        var maxBytes = await AddOnTierChangeStorage.CurrentMaxBytesAsync(
+            addOn.TenantId,
+            unit.Services.GetRequiredService<ITenantEntitlementSnapshotRepository>(),
+            ct
+        );
+        return ScheduledTierChangeAtRenewal.Resolve(addOn, current, pending, usedBytes, maxBytes, nowUtc);
     }
 }

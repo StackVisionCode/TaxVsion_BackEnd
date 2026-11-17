@@ -640,6 +640,52 @@ public sealed class SaaSPaymentTests
     }
 
     [Fact]
+    public void A_won_dispute_is_resolved_once()
+    {
+        var payment = CreateSucceededPayment();
+        var openedUtc = DateTime.UtcNow;
+        Assert.True(payment.MarkChargedBack(openedUtc, "issuer dispute", Guid.Empty).IsSuccess);
+        payment.ClearDomainEvents();
+
+        Assert.True(payment.ResolveChargeback(ChargebackOutcome.Won, openedUtc.AddDays(30)).IsSuccess);
+        // Reentrega del mismo cierre: no cambia nada ni vuelve a publicar.
+        Assert.True(payment.ResolveChargeback(ChargebackOutcome.Won, openedUtc.AddDays(31)).IsSuccess);
+
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        Assert.Equal(ChargebackOutcome.Won, payment.ChargebackOutcome);
+        Assert.Equal(openedUtc.AddDays(30), payment.ChargebackResolvedAtUtc);
+        var raised = Assert.IsType<SaaSPaymentChargebackResolved>(Assert.Single(payment.DomainEvents));
+        Assert.Equal(ChargebackOutcome.Won, raised.Outcome);
+    }
+
+    [Fact]
+    public void Resolve_requires_an_open_dispute()
+    {
+        var payment = CreateSucceededPayment();
+        payment.ClearDomainEvents();
+
+        var result = payment.ResolveChargeback(ChargebackOutcome.Won, DateTime.UtcNow);
+
+        Assert.Equal("SaaSPayment.InvalidTransition", result.Error.Code);
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        Assert.Empty(payment.DomainEvents);
+    }
+
+    [Fact]
+    public void A_lost_dispute_keeps_the_chargeback_and_cannot_be_won_later()
+    {
+        var payment = CreateSucceededPayment();
+        Assert.True(payment.MarkChargedBack(DateTime.UtcNow, "issuer dispute", Guid.Empty).IsSuccess);
+
+        Assert.True(payment.ResolveChargeback(ChargebackOutcome.Lost, DateTime.UtcNow).IsSuccess);
+        var flipped = payment.ResolveChargeback(ChargebackOutcome.Won, DateTime.UtcNow);
+
+        Assert.Equal(PaymentStatus.ChargedBack, payment.Status);
+        Assert.Equal(ChargebackOutcome.Lost, payment.ChargebackOutcome);
+        Assert.Equal("SaaSPayment.ChargebackAlreadyResolved", flipped.Error.Code);
+    }
+
+    [Fact]
     public void MarkFailed_raises_SaaSPaymentFailed_with_its_retry_and_attempt()
     {
         var payment = CreatePendingPayment();
@@ -715,6 +761,37 @@ public sealed class SaaSPaymentTests
                 DateTime.UtcNow
             )
             .Value;
+
+    [Theory]
+    [InlineData("Admin", 980L, null)]
+    [InlineData("Code", 980L, null)]
+    [InlineData("Admin", null, "SaaSPayment.InvalidDiscount")]
+    [InlineData("Coupon", 980L, "SaaSPayment.InvalidDiscount")]
+    [InlineData(null, -5L, "SaaSPayment.InvalidDiscount")]
+    public void A_subscription_discount_keeps_its_source(string? source, long? discountCents, string? error)
+    {
+        var created = SaaSPayment.Create(
+            Guid.NewGuid(),
+            IdempotencyKey.Create("discounted-renewal").Value,
+            Money.Create(3_920, "USD").Value,
+            SaaSPaymentType.SubscriptionRenewal,
+            Guid.NewGuid(),
+            PaymentProviderCode.Stripe,
+            StatementDescriptor.Create("TAXVISION SAAS").Value,
+            Guid.Empty,
+            DateTime.UtcNow,
+            discountAmountCents: discountCents,
+            discountSource: source
+        );
+
+        if (error is null)
+        {
+            Assert.Equal(discountCents, created.Value.DiscountAmountCents);
+            Assert.Equal(source, created.Value.DiscountSource);
+        }
+        else
+            Assert.Equal(error, created.Error.Code);
+    }
 
     [Fact]
     public void AttachConcept_after_charge_is_rejected()

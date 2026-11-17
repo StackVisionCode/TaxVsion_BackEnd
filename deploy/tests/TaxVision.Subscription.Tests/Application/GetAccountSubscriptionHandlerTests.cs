@@ -311,6 +311,67 @@ public sealed class GetAccountSubscriptionHandlerTests
         Assert.Empty(result.Value.OpenAddOnCheckouts);
     }
 
+    // Una subida de tamaño abierta dice qué paquete sube, para reabrirla con otro proveedor.
+    [Fact]
+    public async Task An_open_tier_upgrade_says_which_add_on_it_upgrades()
+    {
+        var plan = PlanWith("pro", "Pro", monthlyPrice: 49m, seatsMax: 5, modules: []);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
+        var small = ModuleAddOn("storage.small", "storage", monthly: 3m);
+        var large = ModuleAddOn("storage.large", "storage", monthly: 6m);
+        var now = DateTime.UtcNow;
+        var owned = TenantAddOn
+            .Purchase(TenantId, small, 1, Money.Create(3m, "USD").Value, BillingCycle.Monthly, true, Guid.Empty, now)
+            .Value;
+        var change = new AddOnTierChangePlan(
+            AddOnTierChangeDirection.Upgrade,
+            Money.Create(6m, "USD").Value,
+            Money.Create(2m, "USD").Value,
+            now
+        );
+        var upgrade = AddOnPurchaseIntent.CreateTierUpgrade(owned, large, change, Guid.Empty, now).Value;
+        upgrade.AttachCheckout(Guid.NewGuid(), "https://pay/x", now.AddHours(1), now, "PayPal");
+
+        var result = await HandleAsync(
+            plan,
+            subscription,
+            addOns: [small, large],
+            owned: [owned],
+            intents: new FakeAddOnPurchaseIntentRepository(upgrade)
+        );
+
+        var open = Assert.Single(result.Value.OpenAddOnCheckouts);
+        Assert.Equal(owned.Id, open.UpgradesTenantAddOnId);
+        Assert.Equal("PayPal", open.CheckoutProvider);
+    }
+
+    // La compra de asientos abierta dice con qué proveedor se empezó, para ofrecer el otro.
+    [Fact]
+    public async Task An_open_seat_purchase_says_its_provider()
+    {
+        var plan = PlanWith("pro", "Pro", monthlyPrice: 49m, seatsMax: 5, modules: []);
+        var subscription = ActiveSubscription(plan, plan.GetPublishedVersion()!);
+        var now = DateTime.UtcNow;
+        var intent = SeatPurchaseIntent
+            .Create(
+                TenantId,
+                SeatType.Standard,
+                1,
+                autoRenew: true,
+                Money.Create(15m, "USD").Value,
+                BillingCycle.Monthly,
+                Money.Create(15m, "USD").Value,
+                Guid.Empty,
+                now
+            )
+            .Value;
+        intent.AttachCheckout(Guid.NewGuid(), "https://www.sandbox.paypal.com/x", now.AddHours(1), now, "PayPal");
+
+        var result = await HandleAsync(plan, subscription, seatIntents: new FakeSeatPurchaseIntentRepository(intent));
+
+        Assert.Equal("PayPal", result.Value.OpenSeatCheckout!.CheckoutProvider);
+    }
+
     private static AddOnPurchaseIntent OpenIntent(
         AddOnDefinition definition,
         long totalCents,
@@ -341,7 +402,8 @@ public sealed class GetAccountSubscriptionHandlerTests
         AddOnDefinition[]? addOns = null,
         TenantAddOn[]? owned = null,
         CapturingSeatRepo? seats = null,
-        FakeAddOnPurchaseIntentRepository? intents = null
+        FakeAddOnPurchaseIntentRepository? intents = null,
+        FakeSeatPurchaseIntentRepository? seatIntents = null
     ) =>
         GetAccountSubscriptionHandler.Handle(
             new GetAccountSubscriptionQuery(TenantId),
@@ -351,7 +413,7 @@ public sealed class GetAccountSubscriptionHandlerTests
             seats ?? new CapturingSeatRepo(),
             new FakeAddOnDefinitionRepository(addOns ?? []),
             new FakeTenantAddOnRepo(owned ?? []),
-            new FakeSeatPurchaseIntentRepository(),
+            seatIntents ?? new FakeSeatPurchaseIntentRepository(),
             intents ?? new FakeAddOnPurchaseIntentRepository(),
             CancellationToken.None
         );

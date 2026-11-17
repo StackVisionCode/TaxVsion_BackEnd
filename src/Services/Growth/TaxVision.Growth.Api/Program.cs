@@ -51,6 +51,9 @@ builder.Services.AddGrowthInfrastructure(builder.Configuration);
 // para que un código de un solo uso no quede quemado si nadie llamó Cancel.
 builder.Services.AddHostedService<TaxVision.Growth.Infrastructure.Scheduling.ReservationExpirySweeper>();
 builder.Services.AddHostedService<TaxVision.Growth.Infrastructure.Scheduling.ReferralRewardGrantWorker>();
+
+// Barrido diario: cierra los códigos con fecha de fin vencida, uno por transacción.
+builder.Services.AddHostedService<TaxVision.Growth.Infrastructure.Scheduling.CodeDefinitionExpirySweeper>();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
@@ -158,6 +161,11 @@ builder.Host.UseWolverine(options =>
     options
         .PublishMessage<BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralAttributedIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
+    // Avisos del premio al referidor (calificado, acreditado, cancelado, revertido): Notification los consume.
+    options.PublishMessage<ReferralQualifiedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ReferralRewardGrantedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ReferralRewardRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<ReferralRewardReversedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Envío de una giftcard por correo: Notification lo consume y despacha el email.
     options
         .PublishMessage<BuildingBlocks.Messaging.GrowthIntegrationEvents.GiftcardShareRequestedIntegrationEvent>()

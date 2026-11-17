@@ -18,7 +18,14 @@ public sealed class OnboardingCodeReservationConfiguration : IEntityTypeConfigur
         b.Property(r => r.OnboardingId).IsRequired();
         b.Property(r => r.BenefitType).HasConversion<string>().HasMaxLength(16).IsRequired();
         b.Property(r => r.Code).HasMaxLength(64);
+        b.Property(r => r.CodeDisplay).HasMaxLength(OnboardingCodeReservation.CodeDisplayMaxLength);
         b.Property(r => r.SnapshotHash).HasMaxLength(128).IsRequired();
+        // Vencimiento en Growth y referencia de pago de la reserva; null en las guardadas antes.
+        b.Property(r => r.ExpiresAtUtc);
+        b.Property(r => r.PaymentReferenceId);
+        b.Property(r => r.RecurringCurrency).HasMaxLength(3);
+        b.Property(r => r.RecurringDuration).HasMaxLength(16);
+        b.Ignore(r => r.Recurring);
         b.HasIndex(r => r.CodeReservationId);
         b.HasIndex(r => r.OnboardingId);
     }

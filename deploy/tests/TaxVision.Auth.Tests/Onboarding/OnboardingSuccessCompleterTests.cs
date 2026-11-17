@@ -199,7 +199,6 @@ public sealed class OnboardingSuccessCompleterTests
                 12900,
                 0,
                 "USD",
-                null,
                 [new OnboardingCodeReservationInput(Guid.NewGuid(), OnboardingBenefitType.Gift, "WELCOME", 12900, "s")],
                 DateTime.UtcNow
             );

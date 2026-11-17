@@ -6,6 +6,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Subscriptions;
 using TaxVision.Subscription.Application.Subscriptions.IntegrationEvents;
+using TaxVision.Subscription.Application.Subscriptions.Renewals;
 using TaxVision.Subscription.Domain.Plans;
 
 namespace TaxVision.Subscription.Infrastructure.Scheduling;
@@ -56,7 +57,15 @@ public sealed class RenewalNotificationJob(
             zones,
             ct
         );
-        var seatNotices = await UpcomingSeatRenewalsAsync(seats, correlationId, nowUtc, windowEndUtc, zones, ct);
+        var seatNotices = await UpcomingSeatRenewalsAsync(
+            seats,
+            subscriptions,
+            correlationId,
+            nowUtc,
+            windowEndUtc,
+            zones,
+            ct
+        );
         var endingNotices = await AccessEndingAsync(subscriptions, correlationId, nowUtc, windowEndUtc, zones, ct);
 
         await RunUnitsAsync(
@@ -185,6 +194,7 @@ public sealed class RenewalNotificationJob(
 
     private static async Task<List<object>> UpcomingSeatRenewalsAsync(
         ISubscriptionSeatRepository seats,
+        ISubscriptionRepository subscriptions,
         string correlationId,
         DateTime nowUtc,
         DateTime windowEndUtc,
@@ -194,9 +204,16 @@ public sealed class RenewalNotificationJob(
     {
         var candidates = await seats.GetRenewingBetweenAsync(nowUtc, windowEndUtc, BatchSize, ct);
         var notices = new List<object>();
+        // El asiento que renueva con el plan ya va en el aviso del plan, con el total del paquete.
+        var plansByTenant = (await subscriptions.GetRenewingBetweenAsync(nowUtc, windowEndUtc, BatchSize, ct))
+            .GroupBy(subscription => subscription.TenantId)
+            .ToDictionary(group => group.Key, group => group.First());
 
         foreach (var seat in candidates)
         {
+            if (plansByTenant.TryGetValue(seat.TenantId, out var plan) && RenewalBundle.Includes(plan, seat))
+                continue;
+
             var zone = await zones.ResolveAsync(seat.TenantId, ct);
             if (!OfficeNoticeTime.IsSendHour(nowUtc, zone))
                 continue;

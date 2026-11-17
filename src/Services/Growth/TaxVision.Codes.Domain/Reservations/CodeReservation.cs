@@ -13,6 +13,13 @@ public sealed class CodeReservation : AggregateRoot
     public Guid CodeDefinitionId { get; private set; }
     public PaymentReference Payment { get; private set; } = null!;
     public SubjectReference Subject { get; private set; } = null!;
+
+    /// <summary>Comprador (id de <c>BuyerIdentity</c>) cuando el llamador lo informó; los límites por sujeto cuentan por él.</summary>
+    public string? BuyerSubjectId { get; private set; }
+
+    /// <summary>Sujeto con el que se cuentan los límites por sujeto: el comprador si lo hay; si no, el sujeto.</summary>
+    public SubjectReference LimitSubject =>
+        BuyerSubjectId is null ? Subject : SubjectReference.Create(SubjectType.Buyer, BuyerSubjectId).Value;
     public Money GrossAmount { get; private set; } = null!;
     public Money DiscountAmount { get; private set; } = null!;
     public Money NetAmount { get; private set; } = null!;
@@ -68,6 +75,7 @@ public sealed class CodeReservation : AggregateRoot
             CodeDefinitionId = quote.CodeDefinitionId,
             Payment = payment,
             Subject = quote.Subject,
+            BuyerSubjectId = quote.BuyerSubjectId,
             GrossAmount = quote.GrossAmount,
             DiscountAmount = quote.DiscountAmount,
             NetAmount = quote.NetAmount,

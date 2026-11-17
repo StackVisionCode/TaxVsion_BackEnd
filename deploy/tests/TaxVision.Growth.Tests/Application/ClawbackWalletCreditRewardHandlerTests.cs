@@ -151,7 +151,7 @@ public sealed class ClawbackWalletCreditRewardHandlerTests
         Assert.Equal(AfterWait.AddDays(1).AddMinutes(10), f.Reward.UpdatedAtUtc);
     }
 
-    private sealed class Fixture
+    internal sealed class Fixture
     {
         public required ReferralRewardCase Reward { get; init; }
         public required InMemoryReferralRewardCaseRepository Rewards { get; init; }
@@ -159,7 +159,7 @@ public sealed class ClawbackWalletCreditRewardHandlerTests
         public GrantWalletCreditRewardHandlerTests.FakeWalletCreditRequests Wallet { get; } = new();
         public GrantWalletCreditRewardHandlerTests.CountingUnitOfWork UnitOfWork { get; } = new();
         public RecordingTenantContext Tenant { get; } = new();
-        private readonly Guid _paymentId = Guid.NewGuid();
+        public Guid PaymentId { get; } = Guid.NewGuid();
         private readonly GrantWalletCreditRewardHandlerTests.InMemoryAttemptRepository _attempts = new();
 
         public static async Task<Fixture> CreateAsync(bool credited)
@@ -184,7 +184,7 @@ public sealed class ClawbackWalletCreditRewardHandlerTests
                 .Value;
             var rewards = new InMemoryReferralRewardCaseRepository(reward);
             var fixture = new Fixture { Reward = reward, Rewards = rewards };
-            rewards.ByPayment[fixture._paymentId] = reward;
+            rewards.ByPayment[fixture.PaymentId] = reward;
 
             if (credited)
             {
@@ -224,7 +224,7 @@ public sealed class ClawbackWalletCreditRewardHandlerTests
         public async Task<Result<ClawbackWalletCreditRewardResult>> RunAsync(long? refundedCents)
         {
             var result = await ClawbackWalletCreditRewardHandler.Handle(
-                new ClawbackWalletCreditRewardCommand(_paymentId, refundedCents, "refunded", GrowthTestData.ActorId),
+                new ClawbackWalletCreditRewardCommand(PaymentId, refundedCents, "refunded", GrowthTestData.ActorId),
                 Rewards,
                 Tenant,
                 UnitOfWork,
@@ -249,7 +249,7 @@ public sealed class ClawbackWalletCreditRewardHandlerTests
             );
     }
 
-    private sealed class RecordingTenantContext : ITenantContext
+    internal sealed class RecordingTenantContext : ITenantContext
     {
         public Guid TenantId { get; private set; }
         public bool HasTenant => TenantId != Guid.Empty;

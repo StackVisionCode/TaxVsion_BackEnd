@@ -21,7 +21,13 @@ public sealed record SeatCheckoutReservation(
     long TotalCents,
     string Currency,
     int Quantity,
-    StartSeatCheckoutResponse? OpenCheckout = null
+    StartSeatCheckoutResponse? OpenCheckout = null,
+    long? DiscountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null,
+    // Checkout de otro proveedor que se canceló para abrir este; el inicio cierra su sesión.
+    Guid? ReplacedPaymentId = null,
+    Guid? ReplacedIntentId = null
 );
 
 public static class ReserveSeatCheckoutHandler
@@ -41,6 +47,46 @@ public static class ReserveSeatCheckoutHandler
         CancellationToken ct
     )
     {
+        var replaced = await ReplaceOtherProviderAsync(reservation, intents, unitOfWork, ct);
+        var reserved = await ReserveAsync(reservation, subscriptions, seatPricing, intents, unitOfWork, ct);
+        return replaced is null || reserved.IsFailure
+            ? reserved
+            : Result.Success(
+                reserved.Value with
+                {
+                    ReplacedPaymentId = replaced.PaymentId,
+                    ReplacedIntentId = replaced.IntentId,
+                }
+            );
+    }
+
+    // Un checkout abierto con otro proveedor se cancela (y se guarda) antes de reservar el nuevo.
+    private static async Task<ReplacedCheckout?> ReplaceOtherProviderAsync(
+        ReserveSeatCheckoutCommand reservation,
+        ISeatPurchaseIntentRepository intents,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var nowUtc = DateTime.UtcNow;
+        var open = await intents.GetOpenByTenantAsync(reservation.Request.TenantId, nowUtc, ct);
+        if (open is null || !open.IsOpen(nowUtc) || open.OpenedWith(reservation.Request.Provider))
+            return null;
+
+        open.Cancel(reservation.Request.RequestedByUserId, nowUtc, CheckoutProviderSwitch.Reason);
+        await unitOfWork.SaveChangesAsync(ct);
+        return open.SaaSPaymentId is { } paymentId ? new ReplacedCheckout(open.Id, paymentId) : null;
+    }
+
+    private static async Task<Result<SeatCheckoutReservation>> ReserveAsync(
+        ReserveSeatCheckoutCommand reservation,
+        ISubscriptionRepository subscriptions,
+        ISeatPricingRepository seatPricing,
+        ISeatPurchaseIntentRepository intents,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
         var command = reservation.Request;
         var reused = await ReuseOpenCheckoutAsync(command, intents, ct);
         if (reused is not null)
@@ -52,24 +98,41 @@ public static class ReserveSeatCheckoutHandler
 
         var unattached = await intents.GetUnattachedByTenantAsync(command.TenantId, ct);
         if (unattached is not null && IsSameRequest(command, unattached))
-            return Reserved(unattached);
+            return Reserved(unattached, prepared.Value.Charge);
 
-        var intent = prepared.Value;
+        var (intent, charge) = prepared.Value;
         await intents.AddAsync(intent, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Reserved(intent);
-    }
-
-    private static Result<SeatCheckoutReservation> Reserved(SeatPurchaseIntent intent) =>
-        Result.Success(
+        return Result.Success(
             new SeatCheckoutReservation(
                 intent.Id,
                 intent.ProratedTotal.Cents,
                 intent.ProratedTotal.Currency,
-                intent.Quantity
+                intent.Quantity,
+                DiscountCents: charge.DiscountCents,
+                DiscountSource: charge.Source,
+                DiscountLabel: charge.Label
             )
         );
+    }
+
+    // El intent guarda el neto; el descuento se toma del cobro recién calculado si ese neto coincide.
+    private static Result<SeatCheckoutReservation> Reserved(SeatPurchaseIntent intent, DiscountedCharge charge)
+    {
+        var same = charge.NetCents == intent.ProratedTotal.Cents;
+        return Result.Success(
+            new SeatCheckoutReservation(
+                intent.Id,
+                intent.ProratedTotal.Cents,
+                intent.ProratedTotal.Currency,
+                intent.Quantity,
+                DiscountCents: same ? charge.DiscountCents : null,
+                DiscountSource: same ? charge.Source : null,
+                DiscountLabel: same ? charge.Label : null
+            )
+        );
+    }
 
     private static bool IsSameRequest(StartSeatCheckoutCommand command, SeatPurchaseIntent intent) =>
         Enum.TryParse<SeatType>(command.SeatType, ignoreCase: true, out var seatType)
@@ -115,7 +178,7 @@ public static class ReserveSeatCheckoutHandler
         );
     }
 
-    private static async Task<Result<SeatPurchaseIntent>> PrepareIntentAsync(
+    private static async Task<Result<(SeatPurchaseIntent Intent, DiscountedCharge Charge)>> PrepareIntentAsync(
         StartSeatCheckoutCommand command,
         ISubscriptionRepository subscriptions,
         ISeatPricingRepository seatPricing,
@@ -123,21 +186,23 @@ public static class ReserveSeatCheckoutHandler
     )
     {
         if (command.Quantity is < 1 or > 500)
-            return Result.Failure<SeatPurchaseIntent>(
+            return Result.Failure<(SeatPurchaseIntent, DiscountedCharge)>(
                 new Error("Seat.InvalidQuantity", "Quantity must be between 1 and 500.")
             );
 
         if (!Enum.TryParse<SeatType>(command.SeatType, ignoreCase: true, out var seatType))
-            return Result.Failure<SeatPurchaseIntent>(new Error("Seat.InvalidType", "Unknown seat type."));
+            return Result.Failure<(SeatPurchaseIntent, DiscountedCharge)>(
+                new Error("Seat.InvalidType", "Unknown seat type.")
+            );
 
         var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
         if (subscription is null)
-            return Result.Failure<SeatPurchaseIntent>(
+            return Result.Failure<(SeatPurchaseIntent, DiscountedCharge)>(
                 new Error("Subscription.NotFound", "Subscription does not exist.")
             );
 
         if (Array.IndexOf(PurchasableStatuses, subscription.Status) < 0)
-            return Result.Failure<SeatPurchaseIntent>(
+            return Result.Failure<(SeatPurchaseIntent, DiscountedCharge)>(
                 new Error(
                     "Subscription.CannotPurchaseSeats",
                     $"Cannot purchase seats while subscription is {subscription.Status}."
@@ -146,13 +211,13 @@ public static class ReserveSeatCheckoutHandler
 
         var pricing = await seatPricing.GetAsync(ct);
         if (pricing is null)
-            return Result.Failure<SeatPurchaseIntent>(
+            return Result.Failure<(SeatPurchaseIntent, DiscountedCharge)>(
                 new Error("SeatPricing.NotFound", "Seat pricing catalog does not exist.")
             );
 
         var unitPrice = pricing.ResolveUnitPrice(seatType, subscription.BillingCycle);
         if (unitPrice.IsFailure)
-            return Result.Failure<SeatPurchaseIntent>(unitPrice.Error);
+            return Result.Failure<(SeatPurchaseIntent, DiscountedCharge)>(unitPrice.Error);
 
         var prorated = ProrationCalculator.InitialPeriod(
             unitPrice.Value,
@@ -161,28 +226,39 @@ public static class ReserveSeatCheckoutHandler
             DateTime.UtcNow
         );
         if (prorated.IsFailure)
-            return Result.Failure<SeatPurchaseIntent>(prorated.Error);
+            return Result.Failure<(SeatPurchaseIntent, DiscountedCharge)>(prorated.Error);
 
         var proratedUnitCents = (long)Math.Round(prorated.Value.Amount * 100m, MidpointRounding.AwayFromZero);
         var totalCents = proratedUnitCents * command.Quantity;
         if (totalCents <= 0)
-            return Result.Failure<SeatPurchaseIntent>(
+            return Result.Failure<(SeatPurchaseIntent, DiscountedCharge)>(
                 new Error(
                     "Seats.Checkout.NothingToCharge",
                     "This seat type is free; use the direct purchase instead of checkout."
                 )
             );
 
-        return SeatPurchaseIntent.Create(
+        // Si el descuento vigente cubre asientos, el prorrateo sale con descuento.
+        var charge = DiscountedCharge.For(
+            subscription,
+            DiscountChargeKind.Seats,
+            totalCents,
+            unitPrice.Value.Currency,
+            DateTime.UtcNow
+        );
+        var intent = SeatPurchaseIntent.Create(
             command.TenantId,
             seatType,
             command.Quantity,
             command.AutoRenew,
             unitPrice.Value,
             subscription.BillingCycle,
-            Money.FromCents(totalCents, unitPrice.Value.Currency),
+            Money.FromCents(charge.NetCents, unitPrice.Value.Currency),
             command.RequestedByUserId,
             DateTime.UtcNow
         );
+        return intent.IsFailure
+            ? Result.Failure<(SeatPurchaseIntent, DiscountedCharge)>(intent.Error)
+            : Result.Success((intent.Value, charge));
     }
 }

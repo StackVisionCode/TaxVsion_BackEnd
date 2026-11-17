@@ -12,7 +12,9 @@ public sealed record ActivateSubscriptionCommand(
     Guid PlanId,
     string BillingCycle,
     Guid OwnerUserId,
-    bool AutoRenewRequested = false
+    bool AutoRenewRequested = false,
+    // Código de N meses o para siempre usado en el alta.
+    OnboardingRecurringDiscount? RecurringDiscount = null
 );
 
 /// <summary>PayFlow (Fase 15) — tercer paso de la Saga: dispara la activación de la suscripción
@@ -34,7 +36,8 @@ public static class ActivateSubscriptionHandler
                 command.PlanId,
                 command.BillingCycle,
                 command.OwnerUserId,
-                command.AutoRenewRequested
+                command.AutoRenewRequested,
+                command.RecurringDiscount
             ),
             ct
         );

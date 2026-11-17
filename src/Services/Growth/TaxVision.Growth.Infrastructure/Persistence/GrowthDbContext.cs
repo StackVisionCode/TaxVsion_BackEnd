@@ -44,6 +44,8 @@ public sealed class GrowthDbContext(DbContextOptions<GrowthDbContext> options, I
     public DbSet<ReferralProgram> ReferralPrograms => Set<ReferralProgram>();
     public DbSet<ReferralCode> ReferralCodes => Set<ReferralCode>();
     public DbSet<ReferralAttribution> ReferralAttributions => Set<ReferralAttribution>();
+    public DbSet<OnboardingReferralRejection> OnboardingReferralRejections => Set<OnboardingReferralRejection>();
+    public DbSet<Referrals.ReferredOfficeProjection> ReferredOffices => Set<Referrals.ReferredOfficeProjection>();
     public DbSet<ReferralQualification> ReferralQualifications => Set<ReferralQualification>();
     public DbSet<ReferralRewardCase> ReferralRewardCases => Set<ReferralRewardCase>();
     public DbSet<ReferralRewardAttempt> ReferralRewardAttempts => Set<ReferralRewardAttempt>();

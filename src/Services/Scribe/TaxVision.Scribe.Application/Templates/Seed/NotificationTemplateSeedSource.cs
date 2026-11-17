@@ -115,6 +115,7 @@ public static partial class NotificationTemplateSeedSource
             SignatureVerificationChallenge,
             OnboardingOtpRequested,
             GiftcardShare,
+            ReferralRewardGranted,
             OnboardingRegistrationReady,
             OnboardingReceiptReady,
             OnboardingPaymentFailed,
@@ -126,6 +127,7 @@ public static partial class NotificationTemplateSeedSource
             SubscriptionBillingCycleChanged,
             SubscriptionAccessEnding,
             SubscriptionRenewalUpcoming,
+            SubscriptionDiscountEnding,
             SubscriptionReactivated,
             SubscriptionRecurringCharge,
             SubscriptionRecurringChargeFailed,
@@ -290,6 +292,7 @@ public static partial class NotificationTemplateSeedSource
     )
     {
         ["auth.invitation"] = "You've been invited to collaborate — activate your account to get started.",
+        ["referral.reward.granted"] = "Your referral reward was added to your Wallet — use it on your next payment.",
         ["auth.password_reset"] = "Use the secure link inside to reset your password. It expires soon.",
         ["auth.otp_code"] = "Here's your one-time verification code. It's valid for a few minutes.",
         ["auth.email_change"] = "Confirm your new email address to keep your account secure.",
@@ -314,6 +317,8 @@ public static partial class NotificationTemplateSeedSource
         ["subscription.cancellation_scheduled"] = "Your subscription is set to end. You keep full access until then.",
         ["subscription.version_change_scheduled"] = "Your plan terms change at your next renewal. Here's what changes.",
         ["subscription.renewal_upcoming"] = "Your subscription renews soon — nothing to do, just a heads up.",
+        ["subscription.discount_ending"] =
+            "Your discount ends soon — after that, your plan renews at its regular price.",
         ["subscription.reactivated"] = "You're all set — your subscription is active again.",
         ["subscription.recurring_charge"] = "Payment received — your subscription continues.",
         ["subscription.recurring_charge_failed"] =
@@ -1878,6 +1883,88 @@ public static partial class NotificationTemplateSeedSource
             ]
         );
 
+    // v33 (por plantilla): referral.reward.granted nueva — el premio de referido llegó al Wallet (Growth → Notification).
+    private const int ReferralRewardGrantedVersion = 33;
+
+    /// <summary>El premio de referido de la oficina llegó a su Wallet. Va al owner; la manda la plataforma.</summary>
+    private static NotificationTemplateSeed ReferralRewardGranted { get; } =
+        new(
+            EventKey: "growth.referral_reward_granted.v1",
+            TemplateKey: "referral.reward.granted",
+            Name: "Growth — Referral reward granted",
+            Subject: "Your {{ amount_label }} referral reward is in your Wallet",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Referrals</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#16A34A" style="background-color:#16A34A;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">Your referral reward is in your Wallet</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">An office you referred paid its plan, and the waiting period is over. We added <strong style="color:#23384B;">{{ amount_label }}</strong> to your office's Wallet.</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Your Wallet balance is used on your next {{ product_name }} payment.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ wallet_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open your Wallet</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you own your office on {{ product_name }} and someone signed up with your referral code.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("amount_label", VariableType.String, true, null, "Monto del premio ya formateado ($9.90)."),
+                ("wallet_url", VariableType.Url, true, null, "Wallet de la oficina en el CRM."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ],
+            ContentVersion: ReferralRewardGrantedVersion
+        );
+
+    private const int SubscriptionDiscountEndingVersion = 34;
+
+    /// <summary>Cobro automático y alta muestran el descuento y su código enmascarado.</summary>
+    private const int DiscountReceiptsVersion = 35;
+
+    private static NotificationTemplateSeed SubscriptionDiscountEnding { get; } =
+        new(
+            EventKey: "subscription.discount_ending.v1",
+            TemplateKey: "subscription.discount_ending",
+            Name: "Subscription — Discount ending",
+            Subject: "Your {{ discount_label }} discount ends in {{ days_left }} days",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">Your discount ends soon</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Your <strong style="color:#23384B;">{{ discount_label }}</strong> discount on {{ product_name }} ends in {{ days_left }} days.</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">After that, your plan renews at its regular price. There's nothing you need to do.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 18px 0;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ billing_url }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Open {{ product_name }}</a></td></tr></table>
+                </td>
+              </tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">You're receiving this because you own your office on {{ product_name }}.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("discount_label", VariableType.String, true, null, "Beneficio ya formateado (20% o $5.00)."),
+                ("days_left", VariableType.String, true, null, "Días que faltan para el fin del descuento."),
+                ("billing_url", VariableType.Url, true, null, "CRM de la oficina."),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+            ],
+            ContentVersion: SubscriptionDiscountEndingVersion
+        );
+
     private static NotificationTemplateSeed OnboardingRegistrationReady { get; } =
         new(
             EventKey: "onboarding.registration_ready.v1",
@@ -1890,6 +1977,9 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Complete your account</td></tr>
               <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we confirmed your payment of <strong style="color:#1E466B;">{{ price_formatted }}</strong> on {{ paid_at | office_date }} for the {{ plan_name }} plan. You can now complete your account:</td></tr>
+              {% if discount_formatted != blank %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">List price {{ gross_formatted }} &middot; Discount &minus;{{ discount_formatted }} ({{ discount_summary }}).</td></tr>
+              {% endif %}
               <tr>
                 <td align="left" style="padding:26px 0 18px 0;">
                   <!--[if mso]>
@@ -1931,6 +2021,9 @@ public static partial class NotificationTemplateSeedSource
                     null,
                     "URL de registro con el raw token, resuelta vía Auth."
                 ),
+                ("gross_formatted", VariableType.String, false, null, "Precio de lista antes de los códigos."),
+                ("discount_formatted", VariableType.String, false, null, "Descuento total; vacío sin códigos."),
+                ("discount_summary", VariableType.String, false, null, "Códigos aplicados, enmascarados."),
                 (
                     "receipt_download_url",
                     VariableType.Url,
@@ -1946,7 +2039,7 @@ public static partial class NotificationTemplateSeedSource
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
             ],
-            ContentVersion: TypedDatesVersion
+            ContentVersion: DiscountReceiptsVersion
         );
 
     private static NotificationTemplateSeed OnboardingReceiptReady { get; } =
@@ -2495,7 +2588,10 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Payment received</td></tr>
-              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we charged <strong style="color:#1E466B;">${{ amount }}</strong> to your {{ card_brand }} ending {{ card_last4 }} for your <strong style="color:#1E466B;">{{ plan_name }}</strong> plan.{% if next_charge_date != blank %} The next charge is scheduled for <strong style="color:#23384B;">{{ next_charge_date | office_date }}</strong>.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Hi <strong style="color:#23384B;">{{ first_name }}</strong>, we charged <strong style="color:#1E466B;">${{ amount }}</strong> to your {{ card_brand }} ending {{ card_last4 }} for <strong style="color:#1E466B;">{{ item_description }}</strong>.{% if next_charge_date != blank %} The next charge is scheduled for <strong style="color:#23384B;">{{ next_charge_date | office_date }}</strong>.{% endif %}</td></tr>
+              {% if discount_label != blank %}
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Includes your <strong style="color:#23384B;">{{ discount_label }}</strong> discount (&minus;${{ discount_amount }}).</td></tr>
+              {% endif %}
               <tr>
                 <td align="left" style="padding:22px 0 4px 0;">
                   {% if receipt_url != blank %}
@@ -2515,7 +2611,10 @@ public static partial class NotificationTemplateSeedSource
                 ("date_charged", VariableType.Date, false, null, "Fecha del cobro ya formateada."),
                 ("card_brand", VariableType.String, true, "card", "Marca del método guardado."),
                 ("card_last4", VariableType.String, true, "----", "Últimos 4 del método guardado."),
-                ("receipt_url", VariableType.Url, false, null, "URL del recibo del proveedor (opcional)."),
+                ("receipt_url", VariableType.Url, false, null, "Historial de recibos de la cuenta."),
+                ("item_description", VariableType.String, true, "your subscription", "Qué se cobró."),
+                ("discount_amount", VariableType.String, false, null, "Descuento ya formateado; vacío sin descuento."),
+                ("discount_label", VariableType.String, false, null, "Código enmascarado y beneficio del descuento."),
                 ("next_charge_date", VariableType.Date, false, null, "Fecha del próximo cobro ya formateada."),
                 ("manage_url", VariableType.Url, true, null, "URL a Manage Subscription."),
                 (
@@ -2526,7 +2625,7 @@ public static partial class NotificationTemplateSeedSource
                     "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
                 ),
             ],
-            ContentVersion: TypedDatesVersion
+            ContentVersion: DiscountReceiptsVersion
         );
 
     /// <summary>

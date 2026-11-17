@@ -55,7 +55,9 @@ public sealed record AccountOpenSeatCheckoutView(
     long TotalCents,
     string Currency,
     string CheckoutUrl,
-    DateTime ExpiresAtUtc
+    DateTime ExpiresAtUtc,
+    // Con qué proveedor se abrió (Stripe | PayPal); null en las de antes.
+    string? CheckoutProvider = null
 );
 
 /// <summary>
@@ -72,7 +74,11 @@ public sealed record AccountOpenAddOnCheckoutView(
     long TotalCents,
     string Currency,
     string CheckoutUrl,
-    DateTime ExpiresAtUtc
+    DateTime ExpiresAtUtc,
+    // Con qué proveedor se abrió (Stripe | PayPal); null en las de antes.
+    string? CheckoutProvider = null,
+    // Paquete que sube, si es un cambio de tamaño: se reabre con el otro proveedor por esa vía.
+    Guid? UpgradesTenantAddOnId = null
 );
 
 /// <summary>Asientos que paga el tenant: los que trae el plan más los comprados aparte.</summary>
@@ -126,5 +132,9 @@ public sealed record AccountAddOnView(
     int ActiveQuantity,
     /// <summary>Si el tenant puede comprar OTRA instancia del mismo SKU. Para storage packs es true cuando
     /// el status no bloquea compras; para add-ons de módulo es false.</summary>
-    bool CanStack
+    bool CanStack,
+    /// <summary>Tamaño al que pasa en la renovación (bajada programada); null si no hay cambio.</summary>
+    string? PendingTierChangeCode = null,
+    /// <summary>Por qué no se aplicó la última bajada programada (p. ej. <c>storage_would_overflow</c>).</summary>
+    string? TierChangeSkippedReason = null
 );

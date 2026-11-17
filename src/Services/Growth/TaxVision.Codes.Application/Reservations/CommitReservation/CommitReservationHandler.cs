@@ -141,7 +141,7 @@ public static class CommitReservationHandler
                 var counterSetResult = await CodeUsageCounterSet.LoadAsync(
                     definition,
                     command.TenantId,
-                    reservation.Subject,
+                    reservation.LimitSubject,
                     usageCounters,
                     nowUtc,
                     operationCt

@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.GrowthIntegrationEvents;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
@@ -5,8 +6,14 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using TaxVision.Referrals.Application.Attributions.CreateReferralAttribution;
 using TaxVision.Referrals.Application.Attributions.FindAttributionByReferee;
+using TaxVision.Referrals.Application.Attributions.LinkReferralRefereeTenant;
+using TaxVision.Referrals.Application.Attributions.OnboardingReferralRejections;
+using TaxVision.Referrals.Application.Codes.AutoIssueTenantReferralCode;
+using TaxVision.Referrals.Application.Fraud.ScreenReferral;
 using TaxVision.Referrals.Application.Programs.GetActiveReferralProgram;
 using TaxVision.Referrals.Application.Qualifications.QualifyReferral;
+using TaxVision.Referrals.Application.Rewards;
+using TaxVision.Referrals.Application.Rewards.GetReferralRewardNotice;
 using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
@@ -61,6 +68,7 @@ public static class OnboardingReferralDeclaredConsumer
                 message.OnboardingId,
                 program.Error.Code
             );
+            await RecordRejectionAsync(bus, message.OnboardingId, program.Error.Code, logger, ct);
             return;
         }
 
@@ -92,6 +100,7 @@ public static class OnboardingReferralDeclaredConsumer
                 message.OnboardingId,
                 attributed.Error.Code
             );
+            await RecordRejectionAsync(bus, message.OnboardingId, attributed.Error.Code, logger, ct);
             return;
         }
 
@@ -110,6 +119,28 @@ public static class OnboardingReferralDeclaredConsumer
                 }
             );
         }
+    }
+
+    // El pago del alta lo consulta para no reintentar un referido que nunca tendrá atribución.
+    private static async Task RecordRejectionAsync(
+        IMessageBus bus,
+        Guid onboardingId,
+        string reasonCode,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        var recorded = await OnboardingReferralTenant.InAsync(
+            bus,
+            onboardingId,
+            () => bus.InvokeAsync<Result>(new RecordOnboardingReferralRejectionCommand(onboardingId, reasonCode), ct)
+        );
+        if (recorded.IsFailure)
+            logger.LogWarning(
+                "Rejection of the referral of onboarding {OnboardingId} was not recorded: {Code}.",
+                onboardingId,
+                recorded.Error.Code
+            );
     }
 
     private static TaxVision.Referrals.Domain.Shares.ReferralShareChannel? ParseChannel(string? channel) =>
@@ -147,8 +178,14 @@ public static class OnboardingPaymentQualifiesReferralConsumer
                     ct
                 )
         );
-        if (attribution.IsFailure || attribution.Value is not { } attributionId)
-            return; // el comprador no llegó por referido
+        if (attribution.IsFailure)
+            return;
+
+        if (attribution.Value is not { } attributionId)
+        {
+            await EnsureNoReferralPendingAsync(message, bus, logger, ct);
+            return; // el comprador no llegó por referido, o su código se descartó
+        }
 
         var qualified = await OnboardingReferralTenant.InAsync(
             bus,
@@ -180,6 +217,168 @@ public static class OnboardingPaymentQualifiesReferralConsumer
                 message.OnboardingId,
                 qualified.Error.Code
             );
+            return;
         }
+
+        // Aviso al referidor: su premio está en espera.
+        if (qualified.Value.Reward is { } reward)
+            await bus.PublishAsync(
+                ReferralRewardEvents.Qualified(reward, message.SaaSPaymentId, message.CorrelationId)
+            );
+    }
+
+    // Si el comprador declaró un código y la atribución no está, la declaración puede seguir en camino: se reintenta
+    // (BB-7) salvo que Growth ya la haya descartado. Sin la marca (eventos viejos) o sin código, no hay nada que esperar.
+    private static async Task EnsureNoReferralPendingAsync(
+        OnboardingPaymentSucceededIntegrationEvent message,
+        IMessageBus bus,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        if (message.ReferralDeclared != true)
+            return;
+
+        var rejected = await OnboardingReferralTenant.InAsync(
+            bus,
+            message.OnboardingId,
+            () => bus.InvokeAsync<Result<bool>>(new HasOnboardingReferralRejectionQuery(message.OnboardingId), ct)
+        );
+        if (rejected.IsSuccess && rejected.Value)
+        {
+            logger.LogInformation(
+                "Referral of onboarding {OnboardingId} was rejected; the paid signup has nothing to qualify.",
+                message.OnboardingId
+            );
+            return;
+        }
+
+        throw new DependencyNotReadyException(
+            "ReferralAttribution",
+            $"onboarding {message.OnboardingId} declared a referral code that is not attributed yet"
+        );
+    }
+}
+
+/// <summary>
+/// El alta se completó y creó su oficina: su atribución de referido (si la hay) queda enlazada con esa oficina real y con
+/// el usuario que la completó, y se revisa contra el referidor (antifraude). Idempotente. Otra oficina ya enlazada no se
+/// reemplaza: se registra y el evento termina.
+/// </summary>
+public static class ReferralRefereeTenantLinkConsumer
+{
+    public static async Task Handle(
+        TenantOnboardingCompletedIntegrationEvent message,
+        IMessageBus bus,
+        ILogger<TenantOnboardingCompletedIntegrationEvent> logger,
+        CancellationToken ct
+    )
+    {
+        var linked = await OnboardingReferralTenant.InAsync(
+            bus,
+            message.OnboardingId,
+            () =>
+                bus.InvokeAsync<Result>(
+                    new LinkReferralRefereeTenantCommand(
+                        message.OnboardingId,
+                        message.CompletedTenantId,
+                        message.CompletedUserId
+                    ),
+                    ct
+                )
+        );
+
+        if (linked.IsFailure)
+        {
+            logger.LogWarning(
+                "Referral of onboarding {OnboardingId} was not linked to office {TenantId}: {Code}.",
+                message.OnboardingId,
+                message.CompletedTenantId,
+                linked.Error.Code
+            );
+            return;
+        }
+
+        var screened = await OnboardingReferralTenant.InAsync(
+            bus,
+            message.OnboardingId,
+            () => bus.InvokeAsync<Result<ReferralScreeningResult>>(new ScreenReferralCommand(message.OnboardingId), ct)
+        );
+        if (screened.IsFailure)
+        {
+            logger.LogWarning(
+                "Referral of onboarding {OnboardingId} was not screened: {Code}.",
+                message.OnboardingId,
+                screened.Error.Code
+            );
+            return;
+        }
+
+        if (screened.Value is { RewardCancelled: true, RewardCaseId: { } rewardCaseId, RewardTenantId: { } referrer })
+            await NotifyCancelledAsync(bus, referrer, rewardCaseId, message.CorrelationId, ct);
+    }
+
+    // Autorreferido bloqueado: el referidor recibe el aviso de premio cancelado (G8).
+    private static async Task NotifyCancelledAsync(
+        IMessageBus bus,
+        Guid referrer,
+        Guid rewardCaseId,
+        string correlationId,
+        CancellationToken ct
+    )
+    {
+        var caller = bus.TenantId;
+        bus.TenantId = referrer.ToString();
+        try
+        {
+            var reward = await bus.InvokeAsync<Result<ReferralRewardNotice?>>(
+                new GetReferralRewardNoticeQuery(referrer, rewardCaseId),
+                ct
+            );
+            if (reward.IsSuccess && reward.Value is { } found)
+                await bus.PublishAsync(ReferralRewardEvents.Rejected(found, "SelfReferral", correlationId));
+        }
+        finally
+        {
+            bus.TenantId = caller;
+        }
+    }
+}
+
+/// <summary>
+/// La oficina nueva recibe su código de referido sin pulsar "Regenerate" (corre con el tenant de la oficina). Un replay
+/// no crea otro y, sin programa activo, no se emite nada.
+/// </summary>
+public static class ReferralCodeAutoIssueConsumer
+{
+    public static async Task Handle(
+        TenantOnboardingCompletedIntegrationEvent message,
+        IMessageBus bus,
+        ILogger<TenantOnboardingCompletedIntegrationEvent> logger,
+        CancellationToken ct
+    )
+    {
+        var issued = await OnboardingReferralTenant.InAsync(
+            bus,
+            message.CompletedTenantId,
+            () =>
+                bus.InvokeAsync<Result<AutoIssueTenantReferralCodeOutcome>>(
+                    new AutoIssueTenantReferralCodeCommand(
+                        message.CompletedTenantId,
+                        message.CompletedUserId,
+                        message.OccurredOn
+                    ),
+                    ct
+                )
+        );
+
+        if (issued.IsFailure)
+            throw GrowthErrorClassification.ToException(issued.Error);
+
+        logger.LogInformation(
+            "Referral code for office {TenantId}: {Outcome}.",
+            message.CompletedTenantId,
+            issued.Value
+        );
     }
 }

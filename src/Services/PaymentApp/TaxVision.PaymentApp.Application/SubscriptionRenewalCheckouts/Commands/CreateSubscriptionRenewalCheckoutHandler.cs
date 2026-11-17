@@ -32,6 +32,7 @@ public static class CreateSubscriptionRenewalCheckoutHandler
         IPurchaseIntentAmountVerifier intentVerifier,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
+        ICheckoutReturnUrlGuard returnUrls,
         CancellationToken ct
     )
     {
@@ -68,6 +69,7 @@ public static class CreateSubscriptionRenewalCheckoutHandler
             metrics,
             correlation,
             logger,
+            returnUrls,
             ct
         );
 
@@ -105,9 +107,13 @@ public static class CreateSubscriptionRenewalCheckoutHandler
                         command.Provider,
                         descriptor,
                         actorUserId: Guid.Empty,
-                        nowUtc
+                        nowUtc,
+                        discountAmountCents: command.DiscountAmountCents,
+                        discountSource: command.DiscountSource,
+                        discountLabel: command.DiscountLabel
                     )
-                    .WithConceptFor(SaaSPaymentType.SubscriptionRenewalCheckout),
+                    .WithConceptFor(SaaSPaymentType.SubscriptionRenewalCheckout)
+                    .WithLines(command.Lines),
             DecideOnExisting = DecideOnExisting,
             BuildMetadata = payment => new Dictionary<string, string>
             {

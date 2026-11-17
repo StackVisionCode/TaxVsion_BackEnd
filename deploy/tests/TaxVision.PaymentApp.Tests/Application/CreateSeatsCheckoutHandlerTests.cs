@@ -27,8 +27,8 @@ public sealed class CreateSeatsCheckoutHandlerTests
             amountCents,
             "USD",
             "buyer@example.com",
-            "https://app.example.com/success",
-            "https://app.example.com/cancel",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
             $"seat-checkout-{intentId:N}"
         );
 
@@ -51,6 +51,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             new FakePurchaseIntentAmountVerifier(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -86,6 +87,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             new FakePurchaseIntentAmountVerifier(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -127,6 +129,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             new FakePurchaseIntentAmountVerifier(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -188,6 +191,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             new FakePurchaseIntentAmountVerifier(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 

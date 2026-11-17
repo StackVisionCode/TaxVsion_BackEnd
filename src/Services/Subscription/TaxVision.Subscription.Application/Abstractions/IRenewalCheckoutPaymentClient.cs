@@ -12,7 +12,13 @@ public sealed record RenewalCheckoutClientRequest(
     string CancelUrl,
     string IdempotencyKey,
     string Provider,
-    string Method
+    string Method,
+    // Descuento vigente de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null,
+    // Una línea por cosa cuando se paga lo vencido junto.
+    IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null
 );
 
 public sealed record RenewalCheckoutClientResult(

@@ -1,3 +1,5 @@
+using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
@@ -20,7 +22,8 @@ public static class StartRenewalCheckoutHandler
         StartRenewalCheckoutCommand command,
         IMessageBus bus,
         IRenewalCheckoutPaymentClient checkoutClient,
-        CancellationToken ct
+        CancellationToken ct,
+        ICorrelationContext? correlation = null
     )
     {
         var reserved = await bus.InvokeAsync<Result<RenewalCheckoutReservation>>(
@@ -31,6 +34,23 @@ public static class StartRenewalCheckoutHandler
             return Result.Failure<StartRenewalCheckoutResponse>(reserved.Error);
 
         var reservation = reserved.Value;
+        // Volvió con otro proveedor: la sesión del checkout reemplazado deja de ser pagable.
+        if (reservation.ReplacedPaymentId is { } replacedPayment)
+        {
+            await bus.PublishAsync(new CancelHostedCheckoutCommand(command.TenantId, replacedPayment));
+            // Mismo aviso que al cancelar a mano: PaymentApp marca el pago como cancelado.
+            await bus.PublishAsync(
+                new SubscriptionRenewalCheckoutCancelledIntegrationEvent
+                {
+                    TenantId = command.TenantId,
+                    RenewalIntentId = reservation.ReplacedIntentId ?? Guid.Empty,
+                    SaaSPaymentId = replacedPayment,
+                    ActorUserId = command.RequestedByUserId,
+                    Reason = CheckoutProviderSwitch.Reason,
+                    CorrelationId = correlation?.CorrelationId ?? string.Empty,
+                }
+            );
+        }
         if (reservation.OpenCheckout is { } open)
             return Result.Success(open);
 
@@ -45,7 +65,11 @@ public static class StartRenewalCheckoutHandler
                 command.CancelUrl,
                 IdempotencyKeyFactory.RenewalCheckout(reservation.IntentId),
                 command.Provider,
-                command.Method
+                command.Method,
+                reservation.DiscountCents,
+                reservation.DiscountSource,
+                reservation.DiscountLabel,
+                reservation.Lines
             ),
             ct
         );
@@ -58,7 +82,8 @@ public static class StartRenewalCheckoutHandler
                 reservation.IntentId,
                 checkout.Value.PaymentId,
                 checkout.Value.CheckoutUrl,
-                checkout.Value.ExpiresAtUtc
+                checkout.Value.ExpiresAtUtc,
+                command.Provider
             ),
             ct
         );

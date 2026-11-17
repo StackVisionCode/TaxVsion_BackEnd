@@ -27,6 +27,13 @@ public sealed class ReferralAttribution : TenantEntity
     public Guid? ShareId { get; private set; }
     public ReferralParticipantType RefereeType { get; private set; }
     public Guid RefereeId { get; private set; }
+
+    /// <summary>Oficina real del referido, cuando el alta (su <see cref="RefereeId"/>) la crea. Null hasta entonces.</summary>
+    public Guid? RefereeTenantId { get; private set; }
+
+    /// <summary>Usuario que completó el alta de la oficina referida (su dueño). Lo usa el antifraude.</summary>
+    [UserReference(UserReferenceKind.Provenance)]
+    public Guid? RefereeUserId { get; private set; }
     public ReferralAttributionStatus Status { get; private set; }
     public ReferralAttributionStatus? StatusBeforeReview { get; private set; }
     public DateTime AttributedAtUtc { get; private set; }
@@ -289,6 +296,35 @@ public sealed class ReferralAttribution : TenantEntity
                 )
             )
             : Result.Success();
+    }
+
+    /// <summary>Enlaza la oficina real del referido. Idempotente con la misma oficina; otra oficina no la reemplaza.</summary>
+    public Result LinkRefereeTenant(Guid refereeTenantId, DateTime nowUtc, Guid? refereeUserId = null)
+    {
+        if (refereeTenantId == Guid.Empty)
+            return Result.Failure(
+                new Error("ReferralAttribution.InvalidRefereeTenant", "The referee tenant is required.")
+            );
+
+        if (RefereeTenantId == refereeTenantId)
+        {
+            // Un replay que trae el usuario lo completa; uno distinto no lo reemplaza.
+            RefereeUserId ??= refereeUserId;
+            return Result.Success();
+        }
+
+        if (RefereeTenantId is not null)
+            return Result.Failure(
+                new Error(
+                    "ReferralAttribution.RefereeTenantMismatch",
+                    "The attribution is already linked to another office."
+                )
+            );
+
+        RefereeTenantId = refereeTenantId;
+        RefereeUserId = refereeUserId;
+        UpdatedAtUtc = nowUtc;
+        return Result.Success();
     }
 
     private void Touch(Guid actorUserId, DateTime nowUtc)

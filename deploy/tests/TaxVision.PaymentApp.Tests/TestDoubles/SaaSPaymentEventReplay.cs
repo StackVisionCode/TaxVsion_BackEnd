@@ -65,6 +65,9 @@ internal static class SaaSPaymentEventReplay
                 case SaaSPaymentReviewRequired e:
                     SaaSPaymentDomainEventHandler.Handle(e);
                     break;
+                case SaaSPaymentChargebackResolved e:
+                    emitted.AddRange(SaaSPaymentDomainEventHandler.Handle(e, envelope));
+                    break;
                 default:
                     throw new InvalidOperationException($"Sin handler de dominio para {domainEvent.GetType().Name}.");
             }

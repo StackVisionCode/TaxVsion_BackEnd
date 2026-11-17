@@ -23,7 +23,6 @@ public sealed record OnboardingFinalizeCommand(
     long NetAmountCents,
     string Currency,
     string SettlementType,
-    Guid? ReferralAttributionId,
     IReadOnlyList<FinalizeReservationDto> Reservations
 );
 
@@ -35,7 +34,9 @@ public sealed record FinalizeReservationDto(
     long DiscountCents,
     string SnapshotHash,
     // Posición de aplicación (0-based) — deriva el PaymentId único de la reserva en Growth para el commit.
-    int Order
+    int Order,
+    // Referencia de pago con la que se reservó; null en mensajes ya encolados → se deriva por orden.
+    Guid? PaymentReferenceId = null
 );
 
 public static class OnboardingFinalizeHandler

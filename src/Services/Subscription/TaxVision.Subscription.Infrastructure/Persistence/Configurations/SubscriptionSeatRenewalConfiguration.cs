@@ -19,6 +19,7 @@ public sealed class SubscriptionSeatRenewalConfiguration : IEntityTypeConfigurat
         builder.Property(renewal => renewal.SeatId).IsRequired();
         builder.Property(renewal => renewal.TenantId).IsRequired();
         builder.Property(renewal => renewal.IdempotencyKey).HasMaxLength(200).IsRequired();
+        builder.Property(renewal => renewal.CheckoutProvider).HasMaxLength(30);
         builder.Property(renewal => renewal.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(renewal => renewal.FailureCode).HasMaxLength(100);
         builder.Property(renewal => renewal.FailureReason).HasMaxLength(1000);

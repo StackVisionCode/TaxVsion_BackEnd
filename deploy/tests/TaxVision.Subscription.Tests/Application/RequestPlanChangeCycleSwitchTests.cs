@@ -35,6 +35,47 @@ public sealed class RequestPlanChangeCycleSwitchTests
         Assert.Equal(3, Assert.Single(world.Subscription.PlanChangeRequests).Lines.Count);
     }
 
+    // El cambio de plan lleva el descuento vigente con las mismas reglas que la renovación: el 20% de la base va en el
+    // plan; asientos y add-ons no, porque el descuento no los cubre. Las líneas van a precio bruto.
+    [Fact]
+    public async Task The_active_discount_reaches_the_plan_change_charge_with_its_label()
+    {
+        var world = World();
+        world.Subscription.GrantDiscount(
+            SubscriptionDiscountTerms
+                .Create(
+                    DiscountSource.Admin,
+                    null,
+                    2_000,
+                    null,
+                    null,
+                    DiscountDuration.Forever,
+                    null,
+                    DiscountAppliesTo.Base,
+                    null,
+                    "Retention deal",
+                    Now.AddDays(-1)
+                )
+                .Value,
+            replace: false,
+            Guid.Empty,
+            Now
+        );
+        var bus = new CapturingMessageBus();
+
+        var result = await HandleAsync(world, bus);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        var due = Assert.Single(bus.Published.OfType<SubscriptionPlanChangeDueIntegrationEvent>());
+        Assert.Equal(79_920 + 29_000 + 15_000, due.TargetPlanPrice);
+        Assert.Equal(19_980, due.DiscountAmountCents);
+        Assert.Equal("Admin", due.DiscountSource);
+        Assert.Equal("Discount · 20% off", due.DiscountLabel);
+        Assert.Equal(99_900 + 29_000 + 15_000, due.Lines!.Sum(line => line.Quantity * line.UnitAmountCents));
+        var request = Assert.Single(world.Subscription.PlanChangeRequests);
+        Assert.Equal((123_920L, 19_980L), (request.ChargeAmountCents, request.DiscountAmountCents ?? 0));
+    }
+
     [Fact]
     public async Task A_blocked_switch_charges_nothing_and_says_why()
     {

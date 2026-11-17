@@ -17,3 +17,10 @@ public sealed record SaaSPaymentRefunded(
 /// <summary>El proveedor reportó un chargeback (contracargo) del pago.</summary>
 public sealed record SaaSPaymentChargedBack(SaaSPaymentSnapshot Payment, string Reason, DateTime ChargedBackAtUtc)
     : IDomainEvent;
+
+/// <summary>La disputa del contracargo cerró, ganada o perdida.</summary>
+public sealed record SaaSPaymentChargebackResolved(
+    SaaSPaymentSnapshot Payment,
+    ChargebackOutcome Outcome,
+    DateTime ResolvedAtUtc
+) : IDomainEvent;

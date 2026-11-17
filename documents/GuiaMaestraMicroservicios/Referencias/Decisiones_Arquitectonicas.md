@@ -107,7 +107,7 @@ Columnas: **Riesgo** = efecto si no se decide (Alto / Medio / Bajo, estimado por
 | ID | Decisión pendiente | Riesgo | Origen |
 |---|---|---|---|
 | D-01 | Convención de `[MessageIdentity]` para eventos nuevos (`.v1` como hacen los recientes) escrita como regla. | Bajo | [Wolverine_RabbitMQ](../Investigaciones/Wolverine_RabbitMQ.md) §3.2 |
-| D-02 | `UseTaxVisionDomainEvents()` (BB-1) y `UseTaxVisionDurableLocalQueues()` (BB-2) obligatorios para servicios nuevos (hoy 17 y 19 de 26). | Bajo | [BuildingBlocks](../Investigaciones/BuildingBlocks.md); [Wolverine_RabbitMQ](../Investigaciones/Wolverine_RabbitMQ.md) §6 |
+| D-02 | `UseTaxVisionDomainEvents()` (BB-1) y `UseTaxVisionDurableLocalQueues()` (BB-2) obligatorios para servicios nuevos (hoy 17 y 19 de 26). Sin BB-1, cada camino de una transición publica a mano y un camino nuevo lo puede olvidar (checkout de Subscription). | Bajo | [BuildingBlocks](../Investigaciones/BuildingBlocks.md); [Wolverine_RabbitMQ](../Investigaciones/Wolverine_RabbitMQ.md) §2 y §6 |
 | D-03 | Regla escrita de exchanges dedicados ("siempre `taxvision-events`" vs "dedicado solo si el consumidor único ya declara el binding"). | Bajo | [Wolverine_RabbitMQ](../Investigaciones/Wolverine_RabbitMQ.md) §3.1 |
 | D-04 | Pull-recovery de permisos obligatorio en todo servicio con humanos. | Medio | [02_COMPARATIVA_GUIAS](../02_COMPARATIVA_GUIAS.md) fila 28 |
 | D-05 | 8 eventos de PaymentClient sin ruta ni consumidor (`KnownUnroutedPendingOwner`). | Bajo | [Wolverine_RabbitMQ](../Investigaciones/Wolverine_RabbitMQ.md) §3.4 |

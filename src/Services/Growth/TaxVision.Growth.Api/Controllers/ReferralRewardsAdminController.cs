@@ -7,8 +7,11 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Growth.Api.IntegrationEvents;
 using TaxVision.Referrals.Application.Abstractions;
 using TaxVision.Referrals.Application.Admin;
+using TaxVision.Referrals.Application.Rewards;
+using TaxVision.Referrals.Application.Rewards.GetReferralRewardNotice;
 using TaxVision.Referrals.Application.Rewards.ReviewRewardCase;
 using Wolverine;
 using ActorType = BuildingBlocks.ActorTypeAuthorization.ActorType;
@@ -26,7 +29,7 @@ namespace TaxVision.Growth.Api.Controllers;
 [Route("growth/referrals/admin/rewards")]
 [Authorize]
 [AllowActorTypes(ActorType.PlatformAdmin)]
-public sealed class ReferralRewardsAdminController(IMessageBus bus) : ControllerBase
+public sealed class ReferralRewardsAdminController(IMessageBus bus, ICorrelationContext correlation) : ControllerBase
 {
     public sealed record ReviewRequest(Guid TenantId, string Reason);
 
@@ -97,7 +100,23 @@ public sealed class ReferralRewardsAdminController(IMessageBus bus) : Controller
                 new ReviewRewardCaseCommand(request.TenantId, rewardCaseId, action, request.Reason, actorId),
                 ct
             );
-            return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+            if (result.IsFailure)
+                return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+
+            // Rechazado por revisión: se le avisa al referidor.
+            if (action == RewardReviewAction.Reject)
+            {
+                var reward = await bus.InvokeAsync<Result<ReferralRewardNotice?>>(
+                    new GetReferralRewardNoticeQuery(request.TenantId, rewardCaseId),
+                    ct
+                );
+                if (reward.IsSuccess && reward.Value is { } found)
+                    await bus.PublishAsync(
+                        ReferralRewardEvents.Rejected(found, "ReviewRejected", correlation.CorrelationId)
+                    );
+            }
+
+            return Ok(result.Value);
         }
         finally
         {

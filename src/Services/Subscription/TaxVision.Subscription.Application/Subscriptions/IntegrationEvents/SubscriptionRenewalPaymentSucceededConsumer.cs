@@ -5,6 +5,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Subscriptions.Renewals;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
@@ -20,6 +21,8 @@ public static class SubscriptionRenewalPaymentSucceededConsumer
     public static async Task Handle(
         SubscriptionRenewalPaymentSucceededIntegrationEvent evt,
         ISubscriptionRepository subscriptions,
+        ISubscriptionSeatRepository seats,
+        ITenantAddOnRepository addOns,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -86,6 +89,15 @@ public static class SubscriptionRenewalPaymentSucceededConsumer
                 );
                 return;
             }
+
+            // D-D: los asientos y add-ons que iban en el mismo cobro renuevan con el plan.
+            RenewalBundle.Complete(
+                evt.IdempotencyKey,
+                await seats.GetByTenantIdForUpdateAsync(evt.TenantId, ct),
+                await addOns.GetByTenantIdForUpdateAsync(evt.TenantId, ct),
+                evt.ExternalPaymentReference,
+                evt.PaidAtUtc
+            );
 
             // La recuperación (PastDue→Active) la anuncia el evento de dominio.
             await unitOfWork.SaveChangesAsync(ct);

@@ -13,15 +13,27 @@ public sealed record GetOnboardingPricingPreviewQuery(
     Guid PlanId,
     string BillingCycle,
     string? PromoCode,
-    string? GiftCode
-);
+    string? GiftCode,
+    // Email de la sesión: Growth rechaza los desechables y cuenta límites por persona.
+    string? BuyerEmail = null
+)
+{
+    // El email no debe acabar en logs (Wolverine escribe el mensaje cuando un handler falla).
+    public override string ToString() =>
+        $"{nameof(GetOnboardingPricingPreviewQuery)} {{ PlanId = {PlanId}, BillingCycle = {BillingCycle}, BuyerEmail = <redacted> }}";
+}
 
 public sealed record OnboardingPricingPreviewLine(
     string Kind,
     string CodeHint,
     bool Valid,
     long DiscountAmountCents,
-    string? ErrorCode
+    string? ErrorCode,
+    // Lo que da el código y cuánto dura (Once | Months | Forever), para que el registro lo explique.
+    int? PercentageBasisPoints = null,
+    long? FixedAmountCents = null,
+    string? Duration = null,
+    int? DurationMonths = null
 );
 
 public sealed record OnboardingPricingPreview(
@@ -56,7 +68,7 @@ public static class GetOnboardingPricingPreviewHandler
                 new OnboardingCodeInput(query.GiftCode.Trim(), OnboardingBenefitType.Gift, query.GiftCode.Trim())
             );
 
-        var preview = await reserver.PreviewAsync(query.PlanId, query.BillingCycle, codes, ct);
+        var preview = await reserver.PreviewAsync(query.PlanId, query.BillingCycle, codes, ct, query.BuyerEmail);
         if (preview.IsFailure)
             return Result.Failure<OnboardingPricingPreview>(preview.Error);
 

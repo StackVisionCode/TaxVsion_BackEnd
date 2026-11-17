@@ -75,6 +75,17 @@ public static class DependencyInjection
             .Validate(o => o.IsValid(), "PaymentApp:Refunds:DuplicateRequestWindow must be positive.")
             .ValidateOnStart();
 
+        // A dónde puede volver el pagador desde el proveedor (DI igual en todo entorno).
+        services.Configure<TaxVision.PaymentApp.Application.Common.HostedCheckout.CheckoutReturnUrlOptions>(
+            configuration.GetSection(
+                TaxVision.PaymentApp.Application.Common.HostedCheckout.CheckoutReturnUrlOptions.SectionName
+            )
+        );
+        services.AddSingleton<
+            TaxVision.PaymentApp.Application.Common.HostedCheckout.ICheckoutReturnUrlGuard,
+            TaxVision.PaymentApp.Application.Common.HostedCheckout.CheckoutReturnUrlGuard
+        >();
+
         services.Configure<StripeOptions>(configuration.GetSection(StripeOptions.SectionName));
         services.Configure<IntellipayOptions>(configuration.GetSection(IntellipayOptions.SectionName));
         services.Configure<PayPalOptions>(configuration.GetSection(PayPalOptions.SectionName));

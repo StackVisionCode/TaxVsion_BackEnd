@@ -25,12 +25,13 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Subscription.Infrastructure.Persistence.SubscriptionDbContext subscriptionDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Subscription.Infrastructure.Persistence.SubscriptionDbContext.");
+            var tenantSubscriptionRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.TenantSubscriptionRepository(subscriptionDbContext);
             var subscriptionSeatRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.SubscriptionSeatRepository(subscriptionDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var beginSeatReactivationCommand = (TaxVision.Subscription.Application.Seats.Commands.StartSeatReactivationCheckout.BeginSeatReactivationCommand)context.Envelope.Message;
 
@@ -51,7 +52,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Subscription.Application.Seats.Commands.StartSeatReactivationCheckout.BeginSeatReactivationHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Subscription.Application.Seats.Commands.StartSeatReactivationCheckout.BeginSeatReactivationHandler.Handle(beginSeatReactivationCommand, subscriptionSeatRepository, unitOfWork, _optionsOfSeatReactivationOptions, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Subscription.Application.Seats.Commands.StartSeatReactivationCheckout.BeginSeatReactivationHandler.Handle(beginSeatReactivationCommand, subscriptionSeatRepository, tenantSubscriptionRepository, unitOfWork, _optionsOfSeatReactivationOptions, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

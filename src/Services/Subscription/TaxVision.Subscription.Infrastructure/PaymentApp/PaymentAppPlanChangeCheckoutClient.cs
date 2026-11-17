@@ -7,6 +7,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 
@@ -17,7 +18,7 @@ namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 /// </summary>
 internal sealed class PaymentAppPlanChangeCheckoutClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     IPurchaseIntentAmountSigner amountSigner,
     ILogger<PaymentAppPlanChangeCheckoutClient> logger
 ) : IPlanChangeCheckoutPaymentClient
@@ -72,6 +73,9 @@ internal sealed class PaymentAppPlanChangeCheckoutClient(
                         provider = request.Provider,
                         method = request.Method,
                         amountSignature,
+                        discountAmountCents = request.DiscountAmountCents,
+                        discountSource = request.DiscountSource,
+                        discountLabel = request.DiscountLabel,
                         lines = request.Lines,
                         conceptDisplayName = request.ConceptDisplayName,
                     },

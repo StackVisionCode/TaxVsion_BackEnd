@@ -270,6 +270,37 @@ public sealed class SaaSReceiptRequestTests
         );
     }
 
+    [Fact]
+    public async Task A_discounted_charge_sends_its_discount_and_label_for_the_receipt()
+    {
+        var payment = SaaSPayment
+            .Create(
+                TenantId,
+                IdempotencyKey.Create("key-discounted-renewal").Value,
+                Money.Create(1_200, "USD").Value,
+                SaaSPaymentType.SubscriptionRenewal,
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                StatementDescriptor.Create("TAXVISION SAAS").Value,
+                Guid.Empty,
+                DateTime.UtcNow,
+                discountAmountCents: 300,
+                discountSource: "Code",
+                discountLabel: "Promo code SPRI…0420 · 20% off"
+            )
+            .Value;
+        MarkPaid(payment);
+        var bus = new CapturingMessageBus();
+
+        bus.Published.AddRange(await SaaSPaymentEventReplay.DispatchAsync(payment, new FakeTenantRegistry("Acme Tax")));
+
+        var requested = Assert.Single(bus.Published.OfType<SaaSPaymentSucceededIntegrationEvent>());
+        Assert.Equal(1_200, requested.AmountPaidCents);
+        Assert.Equal(300, requested.DiscountAmountCents);
+        Assert.Equal("Code", requested.DiscountSource);
+        Assert.Equal("Promo code SPRI…0420 · 20% off", requested.DiscountLabel);
+    }
+
     private static SaaSPayment SucceededPayment(
         SaaSPaymentType type,
         int? quantity = null,

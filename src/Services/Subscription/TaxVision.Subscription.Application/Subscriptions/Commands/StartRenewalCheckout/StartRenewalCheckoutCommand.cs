@@ -10,8 +10,14 @@ public sealed record StartRenewalCheckoutCommand(
     string CancelUrl,
     string Provider,
     string Method,
-    Guid RequestedByUserId
-);
+    Guid RequestedByUserId,
+    // "Pay what's due": los asientos y add-ons elegidos. Null en la renovación del plan solo.
+    IReadOnlyList<Guid>? SeatIds = null,
+    IReadOnlyList<Guid>? AddOnIds = null
+)
+{
+    public bool PaysDue => SeatIds is not null || AddOnIds is not null;
+}
 
 public sealed record StartRenewalCheckoutResponse(
     Guid RenewalIntentId,

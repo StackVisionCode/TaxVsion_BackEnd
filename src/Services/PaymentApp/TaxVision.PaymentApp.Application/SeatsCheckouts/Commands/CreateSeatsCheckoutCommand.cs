@@ -28,7 +28,11 @@ public sealed record CreateSeatsCheckoutCommand(
     PaymentMethodKind Method = PaymentMethodKind.Card,
     /// <summary>SEC-M1.C — firma HMAC emitida por Subscription que PaymentApp verifica antes de abrir
     /// el checkout. Vacía durante rolling deploy; con <c>RejectUnsigned=true</c> en prod se vuelve requerida.</summary>
-    string? AmountSignature = null
+    string? AmountSignature = null,
+    // Descuento vigente de la suscripción que ya va restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );
 
 public sealed record SeatsCheckoutResponse(

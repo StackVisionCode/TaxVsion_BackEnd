@@ -39,8 +39,22 @@ public sealed record OnboardingReceiptPayload(
     string? PaymentMethodMasked,
     string? OfficeName = null,
     // P7: zona del navegador del pagador; sin ella, el recibo sale en UTC rotulado.
-    string? TimeZoneId = null
-);
+    string? TimeZoneId = null,
+    // Bruto antes de los códigos y una fila por código aplicado. Opcionales: un payload viejo sale sin descuentos.
+    long? GrossAmountCents = null,
+    IReadOnlyList<Receipts.ReceiptDiscount>? Discounts = null
+)
+{
+    /// <summary>Las filas de descuento; sin la lista, el bruto mayor a lo pagado deja una sola fila.</summary>
+    public IReadOnlyList<Receipts.ReceiptDiscount> DiscountRows()
+    {
+        if (Discounts is { Count: > 0 })
+            return Discounts;
+        return GrossAmountCents is { } gross && gross > PricePaidCents
+            ? [new Receipts.ReceiptDiscount("Discount", gross - PricePaidCents)]
+            : [];
+    }
+}
 
 /// <summary>Respuesta 202: la generación se registró; el archivo se produce de forma asíncrona.</summary>
 public sealed record GenerateOnboardingReceiptDocumentResult(Guid GenerationId, string Status);

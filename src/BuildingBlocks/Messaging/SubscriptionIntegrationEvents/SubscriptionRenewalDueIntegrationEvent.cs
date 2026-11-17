@@ -32,4 +32,12 @@ public sealed record SubscriptionRenewalDueIntegrationEvent : IntegrationEvent
     public Guid? CodeReservationPaymentId { get; init; }
     public long? DiscountAmountCents { get; init; }
     public string? PromotionSnapshotHash { get; init; }
+
+    /// <summary>Fuente del descuento vigente de la suscripción (Code | Admin) cuando DiscountAmountCents lo es;
+    /// null para el descuento de referido del alta y en eventos viejos.</summary>
+    public string? DiscountSource { get; init; }
+    public string? DiscountLabel { get; init; }
+
+    /// <summary>D-D: una línea por cosa cuando el plan renueva junto con asientos y add-ons. Null si va solo el plan.</summary>
+    public IReadOnlyList<PaymentAppIntegrationEvents.SaaSChargeLine>? Lines { get; init; }
 }

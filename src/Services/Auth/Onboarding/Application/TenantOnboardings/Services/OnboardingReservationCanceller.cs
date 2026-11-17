@@ -25,7 +25,7 @@ public sealed class OnboardingReservationCanceller(
         {
             var result = await growth.CancelAsync(
                 reservation.CodeReservationId,
-                OnboardingPaymentReference.For(onboarding.Id, reservation.Order),
+                reservation.PaymentReferenceId ?? OnboardingPaymentReference.For(onboarding.Id, reservation.Order),
                 reason,
                 idempotencyKey: $"onb-cancel:{onboarding.Id:N}:{reservation.CodeReservationId:N}",
                 ct

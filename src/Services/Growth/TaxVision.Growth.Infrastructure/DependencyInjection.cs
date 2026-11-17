@@ -53,6 +53,12 @@ public static class DependencyInjection
         );
         services.AddScoped<IReferralIdempotencyExecutor, SqlReferralIdempotencyExecutor>();
         services.AddSingleton<ICodeTokenHasher, HmacSha256CodeTokenHasher>();
+        // N11: comprador = HMAC del email normalizado; correos desechables no usan beneficios.
+        services.AddSingleton<TaxVision.Growth.SharedKernel.Buyers.IBuyerIdentityHasher, HmacBuyerIdentityHasher>();
+        services.AddSingleton<
+            TaxVision.Growth.SharedKernel.Buyers.IDisposableEmailDomains,
+            FileDisposableEmailDomains
+        >();
         services.AddSingleton<IReferralCodeTokenHasher, HmacSha256ReferralCodeTokenHasher>();
         services.AddSingleton<IReferralCodeTokenGenerator, HmacSha256ReferralCodeTokenGenerator>();
         // GRW-1: verificación real del commit tardío contra PaymentApp (M2M, solo lectura).
@@ -68,8 +74,12 @@ public static class DependencyInjection
         services.AddScoped<IReferralProgramRepository, ReferralProgramRepository>();
         services.AddScoped<IReferralCodeRepository, ReferralCodeRepository>();
         services.AddScoped<IReferralAttributionRepository, ReferralAttributionRepository>();
+        services.AddScoped<IOnboardingReferralRejectionRepository, OnboardingReferralRejectionRepository>();
+        services.AddScoped<Persistence.Referrals.ReferredOfficeProjectionStore>();
         services.AddScoped<IReferralQualificationRepository, ReferralQualificationRepository>();
         services.AddScoped<IReferralRewardCaseRepository, ReferralRewardCaseRepository>();
+        services.AddScoped<IReferralFraudReviewRepository, ReferralFraudReviewRepository>();
+        services.AddScoped<IOfficeOwnerSignalsReader, Persistence.Referrals.OfficeOwnerSignalsReader>();
         services.AddScoped<IReferralRewardAttemptRepository, ReferralRewardAttemptRepository>();
         services.AddScoped<IReferrerBenefitRepository, ReferrerBenefitRepository>();
         services.AddScoped<IReferralReadModel, ReferralReadModel>();

@@ -89,6 +89,17 @@ internal sealed class FakeEmailVerificationChallengeRepository : IEmailVerificat
     }
 }
 
+/// <summary>El primer guardado choca como si otro proceso hubiera guardado la misma fila antes.</summary>
+internal sealed class ConflictOnFirstSaveUnitOfWork : BuildingBlocks.Persistence.IUnitOfWork
+{
+    private int _saves;
+
+    public Task<int> SaveChangesAsync(CancellationToken ct = default) =>
+        ++_saves == 1
+            ? throw new ConflictException("Concurrency.Conflict", "The record was updated by another process.")
+            : Task.FromResult(1);
+}
+
 internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingRepository
 {
     public TenantOnboarding? Existing { get; set; }
@@ -143,6 +154,16 @@ internal sealed class FakeTenantOnboardingRepository : ITenantOnboardingReposito
     {
         LastExpiredPendingCutoffUtc = createdBeforeUtc;
         return Task.FromResult(ExpiredPending);
+    }
+
+    /// <summary>Estado que deja en la base otro proceso; ReloadAsync lo devuelve en lugar de la copia vieja.</summary>
+    public TenantOnboarding? Reloaded { get; set; }
+
+    public Task<TenantOnboarding?> ReloadAsync(Guid id, CancellationToken ct = default)
+    {
+        if (Reloaded is not null)
+            Existing = Reloaded;
+        return Task.FromResult(Existing);
     }
 
     public IReadOnlyList<TenantOnboarding> Orphans { get; set; } = [];

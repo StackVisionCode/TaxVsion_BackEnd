@@ -608,6 +608,10 @@ services:
       ServiceAuth__Clients__11__Audience: taxvision-growth
       ServiceAuth__Clients__11__Scopes__0: growth.referrals.reward.confirm
       ServiceAuth__Clients__11__Scopes__1: growth.grants.confirm
+      ServiceAuth__Clients__11__Scopes__2: growth.codes.quote
+      ServiceAuth__Clients__11__Scopes__3: growth.codes.reserve
+      ServiceAuth__Clients__11__Scopes__4: growth.codes.commit
+      ServiceAuth__Clients__11__Scopes__5: growth.codes.cancel
       # Billing → Documents (M2M): generar el PDF de facturas.
       ServiceAuth__Clients__12__ClientId: ${BILLING_DOCUMENTS_CLIENT_ID:-billing-documents}
       ServiceAuth__Clients__12__Secret: ${BILLING_DOCUMENTS_CLIENT_SECRET:-}
@@ -878,14 +882,15 @@ services:
       # (audiencia amplia TaxVision.Services, client 27) porque sus dos destinos vivos son
       # ServiceOnly: permissions-snapshot de Auth (recuperación pull H-04, sin esto todo
       # [HasPermission] de Subscription queda fail-closed 403) y el checkout interno de asientos de
-      # PaymentApp. NOTA: los referidos (GrowthRefereeBenefitClient → internal/codes/benefit-gifts,
-      # Growth con [HasServiceScope]) exigen subscription-growth (client 11, audiencia acotada +
-      # scopes) — hoy dormido (SUBSCRIPTION_GROWTH_CLIENT_SECRET vacío); si se activa, ese cliente
-      # necesita su propio acquirer/sección, no este.
+      # PaymentApp. El canje de códigos en Growth ([HasServiceScope]) usa otro cliente, subscription-growth
+      # (client 11, audiencia acotada + scopes), con su propia sección Subscription:GrowthAuth, no esta.
       Subscription__ServiceAuth__AuthBaseUrl: http://auth-api:8080
       Subscription__ServiceAuth__ClientId: ${SUBSCRIPTION_SERVICE_CLIENT_ID:-subscription-worker}
       Subscription__ServiceAuth__ClientSecret: ${SUBSCRIPTION_SERVICE_CLIENT_SECRET:-}
       Subscription__Growth__BaseUrl: http://growth-api:8080
+      # Canje de códigos de la oficina en Growth (cliente subscription-growth, Auth client 11).
+      Subscription__GrowthAuth__ClientId: ${SUBSCRIPTION_GROWTH_CLIENT_ID:-subscription-growth}
+      Subscription__GrowthAuth__ClientSecret: ${SUBSCRIPTION_GROWTH_CLIENT_SECRET:-}
       # M2M a PaymentApp para el hosted-checkout de seats y de renovación self-service. Sin esto el
       # HttpClient cae al default de código (localhost:5430) dentro del contenedor y el checkout falla.
       Subscription__PaymentApp__BaseUrl: http://payment-app-api:8080

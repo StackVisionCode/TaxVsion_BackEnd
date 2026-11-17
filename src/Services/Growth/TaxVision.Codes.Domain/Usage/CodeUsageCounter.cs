@@ -72,7 +72,8 @@ public sealed class CodeUsageCounter : TenantEntity
         return Result.Success();
     }
 
-    public Result Reserve(DateTime nowUtc)
+    /// <summary>Lo mismo que exige <see cref="Reserve"/>, sin reservar: para cotizar antes del pago.</summary>
+    public Result EnsureAvailable()
     {
         if (CommittedRedemptions >= MaxRedemptions || ActiveReservations >= MaxRedemptions - CommittedRedemptions)
             return Result.Failure(
@@ -81,6 +82,15 @@ public sealed class CodeUsageCounter : TenantEntity
                     $"The code has no remaining {Dimension.ToString().ToLowerInvariant()} availability."
                 )
             );
+
+        return Result.Success();
+    }
+
+    public Result Reserve(DateTime nowUtc)
+    {
+        var available = EnsureAvailable();
+        if (available.IsFailure)
+            return available;
 
         try
         {

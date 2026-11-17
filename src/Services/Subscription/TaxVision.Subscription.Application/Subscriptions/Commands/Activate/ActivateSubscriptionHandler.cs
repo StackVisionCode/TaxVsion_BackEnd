@@ -115,6 +115,13 @@ public static class ActivateSubscriptionHandler
             ct
         );
 
+        var charge = DiscountedCharge.For(
+            subscription,
+            DiscountChargeKind.Base,
+            price.Value.AmountCents,
+            price.Value.Currency,
+            subscription.CurrentPeriodStartUtc
+        );
         await bus.PublishAsync(
             new SubscriptionRenewalDueIntegrationEvent
             {
@@ -125,8 +132,11 @@ public static class ActivateSubscriptionHandler
                 PeriodStartUtc = subscription.CurrentPeriodStartUtc,
                 PeriodEndUtc = subscription.CurrentPeriodEndUtc,
                 IdempotencyKey = idempotencyKey,
-                AmountCents = price.Value.AmountCents,
+                AmountCents = charge.NetCents,
                 Currency = price.Value.Currency,
+                DiscountAmountCents = charge.DiscountCents,
+                DiscountSource = charge.Source,
+                DiscountLabel = charge.Label,
             }
         );
 

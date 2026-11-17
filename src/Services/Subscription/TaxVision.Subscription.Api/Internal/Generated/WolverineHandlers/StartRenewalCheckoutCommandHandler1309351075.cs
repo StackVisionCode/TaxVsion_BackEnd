@@ -23,6 +23,11 @@ namespace Internal.Generated.WolverineHandlers
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
+            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            
+            /*
             * The service registration for TaxVision.Subscription.Application.Abstractions.IRenewalCheckoutPaymentClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var renewalCheckoutPaymentClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.IRenewalCheckoutPaymentClient>(serviceScope.ServiceProvider);
@@ -34,7 +39,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout.StartRenewalCheckoutHandler");
             
             // The actual message execution
-            var outgoing1 = await TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout.StartRenewalCheckoutHandler.Handle(startRenewalCheckoutCommand, context, renewalCheckoutPaymentClient, cancellation).ConfigureAwait(false);
+            var outgoing1 = await TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout.StartRenewalCheckoutHandler.Handle(startRenewalCheckoutCommand, context, renewalCheckoutPaymentClient, cancellation, correlationContext).ConfigureAwait(false);
 
             
             // Outgoing, cascaded message

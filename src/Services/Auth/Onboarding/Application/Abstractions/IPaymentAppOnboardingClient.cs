@@ -42,7 +42,19 @@ public sealed record PaymentAppCheckoutRequest(
     Guid? CodeReservationId = null,
     string? PromotionSnapshotHash = null,
     /// <summary>Nombre comercial del plan del catálogo de Subscription, para el recibo.</summary>
-    string? PlanDisplayName = null
+    string? PlanDisplayName = null,
+    /// <summary>El comprador declaró un código de referido; PaymentApp lo publica en el evento de pago.</summary>
+    bool? ReferralDeclared = null,
+    /// <summary>Todas las reservas de código del alta, para compensar cada canje si el pago se reembolsa.</summary>
+    IReadOnlyList<PaymentAppCheckoutPromotion>? Promotions = null
+);
+
+/// <summary>Un código de descuento del alta: su reserva en Growth, el descuento y su orden.</summary>
+public sealed record PaymentAppCheckoutPromotion(
+    Guid CodeReservationId,
+    long DiscountAmountCents,
+    string? PromotionSnapshotHash,
+    int Order
 );
 
 public sealed record PaymentAppCheckoutResult(

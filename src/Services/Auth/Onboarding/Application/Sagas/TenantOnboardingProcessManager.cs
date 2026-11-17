@@ -143,7 +143,8 @@ public sealed class TenantOnboardingProcessManager : Saga
             PlanId,
             BillingCycle,
             UserId!.Value,
-            onboarding.AutoRenewRequested
+            onboarding.AutoRenewRequested,
+            onboarding.RecurringDiscount()
         );
     }
 
@@ -262,7 +263,8 @@ public sealed class TenantOnboardingProcessManager : Saga
                 onboarding.PlanId,
                 onboarding.BillingCycle,
                 onboarding.UserId!.Value,
-                onboarding.AutoRenewRequested
+                onboarding.AutoRenewRequested,
+                onboarding.RecurringDiscount()
             ),
             _ => null,
         };

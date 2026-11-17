@@ -68,6 +68,74 @@ public sealed class ActivateFromOnboardingHandlerTests
     }
 
     [Fact]
+    public async Task Signup_with_months_code_creates_the_discount_counting_the_first_charge()
+    {
+        var plan = CreatePublishedPlan("starter");
+        var subscriptions = new FakeSubscriptionRepository();
+        var codeId = Guid.NewGuid();
+
+        var result = await ActivateFromOnboardingHandler.Handle(
+            new ActivateFromOnboardingCommand(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                plan.Id,
+                BillingCycle.Monthly,
+                OwnerUserId: Guid.NewGuid(),
+                RecurringDiscount: new OnboardingRecurringDiscount(codeId, 2_000, null, "USD", "Months", 3)
+            ),
+            subscriptions,
+            new FakePlanRepository(plan),
+            new FakeSettingsRepository(),
+            new FakeBillingPrefRepo(),
+            new FakeUnitOfWork(),
+            new CapturingMessageBus(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        var subscription = subscriptions.Added!;
+        var discount = Assert.Single(subscription.Discounts);
+        Assert.Equal(DiscountSource.Code, discount.Source);
+        Assert.Equal(codeId, discount.CodeDefinitionId);
+        Assert.Equal(DiscountDuration.Months, discount.Duration);
+        // El primer cobro (el del alta) cuenta dentro de la ventana: el inicio es el del período.
+        Assert.Equal(subscription.CurrentPeriodStartUtc, discount.StartsAtUtc);
+        Assert.Equal(subscription.CurrentPeriodStartUtc.AddMonths(3), discount.EndsAtUtc);
+        Assert.Equal(
+            2_000,
+            subscription.DiscountFor(DiscountChargeKind.Base, 10_000, "USD", subscription.CurrentPeriodEndUtc)
+        );
+    }
+
+    [Fact]
+    public async Task Signup_with_a_one_time_code_leaves_no_recurring_discount()
+    {
+        var plan = CreatePublishedPlan("starter");
+        var subscriptions = new FakeSubscriptionRepository();
+
+        await ActivateFromOnboardingHandler.Handle(
+            new ActivateFromOnboardingCommand(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                plan.Id,
+                BillingCycle.Monthly,
+                OwnerUserId: Guid.NewGuid()
+            ),
+            subscriptions,
+            new FakePlanRepository(plan),
+            new FakeSettingsRepository(),
+            new FakeBillingPrefRepo(),
+            new FakeUnitOfWork(),
+            new CapturingMessageBus(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.Empty(subscriptions.Added!.Discounts);
+    }
+
+    [Fact]
     public async Task Activates_a_yearly_subscription_when_the_cycle_is_yearly()
     {
         var tenantId = Guid.NewGuid();

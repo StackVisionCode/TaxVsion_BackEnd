@@ -8,7 +8,8 @@ public sealed record ActivateSubscriptionForOnboardingRequest(
     Guid PlanId,
     string BillingCycle,
     Guid OwnerUserId,
-    bool AutoRenewRequested = false
+    bool AutoRenewRequested = false,
+    Domain.TenantOnboardings.OnboardingRecurringDiscount? RecurringDiscount = null
 );
 
 /// <summary>PayFlow (Fase 15) — dispara la activación asíncrona de la suscripción

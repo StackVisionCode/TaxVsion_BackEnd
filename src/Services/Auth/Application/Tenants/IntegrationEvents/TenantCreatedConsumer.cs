@@ -49,8 +49,10 @@ public static class TenantCreatedConsumer
 
             if (kind == TenantKind.Customer)
             {
-                // Roles de sistema y política MFA por defecto (idempotente).
-                await roles.EnsureSystemRolesAsync(evt.NewTenantId, ct);
+                // Roles de sistema y política MFA por defecto (idempotente). En el alta pagada los roles los siembra
+                // solo el paso que crea al dueño, antes de crearlo: sembrarlos también aquí chocaba con él.
+                if (evt.OnboardingId is null)
+                    await roles.EnsureSystemRolesAsync(evt.NewTenantId, ct);
                 if (await mfa.GetPolicyAsync(evt.NewTenantId, ct) is null)
                 {
                     await mfa.AddPolicyAsync(Domain.Mfa.TenantMfaPolicy.CreateDefault(evt.NewTenantId), ct);

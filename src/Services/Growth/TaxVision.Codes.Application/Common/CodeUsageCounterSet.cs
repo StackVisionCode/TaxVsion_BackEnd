@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using BuildingBlocks.Tenancy;
 using TaxVision.Codes.Application.Abstractions;
 using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Codes.Domain.Usage;
@@ -17,6 +18,34 @@ internal sealed class CodeUsageCounterSet
         _subjectCounter = subjectCounter;
     }
 
+    /// <summary>
+    /// Al cotizar: ¿este sujeto todavía puede usar el código? Solo lee (no reserva); la reserva vuelve a decidirlo.
+    /// </summary>
+    public static async Task<Result> EnsureSubjectAvailableAsync(
+        CodeDefinition definition,
+        Guid consumingTenantId,
+        SubjectReference subject,
+        ICodeUsageCounterRepository counters,
+        CancellationToken ct
+    )
+    {
+        if (definition.MaxRedemptionsPerSubject is null)
+            return Result.Success();
+
+        var keyResult = CodeUsageScopeKey.ForSubject(subject);
+        if (keyResult.IsFailure)
+            return Result.Failure(keyResult.Error);
+
+        var counter = await counters.FindReadOnlyAsync(
+            consumingTenantId,
+            definition.Id,
+            CodeUsageDimension.Subject,
+            keyResult.Value,
+            ct
+        );
+        return counter?.EnsureAvailable() ?? Result.Success();
+    }
+
     public static async Task<Result<CodeUsageCounterSet>> LoadAsync(
         CodeDefinition definition,
         Guid consumingTenantId,
@@ -27,7 +56,9 @@ internal sealed class CodeUsageCounterSet
     )
     {
         CodeUsageCounter? tenantCounter = null;
-        if (definition.MaxRedemptionsPerTenant is { } tenantLimit)
+        // En el alta no hay oficina todavía: todas comparten el tenant de plataforma, así que el límite por tenant
+        // no se cuenta ahí (las juntaría a todas). Aplica en las compras de una oficina real.
+        if (definition.MaxRedemptionsPerTenant is { } tenantLimit && consumingTenantId != PlatformTenant.Id)
         {
             var keyResult = CodeUsageScopeKey.ForTenant(consumingTenantId);
             if (keyResult.IsFailure)

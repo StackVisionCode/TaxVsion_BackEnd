@@ -229,6 +229,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CheckoutExpiresAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CheckoutProvider")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("CheckoutUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
@@ -282,6 +286,9 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpgradesTenantAddOnId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
@@ -339,6 +346,24 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("NextRenewalAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("PendingAddOnCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid?>("PendingAddOnDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PendingTierChangeRequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal?>("PendingUnitPriceAmount")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("PendingUnitPriceCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
                     b.Property<DateTime>("PurchasedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -365,6 +390,13 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("TierChangeSkippedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TierChangeSkippedReason")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -1559,6 +1591,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CheckoutExpiresAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CheckoutProvider")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("CheckoutUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
@@ -1724,6 +1760,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("AttemptedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("CheckoutProvider")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<string>("ExternalPaymentReference")
                         .HasMaxLength(200)
@@ -1967,6 +2007,17 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
 
+                    b.Property<long?>("DiscountAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DiscountLabel")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("DiscountSource")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTime?>("ExpiredAtUtc")
                         .HasColumnType("datetime2");
 
@@ -2045,6 +2096,91 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.ToTable("PlanChangeRequests", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.SubscriptionDiscount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("AmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AppliesTo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid?>("CodeDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CodeDisplay")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("Duration")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("EndedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EndedReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("EndsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("Months")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PercentBasisPoints")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PlanCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("StartsAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantSubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EndsAtUtc")
+                        .HasDatabaseName("IX_SubscriptionDiscounts_EndsAtUtc_Open")
+                        .HasFilter("[EndedAtUtc] IS NULL AND [EndsAtUtc] IS NOT NULL");
+
+                    b.HasIndex("TenantSubscriptionId", "EndedAtUtc")
+                        .HasDatabaseName("IX_SubscriptionDiscounts_TenantSubscriptionId_EndedAtUtc");
+
+                    b.ToTable("SubscriptionDiscounts", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.SubscriptionRenewalIntent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2072,6 +2208,10 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CheckoutExpiresAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CheckoutProvider")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
                     b.Property<string>("CheckoutUrl")
                         .HasMaxLength(2048)
                         .HasColumnType("nvarchar(2048)");
@@ -2090,6 +2230,11 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Property<string>("FailureReason")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
+
+                    b.Property<bool>("IncludesPlan")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
 
                     b.Property<DateTime?>("PaidAtUtc")
                         .HasColumnType("datetime2");
@@ -2774,6 +2919,49 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.Navigation("Lines");
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.SubscriptionDiscount", b =>
+                {
+                    b.HasOne("TaxVision.Subscription.Domain.Subscriptions.TenantSubscription", null)
+                        .WithMany("Discounts")
+                        .HasForeignKey("TenantSubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.SubscriptionRenewalIntent", b =>
+                {
+                    b.OwnsMany("TaxVision.Subscription.Domain.Subscriptions.SubscriptionRenewalIntentItem", "Items", b1 =>
+                        {
+                            b1.Property<Guid>("Id")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<long>("AmountCents")
+                                .HasColumnType("bigint");
+
+                            b1.Property<string>("Kind")
+                                .IsRequired()
+                                .HasMaxLength(20)
+                                .HasColumnType("nvarchar(20)");
+
+                            b1.Property<Guid>("SubscriptionRenewalIntentId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<Guid>("TargetId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.HasKey("Id");
+
+                            b1.HasIndex("SubscriptionRenewalIntentId");
+
+                            b1.ToTable("SubscriptionRenewalIntentItems", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("SubscriptionRenewalIntentId");
+                        });
+
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.TenantSubscription", b =>
                 {
                     b.HasOne("TaxVision.Subscription.Domain.Plans.SubscriptionPlan", null)
@@ -2848,6 +3036,8 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Subscription.Domain.Subscriptions.TenantSubscription", b =>
                 {
+                    b.Navigation("Discounts");
+
                     b.Navigation("PendingDowngrades");
 
                     b.Navigation("PlanChangeRequests");

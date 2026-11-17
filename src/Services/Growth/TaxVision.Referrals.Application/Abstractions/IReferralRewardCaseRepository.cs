@@ -44,5 +44,11 @@ public interface IReferralRewardCaseRepository
     /// </summary>
     Task<ReferralRewardCase?> GetByPaymentAsync(Guid paymentId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Premio que generó una atribución (el premio es del referidor; la atribución, del alta). Lookup elevado y exacto,
+    /// solo para el antifraude y la revisión del PlatformAdmin.
+    /// </summary>
+    Task<ReferralRewardCase?> GetByAttributionAsync(Guid attributionId, CancellationToken ct = default);
+
     Task AddAsync(ReferralRewardCase rewardCase, CancellationToken ct = default);
 }

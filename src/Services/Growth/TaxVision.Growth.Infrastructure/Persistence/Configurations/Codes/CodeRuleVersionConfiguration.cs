@@ -10,6 +10,8 @@ public sealed class CodeRuleVersionConfiguration : IEntityTypeConfiguration<Code
     {
         builder.ToTable("CodeRules", GrowthSchemas.Codes);
         builder.HasKey(rule => rule.Id);
+        // El Id lo pone el dominio: así una versión nueva sobre un código ya guardado se inserta (no UPDATE).
+        builder.Property(rule => rule.Id).ValueGeneratedNever();
 
         builder.Property(rule => rule.TenantId).IsRequired();
         builder.Property(rule => rule.Version).IsRequired();
@@ -30,6 +32,22 @@ public sealed class CodeRuleVersionConfiguration : IEntityTypeConfiguration<Code
         );
         builder.Navigation(rule => rule.Benefit).IsRequired();
         builder.OwnsOne(rule => rule.MinimumPurchase, minimum => minimum.ConfigureMoney("MinimumPurchase"));
+        // Las reglas de antes quedan en "solo el primer cobro".
+        builder.OwnsOne(
+            rule => rule.Duration,
+            duration =>
+            {
+                duration
+                    .Property(value => value.Kind)
+                    .HasColumnName("DurationKind")
+                    .HasConversion<string>()
+                    .HasMaxLength(20)
+                    .HasDefaultValue(CodeDurationKind.Once)
+                    .IsRequired();
+                duration.Property(value => value.Months).HasColumnName("DurationMonths");
+            }
+        );
+        builder.Navigation(rule => rule.Duration).IsRequired();
 
         builder
             .HasIndex(rule => new { rule.CodeDefinitionId, rule.Version })

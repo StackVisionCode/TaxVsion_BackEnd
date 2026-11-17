@@ -157,4 +157,15 @@ public sealed record TenantSubscriptionStatusChangedIntegrationEvent : Integrati
 
     /// <summary>La migración que lo agendó; con el tenant arma la clave de idempotencia del aviso.</summary>
     public Guid? MigrationId { get; init; }
+
+    // Aditivo: detalle del cobro automático para el correo (RecurringChargeSucceeded).
+
+    /// <summary>Qué se cobró, en inglés (p. ej. "Subscription renewal").</summary>
+    public string? ItemDescription { get; init; }
+
+    /// <summary>Descuento del cobro ya formateado ("3.00"); null sin descuento.</summary>
+    public string? DiscountAmount { get; init; }
+
+    /// <summary>Cómo se muestra el descuento ("Promo code SPRI...0420 · 20% off").</summary>
+    public string? DiscountLabel { get; init; }
 }

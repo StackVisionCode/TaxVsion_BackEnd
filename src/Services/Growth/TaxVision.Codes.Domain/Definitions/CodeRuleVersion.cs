@@ -11,6 +11,9 @@ public sealed class CodeRuleVersion : TenantEntity
     public CodeBenefit Benefit { get; private set; } = null!;
     public Money? MinimumPurchase { get; private set; }
     public bool AllowStacking { get; private set; }
+
+    /// <summary>Cuánto dura el descuento; las reglas de antes son solo el primer cobro.</summary>
+    public CodeDuration Duration { get; private set; } = CodeDuration.Once();
     public DateTime PublishedAtUtc { get; private set; }
 
     [UserReference(UserReferenceKind.Provenance)]
@@ -26,7 +29,8 @@ public sealed class CodeRuleVersion : TenantEntity
         Money? minimumPurchase,
         bool allowStacking,
         Guid publishedBy,
-        DateTime publishedAtUtc
+        DateTime publishedAtUtc,
+        CodeDuration? duration = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -76,6 +80,7 @@ public sealed class CodeRuleVersion : TenantEntity
             Benefit = benefit,
             MinimumPurchase = minimumPurchase,
             AllowStacking = allowStacking,
+            Duration = duration ?? CodeDuration.Once(),
             PublishedBy = publishedBy,
             PublishedAtUtc = publishedAtUtc,
         };

@@ -12,5 +12,8 @@ public interface IReferralAttributionRepository
     /// </summary>
     Task<ReferralAttribution?> GetByRefereeAsync(Guid ownerTenantId, Guid refereeId, CancellationToken ct = default);
 
+    /// <summary>Lookup exacto por Id entre tenants, solo para la revisión de fraude del PlatformAdmin.</summary>
+    Task<ReferralAttribution?> GetForReviewAsync(Guid attributionId, CancellationToken ct = default);
+
     Task AddAsync(ReferralAttribution attribution, CancellationToken ct = default);
 }

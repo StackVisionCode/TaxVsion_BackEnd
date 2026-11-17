@@ -31,6 +31,22 @@ public sealed class TenantAddOn : TenantEntity
     public string? CancellationReason { get; private set; }
     public string? SuspensionReason { get; private set; }
 
+    /// <summary>Tamaño al que pasa en la próxima renovación (bajada programada); null si no hay cambio.</summary>
+    public Guid? PendingAddOnDefinitionId { get; private set; }
+    public string? PendingAddOnCode { get; private set; }
+    public decimal? PendingUnitPriceAmount { get; private set; }
+    public string? PendingUnitPriceCurrency { get; private set; }
+
+    public Money? PendingUnitPrice =>
+        PendingUnitPriceAmount is { } amount && PendingUnitPriceCurrency is { } currency
+            ? Money.Create(amount, currency).Value
+            : null;
+    public DateTime? PendingTierChangeRequestedAtUtc { get; private set; }
+
+    /// <summary>La última bajada programada que no se aplicó, y por qué (p. ej. los archivos no cabían).</summary>
+    public DateTime? TierChangeSkippedAtUtc { get; private set; }
+    public string? TierChangeSkippedReason { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -224,6 +240,103 @@ public sealed class TenantAddOn : TenantEntity
         return Result.Success();
     }
 
+    public bool HasScheduledTierChange => PendingAddOnDefinitionId is not null;
+
+    /// <summary>Sube de tamaño ya: el cobro de la diferencia lo prepara el llamador sobre el período vigente.</summary>
+    public Result UpgradeTier(AddOnDefinition target, AddOnTierChangePlan plan, Guid actorUserId, DateTime nowUtc)
+    {
+        if (plan.Direction != AddOnTierChangeDirection.Upgrade)
+            return Result.Failure(new Error("AddOn.TierChangeWrongDirection", "This change is not an upgrade."));
+
+        if (Status != AddOnStatus.Active)
+            return Result.Failure(new Error("AddOn.TierChangeNotActive", "Only an active add-on can change its size."));
+
+        SwitchTo(target.Id, target.Code.Value, plan.TargetUnitPrice);
+        ClearScheduledTierChange();
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>Programa la bajada para la renovación; hasta entonces sigue el tamaño pagado.</summary>
+    public Result ScheduleTierChange(
+        AddOnDefinition target,
+        AddOnTierChangePlan plan,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        if (plan.Direction != AddOnTierChangeDirection.Downgrade)
+            return Result.Failure(new Error("AddOn.TierChangeWrongDirection", "This change is not a downgrade."));
+
+        if (Status != AddOnStatus.Active)
+            return Result.Failure(new Error("AddOn.TierChangeNotActive", "Only an active add-on can change its size."));
+
+        PendingAddOnDefinitionId = target.Id;
+        PendingAddOnCode = target.Code.Value;
+        PendingUnitPriceAmount = plan.TargetUnitPrice.Amount;
+        PendingUnitPriceCurrency = plan.TargetUnitPrice.Currency;
+        PendingTierChangeRequestedAtUtc = nowUtc;
+        TierChangeSkippedAtUtc = null;
+        TierChangeSkippedReason = null;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    public Result CancelScheduledTierChange(Guid actorUserId, DateTime nowUtc)
+    {
+        if (!HasScheduledTierChange)
+            return Result.Failure(new Error("AddOn.NoTierChangeScheduled", "There is no size change scheduled."));
+
+        ClearScheduledTierChange();
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>En la renovación: pasa al tamaño y precio programados.</summary>
+    public Result ApplyScheduledTierChange(Guid actorUserId, DateTime nowUtc)
+    {
+        if (
+            PendingAddOnDefinitionId is not { } definitionId
+            || PendingAddOnCode is null
+            || PendingUnitPrice is not { } price
+        )
+            return Result.Failure(new Error("AddOn.NoTierChangeScheduled", "There is no size change scheduled."));
+
+        SwitchTo(definitionId, PendingAddOnCode, price);
+        ClearScheduledTierChange();
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    /// <summary>En la renovación: la bajada no se aplica y se conserva el tamaño actual, con el motivo.</summary>
+    public Result SkipScheduledTierChange(string reason, Guid actorUserId, DateTime nowUtc)
+    {
+        if (!HasScheduledTierChange)
+            return Result.Failure(new Error("AddOn.NoTierChangeScheduled", "There is no size change scheduled."));
+
+        ClearScheduledTierChange();
+        TierChangeSkippedAtUtc = nowUtc;
+        TierChangeSkippedReason = reason;
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
+    private void SwitchTo(Guid definitionId, string code, Money unitPrice)
+    {
+        AddOnDefinitionId = definitionId;
+        AddOnCode = code;
+        UnitPrice = Money.Create(unitPrice.Amount, unitPrice.Currency).Value;
+    }
+
+    private void ClearScheduledTierChange()
+    {
+        PendingAddOnDefinitionId = null;
+        PendingAddOnCode = null;
+        PendingUnitPriceAmount = null;
+        PendingUnitPriceCurrency = null;
+        PendingTierChangeRequestedAtUtc = null;
+    }
+
     public Result CancelActive(string reason, Guid actorUserId, DateTime nowUtc)
     {
         if (!IsOneOf(Status, AddOnStatus.Active, AddOnStatus.PastDue))
@@ -304,6 +417,25 @@ public sealed class TenantAddOn : TenantEntity
         _renewals.Add(renewalResult.Value);
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>Lo pagado a mano cubrió este ítem: los cobros automáticos pendientes ya no salen. Devuelve sus
+    /// claves (también las fallidas) para que PaymentApp cancele sus reintentos.</summary>
+    public IReadOnlyList<string> SettleUnpaidRenewals(Guid actorUserId, DateTime nowUtc)
+    {
+        var keys = new List<string>();
+        foreach (var renewal in _renewals)
+        {
+            if (!renewal.IsAwaitingPayment && renewal.Status != RenewalStatus.Failed)
+                continue;
+
+            renewal.CancelAutomaticCharge();
+            keys.Add(renewal.IdempotencyKey);
+        }
+
+        if (keys.Count > 0)
+            Touch(actorUserId, nowUtc);
+        return keys;
     }
 
     /// <summary>Programa una renovación de este add-on hasta <paramref name="newPeriodEndUtc"/>, que el

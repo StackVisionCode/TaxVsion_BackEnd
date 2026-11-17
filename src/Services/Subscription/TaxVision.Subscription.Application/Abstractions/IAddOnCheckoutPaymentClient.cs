@@ -17,7 +17,11 @@ public sealed record AddOnCheckoutClientRequest(
     int? Quantity = null,
     long? UnitAmountCents = null,
     /// <summary>Nombre comercial del add-on del catálogo (ej. "+10 GB Storage"), para el recibo.</summary>
-    string? AddOnDisplayName = null
+    string? AddOnDisplayName = null,
+    // Descuento vigente de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );
 
 public sealed record AddOnCheckoutClientResult(

@@ -83,5 +83,12 @@ public sealed class TenantSubscriptionConfiguration : IEntityTypeConfiguration<T
         builder
             .Navigation(subscription => subscription.PendingDowngrades)
             .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder
+            .HasMany(subscription => subscription.Discounts)
+            .WithOne()
+            .HasForeignKey(discount => discount.TenantSubscriptionId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(subscription => subscription.Discounts).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

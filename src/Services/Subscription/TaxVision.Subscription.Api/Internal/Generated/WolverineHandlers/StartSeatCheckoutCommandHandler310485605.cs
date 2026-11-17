@@ -20,12 +20,17 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Subscription.Application.Abstractions.ISeatCheckoutPaymentClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var seatCheckoutPaymentClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ISeatCheckoutPaymentClient>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var startSeatCheckoutCommand = (TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout.StartSeatCheckoutCommand)context.Envelope.Message;
 
@@ -34,7 +39,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout.StartSeatCheckoutHandler");
             
             // The actual message execution
-            var outgoing1 = await TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout.StartSeatCheckoutHandler.Handle(startSeatCheckoutCommand, context, seatCheckoutPaymentClient, cancellation).ConfigureAwait(false);
+            var outgoing1 = await TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout.StartSeatCheckoutHandler.Handle(startSeatCheckoutCommand, context, seatCheckoutPaymentClient, cancellation, correlationContext).ConfigureAwait(false);
 
             
             // Outgoing, cascaded message

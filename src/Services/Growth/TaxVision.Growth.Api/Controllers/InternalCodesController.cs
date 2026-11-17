@@ -8,9 +8,9 @@ using TaxVision.Codes.Application.Compensations.CompensateRedemption;
 using TaxVision.Codes.Application.Quotes.CreateQuote;
 using TaxVision.Codes.Application.Reservations.CancelReservation;
 using TaxVision.Codes.Application.Reservations.CommitReservation;
-using TaxVision.Codes.Application.Reservations.ExpireReservation;
 using TaxVision.Codes.Application.Reservations.ReserveCode;
 using TaxVision.Codes.Domain.Compensations;
+using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Codes.Domain.ValueObjects;
 using TaxVision.Growth.Api.Authorization;
 using TaxVision.Growth.Api.Common;
@@ -41,7 +41,14 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
         string Currency,
         string SnapshotHash,
         int TtlSeconds,
-        IReadOnlyCollection<CodeScopeTargetInput>? ScopeTargets
+        IReadOnlyCollection<CodeScopeTargetInput>? ScopeTargets,
+        // Email del comprador del alta (M2M desde Auth): los límites cuentan por la persona. No se loguea.
+        string? BuyerEmail = null,
+        // Alta o suscripción existente; en una suscripción existente, la oficina compradora.
+        CodeUsageContext Context = CodeUsageContext.Signup,
+        Guid? BuyerTenantId = null,
+        // Códigos ya aplicados en la misma compra (apilado).
+        IReadOnlyCollection<Guid>? StackedWithCodeDefinitionIds = null
     )
     {
         public override string ToString() =>
@@ -98,7 +105,11 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
                 request.SnapshotHash,
                 idempotencyKey,
                 request.TtlSeconds,
-                request.ScopeTargets
+                request.ScopeTargets,
+                request.BuyerEmail,
+                request.Context,
+                request.BuyerTenantId,
+                request.StackedWithCodeDefinitionIds
             ),
             ct
         );
@@ -189,25 +200,7 @@ public sealed class InternalCodesController(IMessageBus bus) : ControllerBase
         return ToActionResult(result);
     }
 
-    [HttpPost("reservations/{reservationId:guid}/expire")]
-    [HasServiceScope(GrowthServiceScopes.CodesCancel)]
-    [RateLimit("growth.j.codes_reservation_manage")]
-    [ProducesResponseType<ExpireReservationResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Expire(
-        Guid reservationId,
-        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
-        CancellationToken ct
-    )
-    {
-        if (!User.TryGetTenantId(out var tenantId))
-            return Unauthorized();
-
-        var result = await bus.InvokeAsync<Result<ExpireReservationResponse>>(
-            new ExpireReservationCommand(tenantId, reservationId, idempotencyKey),
-            ct
-        );
-        return ToActionResult(result);
-    }
+    // Las reservas vencidas las cierra el ReservationExpirySweeper (ExpireReservationCommand); no hay ruta HTTP.
 
     [HttpPost("redemptions/{redemptionId:guid}/compensate")]
     [HasServiceScope(GrowthServiceScopes.CodesCompensate)]

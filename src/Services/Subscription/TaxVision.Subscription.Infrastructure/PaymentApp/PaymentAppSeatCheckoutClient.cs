@@ -7,18 +7,19 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 
 /// <summary>
 /// Implementación de <see cref="ISeatCheckoutPaymentClient"/> contra <c>POST internal/seats/checkout</c> de
-/// PaymentApp (M2M ServiceOnly). Reusa el <see cref="IGrowthServiceTokenAcquirer"/> (acquirer genérico de
+/// PaymentApp (M2M ServiceOnly). Reusa el <see cref="ISubscriptionServiceTokenAcquirer"/> (acquirer genérico de
 /// tokens de servicio de Auth — el token <c>actor_type=Service</c> vale para la policy ServiceOnly de
 /// PaymentApp). Molde: <c>PaymentAppOnboardingClient</c> de Auth.
 /// </summary>
 internal sealed class PaymentAppSeatCheckoutClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     IPurchaseIntentAmountSigner amountSigner,
     ILogger<PaymentAppSeatCheckoutClient> logger
 ) : ISeatCheckoutPaymentClient
@@ -72,6 +73,9 @@ internal sealed class PaymentAppSeatCheckoutClient(
                         quantity = request.Quantity,
                         unitAmountCents = request.UnitAmountCents,
                         amountSignature,
+                        discountAmountCents = request.DiscountAmountCents,
+                        discountSource = request.DiscountSource,
+                        discountLabel = request.DiscountLabel,
                     },
                     options: Json
                 ),

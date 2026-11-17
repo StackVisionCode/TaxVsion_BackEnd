@@ -295,6 +295,147 @@ public sealed class ReconcileOnboardingPaymentHandlerTests
         Assert.Empty(bus.Published);
     }
 
+    [Fact]
+    public async Task Expired_onboarding_whose_payment_succeeded_completes_the_registration()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = CreatePaymentProcessingOnboarding(now, out var paymentId);
+        Assert.True(onboarding.MarkExpired().IsSuccess);
+        var paymentApp = PaymentAppWithReconcile(
+            new PaymentAppReconcileResult(
+                paymentId,
+                OnboardingPaymentStatus.Succeeded,
+                4900,
+                "USD",
+                FailureCode: null,
+                FailureMessage: null,
+                ProviderPaymentReference: "pi_late",
+                PaidAtUtc: now
+            )
+        );
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+
+        var result = await ReconcileOnboardingPaymentHandler.Handle(
+            new ReconcileOnboardingPaymentCommand(onboarding.Id),
+            new FakeTenantOnboardingRepository { Existing = onboarding },
+            paymentApp,
+            BuildCompleter(new FakeTokenReferenceStore()),
+            new FakePlanCatalogClient("Enterprise"),
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
+            CancellationToken.None
+        );
+
+        // Se venció mientras pagaba: al volver de Stripe el cliente sigue a su registro, sin error.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantOnboardingStatus.RegistrationPending.ToString(), result.Value.Status);
+        Assert.StartsWith("https://app.example.com/register?token=", result.Value.RegistrationUrl);
+        Assert.Equal(1, unitOfWork.SaveChangesCallCount);
+        Assert.Contains(bus.Published, message => message is OnboardingFinalizeCommand);
+    }
+
+    [Fact]
+    public async Task Expired_onboarding_whose_payment_did_not_succeed_stays_expired()
+    {
+        var onboarding = CreatePaymentProcessingOnboarding(DateTime.UtcNow, out var paymentId);
+        Assert.True(onboarding.MarkExpired().IsSuccess);
+        var paymentApp = PaymentAppWithReconcile(
+            new PaymentAppReconcileResult(
+                paymentId,
+                OnboardingPaymentStatus.Failed,
+                4900,
+                "USD",
+                "card_declined",
+                "Your card was declined.",
+                ProviderPaymentReference: null,
+                PaidAtUtc: null
+            )
+        );
+        var unitOfWork = new FakeUnitOfWork();
+        var bus = new FakeMessageBus();
+
+        var result = await ReconcileOnboardingPaymentHandler.Handle(
+            new ReconcileOnboardingPaymentCommand(onboarding.Id),
+            new FakeTenantOnboardingRepository { Existing = onboarding },
+            paymentApp,
+            BuildCompleter(new FakeTokenReferenceStore()),
+            new FakePlanCatalogClient("Enterprise"),
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantOnboardingStatus.Expired.ToString(), result.Value.Status);
+        Assert.Null(result.Value.RegistrationUrl);
+        Assert.Equal(TenantOnboardingStatus.Expired, onboarding.Status);
+        Assert.Equal(0, unitOfWork.SaveChangesCallCount);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Payment_notice_completing_the_onboarding_first_still_returns_the_registration_url()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = CreatePaymentProcessingOnboarding(now, out var paymentId);
+        var tokenReferences = new FakeTokenReferenceStore { ToPeek = "existing-registration-token" };
+        // Lo que dejó en la base el aviso de pago, que completó el alta mientras esta conciliación corría.
+        var completedByNotice = CreatePaymentProcessingOnboarding(now, out _);
+        Assert.True(
+            completedByNotice.MarkPaymentCompleted(completedByNotice.PaymentId!.Value.ToString("N"), now).IsSuccess
+        );
+        Assert.True(
+            completedByNotice
+                .SetRegistrationToken(
+                    RegistrationTokenHash.Create(new string('a', 64)).Value,
+                    now.AddHours(72),
+                    tokenReferences.Reference
+                )
+                .IsSuccess
+        );
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding, Reloaded = completedByNotice };
+        var paymentApp = PaymentAppWithReconcile(
+            new PaymentAppReconcileResult(
+                paymentId,
+                OnboardingPaymentStatus.Succeeded,
+                4900,
+                "USD",
+                FailureCode: null,
+                FailureMessage: null,
+                ProviderPaymentReference: "pi_race",
+                PaidAtUtc: now
+            )
+        );
+        var bus = new FakeMessageBus();
+
+        var result = await ReconcileOnboardingPaymentHandler.Handle(
+            new ReconcileOnboardingPaymentCommand(onboarding.Id),
+            onboardings,
+            paymentApp,
+            BuildCompleter(tokenReferences),
+            new FakePlanCatalogClient("Enterprise"),
+            new ConflictOnFirstSaveUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            new InMemoryOnboardingReconcileSerializer(),
+            CancellationToken.None
+        );
+
+        // Sin 409: el landing lleva al formulario y no se duplican correo ni cierre.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantOnboardingStatus.RegistrationPending.ToString(), result.Value.Status);
+        Assert.Equal(
+            "https://app.example.com/register?token=existing-registration-token",
+            result.Value.RegistrationUrl
+        );
+        Assert.Empty(bus.Published);
+    }
+
     private static TenantOnboarding CreatePaymentProcessingOnboarding(DateTime now, out Guid paymentId)
     {
         var onboarding = OnboardingTestFactory.NewOnboarding(now);

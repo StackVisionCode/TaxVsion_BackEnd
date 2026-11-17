@@ -32,7 +32,9 @@ public enum ConfirmWalletReversalOutcome
 /// <summary>Resultado del clawback: qué pasó y, si hay que pedir la reversa al Wallet, la solicitud a publicar.</summary>
 public sealed record ClawbackWalletCreditRewardResult(
     ClawbackWalletCreditRewardOutcome Outcome,
-    WalletCreditRequest? Request
+    WalletCreditRequest? Request,
+    // El premio cancelado antes de acreditarse, para avisarle al referidor.
+    ReferralRewardNotice? Reward = null
 );
 
 public enum ClawbackWalletCreditRewardOutcome
@@ -119,7 +121,9 @@ public static class ClawbackWalletCreditRewardHandler
                     new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.AlreadyHandled, null)
                 );
 
+            // Retenido (disputa abierta o revisión del admin) sin crédito hecho: se cancela igual que uno en espera.
             case ReferralRewardCaseStatus.Requested:
+            case ReferralRewardCaseStatus.ManualReview when reward.MaterializedBenefitReference is null:
             {
                 var cancelled = reward.Cancel(command.Reason, command.ActorUserId, nowUtc);
                 if (cancelled.IsFailure)
@@ -132,7 +136,11 @@ public static class ClawbackWalletCreditRewardHandler
                     command.PaymentId
                 );
                 return Result.Success(
-                    new ClawbackWalletCreditRewardResult(ClawbackWalletCreditRewardOutcome.Cancelled, null)
+                    new ClawbackWalletCreditRewardResult(
+                        ClawbackWalletCreditRewardOutcome.Cancelled,
+                        null,
+                        ReferralRewardNotice.From(reward)
+                    )
                 );
             }
 

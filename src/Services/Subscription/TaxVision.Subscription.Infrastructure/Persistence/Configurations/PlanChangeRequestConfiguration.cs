@@ -33,6 +33,9 @@ public sealed class PlanChangeRequestConfiguration : IEntityTypeConfiguration<Pl
         builder.Property(request => request.ChargeAmountCents).IsRequired();
         builder.Property(request => request.ChargeCurrency).HasMaxLength(3).IsRequired();
         builder.Property(request => request.PaymentIdempotencyKey).HasMaxLength(200).IsRequired();
+        // Descuento del cobro, ya restado de ChargeAmountCents.
+        builder.Property(request => request.DiscountSource).HasMaxLength(20);
+        builder.Property(request => request.DiscountLabel).HasMaxLength(200);
         builder.Property(request => request.SaaSPaymentId);
         builder.Property(request => request.UsesHostedCheckout).IsRequired();
 

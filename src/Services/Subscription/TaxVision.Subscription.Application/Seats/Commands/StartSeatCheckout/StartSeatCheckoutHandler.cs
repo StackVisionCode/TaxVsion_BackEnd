@@ -1,3 +1,5 @@
+using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
@@ -17,7 +19,8 @@ public static class StartSeatCheckoutHandler
         StartSeatCheckoutCommand command,
         IMessageBus bus,
         ISeatCheckoutPaymentClient checkoutClient,
-        CancellationToken ct
+        CancellationToken ct,
+        ICorrelationContext? correlation = null
     )
     {
         var reserved = await bus.InvokeAsync<Result<SeatCheckoutReservation>>(
@@ -28,6 +31,23 @@ public static class StartSeatCheckoutHandler
             return Result.Failure<StartSeatCheckoutResponse>(reserved.Error);
 
         var reservation = reserved.Value;
+        // Volvió con otro proveedor: la sesión del checkout reemplazado deja de ser pagable.
+        if (reservation.ReplacedPaymentId is { } replacedPayment)
+        {
+            await bus.PublishAsync(new CancelHostedCheckoutCommand(command.TenantId, replacedPayment));
+            // Mismo aviso que al cancelar a mano: PaymentApp marca el pago como cancelado.
+            await bus.PublishAsync(
+                new SeatCheckoutCancelledIntegrationEvent
+                {
+                    TenantId = command.TenantId,
+                    SeatPurchaseIntentId = reservation.ReplacedIntentId ?? Guid.Empty,
+                    SaaSPaymentId = replacedPayment,
+                    ActorUserId = command.RequestedByUserId,
+                    Reason = CheckoutProviderSwitch.Reason,
+                    CorrelationId = correlation?.CorrelationId ?? string.Empty,
+                }
+            );
+        }
         if (reservation.OpenCheckout is { } open)
             return Result.Success(open);
 
@@ -44,7 +64,10 @@ public static class StartSeatCheckoutHandler
                 command.Provider,
                 command.Method,
                 reservation.Quantity,
-                ProratedUnit.Of(reservation.TotalCents, reservation.Quantity)
+                ProratedUnit.Of(reservation.TotalCents, reservation.Quantity),
+                reservation.DiscountCents,
+                reservation.DiscountSource,
+                reservation.DiscountLabel
             ),
             ct
         );
@@ -57,7 +80,8 @@ public static class StartSeatCheckoutHandler
                 reservation.IntentId,
                 checkout.Value.PaymentId,
                 checkout.Value.CheckoutUrl,
-                checkout.Value.ExpiresAtUtc
+                checkout.Value.ExpiresAtUtc,
+                command.Provider
             ),
             ct
         );

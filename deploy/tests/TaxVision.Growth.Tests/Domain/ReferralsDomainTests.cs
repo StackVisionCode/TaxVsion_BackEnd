@@ -302,4 +302,34 @@ public sealed class ReferralsDomainTests
         Assert.True(result.IsFailure);
         Assert.Equal("ReferralRewardAttempt.InvalidOperation", result.Error.Code);
     }
+
+    [Fact]
+    public void Link_sets_the_referee_tenant_once()
+    {
+        var program = GrowthTestData.CreateActiveTenantReferralProgram();
+        var attribution = GrowthTestData.CreateActiveAttribution(program, GrowthTestData.CreateReferralCode(program));
+        var office = Guid.NewGuid();
+
+        Assert.True(attribution.LinkRefereeTenant(office, GrowthTestData.NowUtc).IsSuccess);
+        // Repetir con la misma oficina (reentrega del evento) no cambia nada.
+        Assert.True(attribution.LinkRefereeTenant(office, GrowthTestData.NowUtc.AddMinutes(1)).IsSuccess);
+
+        Assert.Equal(office, attribution.RefereeTenantId);
+    }
+
+    [Fact]
+    public void Link_to_a_different_tenant_fails()
+    {
+        var program = GrowthTestData.CreateActiveTenantReferralProgram();
+        var attribution = GrowthTestData.CreateActiveAttribution(program, GrowthTestData.CreateReferralCode(program));
+        var office = Guid.NewGuid();
+        Assert.True(attribution.LinkRefereeTenant(office, GrowthTestData.NowUtc).IsSuccess);
+
+        var other = attribution.LinkRefereeTenant(Guid.NewGuid(), GrowthTestData.NowUtc);
+        var empty = attribution.LinkRefereeTenant(Guid.Empty, GrowthTestData.NowUtc);
+
+        Assert.Equal("ReferralAttribution.RefereeTenantMismatch", other.Error.Code);
+        Assert.True(empty.IsFailure);
+        Assert.Equal(office, attribution.RefereeTenantId);
+    }
 }

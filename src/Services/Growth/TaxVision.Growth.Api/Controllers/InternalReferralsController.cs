@@ -24,6 +24,8 @@ namespace TaxVision.Growth.Api.Controllers;
 /// <summary>
 /// M2M callbacks. These routes deliberately do not match the public /growth Gateway
 /// route. Tenant and service identity are always taken from the validated service JWT.
+/// Reservado para premios de suscripción del referidor, hoy bloqueados: los premios vigentes son crédito de
+/// Wallet y se confirman por evento, no por estas rutas.
 /// </summary>
 [ApiController]
 [Route("internal/referrals")]

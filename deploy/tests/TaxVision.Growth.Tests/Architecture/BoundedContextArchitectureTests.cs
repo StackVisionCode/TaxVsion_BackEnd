@@ -40,6 +40,33 @@ public sealed class BoundedContextArchitectureTests
         );
     }
 
+    [Fact]
+    public void Shared_kernel_depends_on_no_bounded_context_or_technical_layer()
+    {
+        // Lo comparten Codes y Referrals a propósito: no puede depender de ninguno ni de EF/Wolverine.
+        AssertForbiddenReferences(
+            typeof(TaxVision.Growth.SharedKernel.Buyers.NormalizedEmail).Assembly,
+            "TaxVision.Codes",
+            "TaxVision.Referrals",
+            "TaxVision.Growth.Infrastructure",
+            "TaxVision.Growth.Api",
+            "Microsoft.EntityFrameworkCore",
+            "Wolverine"
+        );
+    }
+
+    [Fact]
+    public void A_buyer_identity_is_only_created_by_the_hasher()
+    {
+        var buyer = typeof(TaxVision.Growth.SharedKernel.Buyers.BuyerIdentity);
+
+        Assert.Empty(buyer.GetConstructors());
+        Assert.DoesNotContain(
+            buyer.GetMethods(),
+            method => method.IsStatic && method.ReturnType == buyer && method.IsPublic
+        );
+    }
+
     private static void AssertForbiddenReferences(
         System.Reflection.Assembly assembly,
         params string[] forbiddenPrefixes

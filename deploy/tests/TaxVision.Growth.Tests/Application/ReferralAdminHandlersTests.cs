@@ -208,6 +208,17 @@ public sealed class ReferralAdminHandlersTests
             Calls++;
             return Task.FromResult(new PagedResult<ReferralRewardAdminRow>([], page, size, 0));
         }
+
+        public Task<PagedResult<ReferralFraudReviewAdminRow>> ListFraudReviewsAsync(
+            TaxVision.Referrals.Domain.Fraud.FraudReviewStatus? status,
+            int page,
+            int size,
+            CancellationToken ct = default
+        )
+        {
+            Calls++;
+            return Task.FromResult(new PagedResult<ReferralFraudReviewAdminRow>([], page, size, 0));
+        }
     }
 
     [Theory]

@@ -59,6 +59,7 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
         builder.Property(payment => payment.TargetAggregateId).IsRequired();
         builder.Property(payment => payment.ProviderCode).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(payment => payment.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(payment => payment.ChargebackOutcome).HasConversion<string>().HasMaxLength(10);
 
         builder.OwnsOne(
             payment => payment.ExternalChargeReference,
@@ -94,11 +95,14 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
         builder.Property(payment => payment.CodeReservationId);
         builder.Property(payment => payment.CodeReservationPaymentId);
         builder.Property(payment => payment.DiscountAmountCents);
+        builder.Property(payment => payment.DiscountSource).HasMaxLength(20);
+        builder.Property(payment => payment.DiscountLabel).HasMaxLength(SaaSPayment.DiscountLabelMaxLength);
         builder.Property(payment => payment.PromotionSnapshotHash).HasMaxLength(64);
 
         // PayFlow (Fase 8) — OnboardingId nullable, único cuando presente (un solo checkout
         // inicial por onboarding); reusa el patrón idempotente vía IdempotencyKey para replays.
         builder.Property(payment => payment.OnboardingId);
+        builder.Property(payment => payment.ReferralDeclared);
         builder.Property(payment => payment.ReceiptFileId);
 
         // Detalle del cobro cuando cobra varias cosas (pasar a anual: plan, add-ons, asientos).
@@ -113,10 +117,33 @@ public sealed class SaaSPaymentConfiguration : IEntityTypeConfiguration<SaaSPaym
                 line.Property(l => l.Description).HasMaxLength(SaaSPaymentLine.DescriptionMaxLength).IsRequired();
                 line.Property(l => l.Quantity).IsRequired();
                 line.Property(l => l.UnitAmountCents).IsRequired();
+                line.Property(l => l.TargetKind).HasMaxLength(SaaSPaymentLine.TargetKindMaxLength);
                 line.Ignore(l => l.AmountCents);
             }
         );
         builder.Navigation(payment => payment.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        // Códigos de descuento del cobro (alta: promo y regalo), para compensar cada canje si se reembolsa.
+        builder.OwnsMany(
+            payment => payment.Promotions,
+            promotion =>
+            {
+                promotion.ToTable("SaaSPaymentPromotions");
+                promotion.WithOwner().HasForeignKey("SaaSPaymentId");
+                promotion.HasKey(p => p.Id);
+                promotion.Property(p => p.Id).ValueGeneratedNever();
+                promotion.Property(p => p.CodeReservationId).IsRequired();
+                promotion.Property(p => p.DiscountAmountCents).IsRequired();
+                promotion
+                    .Property(p => p.PromotionSnapshotHash)
+                    .HasMaxLength(SaaSPaymentPromotion.SnapshotHashMaxLength);
+                promotion.Property(p => p.Order).IsRequired();
+                promotion
+                    .HasIndex(p => p.CodeReservationId)
+                    .HasDatabaseName("IX_SaaSPaymentPromotions_CodeReservationId");
+            }
+        );
+        builder.Navigation(payment => payment.Promotions).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Property(payment => payment.ReceiptOwnerTenantId);
         builder
             .HasIndex(payment => payment.OnboardingId)

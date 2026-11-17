@@ -31,6 +31,7 @@ public static class CreateSeatReactivationCheckoutHandler
         IPurchaseIntentAmountVerifier intentVerifier,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
+        ICheckoutReturnUrlGuard returnUrls,
         CancellationToken ct
     )
     {
@@ -66,6 +67,7 @@ public static class CreateSeatReactivationCheckoutHandler
             metrics,
             correlation,
             logger,
+            returnUrls,
             ct
         );
 
@@ -105,7 +107,10 @@ public static class CreateSeatReactivationCheckoutHandler
                         command.Provider,
                         descriptor,
                         actorUserId: Guid.Empty,
-                        nowUtc
+                        nowUtc,
+                        discountAmountCents: command.DiscountAmountCents,
+                        discountSource: command.DiscountSource,
+                        discountLabel: command.DiscountLabel
                     )
                     .WithConceptFor(SaaSPaymentType.SeatRenewal),
             DecideOnExisting = DecideOnExisting,

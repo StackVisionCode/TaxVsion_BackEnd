@@ -3,6 +3,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Referrals.Application.Abstractions;
 using TaxVision.Referrals.Domain.Codes;
+using TaxVision.Referrals.Domain.Fraud;
 using TaxVision.Referrals.Domain.Rewards;
 
 namespace TaxVision.Growth.Infrastructure.Persistence.Repositories.Referrals;
@@ -86,5 +87,39 @@ public sealed class ReferralAdminReadModel(GrowthDbContext db, ITenantContext te
             .ToListAsync(ct);
 
         return new PagedResult<ReferralRewardAdminRow>(items, page, size, total);
+    }
+
+    public async Task<PagedResult<ReferralFraudReviewAdminRow>> ListFraudReviewsAsync(
+        FraudReviewStatus? status,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        if (!TenantRepositoryGuard.Matches(tenantContext, PlatformTenant.Id))
+            return new PagedResult<ReferralFraudReviewAdminRow>([], page, size, 0);
+
+        var reviews = db.ReferralFraudReviews.IgnoreQueryFilters().AsNoTracking().AsQueryable();
+        if (status is { } wanted)
+            reviews = reviews.Where(review => review.Status == wanted);
+
+        var total = await reviews.CountAsync(ct);
+        var items = await reviews
+            .OrderByDescending(review => review.CreatedAtUtc)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(review => new ReferralFraudReviewAdminRow(
+                review.Id,
+                review.TenantId,
+                review.AttributionId,
+                review.RewardCaseId,
+                review.SignalCode,
+                review.Status,
+                review.ResolutionReason,
+                review.CreatedAtUtc,
+                review.ResolvedAtUtc
+            ))
+            .ToListAsync(ct);
+        return new PagedResult<ReferralFraudReviewAdminRow>(items, page, size, total);
     }
 }

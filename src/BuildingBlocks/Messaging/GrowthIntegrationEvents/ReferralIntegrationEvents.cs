@@ -10,6 +10,13 @@ public sealed record ReferralQualifiedIntegrationEvent : GrowthIntegrationEvent
     public required Guid QualificationId { get; init; }
     public required string ProgramType { get; init; }
     public required Guid QualifyingPaymentId { get; init; }
+
+    /// <summary>Monto del premio (centavos) y su moneda, para el aviso; null en eventos viejos.</summary>
+    public long? RewardAmountCents { get; init; }
+    public string? RewardCurrency { get; init; }
+
+    /// <summary>Cuándo llega el premio al Wallet (fin de la espera); null en eventos viejos.</summary>
+    public DateTime? RewardAvailableAtUtc { get; init; }
 }
 
 [MessageIdentity("BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralRewardGrantedIntegrationEvent")]
@@ -21,6 +28,10 @@ public sealed record ReferralRewardGrantedIntegrationEvent : GrowthIntegrationEv
     public required string BenefitType { get; init; }
     public required string MaterializedBy { get; init; }
     public required Guid MaterializedReferenceId { get; init; }
+
+    /// <summary>Monto del premio (centavos) y su moneda, para el aviso; null en eventos viejos.</summary>
+    public long? RewardAmountCents { get; init; }
+    public string? RewardCurrency { get; init; }
 }
 
 [MessageIdentity("BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralRewardRejectedIntegrationEvent")]
@@ -30,6 +41,10 @@ public sealed record ReferralRewardRejectedIntegrationEvent : GrowthIntegrationE
     public required Guid RewardCaseId { get; init; }
     public required Guid GrantId { get; init; }
     public required string ReasonCode { get; init; }
+
+    /// <summary>Monto del premio (centavos) y su moneda, para el aviso; null en eventos viejos.</summary>
+    public long? RewardAmountCents { get; init; }
+    public string? RewardCurrency { get; init; }
 }
 
 [MessageIdentity("BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralRewardReversedIntegrationEvent")]
@@ -40,6 +55,10 @@ public sealed record ReferralRewardReversedIntegrationEvent : GrowthIntegrationE
     public required Guid GrantId { get; init; }
     public required Guid SourceFinancialEventId { get; init; }
     public required string ReasonCode { get; init; }
+
+    /// <summary>Monto del premio (centavos) y su moneda, para el aviso; null en eventos viejos.</summary>
+    public long? RewardAmountCents { get; init; }
+    public string? RewardCurrency { get; init; }
 }
 
 /// <summary>

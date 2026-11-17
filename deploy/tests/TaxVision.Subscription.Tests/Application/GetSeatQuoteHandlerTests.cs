@@ -21,6 +21,7 @@ public sealed class GetSeatQuoteHandlerTests
             new GetSeatQuoteQuery(subscription.TenantId, "Standard", Quantity: 3),
             new FakeSubscriptionRepo(subscription),
             new FakeSeatPricingRepository(pricing),
+            new NoSubscriptionDiscounts(),
             CancellationToken.None
         );
 
@@ -37,6 +38,60 @@ public sealed class GetSeatQuoteHandlerTests
     }
 
     [Fact]
+    public async Task The_quote_shows_the_discount_the_checkout_will_apply()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+
+        var result = await GetSeatQuoteHandler.Handle(
+            new GetSeatQuoteQuery(subscription.TenantId, "Standard", Quantity: 3),
+            new FakeSubscriptionRepo(subscription),
+            new FakeSeatPricingRepository(pricing),
+            new TwentyPercentOnSeats(),
+            CancellationToken.None
+        );
+
+        var quote = result.Value;
+        var expected = quote.ProratedTotalCents / 5;
+        Assert.Equal(expected, quote.DiscountCents);
+        Assert.Equal(quote.ProratedTotalCents - expected, quote.NetTotalCents);
+    }
+
+    [Fact]
+    public async Task Without_discount_the_quote_has_no_discount_line()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+
+        var result = await GetSeatQuoteHandler.Handle(
+            new GetSeatQuoteQuery(subscription.TenantId, "Standard", Quantity: 1),
+            new FakeSubscriptionRepo(subscription),
+            new FakeSeatPricingRepository(pricing),
+            new NoSubscriptionDiscounts(),
+            CancellationToken.None
+        );
+
+        Assert.Null(result.Value.DiscountCents);
+        Assert.Equal(result.Value.ProratedTotalCents, result.Value.NetTotalCents);
+    }
+
+    private sealed class TwentyPercentOnSeats
+        : TaxVision.Subscription.Application.Abstractions.ISubscriptionDiscountReader
+    {
+        public Task<(long Cents, DiscountSource? Source, string? Label)> ForChargeAsync(
+            Guid tenantId,
+            DiscountChargeKind kind,
+            long grossCents,
+            string currency,
+            DateTime chargeDateUtc,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<(long, DiscountSource?, string?)>(
+                kind == DiscountChargeKind.Seats
+                    ? (grossCents / 5, DiscountSource.Code, "Promo code · 20% off")
+                    : (0, null, null)
+            );
+    }
+
+    [Fact]
     public async Task Fails_for_an_unknown_seat_type()
     {
         var (subscription, pricing) = ActiveSubscriptionWithPricing();
@@ -45,6 +100,7 @@ public sealed class GetSeatQuoteHandlerTests
             new GetSeatQuoteQuery(subscription.TenantId, "Bogus", Quantity: 1),
             new FakeSubscriptionRepo(subscription),
             new FakeSeatPricingRepository(pricing),
+            new NoSubscriptionDiscounts(),
             CancellationToken.None
         );
 
@@ -61,6 +117,7 @@ public sealed class GetSeatQuoteHandlerTests
             new GetSeatQuoteQuery(Guid.NewGuid(), "Standard", Quantity: 1),
             new FakeSubscriptionRepo(subscription: null),
             new FakeSeatPricingRepository(pricing),
+            new NoSubscriptionDiscounts(),
             CancellationToken.None
         );
 

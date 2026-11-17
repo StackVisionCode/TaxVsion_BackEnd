@@ -72,7 +72,7 @@ public sealed class OnboardingRegistrationReminderProcessor(
                     PaidAtUtc = onboarding.PaymentCompletedAtUtc ?? nowUtc,
                     RegistrationUrlBase = options.RegistrationUrlBase,
                     CorrelationId = onboarding.Id.ToString("N"),
-                }
+                }.WithDiscountOf(onboarding)
             );
         }
 

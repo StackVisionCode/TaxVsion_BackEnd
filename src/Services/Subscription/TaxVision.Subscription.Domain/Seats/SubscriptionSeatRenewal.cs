@@ -15,6 +15,13 @@ public sealed class SubscriptionSeatRenewal : BaseEntity
     public Guid TenantId { get; private set; }
     public string IdempotencyKey { get; private set; } = default!;
     public RenewalStatus Status { get; private set; }
+
+    /// <summary>Proveedor del checkout de reactivación; null en las renovaciones automáticas.</summary>
+    public string? CheckoutProvider { get; private set; }
+
+    internal void UseCheckoutProvider(string? provider) =>
+        CheckoutProvider = string.IsNullOrWhiteSpace(provider) ? null : provider.Trim();
+
     public DateTime PeriodStartUtc { get; private set; }
     public DateTime PeriodEndUtc { get; private set; }
     public DateTime ScheduledAtUtc { get; private set; }
@@ -115,5 +122,19 @@ public sealed class SubscriptionSeatRenewal : BaseEntity
         }
 
         return Result.Success();
+    }
+
+    /// <summary>Sigue esperando su cobro automático (programado, en curso o con reintento).</summary>
+    public bool IsAwaitingPayment =>
+        Status is RenewalStatus.Scheduled or RenewalStatus.Processing or RenewalStatus.RetryScheduled;
+
+    /// <summary>El cobro automático ya no sale: lo pagado a mano lo cubrió.</summary>
+    public void CancelAutomaticCharge()
+    {
+        if (IsAwaitingPayment)
+        {
+            Status = RenewalStatus.Cancelled;
+            NextRetryAtUtc = null;
+        }
     }
 }

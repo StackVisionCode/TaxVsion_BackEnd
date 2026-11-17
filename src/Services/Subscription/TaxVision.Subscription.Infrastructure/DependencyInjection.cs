@@ -22,6 +22,7 @@ using TaxVision.Subscription.Infrastructure.Persistence;
 using TaxVision.Subscription.Infrastructure.Persistence.Repositories;
 using TaxVision.Subscription.Infrastructure.RateLimiting;
 using TaxVision.Subscription.Infrastructure.Scheduling;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure;
 
@@ -51,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<TaxVision.Subscription.Application.Catalog.Migrations.SubscriberMigrationPlanner>();
         services.AddSubscriptionCatalogRevisions();
         services.AddScoped<ISubscriptionRepository, TenantSubscriptionRepository>();
+        services.AddScoped<ISubscriptionDiscountReader, SubscriptionDiscountReader>();
         services.AddScoped<ISubscriptionSeatRepository, SubscriptionSeatRepository>();
         services.AddScoped<ISeatPricingRepository, SeatPricingRepository>();
         services.AddScoped<ISeatPurchaseIntentRepository, SeatPurchaseIntentRepository>();
@@ -81,20 +83,39 @@ public static class DependencyInjection
         );
         services.AddScoped<IRolePermissionsProjectionRepository, RolePermissionsProjectionRepository>();
 
-        // Fase 4 Referidos (2026-07-21) — M2M contra Growth para reservar el descuento de
-        // bienvenida del referido antes de la primera activación. Mismo patrón que
-        // CorrespondenceServiceTokenAcquirer/CorrespondenceCustomerClient.
+        // M2M de Subscription (subscription-worker) hacia Auth, CloudStorage y PaymentApp. El referido no recibe
+        // descuento (N1); Growth solo se llama para canjear códigos, con su propio cliente (abajo).
         services
             .AddOptions<ServiceAuthClientOptions>()
             .Bind(configuration.GetSection(ServiceAuthClientOptions.SectionName));
         services.AddOptions<GrowthClientOptions>().Bind(configuration.GetSection(GrowthClientOptions.SectionName));
 
-        services.AddHttpClient<IGrowthServiceTokenAcquirer, GrowthServiceTokenAcquirer>(
+        services.AddHttpClient<ISubscriptionServiceTokenAcquirer, SubscriptionServiceTokenAcquirer>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        // Canje de códigos de una oficina con suscripción: cotiza, reserva y confirma en Growth con su cliente propio.
+        services
+            .AddOptions<GrowthCodesAuthOptions>()
+            .Bind(configuration.GetSection(GrowthCodesAuthOptions.SectionName));
+        services.AddHttpClient<IGrowthCodesTokenAcquirer, GrowthCodesTokenAcquirer>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ServiceAuthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.AuthBaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(30);
+            }
+        );
+        services.AddHttpClient<IGrowthCodeRedemptionClient, GrowthCodeRedemptionClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<GrowthClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
             }
         );
         // Guard de downgrade — solo Auth sabe cuántos usuarios activos hay. Reusa el mismo acquirer y la
@@ -231,7 +252,7 @@ public static class DependencyInjection
     // Opción B — recuperación pull bajo demanda de permisos. Cuando ProjectionPermissionsSource
     // (BuildingBlocks.Web) no encuentra la fila local, pregunta a Auth en vez de negar sin más:
     // usuario pre-Fase-7 nunca sincronizado, evento perdido o backfill pendiente dejan de ser un 403
-    // permanente. Reutiliza el IGrowthServiceTokenAcquirer y el ServiceAuthClientOptions que ya
+    // permanente. Reutiliza el ISubscriptionServiceTokenAcquirer y el ServiceAuthClientOptions que ya
     // apuntan a Auth. Mismo patrón que Customer/Billing/Tasks/etc.
     private static void AddPermissionsPullRecovery(IServiceCollection services)
     {
@@ -274,6 +295,7 @@ public static class DependencyInjection
         >();
         services.AddScoped<DirectPlanRateLimitReader>();
         services.AddScoped<TaxVision.Subscription.Application.AddOns.AddOnPurchaseEligibility>();
+        services.AddScoped<TaxVision.Subscription.Application.AddOns.TierChange.AddOnTierChangeLoader>();
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

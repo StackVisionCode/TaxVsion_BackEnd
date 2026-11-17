@@ -39,7 +39,11 @@ public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : Con
         Guid? CodeReservationId = null,
         string? PromotionSnapshotHash = null,
         /// <summary>Nombre comercial del plan comprado, para el recibo.</summary>
-        string? PlanDisplayName = null
+        string? PlanDisplayName = null,
+        // El comprador declaró un código de referido (Growth reintenta si la atribución tarda).
+        bool? ReferralDeclared = null,
+        // Todos los códigos del alta, uno por reserva (para compensarlos si se reembolsa).
+        IReadOnlyList<OnboardingCheckoutPromotion>? Promotions = null
     );
 
     public sealed record ReconcileOnboardingCheckoutRequest(Guid PaymentId);
@@ -67,7 +71,9 @@ public sealed class InternalOnboardingCheckoutsController(IMessageBus bus) : Con
                 request.Currency,
                 request.CodeReservationId,
                 request.PromotionSnapshotHash,
-                request.PlanDisplayName
+                request.PlanDisplayName,
+                request.ReferralDeclared,
+                request.Promotions
             ),
             ct
         );

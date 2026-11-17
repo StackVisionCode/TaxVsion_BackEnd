@@ -27,7 +27,8 @@ public static class GetAddOnCheckoutStatusHandler
                 intent.Quantity,
                 intent.ProratedTotal.Cents,
                 intent.ProratedTotal.Currency,
-                intent.CheckoutUrl
+                intent.CheckoutUrl,
+                intent.CheckoutProvider
             )
         );
     }

@@ -198,7 +198,9 @@ public static class ProcessOnboardingReceiptGenerationHandler
 
         return new Dictionary<string, object?>
         {
-            ["receipt"] = new Dictionary<string, object>
+            ["receipt"] = new Dictionary<string, object>(
+                Receipts.ReceiptRenderData.Totals(receipt.PricePaidCents, receipt.DiscountRows())
+            )
             {
                 ["payerName"] = $"{receipt.PayerFirstName} {receipt.PayerLastName}".Trim(),
                 ["payerEmail"] = receipt.PayerEmail,

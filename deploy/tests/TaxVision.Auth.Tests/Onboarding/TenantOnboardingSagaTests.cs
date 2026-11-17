@@ -500,6 +500,25 @@ public sealed class TenantOnboardingSagaTests
         Assert.Equal(TenantProvisioningStep.Subscription.ToString(), result!.FailedStep);
     }
 
+    [Fact]
+    public async Task ActivateSubscriptionHandler_sends_the_recurring_discount_of_the_signup_code()
+    {
+        var recurring = new OnboardingRecurringDiscount(Guid.NewGuid(), 2_000, null, "USD", "Months", 3);
+        var command = new ActivateSubscriptionCommand(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            "Monthly",
+            Guid.NewGuid(),
+            RecurringDiscount: recurring
+        );
+        var client = new FakeSubscriptionActivationClient(Result.Success());
+
+        await ActivateSubscriptionHandler.Handle(command, client, new FakeCorrelationContext(), CancellationToken.None);
+
+        Assert.Equal(recurring, client.LastRequest!.RecurringDiscount);
+    }
+
     // Auditoría F16 — mismo gap que CreateTenantOwnerHandler: solo el branch de fallo tenía test.
     [Fact]
     public async Task ActivateSubscriptionHandler_does_not_cascade_on_success()

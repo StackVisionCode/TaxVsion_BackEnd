@@ -5,6 +5,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.Renewals;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
@@ -23,6 +24,8 @@ public static class SubscriptionRenewalCheckoutPaidConsumer
         SubscriptionRenewalCheckoutPaidIntegrationEvent evt,
         IRenewalCheckoutIntentRepository intents,
         ISubscriptionRepository subscriptions,
+        ISubscriptionSeatRepository seats,
+        ITenantAddOnRepository addOns,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -72,10 +75,26 @@ public static class SubscriptionRenewalCheckoutPaidConsumer
                 return;
             }
 
+            // "Pay what's due": cada asiento y add-on pagado vuelve y sus cobros automáticos se cancelan.
+            IReadOnlyList<string> itemKeys =
+                intent.Items.Count == 0
+                    ? []
+                    : DuePaymentProvisioning.Apply(
+                        intent,
+                        subscription,
+                        await seats.GetByTenantIdForUpdateAsync(evt.TenantId, ct),
+                        await addOns.GetByTenantIdForUpdateAsync(evt.TenantId, ct),
+                        evt.PaidAtUtc
+                    );
+
             await unitOfWork.SaveChangesAsync(ct);
 
             bus.TenantId = evt.TenantId.ToString();
-            await bus.PublishRenewalChargesSupersededAsync(evt.TenantId, outcome.SupersededChargeKeys, correlationId);
+            await bus.PublishRenewalChargesSupersededAsync(
+                evt.TenantId,
+                [.. outcome.SupersededChargeKeys, .. itemKeys],
+                correlationId
+            );
             await bus.RecalculateEntitlementsSafelyAsync(evt.TenantId, logger, ct);
             metrics.RecordSelfServiceRenewal("succeeded");
 

@@ -3,7 +3,11 @@ using BuildingBlocks.Tenancy;
 using TaxVision.Codes.Application.Definitions.ActivateCode;
 using TaxVision.Codes.Application.Definitions.CreateCodeDefinition;
 using TaxVision.Codes.Application.Definitions.GetCodeDetails;
+using TaxVision.Codes.Application.Definitions.PublishCodeRule;
+using TaxVision.Codes.Application.Definitions.ReactivateCode;
 using TaxVision.Codes.Application.Definitions.RevokeCode;
+using TaxVision.Codes.Application.Definitions.SuspendCode;
+using TaxVision.Codes.Application.Definitions.UpdateCodeScopes;
 using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Growth.Tests.Application.Fakes;
 using TaxVision.Growth.Tests.Domain;
@@ -43,6 +47,61 @@ public sealed class CodesAdministrationApplicationTests
             Assert.Single(definitions.Definitions).ExpiresAtUtc
         );
         Assert.Equal("America/New_York", CommercialTimeZone.Id);
+    }
+
+    [Fact]
+    public async Task CreateCodeDefinition_keeps_duration_usage_and_the_office_restriction()
+    {
+        var definitions = new InMemoryCodeDefinitionRepository();
+        var office = Guid.Parse("30000000-0000-0000-0000-000000000001");
+
+        var created = await CreateCodeDefinitionHandler.Handle(
+            CreatePercentageCommand(PlatformTenant.Id, CodeOwnerScope.Platform, tenantScopeId: null, "retention") with
+            {
+                Duration = CodeDurationKind.Months,
+                DurationMonths = 3,
+                UsableOn = CodeUsageContext.ExistingSubscription,
+                RestrictToTenantId = office,
+            },
+            definitions,
+            new SpyCodeTokenHasher(),
+            new FakeBusinessIdempotencyExecutor(),
+            new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc)),
+            CancellationToken.None
+        );
+
+        Assert.True(created.IsSuccess, created.IsFailure ? created.Error.Code : null);
+        var definition = Assert.Single(definitions.Definitions);
+        Assert.Equal(CodeUsageContext.ExistingSubscription, definition.UsableOn);
+        var rule = Assert.Single(definition.RuleVersions);
+        Assert.Equal(CodeDurationKind.Months, rule.Duration.Kind);
+        Assert.Equal(3, rule.Duration.Months);
+        Assert.Contains(
+            definition.Scopes,
+            scope =>
+                scope.Type == CodeScopeType.Tenant
+                && scope.ScopeId == office.ToString()
+                && scope.Mode == CodeScopeMode.Include
+        );
+    }
+
+    [Fact]
+    public async Task CreateCodeDefinition_rejects_months_without_a_valid_count()
+    {
+        var created = await CreateCodeDefinitionHandler.Handle(
+            CreatePercentageCommand(PlatformTenant.Id, CodeOwnerScope.Platform, tenantScopeId: null, "bad-months") with
+            {
+                Duration = CodeDurationKind.Months,
+                DurationMonths = 48,
+            },
+            new InMemoryCodeDefinitionRepository(),
+            new SpyCodeTokenHasher(),
+            new FakeBusinessIdempotencyExecutor(),
+            new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc)),
+            CancellationToken.None
+        );
+
+        Assert.Equal("Codes.CodeDuration.InvalidMonths", created.Error.Code);
     }
 
     [Fact]
@@ -218,6 +277,178 @@ public sealed class CodesAdministrationApplicationTests
             serializedResponses,
             StringComparison.Ordinal
         );
+    }
+
+    [Fact]
+    public async Task Suspend_and_reactivate_change_the_status_of_an_owned_code()
+    {
+        var (definitions, codeId) = await CreatedAndActivatedAsync();
+        var clock = new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc));
+        var idempotency = new FakeBusinessIdempotencyExecutor();
+
+        var foreign = await SuspendCodeHandler.Handle(
+            new SuspendCodeCommand(GrowthTestData.RefereeTenantId, codeId, GrowthTestData.ActorId, "suspend-foreign"),
+            definitions,
+            idempotency,
+            clock,
+            CancellationToken.None
+        );
+        var suspended = await SuspendCodeHandler.Handle(
+            new SuspendCodeCommand(PlatformTenant.Id, codeId, GrowthTestData.ActorId, "suspend"),
+            definitions,
+            idempotency,
+            clock,
+            CancellationToken.None
+        );
+        var reactivated = await ReactivateCodeHandler.Handle(
+            new ReactivateCodeCommand(PlatformTenant.Id, codeId, GrowthTestData.ActorId, "reactivate"),
+            definitions,
+            idempotency,
+            clock,
+            CancellationToken.None
+        );
+
+        Assert.Equal("Codes.SuspendCode.NotFound", foreign.Error.Code);
+        Assert.Equal(CodeDefinitionStatus.Suspended.ToString(), suspended.Value.Status);
+        Assert.Equal(CodeDefinitionStatus.Active.ToString(), reactivated.Value.Status);
+    }
+
+    [Fact]
+    public async Task Reactivating_an_active_code_is_an_invalid_transition()
+    {
+        var (definitions, codeId) = await CreatedAndActivatedAsync();
+
+        var reactivated = await ReactivateCodeHandler.Handle(
+            new ReactivateCodeCommand(PlatformTenant.Id, codeId, GrowthTestData.ActorId, "reactivate-active"),
+            definitions,
+            new FakeBusinessIdempotencyExecutor(),
+            new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc)),
+            CancellationToken.None
+        );
+
+        Assert.Equal("Codes.CodeDefinition.InvalidTransition", reactivated.Error.Code);
+    }
+
+    [Fact]
+    public async Task Publishing_a_rule_adds_the_next_version_with_its_duration_and_stacking()
+    {
+        var (definitions, codeId) = await CreatedAndActivatedAsync();
+
+        var published = await PublishCodeRuleHandler.Handle(
+            new PublishCodeRuleCommand(
+                PlatformTenant.Id,
+                codeId,
+                CodeBenefitType.Percentage,
+                2_500,
+                FixedAmountCents: null,
+                FixedAmountCurrency: null,
+                MinimumPurchaseAmountCents: null,
+                MinimumPurchaseCurrency: null,
+                AllowStacking: true,
+                CodeDurationKind.Months,
+                DurationMonths: 3,
+                GrowthTestData.ActorId,
+                "publish-rule"
+            ),
+            definitions,
+            new FakeBusinessIdempotencyExecutor(),
+            new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc)),
+            CancellationToken.None
+        );
+
+        Assert.True(published.IsSuccess, published.IsFailure ? published.Error.Code : null);
+        var rule = published.Value.Rules.Last();
+        Assert.Equal(2, rule.Version);
+        Assert.Equal(2_500, rule.PercentageBasisPoints);
+        Assert.True(rule.AllowStacking);
+        var latest = Assert.Single(definitions.Definitions).RuleVersions.MaxBy(item => item.Version)!;
+        Assert.Equal(CodeDurationKind.Months, latest.Duration.Kind);
+        Assert.Equal(3, latest.Duration.Months);
+    }
+
+    [Fact]
+    public async Task Publishing_a_rule_without_a_valid_benefit_is_rejected()
+    {
+        var (definitions, codeId) = await CreatedAndActivatedAsync();
+
+        var published = await PublishCodeRuleHandler.Handle(
+            new PublishCodeRuleCommand(
+                PlatformTenant.Id,
+                codeId,
+                CodeBenefitType.Percentage,
+                PercentageBasisPoints: null,
+                FixedAmountCents: 500,
+                FixedAmountCurrency: "USD",
+                MinimumPurchaseAmountCents: null,
+                MinimumPurchaseCurrency: null,
+                AllowStacking: false,
+                CodeDurationKind.Once,
+                DurationMonths: null,
+                GrowthTestData.ActorId,
+                "publish-bad"
+            ),
+            definitions,
+            new FakeBusinessIdempotencyExecutor(),
+            new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc)),
+            CancellationToken.None
+        );
+
+        Assert.Equal("Codes.PublishCodeRule.InvalidPercentageBenefit", published.Error.Code);
+        Assert.Single(Assert.Single(definitions.Definitions).RuleVersions);
+    }
+
+    [Fact]
+    public async Task Updating_scopes_replaces_the_list_of_an_owned_code()
+    {
+        var (definitions, codeId) = await CreatedAndActivatedAsync();
+
+        var updated = await UpdateCodeScopesHandler.Handle(
+            new UpdateCodeScopesCommand(
+                PlatformTenant.Id,
+                codeId,
+                [new CreateCodeScopeInput(CodeScopeType.Offer, "Subscription/pro/Annual", CodeScopeMode.Include)],
+                GrowthTestData.ActorId,
+                "update-scopes"
+            ),
+            definitions,
+            new FakeBusinessIdempotencyExecutor(),
+            new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc)),
+            CancellationToken.None
+        );
+
+        Assert.True(updated.IsSuccess, updated.IsFailure ? updated.Error.Code : null);
+        var scope = Assert.Single(updated.Value.Scopes);
+        Assert.Equal("Subscription/pro/Annual", scope.TargetId);
+    }
+
+    private static async Task<(InMemoryCodeDefinitionRepository Definitions, Guid CodeId)> CreatedAndActivatedAsync()
+    {
+        var definitions = new InMemoryCodeDefinitionRepository();
+        var idempotency = new FakeBusinessIdempotencyExecutor();
+        var clock = new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc));
+        var created = await CreateCodeDefinitionHandler.Handle(
+            CreatePercentageCommand(PlatformTenant.Id, CodeOwnerScope.Platform, tenantScopeId: null, "lifecycle"),
+            definitions,
+            new SpyCodeTokenHasher(),
+            idempotency,
+            clock,
+            CancellationToken.None
+        );
+        Assert.True(created.IsSuccess);
+        var activated = await ActivateCodeHandler.Handle(
+            new ActivateCodeCommand(
+                PlatformTenant.Id,
+                created.Value.CodeDefinitionId,
+                GrowthTestData.ActorId,
+                "lifecycle-on"
+            ),
+            definitions,
+            idempotency,
+            clock,
+            CancellationToken.None
+        );
+        Assert.True(activated.IsSuccess);
+        return (definitions, created.Value.CodeDefinitionId);
     }
 
     private static CreateCodeDefinitionCommand CreatePercentageCommand(

@@ -149,7 +149,10 @@ public static class ProcessSaaSReceiptGenerationHandler
         var receipt = command.Receipt;
         var data = new Dictionary<string, object?>
         {
-            ["receipt"] = new Dictionary<string, object>
+            // Subtotal bruto y filas de descuento junto al resto del recibo.
+            ["receipt"] = new Dictionary<string, object>(
+                ReceiptRenderData.Totals(receipt.AmountPaidCents, receipt.DiscountRows())
+            )
             {
                 ["officeName"] = receipt.OfficeName,
                 ["description"] = receipt.Description,

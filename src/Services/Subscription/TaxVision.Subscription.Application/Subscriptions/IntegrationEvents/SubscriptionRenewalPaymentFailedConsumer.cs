@@ -4,6 +4,8 @@ using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.Renewals;
 using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
@@ -18,6 +20,8 @@ public static class SubscriptionRenewalPaymentFailedConsumer
         SubscriptionRenewalPaymentFailedIntegrationEvent evt,
         ISubscriptionRepository subscriptions,
         IPlanRepository plans,
+        ISubscriptionSeatRepository seats,
+        ITenantAddOnRepository addOns,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -52,9 +56,18 @@ public static class SubscriptionRenewalPaymentFailedConsumer
                 return;
             }
 
+            var tenantSeats = await seats.GetByTenantIdForUpdateAsync(evt.TenantId, ct);
+            var tenantAddOns = await addOns.GetByTenantIdForUpdateAsync(evt.TenantId, ct);
+
             // El nombre del plan se busca antes de tocar nada: si el catálogo falla, el correo sale genérico.
+            // Con asientos y add-ons en el mismo cobro, el correo los nombra a todos.
+            var (bundledSeats, bundledAddOns) = RenewalBundle.Count(evt.IdempotencyKey, tenantSeats, tenantAddOns);
             var itemDescription = evt.IsAutomaticCharge
-                ? RenewalItemDescriptions.Plan(await TryGetPlanNameAsync(plans, subscription.PlanCode, logger, ct))
+                ? RenewalItemDescriptions.Bundle(
+                    await TryGetPlanNameAsync(plans, subscription.PlanCode, logger, ct),
+                    bundledSeats,
+                    bundledAddOns
+                )
                 : string.Empty;
 
             var previousStatus = subscription.Status;
@@ -92,8 +105,31 @@ public static class SubscriptionRenewalPaymentFailedConsumer
                     );
             }
 
+            // D-D: los asientos y add-ons que iban en el mismo cobro corren la misma suerte, sin un correo por ítem.
+            var bundle = RenewalBundle.Fail(
+                evt.IdempotencyKey,
+                tenantSeats,
+                tenantAddOns,
+                evt.FailureCode,
+                evt.FailureReason,
+                evt.WillRetry,
+                evt.NextRetryAtUtc,
+                DateTime.UtcNow
+            );
+
             // El aviso Active → Suspended sale del evento de dominio (uno solo por las dos transiciones).
             await unitOfWork.SaveChangesAsync(ct);
+            foreach (var seatId in bundle.SuspendedSeatIds)
+                await bus.PublishAsync(
+                    new SubscriptionSeatSuspendedIntegrationEvent
+                    {
+                        TenantId = evt.TenantId,
+                        SeatId = seatId,
+                        CorrelationId = correlationId,
+                    }
+                );
+            if (bundle.AnySuspended)
+                await bus.RecalculateEntitlementsSafelyAsync(evt.TenantId, logger, ct);
 
             var suspended =
                 subscription.Status == SubscriptionStatus.Suspended && previousStatus != SubscriptionStatus.Suspended;

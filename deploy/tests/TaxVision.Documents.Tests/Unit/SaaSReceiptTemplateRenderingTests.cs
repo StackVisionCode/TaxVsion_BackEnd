@@ -234,4 +234,29 @@ public sealed class SaaSReceiptTemplateRenderingTests
         Assert.True(start >= 0 && end > start);
         return html[start..end];
     }
+
+    [Fact]
+    public async Task A_discounted_charge_shows_the_gross_the_discount_and_the_paid_total()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+        var data = (Dictionary<string, object?>)SampleData();
+        var receipt = (Dictionary<string, object>)data["receipt"]!;
+        receipt["price"] = "12.00";
+        foreach (
+            var (key, value) in TaxVision.Documents.Application.Generations.Receipts.ReceiptRenderData.Totals(
+                1_200,
+                [new("Promo code SPRI...0420 - 20% off", 300)]
+            )
+        )
+            receipt[key] = value;
+
+        var result = await renderer.RenderHtmlAsync("saas.receipt.v1", 1, Guid.NewGuid(), data);
+
+        Assert.True(result.IsSuccess);
+        var html = result.Value;
+        Assert.Contains("<span>Subtotal</span><span>15.00 USD</span>", html);
+        Assert.Contains("Promo code SPRI...0420 - 20% off", html);
+        Assert.Contains("&minus;3.00 USD", html);
+        Assert.Contains("<span class=\"g\">12.00 USD</span>", html);
+    }
 }

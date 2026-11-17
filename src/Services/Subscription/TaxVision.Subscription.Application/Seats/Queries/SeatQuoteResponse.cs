@@ -12,5 +12,8 @@ public sealed record SeatQuoteResponse(
     long ProratedUnitAmountCents,
     long ProratedTotalCents,
     string Currency,
-    DateTime CurrentPeriodEndUtc
+    DateTime CurrentPeriodEndUtc,
+    // Descuento vigente sobre este cobro (null si no aplica) y lo que se paga con él: lo mismo que cobra el checkout.
+    long? DiscountCents = null,
+    long? NetTotalCents = null
 );

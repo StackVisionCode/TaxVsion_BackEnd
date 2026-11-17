@@ -10,6 +10,8 @@ public sealed class CodeScopeConfiguration : IEntityTypeConfiguration<CodeScope>
     {
         builder.ToTable("CodeScopes", GrowthSchemas.Codes);
         builder.HasKey(scope => scope.Id);
+        // El Id lo pone el dominio: así un alcance nuevo sobre un código ya guardado se inserta (no UPDATE).
+        builder.Property(scope => scope.Id).ValueGeneratedNever();
 
         builder.Property(scope => scope.TenantId).IsRequired();
         builder.Property(scope => scope.Type).HasConversion<string>().HasMaxLength(30).IsRequired();

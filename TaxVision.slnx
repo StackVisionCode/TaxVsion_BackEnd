@@ -87,6 +87,7 @@
     <Project Path="src/Services/Growth/TaxVision.Codes.Domain/TaxVision.Codes.Domain.csproj" />
     <Project Path="src/Services/Growth/TaxVision.Growth.Api/TaxVision.Growth.Api.csproj" />
     <Project Path="src/Services/Growth/TaxVision.Growth.Infrastructure/TaxVision.Growth.Infrastructure.csproj" />
+    <Project Path="src/Services/Growth/TaxVision.Growth.SharedKernel/TaxVision.Growth.SharedKernel.csproj" />
     <Project Path="src/Services/Growth/TaxVision.Referrals.Application/TaxVision.Referrals.Application.csproj" />
     <Project Path="src/Services/Growth/TaxVision.Referrals.Domain/TaxVision.Referrals.Domain.csproj" />
   </Folder>

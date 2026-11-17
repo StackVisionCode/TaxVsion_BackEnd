@@ -5,6 +5,7 @@ using BuildingBlocks.PurchaseIntentAmount;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
+using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -17,14 +18,16 @@ namespace Internal.Generated.WolverineHandlers
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment> _loggerOfSaaSPayment;
         private readonly TaxVision.PaymentApp.Application.Abstractions.IPaymentAppMetrics _paymentAppMetrics;
+        private readonly TaxVision.PaymentApp.Application.Common.HostedCheckout.ICheckoutReturnUrlGuard _checkoutReturnUrlGuard;
 
-        public CreateSeatReactivationCheckoutCommandHandler1702968426(BuildingBlocks.Platform.IPlatformSettings platformSettings, BuildingBlocks.PurchaseIntentAmount.IPurchaseIntentAmountVerifier purchaseIntentAmountVerifier, Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment> loggerOfSaaSPayment, TaxVision.PaymentApp.Application.Abstractions.IPaymentAppMetrics paymentAppMetrics)
+        public CreateSeatReactivationCheckoutCommandHandler1702968426(BuildingBlocks.Platform.IPlatformSettings platformSettings, BuildingBlocks.PurchaseIntentAmount.IPurchaseIntentAmountVerifier purchaseIntentAmountVerifier, Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment> loggerOfSaaSPayment, TaxVision.PaymentApp.Application.Abstractions.IPaymentAppMetrics paymentAppMetrics, TaxVision.PaymentApp.Application.Common.HostedCheckout.ICheckoutReturnUrlGuard checkoutReturnUrlGuard)
         {
             _platformSettings = platformSettings;
             _purchaseIntentAmountVerifier = purchaseIntentAmountVerifier;
             _serviceScopeFactory = serviceScopeFactory;
             _loggerOfSaaSPayment = loggerOfSaaSPayment;
             _paymentAppMetrics = paymentAppMetrics;
+            _checkoutReturnUrlGuard = checkoutReturnUrlGuard;
         }
 
 
@@ -70,7 +73,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.PaymentApp.Application.SeatsCheckouts.Commands.CreateSeatReactivationCheckoutHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.PaymentApp.Application.SeatsCheckouts.Commands.CreateSeatReactivationCheckoutHandler.Handle(createSeatReactivationCheckoutCommand, saaSPaymentRepository, paymentAdapterFactory, paymentAuditLogWriter, unitOfWork, _paymentAppMetrics, correlationContext, _purchaseIntentAmountVerifier, _loggerOfSaaSPayment, _platformSettings, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.PaymentApp.Application.SeatsCheckouts.Commands.CreateSeatReactivationCheckoutHandler.Handle(createSeatReactivationCheckoutCommand, saaSPaymentRepository, paymentAdapterFactory, paymentAuditLogWriter, unitOfWork, _paymentAppMetrics, correlationContext, _purchaseIntentAmountVerifier, _loggerOfSaaSPayment, _platformSettings, _checkoutReturnUrlGuard, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

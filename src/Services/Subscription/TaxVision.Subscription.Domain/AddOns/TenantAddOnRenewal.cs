@@ -116,4 +116,18 @@ public sealed class TenantAddOnRenewal : BaseEntity
 
         return Result.Success();
     }
+
+    /// <summary>Sigue esperando su cobro automático (programado, en curso o con reintento).</summary>
+    public bool IsAwaitingPayment =>
+        Status is RenewalStatus.Scheduled or RenewalStatus.Processing or RenewalStatus.RetryScheduled;
+
+    /// <summary>El cobro automático ya no sale: lo pagado a mano lo cubrió.</summary>
+    public void CancelAutomaticCharge()
+    {
+        if (IsAwaitingPayment)
+        {
+            Status = RenewalStatus.Cancelled;
+            NextRetryAtUtc = null;
+        }
+    }
 }

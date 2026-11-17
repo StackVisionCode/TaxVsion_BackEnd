@@ -70,7 +70,7 @@ public static class ReserveCodeHandler
                 var counterSetResult = await CodeUsageCounterSet.LoadAsync(
                     definition,
                     command.TenantId,
-                    quote.Subject,
+                    quote.LimitSubject,
                     usageCounters,
                     nowUtc,
                     operationCt
