@@ -346,6 +346,7 @@ internal static class EmbeddedDocumentTemplates
             </div>
           </div>
 
+          {% if receipt.hasDiscounts %}{% assign subtotal = receipt.subtotal %}{% else %}{% assign subtotal = receipt.price %}{% endif %}
           <table>
             <thead>
               <tr>
@@ -372,15 +373,18 @@ internal static class EmbeddedDocumentTemplates
                   <div class="item-desc">{% if receipt.secondaryDescription != "" %}{{ receipt.secondaryDescription }}{% else %}{{ receipt.issuer.name }} subscription{% endif %}</div>
                 </td>
                 <td class="num">{% if receipt.quantity != "" %}{{ receipt.quantity }}{% else %}1{% endif %}</td>
-                <td class="num">{% if receipt.unitPrice != "" %}{{ receipt.unitPrice }} {{ receipt.currency }}{% else %}{{ receipt.price }} {{ receipt.currency }}{% endif %}</td>
-                <td class="num">{{ receipt.price }} {{ receipt.currency }}</td>
+                <td class="num">{% if receipt.unitPrice != "" %}{{ receipt.unitPrice }} {{ receipt.currency }}{% else %}{{ subtotal }} {{ receipt.currency }}{% endif %}</td>
+                <td class="num">{{ subtotal }} {{ receipt.currency }}</td>
               </tr>
               {% endif %}
             </tbody>
           </table>
 
           <div class="totals">
-            <div class="r"><span>Subtotal</span><span>{{ receipt.price }} {{ receipt.currency }}</span></div>
+            <div class="r"><span>Subtotal</span><span>{{ subtotal }} {{ receipt.currency }}</span></div>
+            {% if receipt.hasDiscounts %}{% for discount in receipt.discounts %}
+            <div class="r"><span>{{ discount.label }}</span><span>&minus;{{ discount.amount }} {{ receipt.currency }}</span></div>
+            {% endfor %}{% endif %}
             <div class="r grand"><span>Total paid</span><span class="g">{{ receipt.price }} {{ receipt.currency }}</span></div>
           </div>
 
@@ -646,6 +650,7 @@ internal static class EmbeddedDocumentTemplates
             </div>
           </div>
 
+          {% if receipt.hasDiscounts %}{% assign subtotal = receipt.subtotal %}{% else %}{% assign subtotal = receipt.price %}{% endif %}
           <table>
             <thead>
               <tr>
@@ -659,13 +664,16 @@ internal static class EmbeddedDocumentTemplates
                   <div class="item-name">{{ receipt.planName }} Plan &mdash; {{ receipt.issuer.name }} subscription</div>
                   <div class="item-desc">Office activation &middot; full platform access</div>
                 </td>
-                <td class="num">{{ receipt.price }} {{ receipt.currency }}</td>
+                <td class="num">{{ subtotal }} {{ receipt.currency }}</td>
               </tr>
             </tbody>
           </table>
 
           <div class="totals">
-            <div class="r"><span>Subtotal</span><span>{{ receipt.price }} {{ receipt.currency }}</span></div>
+            <div class="r"><span>Subtotal</span><span>{{ subtotal }} {{ receipt.currency }}</span></div>
+            {% if receipt.hasDiscounts %}{% for discount in receipt.discounts %}
+            <div class="r"><span>{{ discount.label }}</span><span>&minus;{{ discount.amount }} {{ receipt.currency }}</span></div>
+            {% endfor %}{% endif %}
             <div class="r grand"><span>Total paid</span><span class="g">{{ receipt.price }} {{ receipt.currency }}</span></div>
           </div>
 

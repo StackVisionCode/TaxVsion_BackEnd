@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\TaxVision.Codes.Domain\TaxVision.Codes.Domain.csproj" />
+    <ProjectReference Include="..\TaxVision.Growth.SharedKernel\TaxVision.Growth.SharedKernel.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

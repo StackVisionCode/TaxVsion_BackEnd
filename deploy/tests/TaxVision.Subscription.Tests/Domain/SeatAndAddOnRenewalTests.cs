@@ -152,6 +152,36 @@ public sealed class SeatAndAddOnRenewalTests
         Assert.Equal(AddOnStatus.PastDue, addOn.Status);
     }
 
+    [Fact]
+    public void Seat_renewal_ends_where_the_caller_says_to_co_terminate_with_the_plan()
+    {
+        var seat = CreateActiveSeat();
+        var planEnd = seat.CurrentPeriodEndUtc!.Value.AddDays(10);
+        seat.BeginRenewal("seat-key-co-term", planEnd, Guid.Empty, DateTime.UtcNow);
+
+        seat.CompleteRenewal(seat.Renewals.First().Id, "ext-ref", Guid.Empty, DateTime.UtcNow);
+
+        Assert.Equal(planEnd, seat.CurrentPeriodEndUtc);
+        Assert.Equal(planEnd, seat.NextRenewalAtUtc);
+    }
+
+    // Tramo menor a $0.50: el asiento se alinea con el plan sin cobro y sin pasar por PaymentApp.
+    [Fact]
+    public void Seat_aligns_without_charge_in_one_step()
+    {
+        var seat = CreateActiveSeat();
+        var start = seat.CurrentPeriodEndUtc!.Value;
+        var planEnd = start.AddDays(1);
+
+        var result = seat.AlignWithoutCharge("seat-key-gift", planEnd, Guid.Empty, DateTime.UtcNow);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal((start, planEnd), (seat.CurrentPeriodStartUtc!.Value, seat.CurrentPeriodEndUtc!.Value));
+        Assert.Equal(RenewalStatus.Succeeded, Assert.Single(seat.Renewals).Status);
+        Assert.True(seat.AlignWithoutCharge("seat-key-gift", planEnd, Guid.Empty, DateTime.UtcNow).IsSuccess);
+        Assert.Single(seat.Renewals);
+    }
+
     private static SubscriptionSeat CreateActiveSeat()
     {
         var seat = SubscriptionSeat

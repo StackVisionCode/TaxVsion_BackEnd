@@ -23,7 +23,10 @@ public sealed class AddOnPurchaseIntentConfiguration : IEntityTypeConfiguration<
         builder.Property(intent => intent.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(intent => intent.SaaSPaymentId);
         builder.Property(intent => intent.CheckoutUrl).HasMaxLength(2048);
+        builder.Property(intent => intent.CheckoutProvider).HasMaxLength(30);
         builder.Property(intent => intent.TenantAddOnId);
+        // Subida de tamaño: el add-on existente que cambia al pagarse.
+        builder.Property(intent => intent.UpgradesTenantAddOnId);
         builder.Property(intent => intent.RequestedByUserId).IsRequired();
         builder.Property(intent => intent.CreatedAtUtc).IsRequired();
         builder.Property(intent => intent.UpdatedAtUtc).IsRequired();

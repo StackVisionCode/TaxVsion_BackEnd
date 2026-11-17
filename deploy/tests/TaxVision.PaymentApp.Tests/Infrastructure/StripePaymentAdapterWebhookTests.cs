@@ -52,6 +52,46 @@ public sealed class StripePaymentAdapterWebhookTests
         Assert.Equal("Stripe.CheckoutSession.Expired", result.Value.FailureCode);
     }
 
+    [Theory]
+    [InlineData("won", ChargebackOutcome.Won)]
+    [InlineData("warning_closed", ChargebackOutcome.Won)]
+    [InlineData("lost", ChargebackOutcome.Lost)]
+    public async Task Closed_dispute_maps_to_its_outcome(string status, ChargebackOutcome expected)
+    {
+        var payload = $$"""
+            {
+              "id": "evt_test_dispute_closed",
+              "object": "event",
+              "api_version": "2024-06-20",
+              "created": 1700000000,
+              "livemode": false,
+              "pending_webhooks": 1,
+              "request": { "id": null, "idempotency_key": null },
+              "type": "charge.dispute.closed",
+              "data": {
+                "object": {
+                  "id": "dp_test_1",
+                  "object": "dispute",
+                  "amount": 9900,
+                  "currency": "usd",
+                  "payment_intent": "pi_test_disputed",
+                  "reason": "fraudulent",
+                  "status": "{{status}}",
+                  "livemode": false
+                }
+              }
+            }
+            """;
+
+        var result = await CreateAdapter()
+            .ParseWebhookEventAsync(payload, "charge.dispute.closed", CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("pi_test_disputed", result.Value.ProviderChargeReference);
+        Assert.Equal(PaymentStatus.ChargedBack, result.Value.Status);
+        Assert.Equal(expected, result.Value.DisputeOutcome);
+    }
+
     private sealed class NoOpMetrics : IPaymentAppMetrics
     {
         public void RecordAttempted(string provider, string type) { }

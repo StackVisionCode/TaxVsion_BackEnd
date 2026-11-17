@@ -23,6 +23,9 @@ public sealed class CodeDefinition : AggregateRoot
     public long? MaxRedemptions { get; private set; }
     public long? MaxRedemptionsPerTenant { get; private set; }
     public long? MaxRedemptionsPerSubject { get; private set; }
+
+    /// <summary>Dónde se puede usar; los códigos de antes solo al registrarse.</summary>
+    public CodeUsageContext UsableOn { get; private set; } = CodeUsageContext.Signup;
     public long ActiveReservations { get; private set; }
     public long CommittedRedemptions { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
@@ -54,9 +57,15 @@ public sealed class CodeDefinition : AggregateRoot
         long? maxRedemptionsPerTenant,
         long? maxRedemptionsPerSubject,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        CodeUsageContext usableOn = CodeUsageContext.Signup
     )
     {
+        if (!Enum.IsDefined(usableOn))
+            return Result.Failure<CodeDefinition>(
+                new Error("Codes.CodeDefinition.InvalidUsableOn", "Where the code can be used is invalid.")
+            );
+
         if (ownerTenantId == Guid.Empty)
             return Result.Failure<CodeDefinition>(
                 new Error("Codes.CodeDefinition.InvalidOwnerTenant", "Owner TenantId is required.")
@@ -142,6 +151,7 @@ public sealed class CodeDefinition : AggregateRoot
             MaxRedemptions = maxRedemptions,
             MaxRedemptionsPerTenant = maxRedemptionsPerTenant,
             MaxRedemptionsPerSubject = maxRedemptionsPerSubject,
+            UsableOn = usableOn,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
             CreatedBy = actorUserId,
@@ -156,9 +166,16 @@ public sealed class CodeDefinition : AggregateRoot
         Money? minimumPurchase,
         bool allowStacking,
         Guid actorUserId,
-        DateTime nowUtc
+        DateTime nowUtc,
+        CodeDuration? duration = null
     )
     {
+        // Una tarjeta de regalo se usa una vez: no deja descuento recurrente.
+        if (Kind == CodeKind.BenefitGift && duration is not null && duration.Kind != CodeDurationKind.Once)
+            return Result.Failure<CodeRuleVersion>(
+                new Error("Codes.CodeDuration.GiftOnlyOnce", "A gift card only covers one charge.")
+            );
+
         if (Status is CodeDefinitionStatus.Revoked or CodeDefinitionStatus.Expired)
             return Result.Failure<CodeRuleVersion>(
                 new Error("Codes.CodeDefinition.Terminal", $"Cannot publish a rule while code is {Status}.")
@@ -172,7 +189,8 @@ public sealed class CodeDefinition : AggregateRoot
             minimumPurchase,
             allowStacking,
             actorUserId,
-            nowUtc
+            nowUtc,
+            duration
         );
         if (ruleResult.IsFailure)
             return ruleResult;
@@ -218,6 +236,44 @@ public sealed class CodeDefinition : AggregateRoot
         _scopes.Add(scopeResult.Value);
         Touch(actorUserId, nowUtc);
         return scopeResult;
+    }
+
+    /// <summary>Cambia todos los alcances juntos; si uno no es válido, quedan los de antes.</summary>
+    public Result ReplaceScopes(
+        IReadOnlyCollection<(CodeScopeType Type, string ScopeId, CodeScopeMode Mode)> scopes,
+        Guid actorUserId,
+        DateTime nowUtc
+    )
+    {
+        var actorResult = ValidateActor(actorUserId);
+        if (actorResult.IsFailure)
+            return actorResult;
+
+        if (Status is CodeDefinitionStatus.Revoked or CodeDefinitionStatus.Expired)
+            return Result.Failure(
+                new Error("Codes.CodeDefinition.Terminal", $"Cannot change scopes while code is {Status}.")
+            );
+
+        var replacement = new List<CodeScope>();
+        foreach (var (type, scopeId, mode) in scopes)
+        {
+            var scopeResult = CodeScope.Create(TenantId, Id, type, scopeId, mode);
+            if (scopeResult.IsFailure)
+                return scopeResult;
+
+            var scope = scopeResult.Value;
+            if (replacement.Any(item => item.Type == type && item.Mode == mode && item.ScopeId == scope.ScopeId))
+                return Result.Failure(
+                    new Error("Codes.CodeDefinition.DuplicateScope", "An identical scope already exists.")
+                );
+
+            replacement.Add(scope);
+        }
+
+        _scopes.Clear();
+        _scopes.AddRange(replacement);
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
     }
 
     public Result Activate(Guid actorUserId, DateTime nowUtc)
@@ -312,9 +368,17 @@ public sealed class CodeDefinition : AggregateRoot
         IdempotencyKey idempotencyKey,
         PayloadFingerprint payloadFingerprint,
         TimeSpan timeToLive,
-        DateTime nowUtc
+        DateTime nowUtc,
+        CodeUsageContext context = CodeUsageContext.Signup
     )
     {
+        // Lo que una oficina le paga a la plataforma solo lo descuentan códigos de la plataforma.
+        var foreignOwner = context == CodeUsageContext.ExistingSubscription && OwnerScope != CodeOwnerScope.Platform;
+        if (context == CodeUsageContext.Both || !IsUsableOn(context) || foreignOwner)
+            return Result.Failure<CodeQuote>(
+                new Error("Codes.CodeDefinition.NotUsableHere", "This code can't be used here.")
+            );
+
         var eligibilityResult = EnsureCanQuote(consumingTenantId, targets, nowUtc);
         if (eligibilityResult.IsFailure)
             return Result.Failure<CodeQuote>(eligibilityResult.Error);
@@ -360,6 +424,23 @@ public sealed class CodeDefinition : AggregateRoot
             expiresAtUtc
         );
     }
+
+    /// <summary>Con otros códigos en la misma compra, todos tienen que permitir apilar (regla vigente).</summary>
+    public Result EnsureStackableWith(IReadOnlyCollection<CodeDefinition> others)
+    {
+        var companions = others.Where(other => other.Id != Id).ToList();
+        if (companions.Count == 0)
+            return Result.Success();
+
+        return new[] { this }.Concat(companions).All(code => code.LatestRuleAllowsStacking())
+            ? Result.Success()
+            : Result.Failure(
+                new Error("Codes.CodeDefinition.NotStackable", "This code can't be combined with other codes.")
+            );
+    }
+
+    private bool LatestRuleAllowsStacking() =>
+        _ruleVersions.Count > 0 && _ruleVersions.MaxBy(rule => rule.Version)!.AllowStacking;
 
     public Result ReserveUse(DateTime nowUtc)
     {
@@ -494,14 +575,17 @@ public sealed class CodeDefinition : AggregateRoot
                 new Error("Codes.CodeDefinition.ScopeExcluded", "The offer or subject is explicitly excluded.")
             );
 
-        var includedScopes = _scopes.Where(scope => scope.Mode == CodeScopeMode.Include).ToList();
-        if (includedScopes.Count > 0 && !includedScopes.Any(scope => targets.Any(scope.Matches)))
+        // Cada tipo con alcances Include tiene que cumplirse (oficina Y plan), no basta con uno cualquiera.
+        var includedByType = _scopes.Where(scope => scope.Mode == CodeScopeMode.Include).GroupBy(scope => scope.Type);
+        if (includedByType.Any(group => !group.Any(scope => targets.Any(scope.Matches))))
             return Result.Failure(
                 new Error("Codes.CodeDefinition.ScopeNotIncluded", "The code does not include the requested scope.")
             );
 
         return Result.Success();
     }
+
+    private bool IsUsableOn(CodeUsageContext context) => UsableOn == CodeUsageContext.Both || UsableOn == context;
 
     private static Result ValidateLimits(long? global, long? perTenant, long? perSubject)
     {

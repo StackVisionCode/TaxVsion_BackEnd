@@ -1,4 +1,5 @@
 using BuildingBlocks.Jobs;
+using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,6 +8,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.AddOns;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
+using TaxVision.Subscription.Application.Subscriptions.Renewals;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Seats;
 using TaxVision.Subscription.Domain.Subscriptions;
@@ -124,6 +126,17 @@ public sealed class TenantSubscriptionRenewalJob(
             return downgraded;
         }
 
+        // El cobro de la renovación lleva el descuento vigente con fecha de inicio del período nuevo.
+        var charge = DiscountedCharge.For(
+            subscription,
+            DiscountChargeKind.Base,
+            price.Value.AmountCents,
+            price.Value.Currency,
+            subscription.CurrentPeriodEndUtc
+        );
+        // D-D: los asientos y add-ons que vencen con el plan van en el mismo cobro, una línea cada uno.
+        var extras = await BeginBundledExtrasAsync(unit, subscription, idempotencyKey, nowUtc, ct);
+        var discountCents = (charge.DiscountCents ?? 0) + extras.DiscountCents;
         await unit.PublishAsync(
             new SubscriptionRenewalDueIntegrationEvent
             {
@@ -134,11 +147,55 @@ public sealed class TenantSubscriptionRenewalJob(
                 PeriodStartUtc = subscription.CurrentPeriodEndUtc,
                 PeriodEndUtc = subscription.BillingCycle.CalculateNext(subscription.CurrentPeriodEndUtc),
                 IdempotencyKey = idempotencyKey,
-                AmountCents = price.Value.AmountCents,
+                AmountCents = charge.NetCents + extras.NetCents,
                 Currency = price.Value.Currency,
+                DiscountAmountCents = discountCents > 0 ? discountCents : null,
+                DiscountSource = charge.Source ?? extras.DiscountSource,
+                DiscountLabel = charge.Source is null ? extras.DiscountLabel : charge.Label,
+                Lines =
+                    extras.Lines.Count == 0
+                        ? null
+                        :
+                        [
+                            new SaaSChargeLine(
+                                $"{plan?.Name ?? subscription.PlanCode} plan",
+                                1,
+                                price.Value.AmountCents,
+                                RenewalBundle.PlanTarget,
+                                subscription.Id
+                            ),
+                            .. extras.Lines,
+                        ],
             }
         );
         return true;
+    }
+
+    private static async Task<RenewalBundleExtras> BeginBundledExtrasAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
+        TenantSubscription subscription,
+        string planKey,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        var seats = await unit
+            .Services.GetRequiredService<ISubscriptionSeatRepository>()
+            .GetByTenantIdForUpdateAsync(subscription.TenantId, ct);
+        var addOns = await unit
+            .Services.GetRequiredService<ITenantAddOnRepository>()
+            .GetByTenantIdForUpdateAsync(subscription.TenantId, ct);
+        var definitions = unit.Services.GetRequiredService<IAddOnDefinitionRepository>();
+        var names = new Dictionary<string, string>();
+        foreach (
+            var code in addOns.Where(a => RenewalBundle.Includes(subscription, a)).Select(a => a.AddOnCode).Distinct()
+        )
+        {
+            if (await definitions.GetByCodeAsync(code, ct) is { } definition)
+                names[code] = definition.Name;
+        }
+
+        return RenewalBundle.Begin(subscription, planKey, seats, addOns, names, nowUtc);
     }
 
     /// <summary>El tenant canceló y el período ya terminó: expira y recalcula el acceso; el aviso CancellationEnded

@@ -82,7 +82,9 @@ public sealed record WebhookEventPayload(
     long? PaidAmountCents = null,
     string? PaidCurrency = null,
     // Cuándo ocurrió según el proveedor (P29): la fecha de negocio del pago; null si el adapter no la da.
-    DateTime? ProviderOccurredAtUtc = null
+    DateTime? ProviderOccurredAtUtc = null,
+    // Solo en el cierre de una disputa (Status = ChargedBack): cómo terminó.
+    ChargebackOutcome? DisputeOutcome = null
 );
 
 /// <summary>Metadata autoritativa de un método de pago tal como el provider la confirma —

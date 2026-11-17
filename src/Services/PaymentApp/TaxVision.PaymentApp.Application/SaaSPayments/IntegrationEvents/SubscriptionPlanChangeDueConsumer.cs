@@ -46,7 +46,10 @@ public static class SubscriptionPlanChangeDueConsumer
                 PayerName: null,
                 RequestedByUserId: evt.RequestedByUserId,
                 Lines: evt.Lines,
-                ConceptDisplayName: evt.ConceptDisplayName
+                ConceptDisplayName: evt.ConceptDisplayName,
+                DiscountAmountCents: evt.DiscountAmountCents,
+                DiscountSource: evt.DiscountSource,
+                DiscountLabel: evt.DiscountLabel
             );
 
             var result = await bus.InvokeAsync<Result<Guid>>(command, ct);

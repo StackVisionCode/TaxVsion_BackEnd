@@ -44,11 +44,11 @@ internal sealed class GrowthTemporaryDatabase
         await db.Database.EnsureDeletedAsync();
     }
 
-    public GrowthDbContext NewContext(Guid tenantId) =>
-        new(
-            new DbContextOptionsBuilder<GrowthDbContext>().UseSqlServer(ConnectionString).Options,
-            new FixedTenant(tenantId)
-        );
+    public GrowthDbContext NewContext(Guid tenantId) => NewContext(new FixedTenant(tenantId));
+
+    // Para handlers que cambian de tenant en medio (antifraude: atribución del alta, premio del referidor).
+    public GrowthDbContext NewContext(ITenantContext tenant) =>
+        new(new DbContextOptionsBuilder<GrowthDbContext>().UseSqlServer(ConnectionString).Options, tenant);
 
     public async Task<int> CountEnvelopesAsync(string table, string messageType)
     {

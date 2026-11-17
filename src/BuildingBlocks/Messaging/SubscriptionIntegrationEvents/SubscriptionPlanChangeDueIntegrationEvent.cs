@@ -33,4 +33,10 @@ public sealed record SubscriptionPlanChangeDueIntegrationEvent : IntegrationEven
 
     /// <summary>Cómo se ve el cobro en el historial y el recibo, p. ej. "Switch to yearly billing".</summary>
     public string? ConceptDisplayName { get; init; }
+
+    /// <summary>Descuento vigente de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+    /// Null cuando el cobro no lleva descuento (y en eventos viejos).</summary>
+    public long? DiscountAmountCents { get; init; }
+    public string? DiscountSource { get; init; }
+    public string? DiscountLabel { get; init; }
 }

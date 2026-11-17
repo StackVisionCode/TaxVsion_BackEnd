@@ -77,9 +77,15 @@ public sealed class PlanChangeRequest : BaseEntity
     private PlanChangeRequest() { }
 
     /// <summary>Fija el desglose del cobro: tiene que sumar exactamente lo que se cobra.</summary>
+    /// <summary>Descuento del cobro (ya restado de <see cref="ChargeAmountCents"/>), su fuente y su etiqueta.</summary>
+    public long? DiscountAmountCents { get; private set; }
+    public string? DiscountSource { get; private set; }
+    public string? DiscountLabel { get; private set; }
+
+    /// <summary>Las líneas van a precio bruto: suman lo cobrado más el descuento.</summary>
     internal Result AttachLines(IReadOnlyList<PlanChangeLine> lines)
     {
-        if (lines.Count == 0 || lines.Sum(line => line.AmountCents) != ChargeAmountCents)
+        if (lines.Count == 0 || lines.Sum(line => line.AmountCents) != ChargeAmountCents + (DiscountAmountCents ?? 0))
             return Result.Failure(
                 new Error("PlanChangeRequest.LinesMismatch", "The charge breakdown does not add up to the charge.")
             );
@@ -104,7 +110,8 @@ public sealed class PlanChangeRequest : BaseEntity
         long chargeAmountCents,
         string chargeCurrency,
         string paymentIdempotencyKey,
-        bool usesHostedCheckout = false
+        bool usesHostedCheckout = false,
+        PlanChangeDiscount? discount = null
     )
     {
         if (tenantSubscriptionId == Guid.Empty)
@@ -156,6 +163,9 @@ public sealed class PlanChangeRequest : BaseEntity
                 ChargeCurrency = chargeCurrency,
                 PaymentIdempotencyKey = paymentIdempotencyKey,
                 UsesHostedCheckout = usesHostedCheckout,
+                DiscountAmountCents = discount is { Cents: > 0 } ? discount.Cents : null,
+                DiscountSource = discount is { Cents: > 0 } ? discount.Source : null,
+                DiscountLabel = discount is { Cents: > 0 } ? discount.Label : null,
             }
         );
     }
@@ -277,3 +287,6 @@ public sealed class PlanChangeRequest : BaseEntity
         return trimmed.Length > 500 ? trimmed[..500] : trimmed;
     }
 }
+
+/// <summary>El descuento que lleva el cobro de un cambio de plan.</summary>
+public sealed record PlanChangeDiscount(long Cents, string? Source, string? Label);

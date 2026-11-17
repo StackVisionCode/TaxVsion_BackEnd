@@ -101,4 +101,10 @@ public sealed record TenantSubscriptionEmailRequestedIntegrationEvent : Integrat
 
     /// <summary>La migración que lo agendó (idempotencia del aviso).</summary>
     public Guid? MigrationId { get; init; }
+
+    /// <summary>Descuento del cobro automático ya formateado ("3.00"); null sin descuento. Aditivo.</summary>
+    public string? DiscountAmount { get; init; }
+
+    /// <summary>Cómo se muestra el descuento ("Promo code SPRI...0420 · 20% off"). Aditivo.</summary>
+    public string? DiscountLabel { get; init; }
 }

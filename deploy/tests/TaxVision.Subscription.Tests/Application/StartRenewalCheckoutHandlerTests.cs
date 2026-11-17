@@ -23,10 +23,11 @@ public sealed class StartRenewalCheckoutHandlerTests
         IRenewalCheckoutIntentRepository intents,
         IRenewalCheckoutPaymentClient client,
         IUnitOfWork unitOfWork,
-        CancellationToken ct
+        CancellationToken ct,
+        CapturingMessageBus? sharedBus = null
     )
     {
-        var bus = new CapturingMessageBus();
+        var bus = sharedBus ?? new CapturingMessageBus();
         bus.OnInvoke = async (message, token) =>
             message switch
             {
@@ -35,6 +36,9 @@ public sealed class StartRenewalCheckoutHandlerTests
                     subscriptions,
                     plans,
                     intents,
+                    new CapturingSeatRepo(),
+                    new FakeTenantAddOnRepo(),
+                    new FakeAddOnDefinitionRepository(),
                     unitOfWork,
                     token
                 ),
@@ -64,6 +68,77 @@ public sealed class StartRenewalCheckoutHandlerTests
                 )
             )
         );
+
+    // Elegir PayPal, volver atrás y elegir Stripe abre un checkout de Stripe y cierra el de PayPal.
+    [Fact]
+    public async Task Coming_back_with_another_provider_opens_a_new_checkout_and_closes_the_old_one()
+    {
+        var (subscription, plan) = PastDueSubscription();
+        var intents = new FakeRenewalCheckoutIntentRepository();
+        var bus = new CapturingMessageBus();
+        var paypal = OkClient();
+        var stripe = OkClient();
+
+        await StartWithAsync(Command(subscription.TenantId) with { Provider = "PayPal", Method = "Wallet" }, paypal);
+        var second = await StartWithAsync(Command(subscription.TenantId), stripe);
+
+        Assert.True(second.IsSuccess, second.IsFailure ? second.Error.Code : null);
+        Assert.Equal(("Stripe", 1), (stripe.LastRequest!.Provider, stripe.CreateCalls));
+        Assert.Equal(2, intents.Added.Count);
+        Assert.Equal(SubscriptionRenewalIntentStatus.Cancelled, intents.Added[0].Status);
+        Assert.Contains(
+            bus.Published,
+            message => message is TaxVision.Subscription.Application.Common.CancelHostedCheckoutCommand
+        );
+        // PaymentApp marca el pago reemplazado como cancelado, igual que al cancelar a mano.
+        var cancelled = Assert.Single(
+            bus.Published.OfType<BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionRenewalCheckoutCancelledIntegrationEvent>()
+        );
+        Assert.Equal(intents.Added[0].Id, cancelled.RenewalIntentId);
+        Assert.Equal(intents.Added[0].SaaSPaymentId, cancelled.SaaSPaymentId);
+        Assert.Equal("Payment method changed.", cancelled.Reason);
+
+        Task<Result<StartRenewalCheckoutResponse>> StartWithAsync(
+            StartRenewalCheckoutCommand command,
+            FakeRenewalCheckoutPaymentClient client
+        ) =>
+            Start(
+                command,
+                new FakeSubscriptionRepo(subscription),
+                new FakePlanRepo(plan),
+                intents,
+                client,
+                new FakeUnitOfWork(),
+                CancellationToken.None,
+                bus
+            );
+    }
+
+    // Volver con el mismo proveedor reusa el checkout abierto: un doble clic no abre dos.
+    [Fact]
+    public async Task Coming_back_with_the_same_provider_reuses_the_open_checkout()
+    {
+        var (subscription, plan) = PastDueSubscription();
+        var intents = new FakeRenewalCheckoutIntentRepository();
+        var client = OkClient();
+
+        await StartWithAsync();
+        await StartWithAsync();
+
+        Assert.Equal(1, client.CreateCalls);
+        Assert.Single(intents.Added);
+
+        Task<Result<StartRenewalCheckoutResponse>> StartWithAsync() =>
+            Start(
+                Command(subscription.TenantId),
+                new FakeSubscriptionRepo(subscription),
+                new FakePlanRepo(plan),
+                intents,
+                client,
+                new FakeUnitOfWork(),
+                CancellationToken.None
+            );
+    }
 
     // SUB-7: la intención ya está confirmada; repetir la renovación reusa su clave.
     [Fact]
@@ -122,6 +197,47 @@ public sealed class StartRenewalCheckoutHandlerTests
         Assert.Equal("USD", client.LastRequest.Currency);
         Assert.StartsWith("subscription-renewal-checkout-", client.LastRequest.IdempotencyKey);
         Assert.Equal(2, unitOfWork.SaveChangesCallCount);
+    }
+
+    [Fact]
+    public async Task Renewal_sends_the_discount_to_paymentapp()
+    {
+        var (subscription, plan) = PastDueSubscription();
+        var terms = SubscriptionDiscountTerms
+            .Create(
+                DiscountSource.Admin,
+                null,
+                2_000,
+                null,
+                null,
+                DiscountDuration.Forever,
+                null,
+                DiscountAppliesTo.Base,
+                null,
+                "Retention deal",
+                DateTime.UtcNow.AddMinutes(-1)
+            )
+            .Value;
+        Assert.True(subscription.GrantDiscount(terms, false, Guid.NewGuid(), DateTime.UtcNow).IsSuccess);
+        var intents = new FakeRenewalCheckoutIntentRepository();
+        var client = OkClient();
+
+        var result = await Start(
+            Command(subscription.TenantId),
+            new FakeSubscriptionRepo(subscription),
+            new FakePlanRepo(plan),
+            intents,
+            client,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        // 49 USD con 20%: se firma y se cobra el neto; el descuento viaja aparte para el recibo.
+        Assert.Equal(3_920, client.LastRequest!.AmountCents);
+        Assert.Equal(980, client.LastRequest.DiscountAmountCents);
+        Assert.Equal("Admin", client.LastRequest.DiscountSource);
+        Assert.Equal(3_920, Assert.Single(intents.Added).Amount.Cents);
     }
 
     // D5: se renueva al precio firmado, aunque después se haya publicado otro.

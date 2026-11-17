@@ -3,6 +3,7 @@ using BuildingBlocks.Tenancy;
 using TaxVision.Codes.Application.Quotes.CreateQuote;
 using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Codes.Domain.ValueObjects;
+using TaxVision.Growth.Infrastructure.Security;
 using TaxVision.Growth.Tests.Application.Fakes;
 using TaxVision.Growth.Tests.Domain;
 
@@ -10,6 +11,10 @@ namespace TaxVision.Growth.Tests.Application;
 
 public sealed class CodesQuoteApplicationTests
 {
+    private static readonly HmacBuyerIdentityHasher BuyerHasher = new(
+        Microsoft.Extensions.Options.Options.Create(new CodeTokenHashingOptions { Pepper = new string('p', 48) })
+    );
+
     private const string PlaintextToken = "PRIVATE-CODE-1234";
 
     [Fact]
@@ -28,7 +33,10 @@ public sealed class CodesQuoteApplicationTests
             command,
             definitions,
             quotes,
+            new InMemoryCodeUsageCounterRepository(),
             hasher,
+            BuyerHasher,
+            new FileDisposableEmailDomains(),
             idempotency,
             clock,
             CancellationToken.None
@@ -61,7 +69,10 @@ public sealed class CodesQuoteApplicationTests
             command,
             definitions,
             quotes,
+            new InMemoryCodeUsageCounterRepository(),
             hasher,
+            BuyerHasher,
+            new FileDisposableEmailDomains(),
             idempotency,
             clock,
             CancellationToken.None
@@ -70,7 +81,10 @@ public sealed class CodesQuoteApplicationTests
             command,
             definitions,
             quotes,
+            new InMemoryCodeUsageCounterRepository(),
             hasher,
+            BuyerHasher,
+            new FileDisposableEmailDomains(),
             idempotency,
             clock,
             CancellationToken.None
@@ -82,7 +96,10 @@ public sealed class CodesQuoteApplicationTests
             },
             definitions,
             quotes,
+            new InMemoryCodeUsageCounterRepository(),
             hasher,
+            BuyerHasher,
+            new FileDisposableEmailDomains(),
             idempotency,
             clock,
             CancellationToken.None

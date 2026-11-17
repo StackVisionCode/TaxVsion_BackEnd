@@ -26,4 +26,9 @@ public sealed record OnboardingRegistrationReadyIntegrationEvent : IntegrationEv
     public required string PriceFormatted { get; init; }
     public required DateTime PaidAtUtc { get; init; }
     public required string RegistrationUrlBase { get; init; }
+
+    // Aditivo: con códigos, el precio de lista, el descuento y qué códigos (enmascarados). Null sin códigos.
+    public string? GrossFormatted { get; init; }
+    public string? DiscountFormatted { get; init; }
+    public string? DiscountSummary { get; init; }
 }

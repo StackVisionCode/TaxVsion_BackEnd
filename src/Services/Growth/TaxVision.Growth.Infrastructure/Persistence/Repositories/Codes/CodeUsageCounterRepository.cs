@@ -58,6 +58,27 @@ public sealed class CodeUsageCounterRepository(GrowthDbContext dbContext, ITenan
         }
     }
 
+    public Task<CodeUsageCounter?> FindReadOnlyAsync(
+        Guid tenantId,
+        Guid codeDefinitionId,
+        CodeUsageDimension dimension,
+        CodeUsageScopeKey scopeKey,
+        CancellationToken ct = default
+    ) =>
+        !TenantRepositoryGuard.Matches(tenantContext, tenantId)
+            ? Task.FromResult<CodeUsageCounter?>(null)
+            : dbContext
+                .CodeUsageCounters.IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    counter =>
+                        counter.TenantId == tenantId
+                        && counter.CodeDefinitionId == codeDefinitionId
+                        && counter.Dimension == dimension
+                        && counter.ScopeKey == scopeKey,
+                    ct
+                );
+
     private Task<CodeUsageCounter?> FindAsync(
         Guid tenantId,
         Guid codeDefinitionId,

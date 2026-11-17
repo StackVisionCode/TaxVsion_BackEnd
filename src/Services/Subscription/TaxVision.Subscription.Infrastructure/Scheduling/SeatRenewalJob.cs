@@ -5,6 +5,9 @@ using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Subscriptions;
+using TaxVision.Subscription.Application.Subscriptions.Renewals;
+using TaxVision.Subscription.Domain.Seats;
+using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
 using TaxVision.Subscription.Infrastructure.Persistence;
 
@@ -89,8 +92,30 @@ public sealed class SeatRenewalJob(
         if (subscription?.HoldsExtraRenewals(seat.CurrentPeriodEndUtc!.Value) == true)
             return false;
 
+        // Termina con el plan: lo renueva el job del plan en el mismo cobro.
+        if (subscription is not null && RenewalBundle.Includes(subscription, seat))
+            return false;
+
         var idempotencyKey = IdempotencyKeyFactory.SeatRenewal(seat.Id, seat.CurrentPeriodEndUtc!.Value);
-        var result = seat.BeginRenewal(idempotencyKey, actorUserId: Guid.Empty, nowUtc);
+        // D-A: el período nuevo termina con el plan activo; el tramo se cobra a su precio y uno chico se regala.
+        var planEndUtc = subscription is { Status: SubscriptionStatus.Active }
+            ? subscription.CurrentPeriodEndUtc
+            : (DateTime?)null;
+        var next = SeatAlignment.ForRenewal(
+            seat.UnitPrice,
+            seat.BillingCycle,
+            seat.CurrentPeriodEndUtc.Value,
+            planEndUtc
+        );
+        if (next.AlignsWithoutCharge)
+            return seat.AlignWithoutCharge(
+                idempotencyKey,
+                next.PeriodEndUtc,
+                actorUserId: Guid.Empty,
+                nowUtc
+            ).IsSuccess;
+
+        var result = seat.BeginRenewal(idempotencyKey, next.PeriodEndUtc, actorUserId: Guid.Empty, nowUtc);
         if (result.IsFailure)
         {
             unit.Services.GetRequiredService<ILogger<SeatRenewalJob>>()
@@ -98,6 +123,17 @@ public sealed class SeatRenewalJob(
             return false;
         }
 
+        var grossCents = (long)Math.Round(next.Price.Amount * 100m, MidpointRounding.AwayFromZero);
+        // El descuento vigente que cubre asientos se mira con la fecha de inicio del período nuevo.
+        var charge = subscription is null
+            ? DiscountedCharge.Full(grossCents)
+            : DiscountedCharge.For(
+                subscription,
+                DiscountChargeKind.Seats,
+                grossCents,
+                seat.UnitPrice.Currency,
+                seat.CurrentPeriodEndUtc.Value
+            );
         await unit.PublishAsync(
             new SeatRenewalDueIntegrationEvent
             {
@@ -105,10 +141,13 @@ public sealed class SeatRenewalJob(
                 CorrelationId = correlationId,
                 SeatId = seat.Id,
                 PeriodStartUtc = seat.CurrentPeriodEndUtc.Value,
-                PeriodEndUtc = seat.BillingCycle.CalculateNext(seat.CurrentPeriodEndUtc.Value),
+                PeriodEndUtc = next.PeriodEndUtc,
                 IdempotencyKey = idempotencyKey,
-                AmountCents = (long)Math.Round(seat.UnitPrice.Amount * 100m, MidpointRounding.AwayFromZero),
+                AmountCents = charge.NetCents,
                 Currency = seat.UnitPrice.Currency,
+                DiscountAmountCents = charge.DiscountCents,
+                DiscountSource = charge.Source,
+                DiscountLabel = charge.Label,
             }
         );
         return true;

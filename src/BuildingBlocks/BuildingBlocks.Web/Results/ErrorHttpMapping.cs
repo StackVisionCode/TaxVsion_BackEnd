@@ -208,7 +208,10 @@ public static class ErrorHttpMapping
             // Biblioteca TaxVision: revisar una versión que no es la última publicada, o listar/revisar una
             // plantilla sin versión publicada — conflicto de estado, no de forma.
             or "FormLibrary.ReviewVersionMismatch"
-            or "FormLibrary.NotPublished" => StatusCodes.Status409Conflict,
+            or "FormLibrary.NotPublished"
+            // Descuento de la suscripción: ya hay uno vigente, o no hay ninguno para terminar.
+            or "Subscription.Discount.AlreadyActive"
+            or "Subscription.Discount.NotActive" => StatusCodes.Status409Conflict,
             "ConsentNotice.Archived"
             or "ConsentNotice.KeyTaken"
             or "ConsentNotice.ConcurrencyConflict"
@@ -507,6 +510,7 @@ public static class ErrorHttpMapping
             // responde, el envío se bloquea (fail-closed) con 503 transitorio.
             "CampaignRun.InsufficientFunds" => StatusCodes.Status402PaymentRequired,
             "CampaignRun.WalletUnavailable" => StatusCodes.Status503ServiceUnavailable,
+            "Subscription.DiscountCode.Unavailable" => StatusCodes.Status503ServiceUnavailable,
             // Cobro de SMS individual (F6): mismo criterio que campañas.
             "sms.insufficientFunds" => StatusCodes.Status402PaymentRequired,
             "sms.walletUnavailable" => StatusCodes.Status503ServiceUnavailable,

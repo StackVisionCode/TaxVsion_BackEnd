@@ -23,6 +23,7 @@ using TaxVision.Subscription.Application.Subscriptions.Commands.Renew;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Resume;
 using TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout;
 using TaxVision.Subscription.Application.Subscriptions.Commands.Suspend;
+using TaxVision.Subscription.Application.Subscriptions.Discounts;
 using TaxVision.Subscription.Application.Subscriptions.Queries;
 using Wolverine;
 
@@ -126,6 +127,49 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    public sealed record RedeemDiscountCodeRequest(string Code);
+
+    /// <summary>El owner canjea un código: queda como descuento de la suscripción (409 si ya tiene uno).</summary>
+    [HttpPost("me/discount/redeem")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.g.subscription_manage")]
+    [ProducesResponseType<SubscriptionDiscountView>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RedeemDiscountCode(RedeemDiscountCodeRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<SubscriptionDiscountView>>(
+            new RedeemSubscriptionDiscountCodeCommand(tenantId, request.Code ?? string.Empty, userId),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>El descuento vigente de la oficina (204 si no tiene). Lo muestra el Account, solo lectura.</summary>
+    [HttpGet("me/discount")]
+    [HasPermission(SubscriptionPermissions.BillingView)]
+    [AllowActorTypes(ActorType.TenantAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.f.subscription_read")]
+    [ProducesResponseType<SubscriptionDiscountView>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> GetMyDiscount(CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<SubscriptionDiscountView?>>(
+            new GetSubscriptionDiscountQuery(tenantId),
+            ct
+        );
+        if (result.IsFailure)
+            return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        return result.Value is null ? NoContent() : Ok(result.Value);
+    }
+
     /// <summary><paramref name="BillingCycle"/> es opcional ("Monthly"/"Yearly") — se manda
     /// junto con el plan en el mismo request. Null mantiene el ciclo actual. Un downgrade (o
     /// un cambio sin diferencia de precio) aplica inmediato, sin cargo, sin crédito, sin
@@ -181,6 +225,12 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+        // Con checkout, el pagador es el usuario del token.
+        var wantsCheckout =
+            !string.IsNullOrWhiteSpace(request.SuccessUrl) && !string.IsNullOrWhiteSpace(request.CancelUrl);
+        var hasEmail = User.TryGetEmail(out var tokenEmail);
+        if (wantsCheckout && !hasEmail)
+            return CheckoutPayer.MissingEmail();
 
         var result = await bus.InvokeAsync<Result<ChangePlanResult>>(
             new ChangePlanCommand(
@@ -188,7 +238,7 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
                 request.PlanCode,
                 request.BillingCycle,
                 userId,
-                request.PayerEmail,
+                hasEmail ? tokenEmail : null,
                 request.SuccessUrl,
                 request.CancelUrl
             ),
@@ -236,13 +286,33 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     /// Crea la sesión de checkout y devuelve la URL de redirect; al confirmarse el pago (webhook) la suscripción
     /// vuelve a Active. Solo TenantAdmin/PlatformAdmin — que no quedan bloqueados por billing y pueden entrar a
     /// pagar aunque la oficina esté cortada.</summary>
+    // PayerEmail se ignora (el pagador sale del token); se acepta para no romper clientes desplegados.
     public sealed record RenewCheckoutRequest(
-        string PayerEmail,
+        string? PayerEmail,
         string SuccessUrl,
         string CancelUrl,
         string? Provider = null,
-        string? Method = null
+        string? Method = null,
+        // "Pay what's due": asientos y add-ons elegidos. Sin estos campos, se renueva solo el plan.
+        IReadOnlyList<Guid>? SeatIds = null,
+        IReadOnlyList<Guid>? AddOnIds = null
     );
+
+    /// <summary>"Pay what's due": lo vencido (plan, asientos y add-ons) con lo que cuesta ponerlo al día.</summary>
+    [HttpGet("me/due")]
+    [HasPermission(SubscriptionPermissions.PlanChange)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.g.subscription_manage")]
+    [ProducesResponseType<DuePaymentView>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetDue(CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<DuePaymentView>>(new GetDuePaymentQuery(tenantId), ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
 
     [HttpPost("me/renew-checkout")]
     [HasPermission(SubscriptionPermissions.PlanChange)]
@@ -254,16 +324,20 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+        if (!User.TryGetEmail(out var payerEmail))
+            return CheckoutPayer.MissingEmail();
 
         var result = await bus.InvokeAsync<Result<StartRenewalCheckoutResponse>>(
             new StartRenewalCheckoutCommand(
                 tenantId,
-                request.PayerEmail,
+                payerEmail,
                 request.SuccessUrl,
                 request.CancelUrl,
                 request.Provider ?? "Stripe",
                 request.Method ?? "Card",
-                userId
+                userId,
+                request.SeatIds,
+                request.AddOnIds
             ),
             ct
         );
@@ -562,16 +636,8 @@ public sealed class SubscriptionsController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        // Preferimos lo que manda el frontend (siempre viene del store del usuario autenticado); caemos al
-        // claim del JWT como salvavidas. El token de step-up a veces llega sin claim "email".
-        var email = !string.IsNullOrWhiteSpace(body?.PayerEmail)
-            ? body!.PayerEmail
-            : User.FindFirst("email")?.Value ?? User.Identity?.Name;
-        if (string.IsNullOrWhiteSpace(email))
-            return StatusCode(
-                StatusCodes.Status400BadRequest,
-                new Error("PaymentMethodSetup.MissingEmail", "A payer email is required.")
-            );
+        if (!User.TryGetEmail(out var email))
+            return CheckoutPayer.MissingEmail();
 
         var successUrl = string.IsNullOrWhiteSpace(body?.SuccessUrl)
             ? $"{Request.Scheme}://{Request.Host}/account/plan?checkout=success"

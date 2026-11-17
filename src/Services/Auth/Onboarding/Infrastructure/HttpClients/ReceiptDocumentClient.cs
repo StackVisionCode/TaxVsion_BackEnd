@@ -81,6 +81,13 @@ public sealed class ReceiptDocumentClient(
                                 : request.OfficeName.Trim(),
                             // P7: zona del pagador; sin ella, Documents escribe UTC.
                             timeZoneId = request.TimeZoneId,
+                            // Precio de lista y cada código (enmascarado) para las filas de descuento.
+                            grossAmountCents = request.GrossAmountCents,
+                            discounts = request.Discounts?.Select(discount => new
+                            {
+                                label = discount.Label,
+                                amountCents = discount.AmountCents,
+                            }),
                         },
                     }
                 ),

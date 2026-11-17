@@ -12,6 +12,7 @@
     <ProjectReference Include="..\TaxVision.Codes.Application\TaxVision.Codes.Application.csproj" />
     <ProjectReference Include="..\TaxVision.Referrals.Domain\TaxVision.Referrals.Domain.csproj" />
     <ProjectReference Include="..\TaxVision.Referrals.Application\TaxVision.Referrals.Application.csproj" />
+    <ProjectReference Include="..\TaxVision.Growth.SharedKernel\TaxVision.Growth.SharedKernel.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Jobs\BuildingBlocks.Jobs.csproj" />
   </ItemGroup>
@@ -28,5 +29,12 @@
     <PackageReference Include="WolverineFx.EntityFrameworkCore" Version="6.14.0" />
     <!-- Override transitivo CVE Pkcs 9.0.4: GHSA-846f-f764-76mx (high) + GHSA-2fmv-rv2c-59x7 (moderate). -->
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Dominios de correo desechable (N11): no pueden usar cupones ni premios. -->
+    <EmbeddedResource
+      Include="Security\disposable-email-domains.txt"
+      LogicalName="TaxVision.Growth.DisposableEmailDomains"
+    />
   </ItemGroup>
 </Project>

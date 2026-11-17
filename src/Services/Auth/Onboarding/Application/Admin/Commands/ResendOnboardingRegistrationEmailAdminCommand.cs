@@ -9,6 +9,7 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
 using TaxVision.Auth.Onboarding.Domain.ValueObjects;
 using Wolverine;
 
@@ -128,7 +129,7 @@ public static class ResendOnboardingRegistrationEmailAdminHandler
                 PaidAtUtc = onboarding.PaymentCompletedAtUtc ?? nowUtc,
                 RegistrationUrlBase = options.RegistrationUrlBase,
                 CorrelationId = correlation.CorrelationId,
-            }
+            }.WithDiscountOf(onboarding)
         );
         onboarding.MarkRegistrationEmailSent(nowUtc);
         return Result.Success();

@@ -17,4 +17,10 @@ public sealed record AddOnRenewalDueIntegrationEvent : IntegrationEvent
     /// verdad del pricing) — PaymentApp nunca calcula precios.</summary>
     public required long AmountCents { get; init; }
     public required string Currency { get; init; }
+
+    /// <summary>Descuento vigente de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+    /// Null cuando el cobro no lleva descuento (y en eventos viejos).</summary>
+    public long? DiscountAmountCents { get; init; }
+    public string? DiscountSource { get; init; }
+    public string? DiscountLabel { get; init; }
 }

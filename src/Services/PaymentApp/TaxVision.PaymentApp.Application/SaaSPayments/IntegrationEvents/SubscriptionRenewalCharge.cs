@@ -11,7 +11,7 @@ using TaxVision.PaymentApp.Domain.ValueObjects;
 namespace TaxVision.PaymentApp.Application.SaaSPayments.IntegrationEvents;
 
 /// <summary>Arma el cobro de una renovación con los datos del evento, en cualquiera de las dos estrategias.</summary>
-internal static class SubscriptionRenewalCharge
+public static class SubscriptionRenewalCharge
 {
     public static Result<SaaSPayment> BuildPayment(
         SubscriptionRenewalDueIntegrationEvent evt,
@@ -45,9 +45,13 @@ internal static class SubscriptionRenewalCharge
                 evt.CodeReservationId,
                 evt.CodeReservationPaymentId,
                 evt.DiscountAmountCents,
-                evt.PromotionSnapshotHash
+                evt.PromotionSnapshotHash,
+                discountSource: evt.DiscountSource,
+                discountLabel: evt.DiscountLabel
             )
-            .WithConceptFor(SaaSPaymentType.SubscriptionRenewal);
+            .WithConceptFor(SaaSPaymentType.SubscriptionRenewal)
+            // El plan con sus asientos y add-ons: una línea por cosa, con a qué pertenece.
+            .WithLines(evt.Lines);
     }
 
     // Respeta el provider del tenant también en el fallback: con Stripe fijo, la renovación entraba en loop de
@@ -70,6 +74,9 @@ internal static class SubscriptionRenewalCharge
             CodeReservationId: evt.CodeReservationId,
             CodeReservationPaymentId: evt.CodeReservationPaymentId,
             DiscountAmountCents: evt.DiscountAmountCents,
-            PromotionSnapshotHash: evt.PromotionSnapshotHash
+            PromotionSnapshotHash: evt.PromotionSnapshotHash,
+            DiscountSource: evt.DiscountSource,
+            DiscountLabel: evt.DiscountLabel,
+            Lines: evt.Lines
         );
 }

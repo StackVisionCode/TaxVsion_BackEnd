@@ -26,7 +26,10 @@ public sealed record PlanChangePreviewResponse(
     // Desglose de lo que se cobra ahora (plan y, si cambia el ciclo, cada extra) y el ahorro frente a mensual.
     IReadOnlyList<PlanChangePreviewLine>? Lines = null,
     long SavingsCents = 0,
-    string? BlockedMessage = null
+    string? BlockedMessage = null,
+    // Descuento vigente que lleva el cobro (ya restado en AmountCents) y cómo se lee.
+    long DiscountCents = 0,
+    string? DiscountLabel = null
 );
 
 public sealed record PlanChangePreviewLine(
@@ -115,7 +118,9 @@ public static class GetPlanChangePreviewHandler
                     )),
                 ],
                 quote.SavingsCents,
-                quote.Blocked?.Message
+                quote.Blocked?.Message,
+                quote.Discount?.Cents ?? 0,
+                quote.Discount?.Label
             )
         );
     }

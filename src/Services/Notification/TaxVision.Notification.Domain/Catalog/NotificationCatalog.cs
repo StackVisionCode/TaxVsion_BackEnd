@@ -802,6 +802,16 @@ public static class NotificationCatalog
             NotificationAction.Open
         ),
         Entry(
+            NotificationKinds.SubscriptionDiscountEnding,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.Low,
+            NotificationRecipientPolicy.TenantOwner,
+            InAppEmail,
+            false,
+            "billing",
+            NotificationAction.Open
+        ),
+        Entry(
             NotificationKinds.PaymentAppPaymentMethodExpiringSoon,
             NotificationCatalogCategory.Billing,
             NotificationPriority.High,
@@ -823,6 +833,46 @@ public static class NotificationCatalog
         ),
         Entry(
             NotificationKinds.ReferralAttributed,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.TenantOwner,
+            InApp,
+            false,
+            "referral",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.ReferralQualified,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.TenantOwner,
+            InApp,
+            false,
+            "referral",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.ReferralRewardGranted,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.TenantOwner,
+            InAppEmail,
+            false,
+            "referral",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.ReferralRewardRejected,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.TenantOwner,
+            InApp,
+            false,
+            "referral",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.ReferralRewardReversed,
             NotificationCatalogCategory.Billing,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.TenantOwner,

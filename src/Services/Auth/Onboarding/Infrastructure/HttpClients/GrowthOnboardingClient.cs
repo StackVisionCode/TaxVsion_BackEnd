@@ -49,7 +49,9 @@ public sealed class GrowthOnboardingClient(
             currency = request.Currency,
             snapshotHash = request.SnapshotHash,
             ttlSeconds = request.TtlSeconds,
-            scopeTargets = (object?)null,
+            scopeTargets = ScopeTargets(request),
+            buyerEmail = request.BuyerEmail,
+            stackedWithCodeDefinitionIds = request.StackedWithCodeDefinitionIds ?? [],
         };
 
         var response = await SendAsync(
@@ -57,7 +59,9 @@ public sealed class GrowthOnboardingClient(
             HttpMethod.Post,
             "internal/codes/quotes",
             body,
-            idempotencyKey: $"onb-quote:{request.OnboardingId:N}:{request.SnapshotHash}",
+            idempotencyKey: request.Generation == 0
+                ? $"onb-quote:{request.OnboardingId:N}:{request.SnapshotHash}"
+                : $"onb-quote:{request.OnboardingId:N}:{request.SnapshotHash}:{request.Generation}",
             request.OnboardingId,
             ct
         );
@@ -81,7 +85,13 @@ public sealed class GrowthOnboardingClient(
                 dto.DiscountAmountCents,
                 dto.NetAmountCents,
                 dto.Currency,
-                dto.ExpiresAtUtc
+                dto.ExpiresAtUtc,
+                dto.CodeDefinitionId,
+                dto.PercentageBasisPoints,
+                dto.FixedAmountCents,
+                dto.Duration,
+                dto.DurationMonths,
+                dto.CodeDisplay
             )
         );
     }
@@ -248,6 +258,15 @@ public sealed class GrowthOnboardingClient(
         }
     }
 
+    // El plan siempre; con ciclo, también la oferta plan + ciclo (así se puede limitar un código a anual).
+    private static object[] ScopeTargets(GrowthQuoteRequest request)
+    {
+        var plan = new { type = "Plan", scopeId = request.PlanId.ToString() };
+        return string.IsNullOrWhiteSpace(request.BillingCycle)
+            ? [plan]
+            : [plan, new { type = "Offer", scopeId = $"Subscription/{request.PlanId}/{request.BillingCycle}" }];
+    }
+
     private async Task<Error> MapErrorAsync(HttpResponseMessage message, string prefix, CancellationToken ct)
     {
         ErrorDto? error = null;
@@ -260,6 +279,24 @@ public sealed class GrowthOnboardingClient(
         // Commit tardío en revisión: el finalizador lo distingue por el código de Growth.
         if (error?.Code == GrowthOnboardingErrors.LateCommitPendingReview)
             return new Error(error.Code, error.Message ?? "The late commit is pending manual review in Growth.");
+
+        // El código no sirve para esta persona: códigos propios para que el landing lo explique.
+        if (error?.Code?.StartsWith("Codes.Buyer.", StringComparison.Ordinal) ?? false)
+            return new Error(
+                GrowthOnboardingErrors.CodeNotAllowedForEmail,
+                "This code can't be used with this email address."
+            );
+        if (error?.Code == "Codes.CodeUsageCounter.SubjectLimitReached")
+            return new Error(
+                GrowthOnboardingErrors.CodeAlreadyUsedByBuyer,
+                "This code was already used with this email address."
+            );
+
+        if (error?.Code == "Codes.CodeDefinition.NotStackable")
+            return new Error(
+                GrowthOnboardingErrors.CodeNotStackable,
+                "This code can't be combined with your other code."
+            );
 
         // Código de negocio "no encontrado/no aplica" → error específico para reportarlo al usuario.
         if (message.StatusCode == HttpStatusCode.NotFound || (error?.Code?.Contains("NotFound") ?? false))
@@ -275,7 +312,13 @@ public sealed class GrowthOnboardingClient(
         long DiscountAmountCents,
         long NetAmountCents,
         string Currency,
-        DateTime ExpiresAtUtc
+        DateTime ExpiresAtUtc,
+        Guid? CodeDefinitionId = null,
+        int? PercentageBasisPoints = null,
+        long? FixedAmountCents = null,
+        string? Duration = null,
+        int? DurationMonths = null,
+        string? CodeDisplay = null
     );
 
     private sealed record ReserveDto(

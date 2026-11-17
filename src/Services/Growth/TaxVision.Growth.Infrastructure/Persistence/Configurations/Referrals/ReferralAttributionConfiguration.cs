@@ -32,6 +32,11 @@ public sealed class ReferralAttributionConfiguration : IEntityTypeConfiguration<
         builder.Property(attribution => attribution.ShareId);
         builder.Property(attribution => attribution.RefereeType).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(attribution => attribution.RefereeId).IsRequired();
+        // Oficina real del referido (el alta la crea después de la atribución).
+        builder.Property(attribution => attribution.RefereeTenantId);
+        builder
+            .HasIndex(attribution => attribution.RefereeTenantId)
+            .HasDatabaseName("IX_ReferralAttributions_RefereeTenantId");
         builder.Property(attribution => attribution.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(attribution => attribution.StatusBeforeReview).HasConversion<string>().HasMaxLength(20);
         builder.Property(attribution => attribution.AttributedAtUtc).HasColumnType("datetime2(7)").IsRequired();

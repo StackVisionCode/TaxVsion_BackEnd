@@ -51,6 +51,14 @@ public sealed class ReferralRewardCaseRepository(GrowthDbContext dbContext, ITen
         ).FirstOrDefaultAsync(ct);
     }
 
+    // El premio es del referidor y la atribución del alta: cruce exacto por el Id de la atribución.
+    public Task<ReferralRewardCase?> GetByAttributionAsync(Guid attributionId, CancellationToken ct = default) =>
+        attributionId == Guid.Empty
+            ? Task.FromResult<ReferralRewardCase?>(null)
+            : dbContext
+                .ReferralRewardCases.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(rewardCase => rewardCase.AttributionId == attributionId, ct);
+
     // Escaneo de sistema (cruza tenants) SOLO para el worker de premios; cada caso se procesa después con su propio
     // tenant en contexto. Devuelve referencias mínimas, nunca entidades de otros tenants.
     public async Task<IReadOnlyList<GrantableRewardCaseRef>> GetGrantableWalletCreditCasesAsync(

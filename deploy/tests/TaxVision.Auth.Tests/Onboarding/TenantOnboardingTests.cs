@@ -121,6 +121,78 @@ public sealed class TenantOnboardingTests
         Assert.Equal(1, onboarding.PaymentRetryCount);
     }
 
+    [Theory]
+    [InlineData(null, "Monthly")]
+    [InlineData("yearly", "Yearly")]
+    [InlineData(" Monthly ", "Monthly")]
+    public void Create_stores_only_the_cycles_the_signup_sells(string? requested, string stored)
+    {
+        var onboarding = TenantOnboarding
+            .Create("owner@castillotax.com", Now, Guid.NewGuid(), "Carlos", "Castillo", null, Now, requested)
+            .Value;
+
+        Assert.Equal(stored, onboarding.BillingCycle);
+    }
+
+    [Theory]
+    [InlineData("Weekly")]
+    [InlineData("Custom")]
+    [InlineData("Quarterly")]
+    public void Create_rejects_a_cycle_edited_in_the_url(string requested)
+    {
+        var result = TenantOnboarding.Create(
+            "owner@castillotax.com",
+            Now,
+            Guid.NewGuid(),
+            "Carlos",
+            "Castillo",
+            null,
+            Now,
+            requested
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Onboarding.InvalidBillingCycle", result.Error.Code);
+    }
+
+    [Fact]
+    public void ReopenForPaymentRetry_records_when_the_new_checkout_started()
+    {
+        var onboarding = AtPaymentFailed();
+        var retryAt = Now.AddHours(2);
+
+        Assert.True(onboarding.ReopenForPaymentRetry(retryAt, 3, TimeSpan.FromHours(72)).IsSuccess);
+
+        // El vencimiento se mide desde aquí, no desde la creación.
+        Assert.Equal(retryAt, onboarding.CheckoutStartedAtUtc);
+    }
+
+    [Fact]
+    public void MarkPaymentCompleted_completes_an_expired_onboarding_when_its_payment_arrives_late()
+    {
+        var onboarding = AtPaymentProcessing();
+        Assert.True(onboarding.MarkExpired().IsSuccess);
+
+        var result = onboarding.MarkPaymentCompleted(onboarding.PaymentReference!, Now);
+
+        // Hubo cobro de este mismo checkout: el dinero gana sobre el vencimiento.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TenantOnboardingStatus.PaymentCompleted, onboarding.Status);
+        Assert.Equal(Now, onboarding.PaymentCompletedAtUtc);
+    }
+
+    [Fact]
+    public void MarkPaymentCompleted_rejects_a_late_payment_of_another_checkout_on_an_expired_onboarding()
+    {
+        var onboarding = AtPaymentProcessing();
+        Assert.True(onboarding.MarkExpired().IsSuccess);
+
+        var result = onboarding.MarkPaymentCompleted("another-reference", Now);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(TenantOnboardingStatus.Expired, onboarding.Status);
+    }
+
     [Fact]
     public void ReopenForPaymentRetry_fails_when_the_onboarding_is_not_payment_failed()
     {

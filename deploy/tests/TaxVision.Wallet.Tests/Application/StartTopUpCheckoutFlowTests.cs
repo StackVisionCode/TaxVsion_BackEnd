@@ -1,9 +1,14 @@
+using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using JasperFx.CodeGeneration.Model;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using TaxVision.Wallet.Api.Controllers;
 using TaxVision.Wallet.Application.Wallet;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Commands;
@@ -46,6 +51,45 @@ public sealed class StartTopUpCheckoutFlowTests : IAsyncLifetime
     {
         await _host.StopAsync();
         _host.Dispose();
+    }
+
+    [Fact]
+    public async Task Controller_bills_the_token_email_not_the_one_in_the_body()
+    {
+        var controller = new WalletController(_host.Services.GetRequiredService<IMessageBus>())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(
+                        new ClaimsIdentity(
+                            [
+                                new Claim("sub", Guid.NewGuid().ToString()),
+                                new Claim(ClaimNames.TenantId, _tenantId.ToString()),
+                                new Claim(ClaimTypes.Email, "owner@office.test"),
+                            ],
+                            "test"
+                        )
+                    ),
+                },
+            },
+        };
+
+        await controller.CreateTopUp(
+            new WalletController.TopUpRequest(
+                2_500,
+                "USD",
+                "attacker@evil.test",
+                "https://app.taxoffix.io/wallet",
+                "https://app.taxoffix.io/wallet",
+                null,
+                null
+            ),
+            CancellationToken.None
+        );
+
+        Assert.Equal("owner@office.test", Assert.Single(_checkout.Requests).PayerEmail);
     }
 
     [Fact]

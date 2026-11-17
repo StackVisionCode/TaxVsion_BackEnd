@@ -47,6 +47,14 @@ public sealed class SeatPurchaseIntent : TenantEntity
     public Money ProratedTotal => Money.FromCents(ProratedTotalCents, Currency);
     public SeatPurchaseIntentStatus Status { get; private set; }
     public Guid? SaaSPaymentId { get; private set; }
+
+    /// <summary>Proveedor con el que se abrió el checkout (Stripe | PayPal).</summary>
+    public string? CheckoutProvider { get; private set; }
+
+    /// <summary>¿El checkout abierto es del proveedor que se pide? Uno sin proveedor (de antes) se reemplaza.</summary>
+    public bool OpenedWith(string? provider) =>
+        string.Equals(CheckoutProvider, provider, StringComparison.OrdinalIgnoreCase);
+
     public string? CheckoutUrl { get; private set; }
 
     /// <summary>Cuándo caduca la sesión de checkout del proveedor. Mientras no caduque, esta intención sigue
@@ -121,7 +129,13 @@ public sealed class SeatPurchaseIntent : TenantEntity
     }
 
     /// <summary>Guarda la referencia al pago y la URL de checkout una vez creada la sesión en PaymentApp.</summary>
-    public Result AttachCheckout(Guid saaSPaymentId, string checkoutUrl, DateTime expiresAtUtc, DateTime nowUtc)
+    public Result AttachCheckout(
+        Guid saaSPaymentId,
+        string checkoutUrl,
+        DateTime expiresAtUtc,
+        DateTime nowUtc,
+        string? provider = null
+    )
     {
         if (Status != SeatPurchaseIntentStatus.Pending)
             return Result.Failure(
@@ -131,6 +145,7 @@ public sealed class SeatPurchaseIntent : TenantEntity
         SaaSPaymentId = saaSPaymentId;
         CheckoutUrl = checkoutUrl;
         CheckoutExpiresAtUtc = expiresAtUtc;
+        CheckoutProvider = string.IsNullOrWhiteSpace(provider) ? null : provider.Trim();
         Touch(nowUtc);
         return Result.Success();
     }

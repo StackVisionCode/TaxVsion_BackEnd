@@ -1,4 +1,5 @@
 using TaxVision.Auth.Onboarding.Application.Abstractions;
+using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
 using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 
 namespace TaxVision.Auth.Tests.Onboarding;
@@ -22,6 +23,100 @@ public sealed class OnboardingPricingTests
         long discountCents
     ) => new(Guid.NewGuid(), type, code, discountCents, "snapshot-" + code);
 
+    // Cada código del alta se lee en el recibo por su tipo y su código enmascarado, nunca en claro.
+    [Fact]
+    public void The_receipt_lists_each_code_with_its_masked_display()
+    {
+        var onboarding = Valid();
+        onboarding.ApplyOnboardingPricing(
+            grossCents: 12900,
+            totalDiscountCents: 3480,
+            netCents: 9420,
+            currency: "USD",
+            reservations:
+            [
+                new(Guid.NewGuid(), OnboardingBenefitType.Promo, "SPRING20", 2580, "s1", CodeDisplay: "SPRI...NG20"),
+                new(
+                    Guid.NewGuid(),
+                    OnboardingBenefitType.Gift,
+                    "GIFT-SECRET-7F2A",
+                    900,
+                    "s2",
+                    CodeDisplay: "GIFT...7F2A"
+                ),
+            ],
+            nowUtc: Now
+        );
+
+        Assert.Equal(
+            [("Promo code SPRI...NG20", 2580L), ("Gift card GIFT...7F2A", 900L)],
+            onboarding.ReceiptDiscounts().Select(discount => (discount.Label, discount.AmountCents))
+        );
+        Assert.DoesNotContain(onboarding.ReceiptDiscounts(), discount => discount.Label.Contains("SECRET"));
+    }
+
+    [Fact]
+    public void The_registration_email_carries_the_list_price_and_each_code()
+    {
+        var onboarding = Valid();
+        onboarding.ApplyOnboardingPricing(
+            grossCents: 12900,
+            totalDiscountCents: 3480,
+            netCents: 9420,
+            currency: "USD",
+            reservations:
+            [
+                new(Guid.NewGuid(), OnboardingBenefitType.Promo, "SPRING20", 2580, "s1", CodeDisplay: "SPRI...NG20"),
+                new(
+                    Guid.NewGuid(),
+                    OnboardingBenefitType.Gift,
+                    "GIFT-SECRET-7F2A",
+                    900,
+                    "s2",
+                    CodeDisplay: "GIFT...7F2A"
+                ),
+            ],
+            nowUtc: Now
+        );
+
+        var email = OnboardingEmailPricing.Discount(onboarding);
+
+        Assert.Equal("129.00 USD", email.GrossFormatted);
+        Assert.Equal("34.80 USD", email.DiscountFormatted);
+        Assert.Equal("Promo code SPRI...NG20 + Gift card GIFT...7F2A", email.DiscountSummary);
+    }
+
+    [Fact]
+    public void A_registration_email_without_codes_carries_no_discount()
+    {
+        var email = OnboardingEmailPricing.Discount(Valid());
+
+        Assert.Equal((null, null, null), (email.GrossFormatted, email.DiscountFormatted, email.DiscountSummary));
+    }
+
+    [Fact]
+    public void A_code_of_n_months_keeps_its_recurring_discount_for_the_subscription()
+    {
+        var onboarding = Valid();
+        var recurring = new OnboardingRecurringDiscount(Guid.NewGuid(), 2_000, null, "USD", "Months", 3);
+
+        onboarding.ApplyOnboardingPricing(
+            grossCents: 12900,
+            totalDiscountCents: 2580,
+            netCents: 10320,
+            currency: "USD",
+            reservations:
+            [
+                new(Guid.NewGuid(), OnboardingBenefitType.Gift, "GIFT", 0, "snapshot-gift"),
+                new(Guid.NewGuid(), OnboardingBenefitType.Promo, "STAY20", 2580, "snapshot-stay", Recurring: recurring),
+            ],
+            nowUtc: Now
+        );
+
+        Assert.Equal(recurring, onboarding.RecurringDiscount());
+        Assert.Null(Valid().RecurringDiscount());
+    }
+
     // ---------- ApplyOnboardingPricing ----------
 
     [Fact]
@@ -34,7 +129,6 @@ public sealed class OnboardingPricingTests
             totalDiscountCents: 2580,
             netCents: 10320,
             currency: "USD",
-            referralAttributionId: null,
             reservations: [Reservation(OnboardingBenefitType.Referral, "WELCOME20", 2580)],
             nowUtc: Now
         );
@@ -59,7 +153,6 @@ public sealed class OnboardingPricingTests
             totalDiscountCents: 12900,
             netCents: 0,
             currency: "USD",
-            referralAttributionId: null,
             reservations:
             [
                 Reservation(OnboardingBenefitType.Referral, "WELCOME20", 2580),
@@ -87,7 +180,6 @@ public sealed class OnboardingPricingTests
             12900,
             0,
             "USD",
-            null,
             [Reservation(OnboardingBenefitType.Gift, "WELCOME100", 12900)],
             Now
         );
@@ -100,7 +192,7 @@ public sealed class OnboardingPricingTests
     {
         var onboarding = Valid();
 
-        var result = onboarding.ApplyOnboardingPricing(-1, 0, -1, "USD", null, [], Now);
+        var result = onboarding.ApplyOnboardingPricing(-1, 0, -1, "USD", [], Now);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Onboarding.InvalidAmount", result.Error.Code);
@@ -116,7 +208,6 @@ public sealed class OnboardingPricingTests
             totalDiscountCents: 12000,
             netCents: 0,
             currency: "USD",
-            referralAttributionId: null,
             reservations: [Reservation(OnboardingBenefitType.Gift, "TOOBIG", 12000)],
             nowUtc: Now
         );
@@ -135,7 +226,6 @@ public sealed class OnboardingPricingTests
             totalDiscountCents: 2000,
             netCents: 9999, // debería ser 10900
             currency: "USD",
-            referralAttributionId: null,
             reservations: [Reservation(OnboardingBenefitType.Promo, "P", 2000)],
             nowUtc: Now
         );
@@ -154,7 +244,6 @@ public sealed class OnboardingPricingTests
             totalDiscountCents: 2580,
             netCents: 10320,
             currency: "USD",
-            referralAttributionId: null,
             // La suma de reservas (2000) no coincide con el descuento total (2580).
             reservations: [Reservation(OnboardingBenefitType.Referral, "WELCOME20", 2000)],
             nowUtc: Now
@@ -173,7 +262,6 @@ public sealed class OnboardingPricingTests
             2580,
             10320,
             "USD",
-            null,
             [Reservation(OnboardingBenefitType.Referral, "WELCOME20", 2580)],
             Now
         );
@@ -184,7 +272,6 @@ public sealed class OnboardingPricingTests
             2580,
             10320,
             "USD",
-            null,
             [Reservation(OnboardingBenefitType.Referral, "WELCOME20", 2580)],
             Now
         );
@@ -199,7 +286,7 @@ public sealed class OnboardingPricingTests
         var onboarding = Valid();
         onboarding.MarkPaymentProcessing(Guid.NewGuid(), "cs_test_1"); // ya no está en PendingPayment
 
-        var result = onboarding.ApplyOnboardingPricing(12900, 0, 12900, "USD", null, [], Now);
+        var result = onboarding.ApplyOnboardingPricing(12900, 0, 12900, "USD", [], Now);
 
         Assert.True(result.IsFailure);
         Assert.Equal("Onboarding.InvalidState", result.Error.Code);
@@ -216,7 +303,6 @@ public sealed class OnboardingPricingTests
             12900,
             0,
             "USD",
-            null,
             [Reservation(OnboardingBenefitType.Gift, "WELCOME100", 12900)],
             Now
         );
@@ -238,7 +324,6 @@ public sealed class OnboardingPricingTests
             12900,
             0,
             "USD",
-            null,
             [Reservation(OnboardingBenefitType.Gift, "WELCOME100", 12900)],
             Now
         );
@@ -259,7 +344,6 @@ public sealed class OnboardingPricingTests
             2580,
             10320,
             "USD",
-            null,
             [Reservation(OnboardingBenefitType.Referral, "WELCOME20", 2580)],
             Now
         );

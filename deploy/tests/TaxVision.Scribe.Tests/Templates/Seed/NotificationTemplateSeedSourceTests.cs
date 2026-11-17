@@ -628,6 +628,147 @@ public sealed class NotificationTemplateSeedSourceTests
         Assert.Contains("href=\"https://manfer.taxoffix.io/company/settings#compliance\"", html);
     }
 
+    // ---------- Growth: premio de referido acreditado ----------
+
+    [Fact]
+    public void Referral_reward_granted_template_declares_every_variable_it_uses_and_carries_version_33()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            item => item.EventKey == "growth.referral_reward_granted.v1"
+        );
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+
+        Assert.Empty(used.Except(declared));
+        Assert.Equal("referral.reward.granted", seed.TemplateKey);
+        Assert.Equal("system-base", seed.LayoutKey);
+        Assert.Equal(TemplateChannel.Email, seed.Channel);
+        Assert.True(seed.ContentVersion >= 33, $"ContentVersion {seed.ContentVersion} < 33");
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+
+        var context = new TemplateContext();
+        context.SetValue("amount_label", "$9.90");
+        context.SetValue("wallet_url", "https://acme.taxoffix.io/wallet");
+        context.SetValue("product_name", "TaxOffix");
+        Assert.Equal("Your $9.90 referral reward is in your Wallet", Parser.Parse(seed.Subject).Render(context));
+        var html = Parser.Parse(seed.Html).Render(context);
+        Assert.Contains("$9.90", html);
+        Assert.Contains("href=\"https://acme.taxoffix.io/wallet\"", html);
+    }
+
+    // ---------- Subscription: fin de un descuento de N meses ----------
+
+    [Fact]
+    public void Discount_ending_template_declares_every_variable_it_uses_and_carries_version_34()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            item => item.EventKey == "subscription.discount_ending.v1"
+        );
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+
+        Assert.Empty(used.Except(declared));
+        Assert.Equal("subscription.discount_ending", seed.TemplateKey);
+        Assert.Equal("system-base", seed.LayoutKey);
+        Assert.Equal(TemplateChannel.Email, seed.Channel);
+        Assert.True(seed.ContentVersion >= 34, $"ContentVersion {seed.ContentVersion} < 34");
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+
+        var context = new TemplateContext();
+        context.SetValue("discount_label", "20%");
+        context.SetValue("days_left", "7");
+        context.SetValue("billing_url", "https://acme.taxoffix.io");
+        context.SetValue("product_name", "TaxOffix");
+        Assert.Equal("Your 20% discount ends in 7 days", Parser.Parse(seed.Subject).Render(context));
+        var html = Parser.Parse(seed.Html).Render(context);
+        Assert.Contains("regular price", html);
+        Assert.Contains("href=\"https://acme.taxoffix.io\"", html);
+    }
+
+    // ---------- Recibos con descuento: cobro automático y alta ----------
+
+    [Fact]
+    public void Recurring_charge_template_shows_the_discount_and_carries_version_35()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            item => item.EventKey == "subscription.recurring_charge.v1"
+        );
+        AssertDeclaresEveryVariable(seed);
+        Assert.True(seed.ContentVersion >= 35, $"ContentVersion {seed.ContentVersion} < 35");
+
+        var context = new TemplateContext();
+        context.SetValue("first_name", "Ada");
+        context.SetValue("amount", "12.00");
+        context.SetValue("item_description", "Subscription renewal");
+        context.SetValue("discount_amount", "3.00");
+        context.SetValue("discount_label", "Promo code SPRI...0420 - 20% off");
+        context.SetValue("receipt_url", "https://acme.taxoffix.io/account/billing");
+        context.SetValue("manage_url", "https://acme.taxoffix.io/account/manage-subscription");
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Contains("Subscription renewal", html);
+        Assert.Contains("Promo code SPRI...0420 - 20% off", html);
+        Assert.Contains("$3.00", html);
+        Assert.Contains("href=\"https://acme.taxoffix.io/account/billing\"", html);
+    }
+
+    [Fact]
+    public void Recurring_charge_template_without_discount_does_not_mention_one()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            item => item.EventKey == "subscription.recurring_charge.v1"
+        );
+        var context = new TemplateContext();
+        context.SetValue("amount", "15.00");
+        context.SetValue("item_description", "Subscription renewal");
+
+        Assert.DoesNotContain("discount", Parser.Parse(seed.Html).Render(context), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Registration_ready_template_shows_the_list_price_and_the_discount_and_carries_version_35()
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            item => item.EventKey == "onboarding.registration_ready.v1"
+        );
+        AssertDeclaresEveryVariable(seed);
+        Assert.True(seed.ContentVersion >= 35, $"ContentVersion {seed.ContentVersion} < 35");
+
+        var context = new TemplateContext();
+        context.SetValue("first_name", "Ada");
+        context.SetValue("price_formatted", "49.00 USD");
+        context.SetValue("gross_formatted", "64.00 USD");
+        context.SetValue("discount_formatted", "15.00 USD");
+        context.SetValue("discount_summary", "Referral discount + Promo code SPRI...0420");
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Contains("64.00 USD", html);
+        Assert.Contains("15.00 USD", html);
+        Assert.Contains("Referral discount + Promo code SPRI...0420", html);
+    }
+
+    private static void AssertDeclaresEveryVariable(NotificationTemplateSeed seed)
+    {
+        var declared = seed.Variables.Select(v => v.Name).ToHashSet();
+        var used = Regex
+            .Matches(seed.Html + seed.Subject, @"(?:\{\{\s*|\{%\s*(?:if|unless|elsif)\s+)([a-z_][a-z0-9_]*)")
+            .Select(m => m.Groups[1].Value)
+            .ToHashSet();
+
+        Assert.Empty(used.Except(declared));
+    }
+
     // ---------- Avisos del retiro de empleados (offboard) ----------
 
     public static TheoryData<string> OffboardingNoticeKeys =>

@@ -19,5 +19,9 @@ public sealed record CreateSeatReactivationCheckoutCommand(
     string IdempotencyKey,
     PaymentProviderCode Provider = PaymentProviderCode.Stripe,
     PaymentMethodKind Method = PaymentMethodKind.Card,
-    string? AmountSignature = null
+    string? AmountSignature = null,
+    // Descuento vigente de la suscripción que ya va restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );

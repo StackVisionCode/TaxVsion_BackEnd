@@ -138,6 +138,11 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'growth.giftcards.share_requested.v1',
   'growth.referrals.attributed',
   'growth.referrals.attributed.v1',
+  // Avisos del premio al referidor: los consume Notification.
+  'growth.referrals.qualified',
+  'growth.referrals.reward_granted',
+  'growth.referrals.reward_rejected',
+  'growth.referrals.reward_reversed',
   // Referido declarado en el alta: lo consume Growth (atribución); Communication no hace nada con él.
   'auth.onboarding.referral_declared',
   'auth.onboarding.referral_declared.v1',
@@ -243,6 +248,8 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SubscriptionSeatSuspendedIntegrationEvent',
   'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantBillingPreferenceChangedIntegrationEvent',
   'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.TenantSubscriptionStatusChangedIntegrationEvent',
+  // Fin de un descuento de N meses: Notification.
+  'subscription.discounts.ending.v1',
   // Tasks — Tareas y pedidos al cliente: Notification.
   'BuildingBlocks.Messaging.TasksIntegrationEvents.ClientRequestCreatedIntegrationEvent',
   'BuildingBlocks.Messaging.TasksIntegrationEvents.ClientRequestDocumentRejectedIntegrationEvent',

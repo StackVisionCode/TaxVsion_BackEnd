@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using TaxVision.Referrals.Application.Abstractions;
 using TaxVision.Referrals.Domain.Attributions;
 using TaxVision.Referrals.Domain.Codes;
+using TaxVision.Referrals.Domain.Fraud;
 using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Programs;
 using TaxVision.Referrals.Domain.Qualifications;
@@ -180,6 +181,9 @@ internal sealed class InMemoryReferralAttributionRepository(params ReferralAttri
             )
         );
 
+    public Task<ReferralAttribution?> GetForReviewAsync(Guid attributionId, CancellationToken ct = default) =>
+        Task.FromResult(_items.FirstOrDefault(attribution => attribution.Id == attributionId));
+
     public Task AddAsync(ReferralAttribution attribution, CancellationToken ct = default)
     {
         _items.Add(attribution);
@@ -249,6 +253,9 @@ internal sealed class InMemoryReferralRewardCaseRepository(params ReferralReward
     public Task<ReferralRewardCase?> GetForCompensationAsync(Guid rewardCaseId, CancellationToken ct = default) =>
         Task.FromResult(_items.FirstOrDefault(reward => reward.Id == rewardCaseId));
 
+    public Task<ReferralRewardCase?> GetByAttributionAsync(Guid attributionId, CancellationToken ct = default) =>
+        Task.FromResult(_items.FirstOrDefault(reward => reward.AttributionId == attributionId));
+
     public Task<IReadOnlyList<GrantableRewardCaseRef>> GetStaleClawbackPendingCasesAsync(
         DateTime nowUtc,
         int batchSize,
@@ -303,9 +310,11 @@ internal sealed class FakeReferralRewardQuota : IReferralRewardQuota, IFakeRefer
         int calendarYear,
         int maximum,
         Guid qualificationId,
+        Guid actingTenantId,
         CancellationToken ct = default
     )
     {
+        _ = actingTenantId;
         _ = ownerTenantId; // fake — el reservation-set en memoria es global al test
         InvocationCount++;
         if (SlotAvailable && !_qualificationReservations.Contains(qualificationId))
@@ -325,4 +334,20 @@ internal sealed class FakeReferralRewardQuota : IReferralRewardQuota, IFakeRefer
     }
 
     private sealed record Snapshot(int InvocationCount, IReadOnlyCollection<Guid> QualificationReservations);
+}
+
+internal sealed class InMemoryReferralFraudReviewRepository : IReferralFraudReviewRepository
+{
+    private readonly List<ReferralFraudReview> _items = [];
+
+    internal IReadOnlyCollection<ReferralFraudReview> Items => _items;
+
+    public Task<ReferralFraudReview?> GetByIdAsync(Guid reviewId, CancellationToken ct = default) =>
+        Task.FromResult(_items.FirstOrDefault(review => review.Id == reviewId));
+
+    public Task AddAsync(ReferralFraudReview review, CancellationToken ct = default)
+    {
+        _items.Add(review);
+        return Task.CompletedTask;
+    }
 }

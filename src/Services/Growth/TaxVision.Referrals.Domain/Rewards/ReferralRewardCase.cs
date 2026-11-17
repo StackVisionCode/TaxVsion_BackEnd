@@ -32,6 +32,9 @@ public sealed class ReferralRewardCase : TenantEntity
     public string? MaterializedBenefitReference { get; private set; }
     public string? FailureCode { get; private set; }
     public string? StateReason { get; private set; }
+
+    /// <summary>Disputa del pago que tiene retenido este premio; null si no hay retención por disputa.</summary>
+    public string? HeldForDisputeId { get; private set; }
     public string IdempotencyKey { get; private set; } = default!;
     public string PayloadFingerprint { get; private set; } = default!;
     public DateTime CreatedAtUtc { get; private set; }
@@ -382,6 +385,56 @@ public sealed class ReferralRewardCase : TenantEntity
         StateReason = TrimReason(reason);
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>
+    /// Se abrió una disputa del pago: un premio aún sin acreditar queda retenido en revisión hasta que cierre. Devuelve
+    /// false si no se retuvo (ya en curso o acreditado, o ya en revisión por otro motivo): eso lo decide el cierre.
+    /// </summary>
+    public Result<bool> HoldForDispute(string disputeId, Guid actorUserId, DateTime nowUtc)
+    {
+        var actor = DomainGuards.EnsureActor(actorUserId);
+        if (actor.IsFailure)
+            return Result.Failure<bool>(actor.Error);
+
+        if (string.IsNullOrWhiteSpace(disputeId))
+            return Result.Failure<bool>(new Error("ReferralReward.InvalidDispute", "A dispute id is required."));
+
+        if (HeldForDisputeId == disputeId)
+            return Result.Success(true);
+
+        if (Status != ReferralRewardCaseStatus.Requested)
+            return Result.Success(false);
+
+        Status = ReferralRewardCaseStatus.ManualReview;
+        HeldForDisputeId = disputeId.Trim();
+        StateReason = "Held while the payment dispute is open.";
+        Touch(actorUserId, nowUtc);
+        return Result.Success(true);
+    }
+
+    /// <summary>
+    /// La disputa se ganó: si ESA disputa retuvo el premio, vuelve a esperar su acreditación. Una revisión puesta por
+    /// el admin no se libera por aquí. Devuelve false si no había nada que liberar.
+    /// </summary>
+    public Result<bool> ReleaseDisputeHold(string disputeId, Guid actorUserId, DateTime nowUtc)
+    {
+        var actor = DomainGuards.EnsureActor(actorUserId);
+        if (actor.IsFailure)
+            return Result.Failure<bool>(actor.Error);
+
+        if (
+            Status != ReferralRewardCaseStatus.ManualReview
+            || HeldForDisputeId is null
+            || HeldForDisputeId != disputeId?.Trim()
+        )
+            return Result.Success(false);
+
+        Status = ReferralRewardCaseStatus.Requested;
+        HeldForDisputeId = null;
+        StateReason = "The payment dispute was won.";
+        Touch(actorUserId, nowUtc);
+        return Result.Success(true);
     }
 
     public Result Cancel(string reason, Guid actorUserId, DateTime nowUtc)

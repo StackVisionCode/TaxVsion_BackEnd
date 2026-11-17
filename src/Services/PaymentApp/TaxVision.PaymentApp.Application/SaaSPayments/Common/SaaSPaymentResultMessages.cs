@@ -66,6 +66,9 @@ public static class SaaSPaymentResultMessages
             UnitAmountCents = payment.UnitAmountCents,
             ConceptCode = payment.ConceptCode,
             ConceptDisplayName = payment.ConceptDisplayName,
+            DiscountAmountCents = payment.DiscountSource is null ? null : payment.DiscountAmountCents,
+            DiscountSource = payment.DiscountSource,
+            DiscountLabel = payment.DiscountSource is null ? null : payment.DiscountLabel,
             Lines = payment.Lines is null
                 ? null
                 :
@@ -73,7 +76,9 @@ public static class SaaSPaymentResultMessages
                     .. payment.Lines.Select(line => new SaaSChargeLine(
                         line.Description,
                         line.Quantity,
-                        line.UnitAmountCents
+                        line.UnitAmountCents,
+                        line.TargetKind,
+                        line.TargetId
                     )),
                 ],
             CorrelationId = correlationId,
@@ -94,6 +99,7 @@ public static class SaaSPaymentResultMessages
                 Currency = payment.Currency,
                 PaidAtUtc = payment.PaidAtUtc ?? DateTime.UtcNow,
                 ProviderPaymentReference = payment.ExternalChargeReference ?? string.Empty,
+                ReferralDeclared = payment.ReferralDeclared,
                 CorrelationId = correlationId,
             };
 
@@ -237,8 +243,8 @@ public static class SaaSPaymentResultMessages
             }
         );
 
-        // El descuento de bienvenida del referido se reservó en Growth al activar la suscripción:
-        // se confirma con el envelope financiero genérico que Growth ya consume.
+        // Si el cobro llevó un código reservado en Growth, se confirma con el envelope financiero genérico que
+        // Growth ya consume. El referido no recibe descuento (N1): este camino es solo para códigos.
         if (payment.CodeReservationId is { } reservationId && payment.CodeReservationPaymentId is { } paymentId)
         {
             messages.Add(

@@ -24,4 +24,16 @@ public static class RenewalItemDescriptions
         var name = addOnName.Trim();
         return name.EndsWith(" add-on", StringComparison.OrdinalIgnoreCase) ? name : $"{name} add-on";
     }
+
+    /// <summary>El cobro del aniversario: "Pro plan, 3 seats and 1 add-on".</summary>
+    public static string Bundle(string? planName, int seats, int addOns)
+    {
+        var parts = new List<string> { Plan(planName) };
+        if (seats > 0)
+            parts.Add(seats == 1 ? "1 seat" : $"{seats} seats");
+        if (addOns > 0)
+            parts.Add(addOns == 1 ? "1 add-on" : $"{addOns} add-ons");
+
+        return parts.Count == 1 ? parts[0] : $"{string.Join(", ", parts[..^1])} and {parts[^1]}";
+    }
 }

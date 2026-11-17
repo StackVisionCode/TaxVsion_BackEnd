@@ -49,17 +49,31 @@ public static class ReconcileOnboardingPaymentHandler
         // ve PaymentCompleted/RegistrationPending y rebota por la rama de early-return.
         await using var _lock = await serializer.AcquireAsync(command.OnboardingId, ct);
 
-        var result = await ReconcileAsync(
-            command,
-            onboardings,
-            paymentApp,
-            successCompleter,
-            planCatalog,
-            unitOfWork,
-            bus,
-            correlation,
-            ct
-        );
+        Task<Result<ReconcileOnboardingPaymentResponse>> Reconcile() =>
+            ReconcileAsync(
+                command,
+                onboardings,
+                paymentApp,
+                successCompleter,
+                planCatalog,
+                unitOfWork,
+                bus,
+                correlation,
+                ct
+            );
+
+        Result<ReconcileOnboardingPaymentResponse> result;
+        try
+        {
+            result = await Reconcile();
+        }
+        catch (ConflictException)
+        {
+            // El aviso de pago (que este mismo reconcile dispara en PaymentApp) guardó primero: se relee y
+            // se responde con el estado vigente, sin repetir correo ni cierre.
+            await onboardings.ReloadAsync(command.OnboardingId, ct);
+            result = await Reconcile();
+        }
 
         // OBF-2.4: camino por referencia (sin cookie) también devuelve la registrationUrl para que el
         // landing redirija al formulario — antes forzaba null y el fallback mentía con "we sent you an
@@ -115,7 +129,9 @@ public static class ReconcileOnboardingPaymentHandler
                 ct
             );
 
-        if (onboarding.Status != TenantOnboardingStatus.PaymentProcessing)
+        // Vencida mientras pagaba: se consulta igual; solo un cobro confirmado la saca de Expired.
+        var expired = onboarding.Status == TenantOnboardingStatus.Expired;
+        if (onboarding.Status != TenantOnboardingStatus.PaymentProcessing && !expired)
             return Result.Failure<ReconcileOnboardingPaymentResponse>(
                 new Error("Onboarding.PaymentReconcileInvalidState", "This onboarding cannot reconcile a payment now.")
             );
@@ -144,6 +160,7 @@ public static class ReconcileOnboardingPaymentHandler
                 correlation,
                 ct
             ),
+            _ when expired => Result.Success(BuildResponse(onboarding, registrationUrl: null)),
             OnboardingPaymentStatus.Failed
             or OnboardingPaymentStatus.Cancelled
             or OnboardingPaymentStatus.Refunded

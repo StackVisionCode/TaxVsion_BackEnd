@@ -95,7 +95,8 @@ public static class TenantSubscriptionEmailConsumer
                     Amount = evt.Amount,
                     CardLast4 = evt.CardLast4,
                     CardBrand = evt.CardBrand,
-                    ReceiptUrl = evt.ReceiptUrl,
+                    // El cobro automático lleva al historial de recibos de la cuenta.
+                    ReceiptUrl = evt.ReceiptUrl ?? ReceiptsUrlFor(evt.Reason, renewUrl),
                     ManageUrl = $"{renewUrl.TrimEnd('/')}/account/manage-subscription",
                     NewMode = evt.NewMode,
                     Cadence = evt.Cadence,
@@ -107,6 +108,9 @@ public static class TenantSubscriptionEmailConsumer
                     VersionChangeEffectiveAtUtc = evt.VersionChangeEffectiveAtUtc,
                     VersionChangeSummary = evt.VersionChangeSummary,
                     MigrationId = evt.MigrationId,
+                    ItemDescription = evt.ItemDescription,
+                    DiscountAmount = evt.DiscountAmount,
+                    DiscountLabel = evt.DiscountLabel,
                 }
             );
 
@@ -117,6 +121,15 @@ public static class TenantSubscriptionEmailConsumer
             );
         }
     }
+
+    private static string? ReceiptsUrlFor(string reason, string renewUrl) =>
+        string.Equals(
+            reason,
+            nameof(SubscriptionChangeReason.RecurringChargeSucceeded),
+            StringComparison.OrdinalIgnoreCase
+        )
+            ? $"{renewUrl.TrimEnd('/')}/account/billing"
+            : null;
 
     /// <summary>Cancelar al fin del período no cambia el estado (sigue Active), así que el aviso se reconoce
     /// por el motivo, no por el estado.</summary>

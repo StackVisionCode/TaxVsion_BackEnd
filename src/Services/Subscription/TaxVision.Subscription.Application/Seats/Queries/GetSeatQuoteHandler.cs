@@ -1,7 +1,9 @@
 using BuildingBlocks.Results;
 using TaxVision.Subscription.Application.Abstractions;
+using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Domain.AddOns;
 using TaxVision.Subscription.Domain.Seats;
+using TaxVision.Subscription.Domain.Subscriptions;
 
 namespace TaxVision.Subscription.Application.Seats.Queries;
 
@@ -11,6 +13,7 @@ public static class GetSeatQuoteHandler
         GetSeatQuoteQuery query,
         ISubscriptionRepository subscriptions,
         ISeatPricingRepository seatPricing,
+        ISubscriptionDiscountReader discounts,
         CancellationToken ct
     )
     {
@@ -49,6 +52,17 @@ public static class GetSeatQuoteHandler
             return Result.Failure<SeatQuoteResponse>(prorated.Error);
 
         var proratedUnitCents = ToCents(prorated.Value.Amount);
+        var totalCents = proratedUnitCents * query.Quantity;
+        // El mismo descuento que aplica el checkout de asientos hoy.
+        var charge = await DiscountedCharge.ForAsync(
+            discounts,
+            query.TenantId,
+            DiscountChargeKind.Seats,
+            totalCents,
+            unitPrice.Value.Currency,
+            DateTime.UtcNow,
+            ct
+        );
         return Result.Success(
             new SeatQuoteResponse(
                 seatType.ToString(),
@@ -56,9 +70,11 @@ public static class GetSeatQuoteHandler
                 subscription.BillingCycle.ToString(),
                 ToCents(unitPrice.Value.Amount),
                 proratedUnitCents,
-                proratedUnitCents * query.Quantity,
+                totalCents,
                 unitPrice.Value.Currency,
-                subscription.CurrentPeriodEndUtc
+                subscription.CurrentPeriodEndUtc,
+                charge.DiscountCents,
+                charge.NetCents
             )
         );
     }

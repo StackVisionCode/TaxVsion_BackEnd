@@ -128,7 +128,8 @@ public static class GetAccountSubscriptionHandler
                         openCheckout.ProratedTotal.Cents,
                         openCheckout.ProratedTotal.Currency,
                         openCheckout.CheckoutUrl!,
-                        openCheckout.CheckoutExpiresAtUtc!.Value
+                        openCheckout.CheckoutExpiresAtUtc!.Value,
+                        openCheckout.CheckoutProvider
                     ),
                 openAddOnCheckouts
             )
@@ -170,7 +171,9 @@ public static class GetAccountSubscriptionHandler
                     intent.ProratedTotal.Cents,
                     intent.ProratedTotal.Currency,
                     intent.CheckoutUrl!,
-                    intent.CheckoutExpiresAtUtc!.Value
+                    intent.CheckoutExpiresAtUtc!.Value,
+                    intent.CheckoutProvider,
+                    intent.UpgradesTenantAddOnId
                 )
             );
         }
@@ -246,7 +249,9 @@ public static class GetAccountSubscriptionHandler
                     first?.CurrentPeriodEndUtc,
                     first?.AutoRenew,
                     activeInstances.Count,
-                    canStack
+                    canStack,
+                    first?.PendingAddOnCode,
+                    first?.TierChangeSkippedReason
                 )
             );
         }

@@ -45,8 +45,8 @@
   - Verificación: T-DOM sobre `Result`. · Origen: [Arquitectura](../Investigaciones/Arquitectura.md) "Result / Error".
 - [ ] **Agregado**: `sealed`, constructor privado, `Create()` → `Result<T>`, `private set`, colecciones por backing field; sin `virtual`.
   - Verificación: T-DOM; revisión. · Origen: [Guardrails](../Referencias/Guardrails.md) #5.
-- [ ] **Una transición = un método con nombre de negocio** (sin `ChangeStatus` genérico) y su evento.
-  - Verificación: T-DOM por transición inválida. · Origen: [Guardrails](../Referencias/Guardrails.md) #2.
+- [ ] **Una transición = un método con nombre de negocio** (sin `ChangeStatus` genérico) y su evento, que sale por cualquier camino que la produzca (mejor como evento de dominio, BB-1).
+  - Verificación: T-DOM por transición inválida; T-APP de cada camino que la produce comprueba el evento publicado. · Origen: [Guardrails](../Referencias/Guardrails.md) #2; [Wolverine_RabbitMQ](../Investigaciones/Wolverine_RabbitMQ.md) §2.
 - [ ] **Value Objects** para datos con reglas, uno por archivo en `Domain/ValueObjects/`.
   - Verificación: T-DOM con valores límite. · Origen: [Guardrails](../Referencias/Guardrails.md) #3 y #6.
 - [ ] **Sin `System.Linq` en Domain.**

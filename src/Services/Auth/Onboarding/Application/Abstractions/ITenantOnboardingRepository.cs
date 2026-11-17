@@ -6,6 +6,9 @@ public interface ITenantOnboardingRepository
 {
     Task<TenantOnboarding?> GetByIdAsync(Guid id, CancellationToken ct = default);
 
+    /// <summary>Descarta los cambios sin guardar del alta y la vuelve a leer (tras chocar con otro proceso).</summary>
+    Task<TenantOnboarding?> ReloadAsync(Guid id, CancellationToken ct = default);
+
     /// <summary>PayFlow (Fase 13) — resuelve el token de registro público (preview/complete/status)
     /// por su hash SHA-256 normalizado en minúsculas, contra el índice único filtrado de
     /// RegistrationTokenHash (TenantOnboardingConfiguration).</summary>

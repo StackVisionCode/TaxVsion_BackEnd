@@ -22,12 +22,13 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var subscriptionDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Infrastructure.Persistence.SubscriptionDbContext>(serviceScope.ServiceProvider);
+            var subscriptionDiscountReader = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.SubscriptionDiscountReader(subscriptionDbContext);
             var seatPricingRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.SeatPricingRepository(subscriptionDbContext);
             var tenantSubscriptionRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.TenantSubscriptionRepository(subscriptionDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var getSeatQuoteQuery = (TaxVision.Subscription.Application.Seats.Queries.GetSeatQuoteQuery)context.Envelope.Message;
 
@@ -48,7 +49,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Subscription.Application.Seats.Queries.GetSeatQuoteHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Subscription.Application.Seats.Queries.GetSeatQuoteHandler.Handle(getSeatQuoteQuery, tenantSubscriptionRepository, seatPricingRepository, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Subscription.Application.Seats.Queries.GetSeatQuoteHandler.Handle(getSeatQuoteQuery, tenantSubscriptionRepository, seatPricingRepository, subscriptionDiscountReader, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

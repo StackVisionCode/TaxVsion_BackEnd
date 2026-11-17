@@ -78,6 +78,9 @@ public sealed class CodeReservationConfiguration : IEntityTypeConfiguration<Code
         builder.Navigation(reservation => reservation.Payment).IsRequired();
         builder.OwnsOne(reservation => reservation.Subject, subject => subject.ConfigureSubject());
         builder.Navigation(reservation => reservation.Subject).IsRequired();
+        // Comprador del alta (HMAC del email normalizado); los límites por sujeto cuentan por él.
+        builder.Property(reservation => reservation.BuyerSubjectId).HasMaxLength(200);
+        builder.Ignore(reservation => reservation.LimitSubject);
         builder.OwnsOne(reservation => reservation.GrossAmount, money => money.ConfigureMoney("Gross"));
         builder.Navigation(reservation => reservation.GrossAmount).IsRequired();
         builder.OwnsOne(reservation => reservation.DiscountAmount, money => money.ConfigureMoney("Discount"));

@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using TaxVision.Referrals.Domain.Codes;
+using TaxVision.Referrals.Domain.Fraud;
 using TaxVision.Referrals.Domain.Rewards;
 
 namespace TaxVision.Referrals.Application.Abstractions;
@@ -52,4 +53,24 @@ public interface IReferralAdminReadModel
         int size,
         CancellationToken ct = default
     );
+
+    Task<PagedResult<ReferralFraudReviewAdminRow>> ListFraudReviewsAsync(
+        FraudReviewStatus? status,
+        int page,
+        int size,
+        CancellationToken ct = default
+    );
 }
+
+/// <summary>Una revisión de fraude vista por la plataforma: qué señal la abrió, de qué oficina es el premio y su estado.</summary>
+public sealed record ReferralFraudReviewAdminRow(
+    Guid ReviewId,
+    Guid ReferrerTenantId,
+    Guid? AttributionId,
+    Guid? RewardCaseId,
+    string SignalCode,
+    FraudReviewStatus Status,
+    string? ResolutionReason,
+    DateTime CreatedAtUtc,
+    DateTime? ResolvedAtUtc
+);

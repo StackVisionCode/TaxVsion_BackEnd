@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Auth.Onboarding.Application.Abstractions;
 using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Services;
@@ -62,10 +63,41 @@ public static class OnboardingPaymentSucceededConsumer
             if (completed.IsFailure)
                 return;
 
-            await unitOfWork.SaveChangesAsync(ct);
+            if (!await SaveUnlessAlreadyCompletedAsync(onboarding.Id, onboardings, unitOfWork, logger, ct))
+                return;
+
             await completed.Value.PublishNoticesAsync(bus);
 
             logger.LogInformation("Onboarding {OnboardingId} payment completed (net carril).", onboarding.Id);
+        }
+    }
+
+    private static async Task<bool> SaveUnlessAlreadyCompletedAsync(
+        Guid onboardingId,
+        ITenantOnboardingRepository onboardings,
+        IUnitOfWork unitOfWork,
+        ILogger logger,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            await unitOfWork.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (ConflictException)
+        {
+            // La conciliación del landing asentó este cobro primero: se suelta la copia vieja y no se repite nada.
+            // Si el cobro no quedó asentado, se relanza para que Wolverine reintente.
+            var current = await onboardings.ReloadAsync(onboardingId, ct);
+            if (current?.PaymentCompletedAtUtc is null)
+                throw;
+
+            logger.LogInformation(
+                "Onboarding {OnboardingId} payment was already recorded by the reconcile; nothing to do.",
+                onboardingId
+            );
+            return false;
         }
     }
 
@@ -86,7 +118,14 @@ public static class OnboardingPaymentSucceededConsumer
             return null;
         }
 
+        var wasExpired = onboarding.Status == TenantOnboardingStatus.Expired;
         var completedResult = onboarding.MarkPaymentCompleted(evt.SaaSPaymentId.ToString("N"), evt.PaidAtUtc);
+        if (completedResult.IsSuccess && wasExpired)
+            logger.LogWarning(
+                "Onboarding {OnboardingId} was expired but its payment arrived; completing it.",
+                evt.OnboardingId
+            );
+
         if (completedResult.IsFailure)
         {
             // Replay de un evento ya procesado (el onboarding ya avanzó más allá de PaymentCompleted) o

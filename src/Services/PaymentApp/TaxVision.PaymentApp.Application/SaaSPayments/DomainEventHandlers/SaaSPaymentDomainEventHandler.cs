@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.PaymentIntegrationEvents;
 using BuildingBlocks.Tenancy;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.SaaSPayments.Common;
+using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
 using Wolverine;
 
@@ -59,10 +60,11 @@ public static class SaaSPaymentDomainEventHandler
                 AggregateVersion = 1,
                 PaymentSource = "PaymentApp",
                 PaymentId = payment.SaaSPaymentId,
-                GrossAmountCents = payment.AmountCents + (payment.DiscountAmountCents ?? 0),
-                DiscountAmountCents = payment.DiscountAmountCents ?? 0,
+                GrossAmountCents = payment.AmountCents + DiscountOf(payment),
+                DiscountAmountCents = DiscountOf(payment),
                 NetAmountCents = payment.AmountCents,
                 Currency = payment.Currency,
+                Promotions = PromotionsOf(payment),
                 RefundReference = $"{payment.SaaSPaymentId:N}:{refunded.CumulativeRefundedCents}",
                 RefundDeltaAmountCents = refunded.RefundDeltaCents,
                 CumulativeRefundedAmountCents = refunded.CumulativeRefundedCents,
@@ -73,34 +75,65 @@ public static class SaaSPaymentDomainEventHandler
     }
 
     /// <summary>
-    /// Chargeback: el proveedor retira los fondos al abrir la disputa, así que se anuncia como "opened" y quien
-    /// reacciona (Growth) revierte salvo que la disputa se gane. DisputeVersion 1: PaymentApp no sigue la disputa.
+    /// Chargeback: el proveedor retira los fondos al abrir la disputa ("opened", versión 1). Quien reacciona (Growth)
+    /// retiene y decide al cierre, que llega como "won" o "lost" (versión 2).
     /// </summary>
-    public static OutgoingMessages Handle(SaaSPaymentChargedBack chargedBack, Envelope envelope)
-    {
-        var payment = chargedBack.Payment;
-        return new OutgoingMessages
+    public static OutgoingMessages Handle(SaaSPaymentChargedBack chargedBack, Envelope envelope) =>
+        [ChargebackChanged(chargedBack.Payment, "opened", 1, chargedBack.ChargedBackAtUtc, envelope)];
+
+    public static OutgoingMessages Handle(SaaSPaymentChargebackResolved resolved, Envelope envelope) =>
+        [
+            ChargebackChanged(
+                resolved.Payment,
+                resolved.Outcome == ChargebackOutcome.Won ? "won" : "lost",
+                2,
+                resolved.ResolvedAtUtc,
+                envelope
+            ),
+        ];
+
+    private static PaymentChargebackChangedIntegrationEvent ChargebackChanged(
+        SaaSPaymentSnapshot payment,
+        string disputeStatus,
+        long disputeVersion,
+        DateTime changedAtUtc,
+        Envelope envelope
+    ) =>
+        new()
         {
-            new PaymentChargebackChangedIntegrationEvent
-            {
-                TenantId = EventTenant(payment),
-                AggregateId = payment.TargetAggregateId,
-                AggregateVersion = 1,
-                PaymentSource = "PaymentApp",
-                PaymentId = payment.SaaSPaymentId,
-                GrossAmountCents = payment.AmountCents + (payment.DiscountAmountCents ?? 0),
-                DiscountAmountCents = payment.DiscountAmountCents ?? 0,
-                NetAmountCents = payment.AmountCents,
-                Currency = payment.Currency,
-                DisputeId = $"chargeback:{payment.SaaSPaymentId:N}",
-                DisputeStatus = "opened",
-                DisputeVersion = 1,
-                DisputedAmountCents = payment.AmountCents,
-                ChangedAtUtc = chargedBack.ChargedBackAtUtc,
-                CorrelationId = envelope.CorrelationId ?? string.Empty,
-            },
+            TenantId = EventTenant(payment),
+            AggregateId = payment.TargetAggregateId,
+            AggregateVersion = 1,
+            PaymentSource = "PaymentApp",
+            PaymentId = payment.SaaSPaymentId,
+            GrossAmountCents = payment.AmountCents + DiscountOf(payment),
+            DiscountAmountCents = DiscountOf(payment),
+            NetAmountCents = payment.AmountCents,
+            Currency = payment.Currency,
+            Promotions = PromotionsOf(payment),
+            DisputeId = $"chargeback:{payment.SaaSPaymentId:N}",
+            DisputeStatus = disputeStatus,
+            DisputeVersion = disputeVersion,
+            DisputedAmountCents = payment.AmountCents,
+            ChangedAtUtc = changedAtUtc,
+            CorrelationId = envelope.CorrelationId ?? string.Empty,
         };
-    }
+
+    // El alta guarda sus descuentos como promociones; el resto de cargos, en DiscountAmountCents.
+    private static long DiscountOf(SaaSPaymentSnapshot payment) =>
+        payment.DiscountAmountCents ?? payment.Promotions?.Sum(promotion => promotion.DiscountAmountCents) ?? 0;
+
+    private static IReadOnlyList<PaymentPromotionData>? PromotionsOf(SaaSPaymentSnapshot payment) =>
+        payment.Promotions is null
+            ? null
+            :
+            [
+                .. payment.Promotions.Select(promotion => new PaymentPromotionData(
+                    promotion.CodeReservationId,
+                    promotion.DiscountAmountCents,
+                    promotion.Order
+                )),
+            ];
 
     private static Guid EventTenant(SaaSPaymentSnapshot payment) =>
         payment.OnboardingId is not null || payment.TenantId == Guid.Empty ? PlatformTenant.Id : payment.TenantId;

@@ -11,6 +11,13 @@ public sealed class CodeQuote : TenantEntity
     public int RuleVersion { get; private set; }
     public CodeDisplay CodeDisplay { get; private set; } = null!;
     public SubjectReference Subject { get; private set; } = null!;
+
+    /// <summary>Comprador (id de <c>BuyerIdentity</c>) cuando el llamador lo informó; los límites por sujeto cuentan por él.</summary>
+    public string? BuyerSubjectId { get; private set; }
+
+    /// <summary>Sujeto con el que se cuentan los límites por sujeto: el comprador si lo hay; si no, el sujeto.</summary>
+    public SubjectReference LimitSubject =>
+        BuyerSubjectId is null ? Subject : SubjectReference.Create(SubjectType.Buyer, BuyerSubjectId).Value;
     public OfferReference Offer { get; private set; } = null!;
     public Money GrossAmount { get; private set; } = null!;
     public Money DiscountAmount { get; private set; } = null!;
@@ -91,6 +98,19 @@ public sealed class CodeQuote : TenantEntity
         };
         quote.SetTenant(tenantId);
         return Result.Success(quote);
+    }
+
+    /// <summary>Asigna el comprador una sola vez (al crear la cotización).</summary>
+    public Result AttachBuyer(string buyerSubjectId)
+    {
+        var buyer = SubjectReference.Create(SubjectType.Buyer, buyerSubjectId);
+        if (buyer.IsFailure)
+            return Result.Failure(buyer.Error);
+        if (BuyerSubjectId is not null && BuyerSubjectId != buyer.Value.SubjectId)
+            return Result.Failure(new Error("Codes.CodeQuote.BuyerAlreadySet", "The quote already has a buyer."));
+
+        BuyerSubjectId = buyer.Value.SubjectId;
+        return Result.Success();
     }
 
     public Result EnsureReservable(DateTime nowUtc)

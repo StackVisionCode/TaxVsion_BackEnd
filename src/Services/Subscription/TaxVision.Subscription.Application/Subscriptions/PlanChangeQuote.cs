@@ -12,11 +12,13 @@ namespace TaxVision.Subscription.Application.Subscriptions;
 /// activos al precio vigente del ciclo nuevo, completos y en el mismo pago. Lo comparten la vista previa y el
 /// pedido, para que la pantalla no prometa un monto distinto del que se cobra.
 /// </summary>
+/// <remarks>Las líneas van a precio bruto; <c>TotalCents</c> es lo que se cobra, ya con el descuento.</remarks>
 public sealed record PlanChangeQuote(
     IReadOnlyList<PlanChangeLine> Lines,
     long TotalCents,
     long SavingsCents,
-    Error? Blocked
+    Error? Blocked,
+    PlanChangeDiscount? Discount = null
 )
 {
     public const string AddOnUnavailableCode = "Subscription.CycleSwitch.AddOnUnavailable";
@@ -49,7 +51,7 @@ public sealed record PlanChangeQuote(
             change.TargetAmountCents
         );
         if (!IsCycleSwitch(subscription, change))
-            return new PlanChangeQuote([planLine], planLine.AmountCents, 0, null);
+            return Discounted(subscription, change, [planLine], 0);
 
         var tenantAddOns = await addOns.GetByTenantIdForUpdateAsync(subscription.TenantId, ct);
         var tenantSeats = await seats.GetByTenantIdAsync(subscription.TenantId, ct);
@@ -111,11 +113,50 @@ public sealed record PlanChangeQuote(
         }
 
         var total = lines.Sum(line => line.AmountCents);
+        return Discounted(
+            subscription,
+            change,
+            lines,
+            Savings(subscription, change, includedAddOns, includedSeats, total)
+        );
+    }
+
+    // El descuento vigente, con las reglas de la renovación: el plan con el de la base (medido contra el plan
+    // destino), los extras solo si los cubre. El cobro es el próximo: usa el código de un solo cobro pendiente.
+    private static PlanChangeQuote Discounted(
+        TenantSubscription subscription,
+        PlanChangeResolution change,
+        List<PlanChangeLine> lines,
+        long savingsCents
+    )
+    {
+        var nowUtc = DateTime.UtcNow;
+        var charges = lines
+            .Select(line =>
+                Common.DiscountedCharge.For(
+                    subscription,
+                    line.Kind switch
+                    {
+                        PlanChangeLineKind.Plan => DiscountChargeKind.Base,
+                        PlanChangeLineKind.AddOn => DiscountChargeKind.AddOns,
+                        _ => DiscountChargeKind.Seats,
+                    },
+                    line.AmountCents,
+                    change.Currency,
+                    nowUtc,
+                    change.Plan.Code.Value,
+                    nextCharge: true
+                )
+            )
+            .ToList();
+        var discountCents = charges.Sum(charge => charge.DiscountCents ?? 0);
+        var used = charges.FirstOrDefault(charge => charge.Source is not null);
         return new PlanChangeQuote(
             lines,
-            total,
-            Savings(subscription, change, includedAddOns, includedSeats, total),
-            null
+            charges.Sum(charge => charge.NetCents),
+            savingsCents,
+            null,
+            discountCents > 0 ? new PlanChangeDiscount(discountCents, used?.Source, used?.Label) : null
         );
     }
 

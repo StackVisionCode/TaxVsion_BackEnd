@@ -17,6 +17,7 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
             .Subscriptions.Include(s => s.Renewals)
             .Include(s => s.PlanChangeRequests)
             .Include(s => s.PendingDowngrades)
+            .Include(s => s.Discounts)
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(subscription => subscription.TenantId == tenantId, ct);
 
@@ -211,6 +212,7 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
                 )
             )
             .Include(s => s.PlanChangeRequests)
-            .Include(s => s.PendingDowngrades);
+            .Include(s => s.PendingDowngrades)
+            .Include(s => s.Discounts);
     }
 }

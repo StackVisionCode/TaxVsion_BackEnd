@@ -32,8 +32,8 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             "buyer@example.com",
-            "https://app.example.com/success",
-            "https://app.example.com/cancel",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
             "onboarding-checkout-key"
         );
 
@@ -49,6 +49,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -58,6 +59,40 @@ public sealed class CreateOnboardingCheckoutHandlerTests
         Assert.Equal("USD", provider.LastRequest.Amount.Currency);
         Assert.NotNull(payments.Added);
         Assert.Equal(4900, payments.Added!.Amount.AmountCents);
+    }
+
+    [Fact]
+    public async Task Stores_the_declared_referral_on_the_onboarding_payment()
+    {
+        var payments = new FakeSaaSPaymentRepository();
+
+        var result = await CreateOnboardingCheckoutHandler.Handle(
+            new CreateOnboardingCheckoutCommand(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "buyer@example.com",
+                "https://app.taxoffix.io/success",
+                "https://app.taxoffix.io/cancel",
+                "onboarding-checkout-referral",
+                ReferralDeclared: true
+            ),
+            payments,
+            new FakePaymentAdapterFactory(new FakePaymentProvider()),
+            new FakeOnboardingPaymentMethodCatalog(),
+            new FakeSubscriptionPlanPricingClient(Result.Success(new PlanPrice(4900, "USD"))),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
+            CancellationToken.None
+        );
+
+        // Growth la lee del evento de pago para reintentar si la atribución todavía no llegó.
+        Assert.True(result.IsSuccess);
+        Assert.True(payments.Added!.ReferralDeclared);
     }
 
     [Fact]
@@ -73,8 +108,8 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             "buyer@example.com",
-            "https://app.example.com/success",
-            "https://app.example.com/cancel",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
             "onboarding-checkout-key-2"
         );
 
@@ -90,6 +125,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -110,8 +146,8 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             "buyer@example.com",
-            "https://app.example.com/success",
-            "https://app.example.com/cancel",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
             "onboarding-checkout-key-disabled"
         );
 
@@ -127,6 +163,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -151,8 +188,8 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             "buyer@example.com",
-            "https://app.example.com/success",
-            "https://app.example.com/cancel",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
             "onboarding-checkout-key-paypal",
             Provider: PaymentProviderCode.PayPal,
             Method: PaymentMethodKind.Wallet
@@ -170,6 +207,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -193,8 +231,8 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             Guid.NewGuid(),
             Guid.NewGuid(),
             "buyer@example.com",
-            "https://app.example.com/success",
-            "https://app.example.com/cancel",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
             "onboarding-checkout-key-manual",
             Provider: PaymentProviderCode.Manual,
             Method: PaymentMethodKind.Manual
@@ -212,6 +250,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -235,8 +274,8 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             onboardingId,
             planId,
             "buyer@example.com",
-            "https://app.example.com/success",
-            "https://app.example.com/cancel",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
             key
         );
 
@@ -253,6 +292,7 @@ public sealed class CreateOnboardingCheckoutHandlerTests
             new FakeCorrelationContext(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -266,7 +306,110 @@ public sealed class CreateOnboardingCheckoutHandlerTests
         Assert.Equal($"{key}-1", provider.LastRequest!.IdempotencyKey.Value);
     }
 
-    private static SaaSPayment BuildFailedOnboardingPayment(string key, Guid onboardingId, Guid planId)
+    [Fact]
+    public async Task Stores_the_promotions_of_the_codes_on_the_payment()
+    {
+        var payments = new FakeSaaSPaymentRepository();
+        var promo = Guid.NewGuid();
+        var gift = Guid.NewGuid();
+
+        var result = await HandleAsync(
+            payments,
+            OnboardingCommand(
+                "onboarding-checkout-promotions",
+                netAmountCents: 2_900,
+                promotions: [new(promo, 1_500, "snap-promo", 1), new(gift, 500, "snap-gift", 2)]
+            )
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal([promo, gift], payments.Added!.Promotions.OrderBy(p => p.Order).Select(p => p.CodeReservationId));
+    }
+
+    [Fact]
+    public async Task Rejects_promotions_that_do_not_add_up_to_the_discount_charged()
+    {
+        var payments = new FakeSaaSPaymentRepository();
+
+        var result = await HandleAsync(
+            payments,
+            OnboardingCommand(
+                "onboarding-checkout-bad-promotions",
+                netAmountCents: 2_900,
+                promotions: [new(Guid.NewGuid(), 100, "snap", 1)]
+            )
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("SaaSPayment.PromotionsMismatch", result.Error.Code);
+        Assert.Null(payments.Added);
+    }
+
+    [Fact]
+    public async Task A_retry_renews_the_promotions_with_the_renewed_reservations()
+    {
+        const string key = "onboarding-checkout-renewed";
+        var onboardingId = Guid.NewGuid();
+        var planId = Guid.NewGuid();
+        var failed = BuildFailedOnboardingPayment(key, onboardingId, planId, promotionDiscountCents: 2_000);
+        var renewed = Guid.NewGuid();
+
+        var result = await HandleAsync(
+            new FakeSaaSPaymentRepository { Existing = failed },
+            OnboardingCommand(key, onboardingId, planId, promotions: [new(renewed, 2_000, "snap-renewed", 1)]),
+            new ThrowingSubscriptionPlanPricingClient()
+        );
+
+        // El reembolso tiene que compensar la reserva vigente, no la que venció.
+        Assert.True(result.IsSuccess);
+        Assert.Equal(renewed, Assert.Single(failed.Promotions).CodeReservationId);
+    }
+
+    private static CreateOnboardingCheckoutCommand OnboardingCommand(
+        string key,
+        Guid? onboardingId = null,
+        Guid? planId = null,
+        long? netAmountCents = null,
+        IReadOnlyList<OnboardingCheckoutPromotion>? promotions = null
+    ) =>
+        new(
+            onboardingId ?? Guid.NewGuid(),
+            planId ?? Guid.NewGuid(),
+            "buyer@example.com",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
+            key,
+            NetAmountCents: netAmountCents,
+            Promotions: promotions
+        );
+
+    private static Task<Result<OnboardingCheckoutResponse>> HandleAsync(
+        FakeSaaSPaymentRepository payments,
+        CreateOnboardingCheckoutCommand command,
+        ISubscriptionPlanPricingClient? pricing = null
+    ) =>
+        CreateOnboardingCheckoutHandler.Handle(
+            command,
+            payments,
+            new FakePaymentAdapterFactory(new FakePaymentProvider()),
+            new FakeOnboardingPaymentMethodCatalog(),
+            pricing ?? new FakeSubscriptionPlanPricingClient(Result.Success(new PlanPrice(4900, "USD"))),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
+            CancellationToken.None
+        );
+
+    private static SaaSPayment BuildFailedOnboardingPayment(
+        string key,
+        Guid onboardingId,
+        Guid planId,
+        long promotionDiscountCents = 0
+    )
     {
         var now = DateTime.UtcNow;
         var payment = SaaSPayment
@@ -280,6 +423,15 @@ public sealed class CreateOnboardingCheckoutHandlerTests
                 now
             )
             .Value;
+        if (promotionDiscountCents > 0)
+            Assert.True(
+                payment
+                    .AttachPromotions(
+                        [SaaSPaymentPromotion.Create(Guid.NewGuid(), promotionDiscountCents, "snap-old", 1).Value],
+                        4900 + promotionDiscountCents
+                    )
+                    .IsSuccess
+            );
         payment.RecordHostedCheckoutSession(
             "sess_old",
             ExternalPaymentReference.Create(PaymentProviderCode.Stripe, "pi_old").Value,

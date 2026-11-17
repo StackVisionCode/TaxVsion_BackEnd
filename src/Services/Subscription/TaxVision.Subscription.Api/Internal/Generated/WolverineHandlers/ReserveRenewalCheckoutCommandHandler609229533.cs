@@ -27,6 +27,9 @@ namespace Internal.Generated.WolverineHandlers
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Subscription.Infrastructure.Persistence.SubscriptionDbContext subscriptionDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Subscription.Infrastructure.Persistence.SubscriptionDbContext.");
+            var addOnDefinitionRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.AddOnDefinitionRepository(subscriptionDbContext);
+            var tenantAddOnRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.TenantAddOnRepository(subscriptionDbContext);
+            var subscriptionSeatRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.SubscriptionSeatRepository(subscriptionDbContext);
             var renewalCheckoutIntentRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.RenewalCheckoutIntentRepository(subscriptionDbContext);
             var planRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.PlanRepository(subscriptionDbContext);
             var tenantSubscriptionRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.TenantSubscriptionRepository(subscriptionDbContext);
@@ -50,7 +53,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout.ReserveRenewalCheckoutHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout.ReserveRenewalCheckoutHandler.Handle(reserveRenewalCheckoutCommand, tenantSubscriptionRepository, planRepository, renewalCheckoutIntentRepository, unitOfWork, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Subscription.Application.Subscriptions.Commands.StartRenewalCheckout.ReserveRenewalCheckoutHandler.Handle(reserveRenewalCheckoutCommand, tenantSubscriptionRepository, planRepository, renewalCheckoutIntentRepository, subscriptionSeatRepository, tenantAddOnRepository, addOnDefinitionRepository, unitOfWork, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

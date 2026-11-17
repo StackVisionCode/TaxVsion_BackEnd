@@ -34,6 +34,7 @@ public static class CreateWalletTopUpCheckoutHandler
         IPurchaseIntentAmountVerifier intentVerifier,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
+        ICheckoutReturnUrlGuard returnUrls,
         CancellationToken ct
     )
     {
@@ -70,6 +71,7 @@ public static class CreateWalletTopUpCheckoutHandler
             metrics,
             correlation,
             logger,
+            returnUrls,
             ct
         );
 

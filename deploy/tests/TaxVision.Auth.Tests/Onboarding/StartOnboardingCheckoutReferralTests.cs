@@ -70,6 +70,50 @@ public sealed class StartOnboardingCheckoutReferralTests
         Assert.Empty(f.Bus.Published.OfType<OnboardingReferralDeclaredIntegrationEvent>());
     }
 
+    [Theory]
+    [InlineData("TVR-7BBB2F5055", true)]
+    [InlineData(null, false)]
+    [InlineData("   ", false)]
+    public async Task The_payment_request_says_whether_a_referral_was_declared(string? referralCode, bool declared)
+    {
+        var f = Fixture.Create();
+
+        await f.RunAsync(referralCode: referralCode);
+
+        // Viaja en el evento de pago: Growth reintenta si la atribución todavía no llegó.
+        Assert.Equal(declared, f.PaymentApp.LastRequest!.ReferralDeclared);
+    }
+
+    [Theory]
+    [InlineData("<script>alert(1)</script>")]
+    [InlineData("TVR 7BBB2F5055")]
+    [InlineData("TVR-7BBB2F5055-TVR-7BBB2F5055-TVR-7BBB2F5055-TVR-7BBB2F5055-TVR")]
+    public async Task A_referral_code_edited_into_an_impossible_shape_is_not_declared(string referralCode)
+    {
+        var f = Fixture.Create();
+
+        var result = await f.RunAsync(referralCode: referralCode);
+
+        // El alta sigue a precio completo; Growth nunca recibe basura.
+        Assert.True(result.IsSuccess);
+        Assert.Empty(f.Bus.Published.OfType<OnboardingReferralDeclaredIntegrationEvent>());
+        Assert.False(f.PaymentApp.LastRequest!.ReferralDeclared);
+    }
+
+    [Theory]
+    [InlineData("WhatsApp!!")]
+    [InlineData("x")]
+    [InlineData("averyveryverylongchannelname")]
+    public async Task A_channel_edited_in_the_link_is_dropped(string channel)
+    {
+        var f = Fixture.Create();
+
+        await f.RunAsync(referralCode: "TVR-7BBB2F5055", channel: channel);
+
+        var declared = Assert.Single(f.Bus.Published.OfType<OnboardingReferralDeclaredIntegrationEvent>());
+        Assert.Null(declared.Channel);
+    }
+
     [Fact]
     public async Task A_blank_channel_is_dropped_instead_of_sent()
     {
@@ -79,21 +123,6 @@ public sealed class StartOnboardingCheckoutReferralTests
 
         var declared = Assert.Single(f.Bus.Published.OfType<OnboardingReferralDeclaredIntegrationEvent>());
         Assert.Null(declared.Channel);
-    }
-
-    [Fact]
-    public void Attaching_an_attribution_is_idempotent_and_keeps_the_first_one()
-    {
-        var onboarding = OnboardingTestFactory.NewOnboarding(DateTime.UtcNow);
-        var first = Guid.NewGuid();
-
-        Assert.True(onboarding.AttachReferralAttribution(first).IsSuccess);
-        Assert.True(onboarding.AttachReferralAttribution(Guid.NewGuid()).IsSuccess);
-        var empty = onboarding.AttachReferralAttribution(Guid.Empty);
-
-        Assert.Equal(first, onboarding.ReferralAttributionId);
-        Assert.True(empty.IsFailure);
-        Assert.Equal("Onboarding.InvalidReferralAttribution", empty.Error.Code);
     }
 
     private sealed class Fixture

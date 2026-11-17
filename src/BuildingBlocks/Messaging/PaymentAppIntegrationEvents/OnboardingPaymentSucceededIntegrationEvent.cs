@@ -19,4 +19,10 @@ public sealed record OnboardingPaymentSucceededIntegrationEvent : IntegrationEve
     public required DateTime PaidAtUtc { get; init; }
     public required string ProviderPaymentReference { get; init; }
     public string? PaymentMethodMasked { get; init; }
+
+    /// <summary>
+    /// El comprador declaró un código de referido al pagar. Growth lo usa para reintentar (no descartar) si la
+    /// atribución todavía no llegó. Nulo en eventos anteriores a este campo.
+    /// </summary>
+    public bool? ReferralDeclared { get; init; }
 }

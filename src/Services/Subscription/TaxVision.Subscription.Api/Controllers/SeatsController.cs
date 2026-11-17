@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Subscription.Application.Seats.Commands.CancelSeatCheckout;
 using TaxVision.Subscription.Application.Seats.Commands.PurchaseSeats;
+using TaxVision.Subscription.Application.Seats.Commands.RemoveUnusedSeats;
 using TaxVision.Subscription.Application.Seats.Commands.StartSeatCheckout;
 using TaxVision.Subscription.Application.Seats.Commands.StartSeatReactivationCheckout;
 using TaxVision.Subscription.Application.Seats.Queries;
@@ -126,11 +127,12 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    // PayerEmail se ignora (el pagador sale del token); se acepta para no romper clientes desplegados.
     public sealed record StartSeatCheckoutRequest(
         string SeatType,
         int Quantity,
         bool AutoRenew,
-        string PayerEmail,
+        string? PayerEmail,
         string SuccessUrl,
         string CancelUrl,
         string? Provider,
@@ -150,6 +152,8 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+        if (!User.TryGetEmail(out var payerEmail))
+            return CheckoutPayer.MissingEmail();
 
         var result = await bus.InvokeAsync<Result<StartSeatCheckoutResponse>>(
             new StartSeatCheckoutCommand(
@@ -157,7 +161,7 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
                 request.SeatType,
                 request.Quantity,
                 request.AutoRenew,
-                request.PayerEmail,
+                payerEmail,
                 request.SuccessUrl,
                 request.CancelUrl,
                 string.IsNullOrWhiteSpace(request.Provider) ? "Stripe" : request.Provider,
@@ -170,8 +174,9 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    // PayerEmail se ignora (el pagador sale del token); se acepta para no romper clientes desplegados.
     public sealed record StartSeatReactivationCheckoutRequest(
-        string PayerEmail,
+        string? PayerEmail,
         string SuccessUrl,
         string CancelUrl,
         string? Provider,
@@ -197,12 +202,14 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+        if (!User.TryGetEmail(out var payerEmail))
+            return CheckoutPayer.MissingEmail();
 
         var result = await bus.InvokeAsync<Result<StartSeatReactivationCheckoutResponse>>(
             new StartSeatReactivationCheckoutCommand(
                 tenantId,
                 seatId,
-                request.PayerEmail,
+                payerEmail,
                 request.SuccessUrl,
                 request.CancelUrl,
                 string.IsNullOrWhiteSpace(request.Provider) ? "Stripe" : request.Provider,
@@ -212,6 +219,27 @@ public sealed class SeatsController(IMessageBus bus) : ControllerBase
             ct
         );
 
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record RemoveUnusedSeatsRequest(IReadOnlyList<Guid> SeatIds);
+
+    /// <summary>Quita asientos suspendidos que el dueño no va a pagar (todo o nada).</summary>
+    [HttpPost("remove-unused")]
+    [HasPermission(SubscriptionPermissions.SeatsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [AllowSurface(AccessSurface.Account)]
+    [RateLimit("subscription.g.seat_manage")]
+    [ProducesResponseType<RemoveUnusedSeatsResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RemoveUnused(RemoveUnusedSeatsRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<RemoveUnusedSeatsResponse>>(
+            new RemoveUnusedSeatsCommand(tenantId, request.SeatIds ?? [], userId),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

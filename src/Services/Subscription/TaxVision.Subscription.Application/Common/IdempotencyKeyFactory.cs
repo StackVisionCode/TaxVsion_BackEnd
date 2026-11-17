@@ -66,6 +66,10 @@ public static class IdempotencyKeyFactory
     /// misma intención replaya su sesión.</summary>
     public static string AddOnCheckout(Guid addOnPurchaseIntentId) => $"addon-checkout-{addOnPurchaseIntentId:N}";
 
+    /// <summary>Diferencia prorrateada de una subida de tamaño, por add-on, tamaño destino y período.</summary>
+    public static string AddOnTierUpgrade(Guid tenantAddOnId, Guid targetDefinitionId, DateTime periodStartUtc) =>
+        $"addon-tierup-{tenantAddOnId:N}-{targetDefinitionId:N}-{periodStartUtc:yyyyMMdd}";
+
     /// <summary>Cargo por hosted-checkout de una renovación/reactivación self-service. Único por intención
     /// (cada intento crea su propia <c>SubscriptionRenewalIntent</c>) — el re-submit replaya su sesión.</summary>
     public static string RenewalCheckout(Guid renewalIntentId) => $"subscription-renewal-checkout-{renewalIntentId:N}";

@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Infrastructure.Security;
@@ -104,6 +105,126 @@ public sealed class OnboardingPaymentSucceededConsumerTests
         Assert.Equal("pi_123", receipt.ProviderPaymentReference);
         Assert.Equal("Visa •••• 4242", receipt.PaymentMethodMasked);
     }
+
+    [Fact]
+    public async Task Completes_an_onboarding_the_sweeper_expired_while_its_payment_was_in_flight()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = OnboardingTestFactory.NewOnboarding(now);
+        var paymentId = Guid.NewGuid();
+        Assert.True(onboarding.MarkPaymentProcessing(paymentId, paymentId.ToString("N")).IsSuccess);
+        Assert.True(onboarding.MarkExpired().IsSuccess);
+
+        var onboardings = new FakeTenantOnboardingRepository { Existing = onboarding };
+        var tokenReferences = new FakeTokenReferenceStore();
+        var bus = new FakeMessageBus();
+
+        await OnboardingPaymentSucceededConsumer.Handle(
+            new OnboardingPaymentSucceededIntegrationEvent
+            {
+                OnboardingId = onboarding.Id,
+                SaaSPaymentId = paymentId,
+                PlanId = onboarding.PlanId,
+                AmountPaidCents = 4900,
+                Currency = "USD",
+                PaidAtUtc = now,
+                ProviderPaymentReference = "pi_late",
+            },
+            onboardings,
+            BuildCompleter(tokenReferences),
+            new FakePlanCatalogClient("Enterprise"),
+            new FakeUnitOfWork(),
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        // El cobro llegó tarde pero es de este checkout: la oficina sigue su registro.
+        Assert.Equal(TenantOnboardingStatus.RegistrationPending, onboarding.Status);
+        Assert.Contains(bus.Published, p => p is OnboardingFinalizeCommand);
+    }
+
+    [Fact]
+    public async Task Payment_notice_arriving_after_the_reconcile_completed_the_onboarding_ends_quietly()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = OnboardingTestFactory.NewOnboarding(now);
+        var paymentId = Guid.NewGuid();
+        Assert.True(onboarding.MarkPaymentProcessing(paymentId, paymentId.ToString("N")).IsSuccess);
+        // Lo que dejó en la base la conciliación del landing, que completó el alta mientras este aviso corría.
+        var completedByReconcile = OnboardingTestFactory.NewOnboarding(now);
+        Assert.True(completedByReconcile.MarkPaymentProcessing(paymentId, paymentId.ToString("N")).IsSuccess);
+        Assert.True(completedByReconcile.MarkPaymentCompleted(paymentId.ToString("N"), now).IsSuccess);
+        var bus = new FakeMessageBus();
+
+        await HandleAsync(
+            new FakeTenantOnboardingRepository { Existing = onboarding, Reloaded = completedByReconcile },
+            new ConflictOnFirstSaveUnitOfWork(),
+            bus,
+            Succeeded(onboarding, paymentId, now)
+        );
+
+        // Sin error ni reencolado: el cobro ya está asentado y no se repiten correo ni cierre.
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Payment_notice_still_fails_when_the_conflict_left_the_payment_unrecorded()
+    {
+        var now = DateTime.UtcNow;
+        var onboarding = OnboardingTestFactory.NewOnboarding(now);
+        var paymentId = Guid.NewGuid();
+        Assert.True(onboarding.MarkPaymentProcessing(paymentId, paymentId.ToString("N")).IsSuccess);
+        // Otro proceso (el job de vencimiento) cambió la fila sin asentar el cobro.
+        var expiredBySweeper = OnboardingTestFactory.NewOnboarding(now);
+        Assert.True(expiredBySweeper.MarkPaymentProcessing(paymentId, paymentId.ToString("N")).IsSuccess);
+        Assert.True(expiredBySweeper.MarkExpired().IsSuccess);
+
+        // Se relanza para que Wolverine reintente y el cobro no se pierda.
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            HandleAsync(
+                new FakeTenantOnboardingRepository { Existing = onboarding, Reloaded = expiredBySweeper },
+                new ConflictOnFirstSaveUnitOfWork(),
+                new FakeMessageBus(),
+                Succeeded(onboarding, paymentId, now)
+            )
+        );
+    }
+
+    private static OnboardingPaymentSucceededIntegrationEvent Succeeded(
+        TenantOnboarding onboarding,
+        Guid paymentId,
+        DateTime now
+    ) =>
+        new()
+        {
+            OnboardingId = onboarding.Id,
+            SaaSPaymentId = paymentId,
+            PlanId = onboarding.PlanId,
+            AmountPaidCents = 4900,
+            Currency = "USD",
+            PaidAtUtc = now,
+            ProviderPaymentReference = "pi_race",
+        };
+
+    private static Task HandleAsync(
+        FakeTenantOnboardingRepository onboardings,
+        BuildingBlocks.Persistence.IUnitOfWork unitOfWork,
+        FakeMessageBus bus,
+        OnboardingPaymentSucceededIntegrationEvent evt
+    ) =>
+        OnboardingPaymentSucceededConsumer.Handle(
+            evt,
+            onboardings,
+            BuildCompleter(new FakeTokenReferenceStore()),
+            new FakePlanCatalogClient("Enterprise"),
+            unitOfWork,
+            bus,
+            new FakeCorrelationContext(),
+            NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
 
     [Fact]
     public async Task Ignores_events_for_unknown_onboardings()

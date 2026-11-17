@@ -4335,6 +4335,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<string>("CodeDisplay")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
                     b.Property<Guid>("CodeReservationId")
                         .HasColumnType("uniqueidentifier");
 
@@ -4344,10 +4348,36 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<long>("DiscountCents")
                         .HasColumnType("bigint");
 
+                    b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("OnboardingId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("PaymentReferenceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long?>("RecurringAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("RecurringCodeDefinitionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RecurringCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("RecurringDuration")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<int?>("RecurringMonths")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RecurringPercentBasisPoints")
                         .HasColumnType("int");
 
                     b.Property<string>("SnapshotHash")
@@ -4385,6 +4415,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(24)
                         .HasColumnType("nvarchar(24)")
                         .HasDefaultValue("Monthly");
+
+                    b.Property<DateTime?>("CheckoutStartedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -4470,13 +4503,15 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PlanId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("PricingGeneration")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTime?>("ProvisioningStartedAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<Guid?>("ReceiptFileId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ReferralAttributionId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("RegistrationCompletedAtUtc")

@@ -24,7 +24,19 @@ public sealed record CreateOnboardingCheckoutCommand(
     Guid? CodeReservationId = null,
     string? PromotionSnapshotHash = null,
     /// <summary>Nombre comercial del plan comprado (ej. "Professional"), para el recibo.</summary>
-    string? PlanDisplayName = null
+    string? PlanDisplayName = null,
+    /// <summary>El comprador declaró un código de referido; se guarda en el pago y viaja en su evento.</summary>
+    bool? ReferralDeclared = null,
+    /// <summary>Todos los códigos del alta (promo y regalo), uno por reserva de Growth.</summary>
+    IReadOnlyList<OnboardingCheckoutPromotion>? Promotions = null
+);
+
+/// <summary>Un código de descuento del alta: su reserva en Growth, el descuento y su orden.</summary>
+public sealed record OnboardingCheckoutPromotion(
+    Guid CodeReservationId,
+    long DiscountAmountCents,
+    string? PromotionSnapshotHash,
+    int Order
 );
 
 public sealed record OnboardingCheckoutResponse(

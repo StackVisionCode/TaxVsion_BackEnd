@@ -33,6 +33,7 @@ public static class CreateSeatsCheckoutHandler
         IPurchaseIntentAmountVerifier intentVerifier,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
+        ICheckoutReturnUrlGuard returnUrls,
         CancellationToken ct
     )
     {
@@ -72,6 +73,7 @@ public static class CreateSeatsCheckoutHandler
             metrics,
             correlation,
             logger,
+            returnUrls,
             ct
         );
 
@@ -111,6 +113,9 @@ public static class CreateSeatsCheckoutHandler
                         descriptor,
                         actorUserId: Guid.Empty,
                         nowUtc,
+                        discountAmountCents: command.DiscountAmountCents,
+                        discountSource: command.DiscountSource,
+                        discountLabel: command.DiscountLabel,
                         breakdown: ChargeBreakdowns.FromRequest(
                             command.Quantity,
                             command.UnitAmountCents,

@@ -25,7 +25,13 @@ public sealed record CreateCodeDefinitionCommand(
     Guid ActorUserId,
     string IdempotencyKey,
     // Día elegido (P30): vence al final de ese día en la zona comercial. Gana sobre ExpiresAtUtc.
-    DateOnly? ExpiresOn = null
+    DateOnly? ExpiresOn = null,
+    // Cuánto dura el descuento y dónde se usa; por defecto, como los códigos de antes (primer cobro, al registrarse).
+    CodeDurationKind Duration = CodeDurationKind.Once,
+    int? DurationMonths = null,
+    CodeUsageContext UsableOn = CodeUsageContext.Signup,
+    // Solo para esta oficina (alcance Include de tipo Tenant).
+    Guid? RestrictToTenantId = null
 )
 {
     public override string ToString() =>

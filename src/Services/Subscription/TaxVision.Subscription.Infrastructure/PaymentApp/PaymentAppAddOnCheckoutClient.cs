@@ -7,6 +7,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 
@@ -16,7 +17,7 @@ namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 /// </summary>
 internal sealed class PaymentAppAddOnCheckoutClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     IPurchaseIntentAmountSigner amountSigner,
     ILogger<PaymentAppAddOnCheckoutClient> logger
 ) : IAddOnCheckoutPaymentClient
@@ -70,6 +71,9 @@ internal sealed class PaymentAppAddOnCheckoutClient(
                         quantity = request.Quantity,
                         unitAmountCents = request.UnitAmountCents,
                         amountSignature,
+                        discountAmountCents = request.DiscountAmountCents,
+                        discountSource = request.DiscountSource,
+                        discountLabel = request.DiscountLabel,
                         addOnDisplayName = request.AddOnDisplayName,
                     },
                     options: Json

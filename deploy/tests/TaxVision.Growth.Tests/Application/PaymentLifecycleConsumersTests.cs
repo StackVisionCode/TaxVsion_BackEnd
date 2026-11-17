@@ -61,23 +61,6 @@ public sealed class PaymentLifecycleConsumersTests
     }
 
     [Fact]
-    public async Task PaymentSucceeded_UnknownPaymentSource_ThrowsBusinessRuleException()
-    {
-        var message = NewEvent() with
-        {
-            CodeReservationId = null,
-            ReferralAttributionId = Guid.NewGuid(),
-            PaymentSource = "Barter",
-        };
-
-        var ex = await Assert.ThrowsAsync<GrowthBusinessRuleException>(() =>
-            PaymentSucceededConsumer.Handle(message, new FailingCommitBus(new Error("Unused", "Unused.")), default)
-        );
-
-        Assert.Equal("Growth.PaymentEvent.InvalidSource", ex.ErrorCode);
-    }
-
-    [Fact]
     public async Task PaymentSucceeded_ReservationWithoutSnapshot_ThrowsBusinessRuleException()
     {
         var message = NewEvent() with { PromotionSnapshotHash = " " };

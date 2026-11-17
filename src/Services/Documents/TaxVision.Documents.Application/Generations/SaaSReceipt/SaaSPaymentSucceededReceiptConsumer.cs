@@ -65,7 +65,9 @@ public static class SaaSPaymentSucceededReceiptConsumer
                         evt.BilledTo?.Ein,
                         evt.BilledTo?.Address,
                         evt.Lines,
-                        officeZone.Id
+                        officeZone.Id,
+                        evt.DiscountAmountCents,
+                        evt.DiscountLabel
                     )
                 ),
                 ct

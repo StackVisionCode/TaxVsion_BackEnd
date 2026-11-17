@@ -168,6 +168,13 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("UpdatedBy")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("UsableOn")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Signup");
+
                     b.HasKey("Id");
 
                     b.HasAlternateKey("Id", "TenantId")
@@ -192,7 +199,6 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Codes.Domain.Definitions.CodeRuleVersion", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("AllowStacking")
@@ -227,7 +233,6 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("TaxVision.Codes.Domain.Definitions.CodeScope", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CodeDefinitionId")
@@ -267,6 +272,10 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BuyerSubjectId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<Guid>("CodeDefinitionId")
                         .HasColumnType("uniqueidentifier");
@@ -385,6 +394,10 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BuyerSubjectId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("CancellationIdempotencyKey")
                         .HasMaxLength(200)
@@ -967,6 +980,82 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("TaxVision.Growth.Infrastructure.Persistence.Referrals.ReferredOfficeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("NameUpdatedAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid?>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("OwnerEmailDisposable")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OwnerSubjectId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<long>("ProfileVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId")
+                        .HasDatabaseName("IX_ReferredOffices_OnboardingId")
+                        .HasFilter("[OnboardingId] IS NOT NULL");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ReferredOffices_TenantId");
+
+                    b.ToTable("ReferredOffices", "referrals");
+                });
+
+            modelBuilder.Entity("TaxVision.Referrals.Domain.Attributions.OnboardingReferralRejection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("OnboardingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("RejectedAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OnboardingId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_OnboardingReferralRejections_OnboardingId");
+
+                    b.ToTable("OnboardingReferralRejections", "referrals");
+                });
+
             modelBuilder.Entity("TaxVision.Referrals.Domain.Attributions.ReferralAttribution", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1008,10 +1097,16 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RefereeId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("RefereeTenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("RefereeType")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
+
+                    b.Property<Guid?>("RefereeUserId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("ReferralCodeId")
                         .HasColumnType("uniqueidentifier");
@@ -1065,6 +1160,9 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("RefereeTenantId")
+                        .HasDatabaseName("IX_ReferralAttributions_RefereeTenantId");
 
                     b.HasIndex("ReferralCodeId");
 
@@ -1586,6 +1684,10 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("GrantId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("HeldForDisputeId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("IdempotencyKey")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1909,6 +2011,31 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                             b1.Navigation("Percentage");
                         });
 
+                    b.OwnsOne("TaxVision.Codes.Domain.Definitions.CodeDuration", "Duration", b1 =>
+                        {
+                            b1.Property<Guid>("CodeRuleVersionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("Kind")
+                                .IsRequired()
+                                .ValueGeneratedOnAdd()
+                                .HasMaxLength(20)
+                                .HasColumnType("nvarchar(20)")
+                                .HasDefaultValue("Once")
+                                .HasColumnName("DurationKind");
+
+                            b1.Property<int?>("Months")
+                                .HasColumnType("int")
+                                .HasColumnName("DurationMonths");
+
+                            b1.HasKey("CodeRuleVersionId");
+
+                            b1.ToTable("CodeRules", "codes");
+
+                            b1.WithOwner()
+                                .HasForeignKey("CodeRuleVersionId");
+                        });
+
                     b.OwnsOne("TaxVision.Codes.Domain.ValueObjects.Money", "MinimumPurchase", b1 =>
                         {
                             b1.Property<Guid>("CodeRuleVersionId")
@@ -1932,6 +2059,9 @@ namespace TaxVision.Growth.Infrastructure.Persistence.Migrations
                         });
 
                     b.Navigation("Benefit")
+                        .IsRequired();
+
+                    b.Navigation("Duration")
                         .IsRequired();
 
                     b.Navigation("MinimumPurchase");

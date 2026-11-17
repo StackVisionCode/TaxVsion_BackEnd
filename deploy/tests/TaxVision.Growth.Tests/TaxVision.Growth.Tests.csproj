@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Services\Growth\TaxVision.Codes.Domain\TaxVision.Codes.Domain.csproj" />
+    <ProjectReference Include="..\..\..\src\Services\Growth\TaxVision.Growth.SharedKernel\TaxVision.Growth.SharedKernel.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Growth\TaxVision.Codes.Application\TaxVision.Codes.Application.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Growth\TaxVision.Referrals.Domain\TaxVision.Referrals.Domain.csproj" />
     <ProjectReference Include="..\..\..\src\Services\Growth\TaxVision.Referrals.Application\TaxVision.Referrals.Application.csproj" />

@@ -31,4 +31,16 @@ public interface ICodeDefinitionRepository
     );
 
     Task AddAsync(CodeDefinition definition, CancellationToken ct = default);
+
+    /// <summary>
+    /// Códigos de cualquier oficina con fecha de fin pasada que aún no están cerrados (Draft, Active o Suspended).
+    /// Solo para el barrido de expiración; el más vencido primero.
+    /// </summary>
+    Task<IReadOnlyList<ExpiredCodeRef>> GetExpiredOpenAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    );
 }
+
+public sealed record ExpiredCodeRef(Guid TenantId, Guid CodeDefinitionId);

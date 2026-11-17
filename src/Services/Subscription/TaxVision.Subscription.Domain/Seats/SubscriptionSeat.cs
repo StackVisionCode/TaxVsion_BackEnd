@@ -280,6 +280,22 @@ public sealed class SubscriptionSeat : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>El dueño quita un asiento suspendido que no va a pagar: termina ya, sin esperar los 30 días.</summary>
+    public Result RemoveWhileSuspended(Guid actorUserId, DateTime nowUtc)
+    {
+        if (Status != SeatStatus.Suspended)
+            return Result.Failure(
+                new Error("Seat.NotRemovable", $"Only suspended seats can be removed; this one is {Status}.")
+            );
+
+        Status = SeatStatus.Expired;
+        CancelledAtUtc = nowUtc;
+        ExpiredAtUtc = nowUtc;
+        CancellationReason = "Removed while suspended.";
+        Touch(actorUserId, nowUtc);
+        return Result.Success();
+    }
+
     public Result ExpireAfterCancellationPeriodEnded(Guid actorUserId, DateTime nowUtc)
     {
         if (Status != SeatStatus.Cancelled)
@@ -293,7 +309,17 @@ public sealed class SubscriptionSeat : TenantEntity
 
     /// <summary>Programa una renovación de este seat, independiente de la suscripción
     /// base y de cualquier otro seat. Idempotente por <paramref name="idempotencyKey"/>.</summary>
-    public Result BeginRenewal(string idempotencyKey, Guid actorUserId, DateTime nowUtc)
+    public Result BeginRenewal(string idempotencyKey, Guid actorUserId, DateTime nowUtc) =>
+        BeginRenewal(
+            idempotencyKey,
+            CurrentPeriodEndUtc is { } end ? BillingCycle.CalculateNext(end) : DateTime.MinValue,
+            actorUserId,
+            nowUtc
+        );
+
+    /// <summary>Renovación hasta <paramref name="newPeriodEndUtc"/>: el que llama decide el fin para alinearlo
+    /// con el plan (<see cref="SeatAlignment"/>).</summary>
+    public Result BeginRenewal(string idempotencyKey, DateTime newPeriodEndUtc, Guid actorUserId, DateTime nowUtc)
     {
         if (Status != SeatStatus.Active)
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot begin renewal from {Status}."));
@@ -301,7 +327,9 @@ public sealed class SubscriptionSeat : TenantEntity
         if (FindRenewalByKey(idempotencyKey) is not null)
             return Result.Success();
 
-        var newPeriodEndUtc = BillingCycle.CalculateNext(CurrentPeriodEndUtc!.Value);
+        if (newPeriodEndUtc <= CurrentPeriodEndUtc!.Value)
+            return Result.Failure(new Error("Seat.InvalidPeriod", "Renewal period end must be after the current end."));
+
         var renewalResult = SubscriptionSeatRenewal.Schedule(
             Id,
             TenantId,
@@ -316,6 +344,39 @@ public sealed class SubscriptionSeat : TenantEntity
         _renewals.Add(renewalResult.Value);
         Touch(actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>Lo pagado a mano cubrió este ítem: los cobros automáticos pendientes ya no salen. Devuelve sus
+    /// claves (también las fallidas) para que PaymentApp cancele sus reintentos.</summary>
+    public IReadOnlyList<string> SettleUnpaidRenewals(Guid actorUserId, DateTime nowUtc)
+    {
+        var keys = new List<string>();
+        foreach (var renewal in _renewals)
+        {
+            if (!renewal.IsAwaitingPayment && renewal.Status != RenewalStatus.Failed)
+                continue;
+
+            renewal.CancelAutomaticCharge();
+            keys.Add(renewal.IdempotencyKey);
+        }
+
+        if (keys.Count > 0)
+            Touch(actorUserId, nowUtc);
+        return keys;
+    }
+
+    /// <summary>Alinea el asiento con el plan sin cobro (el tramo es menor al mínimo): programa y cierra la
+    /// renovación en un paso. Idempotente por <paramref name="idempotencyKey"/>.</summary>
+    public Result AlignWithoutCharge(string idempotencyKey, DateTime newPeriodEndUtc, Guid actorUserId, DateTime nowUtc)
+    {
+        if (FindRenewalByKey(idempotencyKey) is { Status: RenewalStatus.Succeeded })
+            return Result.Success();
+
+        var begun = BeginRenewal(idempotencyKey, newPeriodEndUtc, actorUserId, nowUtc);
+        if (begun.IsFailure)
+            return begun;
+
+        return CompleteRenewal(FindRenewalByKey(idempotencyKey)!.Id, "aligned-without-charge", actorUserId, nowUtc);
     }
 
     /// <summary>Programa el cargo del período parcial INICIAL (compra) sobre el período vigente sin
@@ -352,7 +413,13 @@ public sealed class SubscriptionSeat : TenantEntity
     /// vía <see cref="CompleteReactivation"/>. Es análogo a <see cref="BeginRenewal"/> pero exige
     /// Suspended/PastDue en vez de Active, y usa `nowUtc` como periodStart (no el fin del período anterior,
     /// que ya expiró). Idempotente por <paramref name="idempotencyKey"/>.</summary>
-    public Result BeginReactivation(string idempotencyKey, DateTime newPeriodEndUtc, Guid actorUserId, DateTime nowUtc)
+    public Result BeginReactivation(
+        string idempotencyKey,
+        DateTime newPeriodEndUtc,
+        Guid actorUserId,
+        DateTime nowUtc,
+        string? provider = null
+    )
     {
         if (Status != SeatStatus.Suspended && Status != SeatStatus.PastDue)
             return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot begin reactivation from {Status}."));
@@ -374,6 +441,7 @@ public sealed class SubscriptionSeat : TenantEntity
         if (renewalResult.IsFailure)
             return Result.Failure(renewalResult.Error);
 
+        renewalResult.Value.UseCheckoutProvider(provider);
         _renewals.Add(renewalResult.Value);
         Touch(actorUserId, nowUtc);
         return Result.Success();

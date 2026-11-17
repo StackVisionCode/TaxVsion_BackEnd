@@ -51,7 +51,9 @@ public static class ResendOnboardingReceiptAdminHandler
                 null,
                 $"resend-receipt:{onboarding.Id:N}",
                 onboarding.OfficeName,
-                onboarding.TimeZoneId
+                onboarding.TimeZoneId,
+                onboarding.ReceiptGrossAmountCents(),
+                onboarding.ReceiptDiscounts()
             )
         );
 

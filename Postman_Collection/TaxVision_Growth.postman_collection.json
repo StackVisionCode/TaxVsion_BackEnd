@@ -57,7 +57,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"ownerScope\": \"Platform\",\n  \"tenantScopeId\": null,\n  \"name\": \"Postman gift card 20 percent off\",\n  \"kind\": \"Promotional\",\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 2000,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": false,\n  \"startsAtUtc\": \"2026-01-01T00:00:00Z\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\",\n  \"maxRedemptions\": 1000,\n  \"maxRedemptionsPerTenant\": null,\n  \"maxRedemptionsPerSubject\": null,\n  \"scopes\": null\n}",
+							"raw": "{\n  \"ownerScope\": \"Platform\",\n  \"tenantScopeId\": null,\n  \"name\": \"Postman gift card 20 percent off\",\n  \"kind\": \"Promotional\",\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 2000,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": false,\n  \"startsAtUtc\": \"2026-01-01T00:00:00Z\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\",\n  \"maxRedemptions\": 1000,\n  \"maxRedemptionsPerTenant\": null,\n  \"maxRedemptionsPerSubject\": 1,\n  \"scopes\": null,\n  \"duration\": \"Once\",\n  \"durationMonths\": null,\n  \"usableOn\": \"Signup\",\n  \"restrictToTenantId\": null\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -74,9 +74,123 @@
 								"codes"
 							]
 						},
-						"description": "Crea una GIFTCARD. REGLA DE PRODUCTO: solo la compañía (PlatformAdmin) las crea —afectan suscripciones y planes—; el descuento (monto o %) se aplica a quien usa el código al pagar un plan, válido en cualquier plan. OwnerScope siempre Platform. Requiere codes.code.manage + token de PlatformAdmin ({{platformAdminToken}}); un token de oficina recibe 403. Queda en Draft: usar ActivateCode."
+						"description": "Crea una GIFTCARD. REGLA DE PRODUCTO: solo la compañía (PlatformAdmin) las crea —afectan suscripciones y planes—; el descuento (monto o %) se aplica a quien usa el código al pagar un plan, válido en cualquier plan. OwnerScope siempre Platform. Requiere codes.code.manage + token de PlatformAdmin ({{platformAdminToken}}); un token de oficina recibe 403. Queda en Draft: usar ActivateCode.\n\nEjemplo: 20% solo en el primer pago del registro (`duration: Once`, `usableOn: Signup`). Así quedan también los códigos creados antes de que existiera la duración."
 					},
 					"response": []
+				},
+				{
+					"name": "CreateCode — 20% por 3 meses para clientes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ownerScope\": \"Platform\",\n  \"tenantScopeId\": null,\n  \"name\": \"20 percent for 3 months (customers)\",\n  \"kind\": \"Promotional\",\n  \"codeToken\": \"STAY20\",\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 2000,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": false,\n  \"startsAtUtc\": \"2026-01-01T00:00:00Z\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\",\n  \"maxRedemptions\": 1000,\n  \"maxRedemptionsPerTenant\": null,\n  \"maxRedemptionsPerSubject\": 1,\n  \"scopes\": null,\n  \"duration\": \"Months\",\n  \"durationMonths\": 3,\n  \"usableOn\": \"ExistingSubscription\",\n  \"restrictToTenantId\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes"
+							]
+						},
+						"description": "20% durante 3 meses, solo para oficinas que ya son clientes (`usableOn: ExistingSubscription`). Cada cobro dentro de la ventana lleva el descuento."
+					}
+				},
+				{
+					"name": "CreateCode — código para una sola oficina",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ownerScope\": \"Platform\",\n  \"tenantScopeId\": null,\n  \"name\": \"Retention deal for one office\",\n  \"kind\": \"Promotional\",\n  \"codeToken\": \"ONEOFFICE\",\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 1500,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": false,\n  \"startsAtUtc\": \"2026-01-01T00:00:00Z\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\",\n  \"maxRedemptions\": 1,\n  \"maxRedemptionsPerTenant\": null,\n  \"maxRedemptionsPerSubject\": 1,\n  \"scopes\": null,\n  \"duration\": \"Forever\",\n  \"durationMonths\": null,\n  \"usableOn\": \"ExistingSubscription\",\n  \"restrictToTenantId\": \"{{tenantId}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes"
+							]
+						},
+						"description": "15% para siempre, solo para la oficina indicada (`restrictToTenantId`). En otra oficina responde `Codes.CodeDefinition.ScopeNotIncluded`."
+					}
+				},
+				{
+					"name": "CreateCode — plan anual, con límites y apilable",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ownerScope\": \"Platform\",\n  \"tenantScopeId\": null,\n  \"name\": \"15 percent on the yearly Pro plan\",\n  \"kind\": \"Promotional\",\n  \"codeToken\": \"YEARLY15\",\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 1500,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": true,\n  \"startsAtUtc\": \"2026-01-01T00:00:00Z\",\n  \"expiresAtUtc\": \"2027-01-01T00:00:00Z\",\n  \"maxRedemptions\": 500,\n  \"maxRedemptionsPerTenant\": 1,\n  \"maxRedemptionsPerSubject\": 1,\n  \"scopes\": [\n    {\n      \"type\": \"Offer\",\n      \"scopeId\": \"Subscription/{{planId}}/Yearly\",\n      \"mode\": \"Include\"\n    }\n  ],\n  \"duration\": \"Once\",\n  \"durationMonths\": null,\n  \"usableOn\": \"Signup\",\n  \"restrictToTenantId\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes"
+							]
+						},
+						"description": "Código del alta limitado al plan {{planId}} en ciclo anual (Offer), 1 uso por oficina y por persona, y apilable (allowStacking true): se combina con otro código solo si ese también lo permite."
+					}
 				},
 				{
 					"name": "ListGiftcards",
@@ -206,6 +320,309 @@
 							]
 						},
 						"description": "Draft -> Active. Requiere codes.code.activate. Deja el codigo Active -- la carpeta 'Internal Codes' lo usa a continuacion via {{growthCodeToken}}."
+					},
+					"response": []
+				},
+				{
+					"name": "SuspendCode",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"pm.test('Status is Suspended', () => pm.expect(pm.response.json().status).to.eql('Suspended'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/suspend",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}",
+								"suspend"
+							]
+						},
+						"description": "Active -> Suspended. Requiere codes.code.revoke. Mientras está suspendido no cotiza ni reserva; lo ya reservado sigue su curso."
+					},
+					"response": []
+				},
+				{
+					"name": "ReactivateCode",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"pm.test('Status is Active', () => pm.expect(pm.response.json().status).to.eql('Active'));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/reactivate",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}",
+								"reactivate"
+							]
+						},
+						"description": "Suspended -> Active. Requiere codes.code.activate. Falla si el código ya venció."
+					},
+					"response": []
+				},
+				{
+					"name": "PublishRuleVersion",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"const rules = pm.response.json().rules;\r",
+									"pm.test('New version is the last one', () => pm.expect(rules[rules.length - 1].version).to.eql(rules.length));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/rules",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}",
+								"rules"
+							]
+						},
+						"description": "Nueva versión de la regla (beneficio, compra mínima, apilado y duración). Requiere codes.code.manage. Las cotizaciones y reservas ya hechas conservan su versión; solo las nuevas usan esta.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"benefitType\": \"Percentage\",\n  \"percentageBasisPoints\": 2500,\n  \"fixedAmountCents\": null,\n  \"fixedAmountCurrency\": null,\n  \"minimumPurchaseAmountCents\": null,\n  \"minimumPurchaseCurrency\": null,\n  \"allowStacking\": true,\n  \"duration\": \"Months\",\n  \"durationMonths\": 3\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "UpdateScopes",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"pm.test('Scopes replaced', () => pm.expect(pm.response.json().scopes.length).to.eql(1));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "postman-{{$guid}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/{{growthCodeDefinitionId}}/scopes",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"{{growthCodeDefinitionId}}",
+								"scopes"
+							]
+						},
+						"description": "Reemplaza TODOS los alcances del código. Plan:<PlanId> limita a un plan (cualquier ciclo); Offer:Subscription/<PlanId>/<Monthly|Yearly> limita a plan + ciclo. Lista vacía = sin límites. Requiere codes.code.manage. Vale para las próximas cotizaciones.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"scopes\": [\n    {\n      \"type\": \"Offer\",\n      \"scopeId\": \"Subscription/{{planId}}/Yearly\",\n      \"mode\": \"Include\"\n    }\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "ListLateCommitReviews",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+									"const rows = pm.response.json();\r",
+									"if (rows.length) { pm.collectionVariables.set('growthLateCommitReviewId', rows[0].id); }"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/late-commit-reviews?take=50",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"late-commit-reviews"
+							],
+							"query": [
+								{
+									"key": "take",
+									"value": "50"
+								}
+							]
+						},
+						"description": "Commits tardíos pendientes de revisión manual (reserva vencida y pago confirmado después). Solo PlatformAdmin con growth.admin.cross_tenant."
+					},
+					"response": []
+				},
+				{
+					"name": "ForceCommit",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test('Status code is 200', () => pm.response.to.have.status(200));"
+								]
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{platformAdminToken}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/growth/codes/late-commit-reviews/{{growthLateCommitReviewId}}/force-commit",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"growth",
+								"codes",
+								"late-commit-reviews",
+								"{{growthLateCommitReviewId}}",
+								"force-commit"
+							]
+						},
+						"description": "Da por bueno un canje tardío. Solo prospera si PaymentApp confirma el pago; deja auditoría. Necesita {{growthLateCommitReviewId}} (lo deja ListLateCommitReviews).",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"note\": \"Pago confirmado a mano\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
 					},
 					"response": []
 				},
@@ -349,7 +766,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"subjectType\": \"Tenant\",\n  \"subjectId\": \"{{tenantId}}\",\n  \"offerOwner\": \"Subscription\",\n  \"offerId\": \"plan-pro-monthly\",\n  \"offerVersion\": \"1\",\n  \"grossAmountCents\": 5000,\n  \"currency\": \"USD\",\n  \"snapshotHash\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"ttlSeconds\": 900,\n  \"scopeTargets\": null\n}",
+							"raw": "{\n  \"codeToken\": \"{{growthCodeToken}}\",\n  \"subjectType\": \"Tenant\",\n  \"subjectId\": \"{{tenantId}}\",\n  \"offerOwner\": \"Subscription\",\n  \"offerId\": \"plan-pro-monthly\",\n  \"offerVersion\": \"1\",\n  \"grossAmountCents\": 5000,\n  \"currency\": \"USD\",\n  \"snapshotHash\": \"0000000000000000000000000000000000000000000000000000000000000000\",\n  \"ttlSeconds\": 900,\n  \"scopeTargets\": [\n    {\n      \"type\": \"Plan\",\n      \"scopeId\": \"{{planId}}\"\n    },\n    {\n      \"type\": \"Offer\",\n      \"scopeId\": \"Subscription/{{planId}}/Monthly\"\n    }\n  ],\n  \"stackedWithCodeDefinitionIds\": []\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -496,7 +913,7 @@
 								"commit"
 							]
 						},
-						"description": "Reserved -> Committed (produce el CodeRedemption). Requiere scope growth.codes.commit. Verificado en vivo: 200, redemptionId capturado en {{growthRedemptionId}} para CompensateRedemption. NOTA: es una transicion TERMINAL de la reserva -- CancelReservation/ExpireReservation ya no aplicaran sobre esta misma {{growthReservationId}} despues de correr esto (son ramas alternativas a Commit, no un paso siguiente; para probarlas hay que generar una reserva nueva con ReserveCode y NO correr Commit sobre esa)."
+						"description": "Reserved -> Committed (produce el CodeRedemption). Requiere scope growth.codes.commit. Verificado en vivo: 200, redemptionId capturado en {{growthRedemptionId}} para CompensateRedemption. NOTA: es una transicion TERMINAL de la reserva -- CancelReservation (o el vencimiento automatico del job) ya no aplicaran sobre esta misma {{growthReservationId}} despues de correr esto (son ramas alternativas a Commit, no un paso siguiente; para probarlas hay que generar una reserva nueva con ReserveCode y NO correr Commit sobre esa)."
 					},
 					"response": []
 				},
@@ -539,39 +956,6 @@
 							]
 						},
 						"description": "Reserved -> Cancelled (libera disponibilidad). Requiere scope growth.codes.cancel. RAMA ALTERNATIVA a CommitReservation, no un paso posterior: una reserva solo puede terminar en Committed, Cancelled o Expired, nunca mas de uno. Si CommitReservation ya corrio sobre {{growthReservationId}} en esta misma corrida, esta request va a fallar (la reserva ya no esta en Reserved) -- eso es esperado, no un bug. Para probarla de verdad, correr ReserveCode de nuevo (nueva reserva) y llamar esta request en vez de CommitReservation."
-					},
-					"response": []
-				},
-				{
-					"name": "ExpireReservation (rama alternativa a Commit)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{serviceAccessToken}}",
-								"type": "text"
-							},
-							{
-								"key": "Idempotency-Key",
-								"value": "postman-{{$guid}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{GrowthDirectBase}}/internal/codes/reservations/{{growthReservationId}}/expire",
-							"host": [
-								"{{GrowthDirectBase}}"
-							],
-							"path": [
-								"internal",
-								"codes",
-								"reservations",
-								"{{growthReservationId}}",
-								"expire"
-							]
-						},
-						"description": "Reserved -> Expired (job de expiracion, TTL vencido). Requiere scope growth.codes.cancel (mismo scope que Cancel). RAMA ALTERNATIVA a CommitReservation/CancelReservation, mismo motivo que esa -- ver su descripcion."
 					},
 					"response": []
 				},
@@ -960,19 +1344,6 @@
 									"    if (body && body.attributionId) {\r",
 									"        pm.environment.set('growthAttributionId', body.attributionId);\r",
 									"        console.log('growthAttributionId:', body.attributionId);\r",
-									"    }\r",
-									"    // Fase 3 (opcion B, 2026-07-20): refereeBenefit viene poblado si el programa\r",
-									"    // tiene referee-benefit configurado -- un CodeDefinition BenefitGift ya activo\r",
-									"    // para el referido. Null si el programa no lo configura (opcion A, backward\r",
-									"    // compatible) o si la emision/activacion en Codes fallo (best-effort, no\r",
-									"    // bloquea la atribucion ya confirmada).\r",
-									"    if (body && body.refereeBenefit) {\r",
-									"        pm.environment.set('growthRefereeBenefitCodeDefinitionId', body.refereeBenefit.codeDefinitionId);\r",
-									"        console.log('refereeBenefit.codeDefinitionId:', body.refereeBenefit.codeDefinitionId);\r",
-									"        console.log('refereeBenefit.code (plaintext):', body.refereeBenefit.code);\r",
-									"        console.log('refereeBenefit.expiresAtUtc:', body.refereeBenefit.expiresAtUtc);\r",
-									"    } else {\r",
-									"        console.log('refereeBenefit: null (sin beneficio configurado, o emision fallida best-effort).');\r",
 									"    }\r",
 									"} else {\r",
 									"    console.log('409 esperado: ya existia una atribucion activa para este tenant+programa; growthAttributionId conserva el valor de la corrida anterior.');\r",
@@ -1660,6 +2031,176 @@
 							"response": []
 						}
 					]
+				},
+				{
+					"name": "Revisión de fraude",
+					"description": "Antifraude de referidos (G11). Al enlazar la oficina referida, Growth la compara con el referidor: el mismo usuario se bloquea solo (premio cancelado, revisión Rejected automática); el mismo email normalizado (alias +tag, puntos de Gmail) o un email desechable abren una revisión y retienen el premio (ManualReview) hasta decidir aquí. Permiso referrals.reward.manage.",
+					"item": [
+						{
+							"name": "ListFraudReviews",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+											"const items = pm.response.json().items;\r",
+											"if (items.length) { pm.collectionVariables.set('growthFraudReviewId', items[0].reviewId); }"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/fraud-reviews?status=Open&page=1&size=20",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"fraud-reviews"
+									],
+									"query": [
+										{
+											"key": "status",
+											"value": "Open"
+										},
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "size",
+											"value": "20"
+										}
+									]
+								},
+								"description": "Cola de revisiones (más recientes primero). status: Open | Investigating | Approved | Rejected | Escalated."
+							},
+							"response": []
+						},
+						{
+							"name": "ApproveFraudReview",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+											"pm.test('Approved', () => pm.expect(pm.response.json().status).to.eql('Approved'));"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/fraud-reviews/{{growthFraudReviewId}}/approve",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"fraud-reviews",
+										"{{growthFraudReviewId}}",
+										"approve"
+									]
+								},
+								"description": "Visto bueno: el premio retenido vuelve a Requested y se acredita al vencer su espera; la atribución vuelve a Qualified.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"reason\": \"Different owners: verified by support.\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "RejectFraudReview (rama alternativa)",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test('Status code is 200', () => pm.response.to.have.status(200));\r",
+											"pm.test('Rejected', () => pm.expect(pm.response.json().status).to.eql('Rejected'));"
+										]
+									}
+								}
+							],
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{platformAdminToken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{UrlBase}}/growth/referrals/admin/fraud-reviews/{{growthFraudReviewId}}/reject",
+									"host": [
+										"{{UrlBase}}"
+									],
+									"path": [
+										"growth",
+										"referrals",
+										"admin",
+										"fraud-reviews",
+										"{{growthFraudReviewId}}",
+										"reject"
+									]
+								},
+								"description": "Rechazo: el premio se cancela, la atribución queda Rejected y el referidor recibe el aviso de premio cancelado.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"reason\": \"Same owner as the referrer.\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": []
+						}
+					]
 				}
 			]
 		},
@@ -1847,6 +2388,11 @@
 				}
 			],
 			"description": "Fase 7.3 del plan de autorización por actor type — casos negativos runnable que confirman que un JWT de actor type equivocado recibe 403, no solo que el flujo correcto funciona. Ver Actor_Type_Authorization_Layers_Plan.md."
+		},
+		{
+			"name": "Flujos",
+			"description": "Orden de uso de los pedidos de esta colección. Variables: {{UrlBase}} (Gateway), {{GrowthDirectBase}} (M2M directo), {{platformAdminToken}}, {{accessToken}}, {{planId}}.\n\n1. Código promocional (PlatformAdmin, carpeta Codes)\n   CreateCode (o una de sus variantes: 3 meses para clientes, una sola oficina, plan anual apilable) -> ActivateCode -> GetCode.\n   Ajustes: PublishRuleVersion (nueva regla; lo ya reservado conserva la anterior), UpdateScopes (Plan / Offer con ciclo), SuspendCode -> ReactivateCode. Retiro: Cleanup/RevokeCode.\n\n2. Canje M2M (carpeta Internal Codes, token de servicio con scopes growth.codes.*)\n   CreateQuote (scopeTargets Plan + Offer; stackedWithCodeDefinitionIds con los códigos ya aplicados) -> ReserveCode -> CommitReservation. Rama alternativa: CancelReservation. Las reservas vencidas las cierra el job. Reembolso: CompensateRedemption.\n\n3. Canje de una oficina con suscripción (colección Subscription)\n   GetMyDiscount -> RedeemDiscountCode -> GetMyDiscount (o el modal del CRM / /account/billing).\n\n4. Revisión tardía (PlatformAdmin)\n   ListLateCommitReviews -> ForceCommit (solo si PaymentApp confirma el pago).\n\n5. Programa de referidos (Referrals Admin / Programa)\n   CreateProgram -> UpdateProgramPolicy -> ActivateProgram. Pausa: SuspendProgram.\n\n6. Referido (oficina)\n   GetActiveProgram -> GetMyCode (se emite solo al crear la oficina; RegenerateCode si hace falta) -> RegisterShare -> ListShares / ListInvites / ListRewards.\n\n7. Premios (Referrals Admin / Revisión de premios)\n   AdminListRewards -> AdminFlagReward -> AdminReleaseReward o AdminRejectReward.\n\n8. Antifraude (Referrals Admin / Revisión de fraude)\n   ListFraudReviews (status=Open) -> ApproveFraudReview (libera el premio) o RejectFraudReview (lo cancela y avisa al referidor).",
+			"item": []
 		}
 	]
 }

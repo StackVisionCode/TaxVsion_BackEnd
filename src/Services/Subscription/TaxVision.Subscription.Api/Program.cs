@@ -79,6 +79,7 @@ builder.Services.AddHostedService<OverdueRenewalSuspensionJob>();
 builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
 builder.Services.AddHostedService<RenewalNotificationJob>();
+builder.Services.AddHostedService<SubscriptionDiscountJob>();
 builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
 
 // Los seeders del catálogo solo actúan contra una base vacía; este pone al día la que YA existe:
@@ -208,6 +209,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SeatRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<AddOnRenewalDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SubscriptionRenewalUpcomingIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SubscriptionDiscountEndingIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SeatRenewalUpcomingIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // PayFlow (Fase 16) — publicado por InternalSubscriptionActivationController.
     options.PublishMessage<SubscriptionActivatedForOnboardingIntegrationEvent>().ToRabbitExchange("taxvision-events");

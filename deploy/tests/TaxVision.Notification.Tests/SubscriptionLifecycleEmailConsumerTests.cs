@@ -242,6 +242,27 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
         Assert.NotNull(gateway.Queued[0].IdempotencyKey);
     }
 
+    [Fact]
+    public async Task A_recurring_charge_sends_the_discount_and_what_was_charged()
+    {
+        var gateway = new RecordingEmailDispatchGateway();
+        var scribe = new CapturingScribeRenderClient();
+        var evt = Event("Active", "RecurringChargeSucceeded") with
+        {
+            Amount = "12.00",
+            ItemDescription = "Subscription renewal",
+            DiscountAmount = "3.00",
+            DiscountLabel = "Promo code SPRI...0420 · 20% off",
+        };
+
+        await HandleAsync(evt, gateway, scribe);
+
+        Assert.Equal("subscription.recurring_charge.v1", scribe.LastEventKey);
+        Assert.Equal("Subscription renewal", scribe.LastVariables!["item_description"]);
+        Assert.Equal("3.00", scribe.LastVariables["discount_amount"]);
+        Assert.Equal("Promo code SPRI...0420 · 20% off", scribe.LastVariables["discount_label"]);
+    }
+
     private static TenantSubscriptionEmailRequestedIntegrationEvent Event(
         string status,
         string reason,

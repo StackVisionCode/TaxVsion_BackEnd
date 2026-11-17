@@ -32,6 +32,20 @@ public sealed class OnboardingPricingPreviewTests
     }
 
     [Fact]
+    public async Task A_valid_line_tells_the_benefit_and_how_long_it_lasts()
+    {
+        var growth = new FakeGrowth { Discounts = { ["SPRING20"] = 2_580 }, Benefit = (2_000, "Months", 3) };
+
+        var result = await Run(growth, promo: "SPRING20");
+
+        var line = Assert.Single(result.Value.Lines);
+        Assert.Equal(2_000, line.PercentageBasisPoints);
+        Assert.Null(line.FixedAmountCents);
+        Assert.Equal("Months", line.Duration);
+        Assert.Equal(3, line.DurationMonths);
+    }
+
+    [Fact]
     public async Task A_code_covering_everything_is_marked_fully_covered()
     {
         var growth = new FakeGrowth { Discounts = { ["WELCOME100"] = 12_900 } };
@@ -91,13 +105,62 @@ public sealed class OnboardingPricingPreviewTests
         Assert.Equal("Onboarding.InvalidPlan", result.Error.Code);
     }
 
+    [Fact]
+    public async Task The_preview_quotes_with_the_session_email_so_disposable_emails_are_caught()
+    {
+        var growth = new FakeGrowth();
+        growth.Discounts["GIFT5"] = 500;
+
+        await Run(growth, gift: "GIFT5", buyerEmail: "ana@example.com");
+
+        Assert.Equal("ana@example.com", growth.LastBuyerEmail);
+        Assert.DoesNotContain(
+            "ana@example.com",
+            new GetOnboardingPricingPreviewQuery(Plan, "Monthly", null, null, "ana@example.com").ToString()
+        );
+    }
+
+    [Fact]
+    public async Task The_second_code_is_quoted_with_the_code_already_applied()
+    {
+        var growth = new FakeGrowth { Discounts = { ["WELCOME20"] = 2_580, ["GIFT25ABC"] = 2_500 } };
+
+        await Run(growth, promo: "WELCOME20", gift: "GIFT25ABC");
+
+        Assert.Empty(growth.Requests[0].StackedWithCodeDefinitionIds ?? []);
+        Assert.Equal([growth.IdOf("WELCOME20")], growth.Requests[1].StackedWithCodeDefinitionIds ?? []);
+    }
+
+    [Fact]
+    public async Task An_invalid_code_is_not_sent_as_applied()
+    {
+        var growth = new FakeGrowth { Discounts = { ["GIFT25ABC"] = 2_500 } };
+
+        await Run(growth, promo: "NOPE12345", gift: "GIFT25ABC");
+
+        Assert.Empty(growth.Requests[1].StackedWithCodeDefinitionIds ?? []);
+    }
+
+    [Fact]
+    public async Task Codes_are_quoted_with_the_plan_and_its_cycle()
+    {
+        var growth = new FakeGrowth { Discounts = { ["SPRING20"] = 2_580 } };
+
+        await Run(growth, promo: "SPRING20");
+
+        var request = Assert.Single(growth.Requests);
+        Assert.Equal(Plan, request.PlanId);
+        Assert.Equal("Monthly", request.BillingCycle);
+    }
+
     private static Task<Result<OnboardingPricingPreview>> Run(
         FakeGrowth growth,
         string? promo = null,
-        string? gift = null
+        string? gift = null,
+        string? buyerEmail = null
     ) =>
         GetOnboardingPricingPreviewHandler.Handle(
-            new GetOnboardingPricingPreviewQuery(Plan, "Monthly", promo, gift),
+            new GetOnboardingPricingPreviewQuery(Plan, "Monthly", promo, gift, buyerEmail),
             new OnboardingCodeReserver(new FixedPricing(), growth),
             CancellationToken.None
         );
@@ -115,8 +178,24 @@ public sealed class OnboardingPricingPreviewTests
     {
         public Dictionary<string, long> Discounts { get; } = [];
         public int Reservations { get; private set; }
+        public string? LastBuyerEmail { get; private set; }
+        public (int? Percent, string? Duration, int? Months) Benefit { get; set; }
+        public List<GrowthQuoteRequest> Requests { get; } = [];
+        private readonly Dictionary<string, Guid> _ids = [];
+
+        public Guid IdOf(string token) => _ids.TryGetValue(token, out var id) ? id : _ids[token] = Guid.NewGuid();
 
         public Task<Result<GrowthQuoteResult>> QuoteAsync(GrowthQuoteRequest request, CancellationToken ct = default) =>
+            Record(request);
+
+        private Task<Result<GrowthQuoteResult>> Record(GrowthQuoteRequest request)
+        {
+            LastBuyerEmail = request.BuyerEmail;
+            Requests.Add(request);
+            return QuoteFor(request);
+        }
+
+        private Task<Result<GrowthQuoteResult>> QuoteFor(GrowthQuoteRequest request) =>
             Task.FromResult(
                 Discounts.TryGetValue(request.CodeToken, out var discount)
                     ? Result.Success(
@@ -126,7 +205,11 @@ public sealed class OnboardingPricingPreviewTests
                             Math.Min(discount, request.GrossAmountCents),
                             request.GrossAmountCents - Math.Min(discount, request.GrossAmountCents),
                             request.Currency,
-                            DateTime.UtcNow.AddMinutes(10)
+                            DateTime.UtcNow.AddMinutes(10),
+                            CodeDefinitionId: IdOf(request.CodeToken),
+                            PercentageBasisPoints: Benefit.Percent,
+                            Duration: Benefit.Duration,
+                            DurationMonths: Benefit.Months
                         )
                     )
                     : Result.Failure<GrowthQuoteResult>(new Error("Codes.CodeNotFound", "unknown"))

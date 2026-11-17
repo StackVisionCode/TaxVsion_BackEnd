@@ -91,6 +91,7 @@ public static class QualifyReferralHandler
                         command.PaymentSucceededAtUtc.Year,
                         program.Policy.MaximumRewardsPerReferrerPerCalendarYear,
                         qualification.Id,
+                        attribution.TenantId,
                         operationCt
                     );
 
@@ -163,7 +164,8 @@ public static class QualifyReferralHandler
                         qualification.Decision,
                         qualification.RejectionReasonCode,
                         reward?.Id,
-                        WasReplay: false
+                        WasReplay: false,
+                        reward is null ? null : Rewards.ReferralRewardNotice.From(reward)
                     )
                 );
             },

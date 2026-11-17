@@ -3,6 +3,7 @@ using TaxVision.Codes.Application.Abstractions;
 using TaxVision.Codes.Application.Common;
 using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Codes.Domain.ValueObjects;
+using TaxVision.Growth.SharedKernel.Buyers;
 
 namespace TaxVision.Codes.Application.Quotes.CreateQuote;
 
@@ -12,7 +13,10 @@ public static class CreateQuoteHandler
         CreateQuoteCommand command,
         ICodeDefinitionRepository definitions,
         ICodeQuoteRepository quotes,
+        ICodeUsageCounterRepository counters,
         ICodeTokenHasher tokenHasher,
+        IBuyerIdentityHasher buyerHasher,
+        IDisposableEmailDomains disposableDomains,
         IBusinessIdempotencyExecutor idempotency,
         TimeProvider timeProvider,
         CancellationToken ct
@@ -39,6 +43,13 @@ public static class CreateQuoteHandler
         if (codeHashResult.IsFailure)
             return Result.Failure<CreateQuoteResponse>(codeHashResult.Error);
 
+        var buyerResult = BuyerSubject.Resolve(command.BuyerEmail, buyerHasher, disposableDomains);
+        if (buyerResult.IsFailure)
+            return Result.Failure<CreateQuoteResponse>(buyerResult.Error);
+
+        if (command.Context == CodeUsageContext.ExistingSubscription && command.BuyerTenantId is null)
+            return Failure("Codes.CreateQuote.BuyerTenantRequired", "The buying office is required.");
+
         var scopeFingerprint = string.Join(
             ",",
             (command.ScopeTargets ?? [])
@@ -57,7 +68,11 @@ public static class CreateQuoteHandler
             currency.Trim().ToUpperInvariant(),
             snapshotHash.Trim().ToLowerInvariant(),
             command.TtlSeconds,
-            scopeFingerprint
+            scopeFingerprint,
+            buyerResult.Value ?? string.Empty,
+            command.Context,
+            command.BuyerTenantId,
+            string.Join(",", (command.StackedWithCodeDefinitionIds ?? []).Order())
         );
 
         return await idempotency.ExecuteAsync(
@@ -85,7 +100,12 @@ public static class CreateQuoteHandler
                     return Result.Failure<CreateQuoteResponse>(snapshotResult.Error);
 
                 var targets = new List<CodeScopeTarget>();
-                foreach (var input in command.ScopeTargets ?? [])
+                // La oficina y el comprador los pone Growth desde el pedido; los del llamador no cuentan.
+                foreach (
+                    var input in (command.ScopeTargets ?? []).Where(target =>
+                        target.Type is not (CodeScopeType.Tenant or CodeScopeType.Subject)
+                    )
+                )
                 {
                     var targetResult = CodeScopeTarget.Create(input.Type, input.ScopeId);
                     if (targetResult.IsFailure)
@@ -94,6 +114,11 @@ public static class CreateQuoteHandler
                     targets.Add(targetResult.Value);
                 }
 
+                var implicitTargets = ImplicitTargets(command.BuyerTenantId, buyerResult.Value);
+                if (implicitTargets.IsFailure)
+                    return Result.Failure<CreateQuoteResponse>(implicitTargets.Error);
+                targets.AddRange(implicitTargets.Value);
+
                 var definition = await definitions.GetApplicableByHashAsync(
                     command.TenantId,
                     codeHashResult.Value,
@@ -101,6 +126,11 @@ public static class CreateQuoteHandler
                 );
                 if (definition is null)
                     return Failure("Codes.CreateQuote.CodeNotFound", "No applicable code was found.");
+
+                var stacked = await StackedWithAsync(definitions, command, operationCt);
+                var stackable = definition.EnsureStackableWith(stacked);
+                if (stackable.IsFailure)
+                    return Result.Failure<CreateQuoteResponse>(stackable.Error);
 
                 var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
                 var quoteResult = definition.CreateQuote(
@@ -113,16 +143,74 @@ public static class CreateQuoteHandler
                     keyResult.Value,
                     fingerprint,
                     TimeSpan.FromSeconds(command.TtlSeconds),
-                    nowUtc
+                    nowUtc,
+                    command.Context
                 );
                 if (quoteResult.IsFailure)
                     return Result.Failure<CreateQuoteResponse>(quoteResult.Error);
 
+                if (buyerResult.Value is { } buyerSubjectId)
+                {
+                    var attached = quoteResult.Value.AttachBuyer(buyerSubjectId);
+                    if (attached.IsFailure)
+                        return Result.Failure<CreateQuoteResponse>(attached.Error);
+                }
+
+                // Quien ya usó el código lo sabe desde la vista previa, no al pagar.
+                var available = await CodeUsageCounterSet.EnsureSubjectAvailableAsync(
+                    definition,
+                    command.TenantId,
+                    quoteResult.Value.LimitSubject,
+                    counters,
+                    operationCt
+                );
+                if (available.IsFailure)
+                    return Result.Failure<CreateQuoteResponse>(available.Error);
+
                 await quotes.AddAsync(quoteResult.Value, operationCt);
-                return Result.Success(CreateQuoteResponse.From(quoteResult.Value));
+                var rule = definition.RuleVersions.Single(item => item.Version == quoteResult.Value.RuleVersion);
+                return Result.Success(CreateQuoteResponse.From(quoteResult.Value, rule));
             },
             ct
         );
+    }
+
+    private static async Task<IReadOnlyCollection<CodeDefinition>> StackedWithAsync(
+        ICodeDefinitionRepository definitions,
+        CreateQuoteCommand command,
+        CancellationToken ct
+    )
+    {
+        var stacked = new List<CodeDefinition>();
+        foreach (var id in (command.StackedWithCodeDefinitionIds ?? []).Distinct())
+        {
+            if (await definitions.GetApplicableByIdAsync(command.TenantId, id, ct) is { } other)
+                stacked.Add(other);
+        }
+
+        return stacked;
+    }
+
+    private static Result<List<CodeScopeTarget>> ImplicitTargets(Guid? buyerTenantId, string? buyerSubjectId)
+    {
+        var targets = new List<CodeScopeTarget>();
+        if (buyerTenantId is { } tenant)
+        {
+            var tenantTarget = CodeScopeTarget.Create(CodeScopeType.Tenant, tenant.ToString());
+            if (tenantTarget.IsFailure)
+                return Result.Failure<List<CodeScopeTarget>>(tenantTarget.Error);
+            targets.Add(tenantTarget.Value);
+        }
+
+        if (buyerSubjectId is not null)
+        {
+            var subjectTarget = CodeScopeTarget.Create(CodeScopeType.Subject, buyerSubjectId);
+            if (subjectTarget.IsFailure)
+                return Result.Failure<List<CodeScopeTarget>>(subjectTarget.Error);
+            targets.Add(subjectTarget.Value);
+        }
+
+        return Result.Success(targets);
     }
 
     private static Result<CreateQuoteResponse> Failure(string code, string message) =>

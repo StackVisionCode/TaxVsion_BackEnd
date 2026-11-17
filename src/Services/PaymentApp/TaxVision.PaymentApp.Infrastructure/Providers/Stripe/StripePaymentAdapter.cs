@@ -634,6 +634,7 @@ public sealed class StripePaymentAdapter : IPaymentProvider
             "checkout.session.expired" => ParseCheckoutSessionExpired(stripeEvent),
             "charge.refunded" => ParseCharge(stripeEvent),
             "charge.dispute.created" => ParseDispute(stripeEvent),
+            "charge.dispute.closed" => ParseDisputeClosed(stripeEvent),
             _ => Result.Failure<WebhookEventPayload>(
                 new Error("Stripe.Webhook.UnsupportedEventType", $"Event type '{eventType}' is not handled.")
             ),
@@ -763,6 +764,37 @@ public sealed class StripePaymentAdapter : IPaymentProvider
                 FailureCode: dispute.Reason,
                 FailureMessage: "Chargeback dispute created.",
                 RefundedAmountCents: null
+            )
+        );
+    }
+
+    // Cierre de la disputa: "won" y "warning_closed" (consulta cerrada sin contracargo) devuelven los fondos.
+    private static Result<WebhookEventPayload> ParseDisputeClosed(Event stripeEvent)
+    {
+        if (stripeEvent.Data.Object is not Dispute dispute)
+            return Result.Failure<WebhookEventPayload>(
+                new Error("Stripe.Webhook.UnexpectedPayload", "Expected a Dispute object.")
+            );
+
+        ChargebackOutcome? outcome = dispute.Status switch
+        {
+            "won" or "warning_closed" => ChargebackOutcome.Won,
+            "lost" => ChargebackOutcome.Lost,
+            _ => null,
+        };
+        if (outcome is null)
+            return Result.Failure<WebhookEventPayload>(
+                new Error("Stripe.Webhook.UnsupportedDisputeStatus", $"Dispute status '{dispute.Status}' is not final.")
+            );
+
+        return Result.Success(
+            new WebhookEventPayload(
+                ProviderChargeReference: dispute.PaymentIntentId ?? string.Empty,
+                Status: PaymentStatus.ChargedBack,
+                FailureCode: dispute.Reason,
+                FailureMessage: $"Chargeback dispute {dispute.Status}.",
+                RefundedAmountCents: null,
+                DisputeOutcome: outcome
             )
         );
     }

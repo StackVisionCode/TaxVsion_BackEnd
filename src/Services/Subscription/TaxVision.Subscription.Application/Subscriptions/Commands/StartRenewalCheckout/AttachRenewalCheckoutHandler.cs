@@ -12,7 +12,9 @@ public sealed record AttachRenewalCheckoutCommand(
     Guid IntentId,
     Guid PaymentId,
     string CheckoutUrl,
-    DateTime ExpiresAtUtc
+    DateTime ExpiresAtUtc,
+    // Proveedor con el que se abrió (Stripe | PayPal).
+    string? Provider = null
 );
 
 public static class AttachRenewalCheckoutHandler
@@ -33,7 +35,8 @@ public static class AttachRenewalCheckoutHandler
             command.PaymentId,
             command.CheckoutUrl,
             command.ExpiresAtUtc,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            command.Provider
         );
         if (attached.IsFailure)
         {

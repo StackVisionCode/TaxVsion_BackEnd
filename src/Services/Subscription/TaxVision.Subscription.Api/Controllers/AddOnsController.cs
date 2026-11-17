@@ -42,6 +42,31 @@ public sealed class AddOnsController(IMessageBus bus, ILogger<AddOnsController> 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>
+    /// Vista previa de la compra de un add-on (storage en el CRM): prorrateo, descuento vigente y neto, con la misma
+    /// regla que el checkout. No crea nada.
+    /// </summary>
+    [HttpGet("quote")]
+    [HasPermission(SubscriptionPermissions.AddOnsManage)]
+    [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("subscription.f.addon_read")]
+    [ProducesResponseType<AddOnQuoteResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetQuote(
+        [FromQuery] string addOnCode,
+        [FromQuery] int quantity,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<AddOnQuoteResponse>>(
+            new GetAddOnQuoteQuery(tenantId, addOnCode, quantity),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>Add-ons vigentes del tenant autenticado.</summary>
     [HttpGet("tenant")]
     [RateLimit("subscription.f.addon_read")]
@@ -102,11 +127,12 @@ public sealed class AddOnsController(IMessageBus bus, ILogger<AddOnsController> 
             : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    // PayerEmail se ignora (el pagador sale del token); se acepta para no romper clientes desplegados.
     public sealed record StartAddOnCheckoutRequest(
         string AddOnCode,
         int Quantity,
         bool AutoRenew,
-        string PayerEmail,
+        string? PayerEmail,
         string SuccessUrl,
         string CancelUrl,
         string? Provider,
@@ -125,6 +151,8 @@ public sealed class AddOnsController(IMessageBus bus, ILogger<AddOnsController> 
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+        if (!User.TryGetEmail(out var payerEmail))
+            return CheckoutPayer.MissingEmail();
 
         var result = await bus.InvokeAsync<Result<StartAddOnCheckoutResponse>>(
             new StartAddOnCheckoutCommand(
@@ -132,7 +160,7 @@ public sealed class AddOnsController(IMessageBus bus, ILogger<AddOnsController> 
                 request.AddOnCode,
                 request.Quantity,
                 request.AutoRenew,
-                request.PayerEmail,
+                payerEmail,
                 request.SuccessUrl,
                 request.CancelUrl,
                 string.IsNullOrWhiteSpace(request.Provider) ? "Stripe" : request.Provider,

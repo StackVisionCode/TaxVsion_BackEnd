@@ -7,6 +7,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 
@@ -14,7 +15,7 @@ namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 /// nunca lanza y nunca devuelve Failure que bloquee al caller — el intent local ya está Cancelled.</summary>
 internal sealed class HostedCheckoutCancellationClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     ILogger<HostedCheckoutCancellationClient> logger
 ) : IHostedCheckoutCancellationClient
 {

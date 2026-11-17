@@ -60,7 +60,9 @@ public static class PurchaseSeatsHandler
             return Result.Failure<IReadOnlyList<Guid>>(purchased.Error);
 
         var newSeats = purchased.Value.Seats;
-        var charges = purchased.Value.Charges.Select(charge => RenewalDue(charge, correlation.CorrelationId)).ToList();
+        var charges = purchased
+            .Value.Charges.Select(charge => RenewalDue(charge, subscription, nowUtc, correlation.CorrelationId))
+            .ToList();
 
         foreach (var seat in newSeats)
             await seats.AddAsync(seat, ct);
@@ -174,8 +176,22 @@ public static class PurchaseSeatsHandler
 
     // Reusa el pipeline de renovación de seats: un SeatRenewalDueIntegrationEvent por asiento, que PaymentApp cobra
     // vía IPaymentAdapterFactory (multi-provider) y cuyo resultado cierran SeatRenewalPayment{Succeeded,Failed}.
-    private static SeatRenewalDueIntegrationEvent RenewalDue(SeatCharge charge, string correlationId) =>
-        new()
+    // Si el descuento vigente cubre asientos, el cobro inicial (prorrateado) sale con descuento.
+    private static SeatRenewalDueIntegrationEvent RenewalDue(
+        SeatCharge charge,
+        TenantSubscription subscription,
+        DateTime nowUtc,
+        string correlationId
+    )
+    {
+        var discounted = DiscountedCharge.For(
+            subscription,
+            DiscountChargeKind.Seats,
+            charge.Charge.AmountCents,
+            charge.Charge.Currency,
+            nowUtc
+        );
+        return new()
         {
             TenantId = charge.Seat.TenantId,
             CorrelationId = correlationId,
@@ -183,7 +199,11 @@ public static class PurchaseSeatsHandler
             PeriodStartUtc = charge.Seat.CurrentPeriodStartUtc!.Value,
             PeriodEndUtc = charge.Seat.CurrentPeriodEndUtc!.Value,
             IdempotencyKey = charge.Charge.IdempotencyKey,
-            AmountCents = charge.Charge.AmountCents,
+            AmountCents = discounted.NetCents,
             Currency = charge.Charge.Currency,
+            DiscountAmountCents = discounted.DiscountCents,
+            DiscountSource = discounted.Source,
+            DiscountLabel = discounted.Label,
         };
+    }
 }

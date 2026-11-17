@@ -13,9 +13,15 @@ namespace TaxVision.Auth.Onboarding.Application.Abstractions;
 /// </summary>
 public static class OnboardingPaymentReference
 {
-    public static Guid For(Guid onboardingId, int order)
+    /// <param name="generation">0 en la primera reserva; cada renovación de reservas vencidas usa la siguiente,
+    /// porque Growth no acepta reservar dos veces con la misma referencia.</param>
+    public static Guid For(Guid onboardingId, int order, int generation = 0)
     {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"onb-payref:{onboardingId:N}:{order}"));
+        var seed =
+            generation == 0
+                ? $"onb-payref:{onboardingId:N}:{order}"
+                : $"onb-payref:{onboardingId:N}:{order}:{generation}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
         return new Guid(hash.AsSpan(0, 16));
     }
 }
@@ -25,6 +31,15 @@ public static class GrowthOnboardingErrors
 {
     /// <summary>Commit tardío sobre una reserva vencida: Growth lo dejó en revisión manual (no se reintenta).</summary>
     public const string LateCommitPendingReview = "Codes.CommitReservation.LateCommitPendingReview";
+
+    /// <summary>El código no se puede usar con ese email (desechable o inválido).</summary>
+    public const string CodeNotAllowedForEmail = "Onboarding.CodeNotAllowedForEmail";
+
+    /// <summary>La misma persona (su email o un alias) ya usó el código hasta su límite.</summary>
+    public const string CodeAlreadyUsedByBuyer = "Onboarding.CodeAlreadyUsedByBuyer";
+
+    /// <summary>El código no se combina con otro de la misma compra.</summary>
+    public const string CodeNotStackable = "Onboarding.CodeNotStackable";
 }
 
 /// <summary>
@@ -83,8 +98,20 @@ public sealed record GrowthQuoteRequest(
     long GrossAmountCents,
     string Currency,
     string SnapshotHash,
-    int TtlSeconds
-);
+    int TtlSeconds,
+    // Renovación de reservas vencidas: cotización nueva, no la vieja devuelta por idempotencia.
+    int Generation = 0,
+    // Email del alta: Growth cuenta los límites por la persona (normalizado y como HMAC). Nunca se loguea.
+    string? BuyerEmail = null,
+    // Ciclo del plan (Monthly | Yearly): Growth limita códigos por plan y por plan + ciclo.
+    string? BillingCycle = null,
+    // Códigos ya aplicados en la misma compra; Growth valida el apilado con ellos.
+    IReadOnlyCollection<Guid>? StackedWithCodeDefinitionIds = null
+)
+{
+    public override string ToString() =>
+        $"{nameof(GrowthQuoteRequest)} {{ OnboardingId = {OnboardingId}, PlanId = {PlanId}, CodeToken = <redacted>, BuyerEmail = <redacted> }}";
+}
 
 public sealed record GrowthQuoteResult(
     Guid QuoteId,
@@ -92,7 +119,15 @@ public sealed record GrowthQuoteResult(
     long DiscountAmountCents,
     long NetAmountCents,
     string Currency,
-    DateTime ExpiresAtUtc
+    DateTime ExpiresAtUtc,
+    // El beneficio y cuánto dura (Once | Months | Forever), para dejar vigente un código recurrente.
+    Guid? CodeDefinitionId = null,
+    int? PercentageBasisPoints = null,
+    long? FixedAmountCents = null,
+    string? Duration = null,
+    int? DurationMonths = null,
+    // Código enmascarado (PREFIJO...ÚLTIMOS4) para el recibo.
+    string? CodeDisplay = null
 );
 
 public sealed record GrowthReserveResult(

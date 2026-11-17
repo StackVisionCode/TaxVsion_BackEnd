@@ -33,6 +33,20 @@ public static class AddOnCheckoutProvisioning
         if (intent.MarkPaid(paidAtUtc).IsFailure)
             return null;
 
+        // Subida de tamaño: cambia el add-on existente en vez de crear otro.
+        if (intent.UpgradesTenantAddOnId is { } upgradedId)
+            return await ProvisionUpgradeAsync(
+                intent,
+                upgradedId,
+                definition,
+                tenantAddOns,
+                audit,
+                correlationId,
+                paidAtUtc,
+                nowUtc,
+                ct
+            );
+
         var addOnResult = TenantAddOn.Purchase(
             intent.TenantId,
             definition,
@@ -87,6 +101,55 @@ public static class AddOnCheckoutProvisioning
             ct
         );
 
+        return addOn;
+    }
+
+    private static async Task<TenantAddOn?> ProvisionUpgradeAsync(
+        AddOnPurchaseIntent intent,
+        Guid tenantAddOnId,
+        AddOnDefinition target,
+        ITenantAddOnRepository tenantAddOns,
+        ISubscriptionAuditLogWriter audit,
+        string correlationId,
+        DateTime paidAtUtc,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        var addOn = await tenantAddOns.GetByIdAsync(tenantAddOnId, intent.TenantId, ct);
+        if (addOn is null)
+            return null;
+
+        var previousCode = addOn.AddOnCode;
+        // El precio y el cargo quedaron fijados al reservar: son lo que se cobró.
+        var plan = new AddOnTierChangePlan(
+            AddOnTierChangeDirection.Upgrade,
+            intent.UnitPrice,
+            intent.ProratedTotal,
+            nowUtc
+        );
+        if (addOn.UpgradeTier(target, plan, intent.RequestedByUserId, nowUtc).IsFailure)
+            return null;
+
+        if (
+            !SettleInitialCharge(addOn, intent, paidAtUtc, nowUtc) || intent.MarkProvisioned(addOn.Id, nowUtc).IsFailure
+        )
+            return null;
+
+        await AuditEntryFactory.AppendAsync(
+            audit,
+            intent.TenantId,
+            "TenantAddOn",
+            addOn.Id,
+            "AddOn.TierUpgraded",
+            intent.RequestedByUserId,
+            correlationId,
+            before: new { AddOnCode = previousCode },
+            after: new { addOn.AddOnCode, BilledCents = intent.ProratedTotal.Cents },
+            reason: null,
+            nowUtc,
+            ct
+        );
         return addOn;
     }
 

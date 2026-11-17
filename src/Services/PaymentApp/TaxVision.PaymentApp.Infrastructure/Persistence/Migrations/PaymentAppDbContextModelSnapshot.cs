@@ -480,6 +480,13 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ChargeAttemptedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("ChargebackOutcome")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime?>("ChargebackResolvedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("ChargedBackAtUtc")
                         .HasColumnType("datetime2");
 
@@ -497,6 +504,14 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
 
                     b.Property<long?>("DiscountAmountCents")
                         .HasColumnType("bigint");
+
+                    b.Property<string>("DiscountLabel")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("DiscountSource")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("FailureCode")
                         .HasMaxLength(100)
@@ -550,6 +565,9 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("ReceiptOwnerTenantId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("ReferralDeclared")
+                        .HasColumnType("bit");
 
                     b.Property<long?>("ReviewPaidAmountCents")
                         .HasColumnType("bigint");
@@ -982,6 +1000,13 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                             b1.Property<Guid>("SaaSPaymentId")
                                 .HasColumnType("uniqueidentifier");
 
+                            b1.Property<Guid?>("TargetId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("TargetKind")
+                                .HasMaxLength(40)
+                                .HasColumnType("nvarchar(40)");
+
                             b1.Property<long>("UnitAmountCents")
                                 .HasColumnType("bigint");
 
@@ -990,6 +1015,40 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                             b1.HasIndex("SaaSPaymentId");
 
                             b1.ToTable("SaaSPaymentLines", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("SaaSPaymentId");
+                        });
+
+                    b.OwnsMany("TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPaymentPromotion", "Promotions", b1 =>
+                        {
+                            b1.Property<Guid>("Id")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<Guid>("CodeReservationId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<long>("DiscountAmountCents")
+                                .HasColumnType("bigint");
+
+                            b1.Property<int>("Order")
+                                .HasColumnType("int");
+
+                            b1.Property<string>("PromotionSnapshotHash")
+                                .HasMaxLength(128)
+                                .HasColumnType("nvarchar(128)");
+
+                            b1.Property<Guid>("SaaSPaymentId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.HasKey("Id");
+
+                            b1.HasIndex("CodeReservationId")
+                                .HasDatabaseName("IX_SaaSPaymentPromotions_CodeReservationId");
+
+                            b1.HasIndex("SaaSPaymentId");
+
+                            b1.ToTable("SaaSPaymentPromotions", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("SaaSPaymentId");
@@ -1056,6 +1115,8 @@ namespace TaxVision.PaymentApp.Infrastructure.Persistence.Migrations
                     b.Navigation("ExternalChargeReference");
 
                     b.Navigation("Lines");
+
+                    b.Navigation("Promotions");
                 });
 
             modelBuilder.Entity("TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPaymentAttempt", b =>

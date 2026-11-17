@@ -59,6 +59,9 @@ public static class SubscriptionLifecycleEmailConsumer
                         ["card_brand"] = CardBrandNames.Display(evt.CardBrand),
                         ["card_last4"] = evt.CardLast4 ?? "----",
                         ["receipt_url"] = evt.ReceiptUrl ?? string.Empty,
+                        // Descuento del cobro automático; vacío sin descuento.
+                        ["discount_amount"] = evt.DiscountAmount ?? string.Empty,
+                        ["discount_label"] = evt.DiscountLabel ?? string.Empty,
                         ["new_mode"] = evt.NewMode ?? string.Empty,
                         ["cadence"] = evt.Cadence ?? "month",
                         // Eventos de antes traen solo el texto ya formateado: se respeta tal cual.

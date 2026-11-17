@@ -120,6 +120,7 @@ Sin `UseTaxVisionDomainEvents`: Catalog, Documents, Inventory, Notes, Notificati
 | `DefaultIncomingMessage` solo en cola dedicada | Forzar un tipo en el fanout rompería los demás eventos | `CloudStorage.Api/Program.cs` (comentario de `cloudstorage-external-uploads`) |
 | Antes de re-publicar un evento, revisar todos sus consumidores | La reconciliación de suscripciones habría mandado "tu suscripción venció" cada día | `project_a6_module_gate_estado_medido.md` |
 | Fanout sin consumidor = ruido "No known handler" | `CatalogChangedIntegrationEvent` llenaba logs de CloudStorage/Auth | `feedback_fanout_rabbit_sin_dueno_ruido_no_known_handler.md` |
+| Un hecho publica su evento por todos sus caminos | Subscription 2026-11-17: con una compra abierta en PayPal, elegir Stripe cancelaba la intención dentro de la reserva sin publicar `SeatCheckoutCancelledIntegrationEvent` (la cancelación manual sí lo publica). PaymentApp no marcaba el pago y el historial lo mostraba en "Processing". Igual en add-ons, cambio de tamaño y renovación. Las intenciones publican a mano en cada handler (sin BB-1) | `CancelSeatCheckoutHandler.cs:53` (manual); `ReserveSeatCheckoutHandler.cs:76` (reemplazo) y `StartSeatCheckoutHandler.cs:40` (su evento); consumidor `CheckoutCancelledOrExpiredSaaSPaymentConsumer.cs:245`; prueba `StartSeatCheckoutHandlerTests.cs:134` |
 
 ## 3. Problemas y contradicciones
 

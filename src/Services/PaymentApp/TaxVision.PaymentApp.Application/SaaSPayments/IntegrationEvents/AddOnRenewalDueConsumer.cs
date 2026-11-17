@@ -46,7 +46,10 @@ public static class AddOnRenewalDueConsumer
                 Provider: provider,
                 PayerEmail: SyntheticPayer.EmailFor(evt.TenantId),
                 PayerName: null,
-                RequestedByUserId: Guid.Empty
+                RequestedByUserId: Guid.Empty,
+                DiscountAmountCents: evt.DiscountAmountCents,
+                DiscountSource: evt.DiscountSource,
+                DiscountLabel: evt.DiscountLabel
             );
 
             var result = await bus.InvokeAsync<Result<Guid>>(command, ct);

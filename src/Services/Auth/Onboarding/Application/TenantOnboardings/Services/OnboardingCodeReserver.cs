@@ -20,10 +20,12 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
     private const int QuoteTtlSeconds = 24 * 60 * 60;
     private const string PlanVersion = "1";
 
+    /// <param name="generation">0 la primera vez; la renovación de reservas vencidas pasa la siguiente.</param>
     public async Task<Result<OnboardingPricingOutcome>> ReserveAsync(
         TenantOnboarding onboarding,
         IReadOnlyList<OnboardingCodeInput> codes,
-        CancellationToken ct
+        CancellationToken ct,
+        int generation = 0
     )
     {
         var priceResult = await pricing.GetGrossPriceAsync(onboarding.PlanId, onboarding.BillingCycle, ct);
@@ -35,6 +37,7 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
 
         long residual = gross;
         var reservations = new List<OnboardingCodeReservationInput>();
+        var applied = new List<Guid>();
 
         // Orden de aplicación: referido(0) → promo(1) → gift(2). El gift (dinero) absorbe el residual final.
         // `order` es la posición secuencial (0,1,2…): identifica la reserva y deriva su PaymentId único en
@@ -61,18 +64,25 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
                     residual,
                     currency,
                     snapshot,
-                    QuoteTtlSeconds
+                    QuoteTtlSeconds,
+                    generation,
+                    BuyerEmail: onboarding.Email,
+                    BillingCycle: onboarding.BillingCycle,
+                    StackedWithCodeDefinitionIds: [.. applied]
                 ),
                 ct
             );
             if (quote.IsFailure)
                 return Result.Failure<OnboardingPricingOutcome>(quote.Error);
 
+            var paymentReferenceId = OnboardingPaymentReference.For(onboarding.Id, order, generation);
             var reserve = await growth.ReserveAsync(
                 quote.Value.QuoteId,
-                OnboardingPaymentReference.For(onboarding.Id, order),
+                paymentReferenceId,
                 ReservationTtlSeconds,
-                idempotencyKey: $"onb-reserve:{onboarding.Id:N}:{snapshot}",
+                idempotencyKey: generation == 0
+                    ? $"onb-reserve:{onboarding.Id:N}:{snapshot}"
+                    : $"onb-reserve:{onboarding.Id:N}:{snapshot}:{generation}",
                 ct
             );
             if (reserve.IsFailure)
@@ -86,10 +96,16 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
                     code.BenefitType,
                     code.Label,
                     reserve.Value.DiscountAmountCents,
-                    snapshot
+                    snapshot,
+                    reserve.Value.ExpiresAtUtc,
+                    paymentReferenceId,
+                    RecurringOf(quote.Value, currency),
+                    quote.Value.CodeDisplay
                 )
             );
             residual = reserve.Value.NetAmountCents;
+            if (quote.Value.CodeDefinitionId is { } reservedCode)
+                applied.Add(reservedCode);
             order++;
         }
 
@@ -106,7 +122,8 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
         Guid planId,
         string billingCycle,
         IReadOnlyList<OnboardingCodeInput> codes,
-        CancellationToken ct
+        CancellationToken ct,
+        string? buyerEmail = null
     )
     {
         var priceResult = await pricing.GetGrossPriceAsync(planId, billingCycle, ct);
@@ -117,6 +134,7 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
         var currency = priceResult.Value.Currency;
         var residual = gross;
         var lines = new List<Pricing.OnboardingPricingPreviewLine>();
+        var applied = new List<Guid>();
         var subject = Guid.NewGuid();
 
         foreach (var code in codes.OrderBy(c => (int)c.BenefitType))
@@ -138,7 +156,10 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
                     residual,
                     currency,
                     snapshot,
-                    PreviewQuoteTtlSeconds
+                    PreviewQuoteTtlSeconds,
+                    BuyerEmail: buyerEmail,
+                    BillingCycle: billingCycle,
+                    StackedWithCodeDefinitionIds: [.. applied]
                 ),
                 ct
             );
@@ -148,8 +169,22 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
                 continue;
             }
 
-            lines.Add(new(code.BenefitType.ToString(), hint, true, quote.Value.DiscountAmountCents, null));
+            lines.Add(
+                new(
+                    code.BenefitType.ToString(),
+                    hint,
+                    true,
+                    quote.Value.DiscountAmountCents,
+                    null,
+                    quote.Value.PercentageBasisPoints,
+                    quote.Value.FixedAmountCents,
+                    quote.Value.Duration,
+                    quote.Value.DurationMonths
+                )
+            );
             residual = quote.Value.NetAmountCents;
+            if (quote.Value.CodeDefinitionId is { } quotedCode)
+                applied.Add(quotedCode);
         }
 
         return Result.Success(new OnboardingPricingPreviewOutcome(gross, gross - residual, residual, currency, lines));
@@ -165,6 +200,19 @@ public sealed class OnboardingCodeReserver(IOnboardingPlanPricingClient pricing,
         var canonical = $"{onboardingId:N}|{planId:N}|{residualCents}|{currency}";
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
+
+    // Un código de N meses o para siempre deja descuento en la suscripción; uno de un solo cobro, no.
+    private static OnboardingRecurringDiscount? RecurringOf(GrowthQuoteResult quote, string currency) =>
+        quote is { CodeDefinitionId: { } codeId, Duration: "Months" or "Forever" }
+            ? new OnboardingRecurringDiscount(
+                codeId,
+                quote.PercentageBasisPoints,
+                quote.FixedAmountCents,
+                currency,
+                quote.Duration,
+                quote.DurationMonths
+            )
+            : null;
 }
 
 /// <summary>Un código entrado por el usuario en el onboarding + su tipo de beneficio.</summary>

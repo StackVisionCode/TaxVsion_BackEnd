@@ -1,6 +1,7 @@
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands;
+using TaxVision.Auth.Onboarding.Domain.TenantOnboardings;
 
 namespace TaxVision.Auth.Tests.Onboarding;
 
@@ -57,6 +58,35 @@ public sealed class RequestOnboardingReceiptHandlerTests
     }
 
     /// <summary>P7: el recibo del onboarding va en la zona del navegador; Documents cae a UTC rotulado sin ella.</summary>
+    // El recibo del alta detalla el precio de lista y cada código: el contador ve bruto, descuentos y neto.
+    [Fact]
+    public async Task Passes_the_gross_and_each_discount_through()
+    {
+        var client = new FakeReceiptDocumentClient(Result.Success());
+
+        await RequestOnboardingReceiptHandler.Handle(
+            Command(Guid.NewGuid(), "pi_test_ABCD", pricePaidCents: 9_420) with
+            {
+                GrossAmountCents = 12_900,
+                Discounts =
+                [
+                    new OnboardingReceiptDiscount("Promo code SPRI...0420", 2_580),
+                    new OnboardingReceiptDiscount("Gift card GIFT...7F2A", 900),
+                ],
+            },
+            client,
+            NullLogger<RequestOnboardingReceiptCommand>.Instance,
+            CancellationToken.None
+        );
+
+        var request = client.LastRequest!;
+        Assert.Equal(12_900, request.GrossAmountCents);
+        Assert.Equal(
+            [("Promo code SPRI...0420", 2_580L), ("Gift card GIFT...7F2A", 900L)],
+            request.Discounts!.Select(discount => (discount.Label, discount.AmountCents))
+        );
+    }
+
     [Fact]
     public async Task Passes_the_payer_zone_through()
     {

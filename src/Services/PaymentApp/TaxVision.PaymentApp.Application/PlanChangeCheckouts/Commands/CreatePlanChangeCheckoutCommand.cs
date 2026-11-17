@@ -24,7 +24,11 @@ public sealed record CreatePlanChangeCheckoutCommand(
     string? AmountSignature = null,
     // Detalle del cobro (plan y extras) para el recibo, y cómo se ve en el historial. Opcionales.
     IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null,
-    string? ConceptDisplayName = null
+    string? ConceptDisplayName = null,
+    // Descuento vigente de la suscripción que ya va restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );
 
 public sealed record PlanChangeCheckoutResponse(

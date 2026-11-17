@@ -25,8 +25,8 @@ public sealed class CreateSubscriptionRenewalCheckoutHandlerTests
             amountCents,
             "USD",
             "owner@example.com",
-            "https://app.example.com/success",
-            "https://app.example.com/cancel",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
             $"subscription-renewal-checkout-{intentId:N}"
         );
 
@@ -49,6 +49,7 @@ public sealed class CreateSubscriptionRenewalCheckoutHandlerTests
             new FakePurchaseIntentAmountVerifier(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -59,5 +60,83 @@ public sealed class CreateSubscriptionRenewalCheckoutHandlerTests
         Assert.Equal(intentId, payments.Added.TargetAggregateId);
         Assert.Equal(tenantId, payments.Added.TenantId);
         Assert.Equal(4900, payments.Added.Amount.AmountCents);
+    }
+
+    [Fact]
+    public async Task A_discounted_renewal_stores_the_discount_and_its_source()
+    {
+        var payments = new FakeSaaSPaymentRepository();
+
+        var result = await CreateSubscriptionRenewalCheckoutHandler.Handle(
+            Command(Guid.NewGuid(), Guid.NewGuid(), amountCents: 3_920) with
+            {
+                DiscountAmountCents = 980,
+                DiscountSource = "Admin",
+                DiscountLabel = "Discount · 20% off",
+            },
+            payments,
+            new FakePaymentAdapterFactory(new FakePaymentProvider()),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            new FakePurchaseIntentAmountVerifier(),
+            NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Equal(3_920, payments.Added!.Amount.AmountCents);
+        Assert.Equal(980, payments.Added.DiscountAmountCents);
+        Assert.Equal("Admin", payments.Added.DiscountSource);
+        Assert.Equal("Discount · 20% off", payments.Added.DiscountLabel);
+    }
+
+    // "Pay what's due": un checkout con el plan y lo vencido guarda una línea por cosa para el recibo.
+    [Fact]
+    public async Task A_due_payment_keeps_one_line_per_item()
+    {
+        var payments = new FakeSaaSPaymentRepository();
+        var seatId = Guid.NewGuid();
+
+        var result = await CreateSubscriptionRenewalCheckoutHandler.Handle(
+            Command(Guid.NewGuid(), Guid.NewGuid(), amountCents: 4_400) with
+            {
+                Lines =
+                [
+                    new BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine(
+                        "Pro plan",
+                        1,
+                        2_900,
+                        "Plan",
+                        Guid.NewGuid()
+                    ),
+                    new BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine(
+                        "Standard seat",
+                        1,
+                        1_500,
+                        "Seat",
+                        seatId
+                    ),
+                ],
+            },
+            payments,
+            new FakePaymentAdapterFactory(new FakePaymentProvider()),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            new FakePurchaseIntentAmountVerifier(),
+            NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Equal(2, payments.Added!.Lines.Count);
+        Assert.Contains(payments.Added.Lines, line => line.TargetId == seatId);
     }
 }

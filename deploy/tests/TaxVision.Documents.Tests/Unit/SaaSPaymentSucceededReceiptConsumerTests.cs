@@ -198,4 +198,22 @@ public sealed class SaaSPaymentSucceededReceiptConsumerTests
             CancellationToken cancellation = default
         ) => throw new NotImplementedException();
     }
+
+    [Fact]
+    public async Task The_receipt_carries_the_discount_and_its_label()
+    {
+        var bus = new CapturingMessageBus();
+        var evt = Event() with
+        {
+            DiscountAmountCents = 980,
+            DiscountSource = "Code",
+            DiscountLabel = "Promo code SPRI...0420 · 20% off",
+        };
+
+        await HandleAsync(evt, bus);
+
+        var command = Assert.IsType<GenerateSaaSReceiptDocumentCommand>(Assert.Single(bus.Invoked));
+        Assert.Equal(980, command.Receipt.DiscountAmountCents);
+        Assert.Equal("Promo code SPRI...0420 · 20% off", command.Receipt.DiscountLabel);
+    }
 }

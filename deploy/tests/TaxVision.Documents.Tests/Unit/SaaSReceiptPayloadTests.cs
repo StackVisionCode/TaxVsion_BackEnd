@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TaxVision.Documents.Application.Generations.Receipts;
 using TaxVision.Documents.Application.Generations.SaaSReceipt;
 using Xunit;
 
@@ -46,4 +47,49 @@ public sealed class SaaSReceiptPayloadTests
 
         Assert.Equal(payload, copy);
     }
+
+    [Fact]
+    public void The_discount_of_the_charge_is_one_row_with_its_label()
+    {
+        var payload = Payload(1_200) with
+        {
+            DiscountAmountCents = 300,
+            DiscountLabel = "Promo code SPRI...0420 · 20% off",
+        };
+
+        var row = Assert.Single(payload.DiscountRows());
+
+        Assert.Equal(new ReceiptDiscount("Promo code SPRI...0420 · 20% off", 300), row);
+    }
+
+    [Fact]
+    public void A_discount_without_label_reads_discount()
+    {
+        var payload = Payload(1_200) with { DiscountAmountCents = 300 };
+
+        Assert.Equal("Discount", Assert.Single(payload.DiscountRows()).Label);
+    }
+
+    // Cobros de antes: sus líneas ya suman lo pagado, así que el descuento no se vuelve a restar.
+    [Fact]
+    public void Old_lines_that_add_up_to_the_paid_amount_show_no_discount()
+    {
+        var payload = Payload(1_200) with
+        {
+            DiscountAmountCents = 300,
+            Lines = [new BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine("Seats", 2, 600)],
+        };
+
+        Assert.Empty(payload.DiscountRows());
+    }
+
+    private static SaaSReceiptPayload Payload(long paidCents) =>
+        new(
+            "CoreTaxPro",
+            "Extra seats",
+            paidCents,
+            "USD",
+            new DateTime(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc),
+            "4242"
+        );
 }

@@ -120,6 +120,10 @@ public static class OnboardingRegistrationReadyConsumer
                         // Subscription todavía) — mismo gap ya documentado en el evento.
                         ["plan_name"] = evt.PlanName ?? "tu plan",
                         ["price_formatted"] = evt.PriceFormatted,
+                        // Con códigos: precio de lista, descuento y qué códigos. Vacíos sin códigos.
+                        ["gross_formatted"] = evt.GrossFormatted ?? string.Empty,
+                        ["discount_formatted"] = evt.DiscountFormatted ?? string.Empty,
+                        ["discount_summary"] = evt.DiscountSummary ?? string.Empty,
                         ["paid_at"] = ScribeDates.Instant(evt.PaidAtUtc),
                         ["registration_url"] = urlResult.Value,
                         ["receipt_download_url"] = receiptLookup?.ReceiptDownloadUrl,

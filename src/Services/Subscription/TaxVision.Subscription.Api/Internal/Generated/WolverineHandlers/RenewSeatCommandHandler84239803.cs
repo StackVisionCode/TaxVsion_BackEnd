@@ -30,6 +30,7 @@ namespace Internal.Generated.WolverineHandlers
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Subscription.Infrastructure.Persistence.SubscriptionDbContext subscriptionDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Subscription.Infrastructure.Persistence.SubscriptionDbContext.");
+            var tenantSubscriptionRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.TenantSubscriptionRepository(subscriptionDbContext);
             var subscriptionSeatRepository = new TaxVision.Subscription.Infrastructure.Persistence.Repositories.SubscriptionSeatRepository(subscriptionDbContext);
             // The actual message body
             var renewSeatCommand = (TaxVision.Subscription.Application.Seats.Commands.RenewSeat.RenewSeatCommand)context.Envelope.Message;
@@ -51,7 +52,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Subscription.Application.Seats.Commands.RenewSeat.RenewSeatHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Subscription.Application.Seats.Commands.RenewSeat.RenewSeatHandler.Handle(renewSeatCommand, subscriptionSeatRepository, unitOfWork, context, _loggerOfSubscriptionSeat, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Subscription.Application.Seats.Commands.RenewSeat.RenewSeatHandler.Handle(renewSeatCommand, subscriptionSeatRepository, tenantSubscriptionRepository, unitOfWork, context, _loggerOfSubscriptionSeat, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

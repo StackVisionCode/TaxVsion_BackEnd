@@ -37,7 +37,11 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
         PaymentProviderCode? Provider = null,
         PaymentMethodKind? Method = null,
         /// <summary>SEC-M1.C — HMAC emitido por Subscription que PaymentApp verifica localmente.</summary>
-        string? AmountSignature = null
+        string? AmountSignature = null,
+        // Descuento de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+        long? DiscountAmountCents = null,
+        string? DiscountSource = null,
+        string? DiscountLabel = null
     );
 
     [HttpPost("checkout")]
@@ -61,7 +65,10 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
                 request.UnitAmountCents,
                 request.Provider ?? PaymentProviderCode.Stripe,
                 request.Method ?? PaymentMethodKind.Card,
-                request.AmountSignature
+                request.AmountSignature,
+                DiscountAmountCents: request.DiscountAmountCents,
+                DiscountSource: request.DiscountSource,
+                DiscountLabel: request.DiscountLabel
             ),
             ct
         );
@@ -81,7 +88,11 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
         PaymentProviderCode? Provider = null,
         PaymentMethodKind? Method = null,
         /// <summary>SEC-M1.C — HMAC emitido por Subscription (PurchaseIntentKind.SeatReactivation).</summary>
-        string? AmountSignature = null
+        string? AmountSignature = null,
+        // Descuento de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+        long? DiscountAmountCents = null,
+        string? DiscountSource = null,
+        string? DiscountLabel = null
     );
 
     /// <summary>Pago para reactivar un seat Suspended/PastDue específico. Reusa el publisher de
@@ -112,7 +123,10 @@ public sealed class InternalSeatsCheckoutController(IMessageBus bus) : Controlle
                 request.IdempotencyKey,
                 request.Provider ?? PaymentProviderCode.Stripe,
                 request.Method ?? PaymentMethodKind.Card,
-                request.AmountSignature
+                request.AmountSignature,
+                DiscountAmountCents: request.DiscountAmountCents,
+                DiscountSource: request.DiscountSource,
+                DiscountLabel: request.DiscountLabel
             ),
             ct
         );

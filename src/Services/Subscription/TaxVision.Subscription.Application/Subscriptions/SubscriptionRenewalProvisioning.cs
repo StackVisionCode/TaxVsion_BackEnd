@@ -45,6 +45,13 @@ public static class SubscriptionRenewalProvisioning
         if (intent.MarkPaid(paidAtUtc).IsFailure)
             return new RenewalProvisioningOutcome(Provisioned: false, StatusChanged: false, previousStatus);
 
+        // Con el plan al día se pagaron solo asientos y add-ons: el plan no se toca.
+        if (!intent.IncludesPlan)
+        {
+            intent.MarkProvisioned(nowUtc);
+            return new RenewalProvisioningOutcome(Provisioned: true, StatusChanged: false, previousStatus);
+        }
+
         // Ruta prepago: la sub sigue Active/Trialing, el user adelantó el pago del próximo ciclo. Se avanza el
         // período sin tocar el status; el banner y la UI dejan de mostrar "renews in N days".
         if (subscription.Status == SubscriptionStatus.Active || subscription.Status == SubscriptionStatus.Trialing)

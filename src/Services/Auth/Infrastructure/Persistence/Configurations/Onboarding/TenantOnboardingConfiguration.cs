@@ -68,6 +68,8 @@ public sealed class TenantOnboardingConfiguration : IEntityTypeConfiguration<Ten
         builder.Property(onboarding => onboarding.NextRetryAtUtc);
 
         builder.Property(onboarding => onboarding.PaymentRetryCount).IsRequired().HasDefaultValue(0);
+        builder.Property(onboarding => onboarding.PricingGeneration).IsRequired().HasDefaultValue(0);
+        builder.Property(onboarding => onboarding.CheckoutStartedAtUtc);
 
         builder
             .HasIndex(onboarding => onboarding.RegistrationTokenHash)

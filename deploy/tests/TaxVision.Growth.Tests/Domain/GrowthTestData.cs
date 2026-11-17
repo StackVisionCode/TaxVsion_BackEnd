@@ -63,6 +63,50 @@ internal static class GrowthTestData
         return definition;
     }
 
+    /// <summary>Código activo con duración, uso y alcances Include dados (G9).</summary>
+    internal static CodeDefinition CreateActiveCode(
+        CodeUsageContext usableOn,
+        CodeDuration? duration = null,
+        params (CodeScopeType Type, string Id)[] includes
+    )
+    {
+        var definition = CodeDefinition
+            .Create(
+                PlatformTenant.Id,
+                CodeOwnerScope.Platform,
+                null,
+                "Subscription discount",
+                CodeKind.Promotional,
+                CodeTokenHash.Create(Sha('b')).Value,
+                CodeDisplay.Create("TV", "2026").Value,
+                NowUtc.AddDays(-1),
+                NowUtc.AddDays(30),
+                100,
+                null,
+                null,
+                ActorId,
+                NowUtc,
+                usableOn
+            )
+            .Value;
+        Assert.True(
+            definition
+                .PublishRuleVersion(
+                    CodeBenefit.CreatePercentage(PercentageBasisPoints.Create(2_000).Value).Value,
+                    null,
+                    false,
+                    ActorId,
+                    NowUtc,
+                    duration
+                )
+                .IsSuccess
+        );
+        foreach (var (type, id) in includes)
+            Assert.True(definition.AddScope(type, id, CodeScopeMode.Include, ActorId, NowUtc).IsSuccess);
+        Assert.True(definition.Activate(ActorId, NowUtc).IsSuccess);
+        return definition;
+    }
+
     internal static CodeQuote CreateQuote(
         CodeDefinition definition,
         Guid consumingTenantId,
@@ -125,7 +169,11 @@ internal static class GrowthTestData
         return program;
     }
 
-    internal static ReferralCode CreateReferralCode(ReferralProgram program, Guid? ownerTenantId = null) =>
+    internal static ReferralCode CreateReferralCode(
+        ReferralProgram program,
+        Guid? ownerTenantId = null,
+        Guid? ownerUserId = null
+    ) =>
         ReferralCode
             .Create(
                 program,
@@ -138,7 +186,8 @@ internal static class GrowthTestData
                 "referral-code-1",
                 Sha('3'),
                 ActorId,
-                NowUtc
+                NowUtc,
+                ownerUserId
             )
             .Value;
 

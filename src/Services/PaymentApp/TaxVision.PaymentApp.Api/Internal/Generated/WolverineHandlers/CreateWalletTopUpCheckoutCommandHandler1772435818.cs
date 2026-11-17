@@ -5,6 +5,7 @@ using BuildingBlocks.PurchaseIntentAmount;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
+using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -17,14 +18,16 @@ namespace Internal.Generated.WolverineHandlers
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment> _loggerOfSaaSPayment;
         private readonly TaxVision.PaymentApp.Application.Abstractions.IPaymentAppMetrics _paymentAppMetrics;
+        private readonly TaxVision.PaymentApp.Application.Common.HostedCheckout.ICheckoutReturnUrlGuard _checkoutReturnUrlGuard;
 
-        public CreateWalletTopUpCheckoutCommandHandler1772435818(BuildingBlocks.Platform.IPlatformSettings platformSettings, BuildingBlocks.PurchaseIntentAmount.IPurchaseIntentAmountVerifier purchaseIntentAmountVerifier, Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment> loggerOfSaaSPayment, TaxVision.PaymentApp.Application.Abstractions.IPaymentAppMetrics paymentAppMetrics)
+        public CreateWalletTopUpCheckoutCommandHandler1772435818(BuildingBlocks.Platform.IPlatformSettings platformSettings, BuildingBlocks.PurchaseIntentAmount.IPurchaseIntentAmountVerifier purchaseIntentAmountVerifier, Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.PaymentApp.Domain.SaaSPayments.SaaSPayment> loggerOfSaaSPayment, TaxVision.PaymentApp.Application.Abstractions.IPaymentAppMetrics paymentAppMetrics, TaxVision.PaymentApp.Application.Common.HostedCheckout.ICheckoutReturnUrlGuard checkoutReturnUrlGuard)
         {
             _platformSettings = platformSettings;
             _purchaseIntentAmountVerifier = purchaseIntentAmountVerifier;
             _serviceScopeFactory = serviceScopeFactory;
             _loggerOfSaaSPayment = loggerOfSaaSPayment;
             _paymentAppMetrics = paymentAppMetrics;
+            _checkoutReturnUrlGuard = checkoutReturnUrlGuard;
         }
 
 
@@ -32,8 +35,6 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -47,8 +48,10 @@ namespace Internal.Generated.WolverineHandlers
             */
             var paymentAdapterFactory = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.PaymentApp.Application.Abstractions.Payments.IPaymentAdapterFactory>(serviceScope.ServiceProvider);
             var saaSPaymentRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.PaymentApp.Application.Abstractions.ISaaSPaymentRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var createWalletTopUpCheckoutCommand = (TaxVision.PaymentApp.Application.WalletTopUpCheckouts.Commands.CreateWalletTopUpCheckoutCommand)context.Envelope.Message;
 
@@ -70,7 +73,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.PaymentApp.Application.WalletTopUpCheckouts.Commands.CreateWalletTopUpCheckoutHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.PaymentApp.Application.WalletTopUpCheckouts.Commands.CreateWalletTopUpCheckoutHandler.Handle(createWalletTopUpCheckoutCommand, saaSPaymentRepository, paymentAdapterFactory, paymentAuditLogWriter, unitOfWork, _paymentAppMetrics, correlationContext, _purchaseIntentAmountVerifier, _loggerOfSaaSPayment, _platformSettings, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.PaymentApp.Application.WalletTopUpCheckouts.Commands.CreateWalletTopUpCheckoutHandler.Handle(createWalletTopUpCheckoutCommand, saaSPaymentRepository, paymentAdapterFactory, paymentAuditLogWriter, unitOfWork, _paymentAppMetrics, correlationContext, _purchaseIntentAmountVerifier, _loggerOfSaaSPayment, _platformSettings, _checkoutReturnUrlGuard, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

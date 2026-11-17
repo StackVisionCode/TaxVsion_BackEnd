@@ -277,6 +277,8 @@ public sealed class SubscriptionStatusChangedPublishingTests
             {
                 new FakeSubscriptionRepo(subscription),
                 new FakePlanRepo(plan),
+                new CapturingSeatRepo(),
+                new FakeTenantAddOnRepo(),
                 new FakeUnitOfWork(),
                 _bus,
                 new FakeCorrelationContext(),

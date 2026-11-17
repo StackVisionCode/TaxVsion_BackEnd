@@ -153,7 +153,9 @@ public static class ChargeSaaSPaymentHandler
                 command.CodeReservationPaymentId,
                 command.DiscountAmountCents,
                 command.PromotionSnapshotHash,
-                ChargeBreakdowns.FromRequest(command.Quantity, command.UnitAmountCents, amountResult.Value.AmountCents)
+                ChargeBreakdowns.FromRequest(command.Quantity, command.UnitAmountCents, amountResult.Value.AmountCents),
+                command.DiscountSource,
+                command.DiscountLabel
             )
             .WithConceptFor(command.Type, command.Quantity, command.ConceptDisplayName)
             .WithLines(command.Lines);

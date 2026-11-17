@@ -41,7 +41,15 @@ public static class ChargeConceptExtensions
             return paymentResult;
 
         var created = lines
-            .Select(line => SaaSPaymentLine.Create(line.Description, line.Quantity, line.UnitAmountCents))
+            .Select(line =>
+                SaaSPaymentLine.Create(
+                    line.Description,
+                    line.Quantity,
+                    line.UnitAmountCents,
+                    line.TargetKind,
+                    line.TargetId
+                )
+            )
             .ToList();
         if (created.All(line => line.IsSuccess))
             paymentResult.Value.AttachLines([.. created.Select(line => line.Value)]);

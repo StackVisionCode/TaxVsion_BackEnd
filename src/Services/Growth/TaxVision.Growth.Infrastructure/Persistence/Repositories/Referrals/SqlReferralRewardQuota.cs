@@ -21,6 +21,7 @@ public sealed class SqlReferralRewardQuota(
         int calendarYear,
         int maximum,
         Guid qualificationId,
+        Guid actingTenantId,
         CancellationToken ct = default
     )
     {
@@ -40,7 +41,12 @@ public sealed class SqlReferralRewardQuota(
         )
             return false;
 
-        if (tenantContext.HasTenant && tenantContext.TenantId != ownerTenantId)
+        // El contexto activo es el del referido que paga (dueño de la atribución) o el del dueño de la cuota.
+        if (
+            tenantContext.HasTenant
+            && tenantContext.TenantId != ownerTenantId
+            && tenantContext.TenantId != actingTenantId
+        )
             return false;
 
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;

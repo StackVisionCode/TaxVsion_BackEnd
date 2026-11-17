@@ -15,6 +15,19 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
             .TenantOnboardings.Include(onboarding => onboarding.CodeReservations)
             .FirstOrDefaultAsync(onboarding => onboarding.Id == id, ct);
 
+    public async Task<TenantOnboarding?> ReloadAsync(Guid id, CancellationToken ct = default)
+    {
+        // Suelta la copia vieja (y sus reservas) para que el próximo guardado no vuelva a chocar.
+        foreach (var entry in db.ChangeTracker.Entries<TenantOnboarding>().Where(e => e.Entity.Id == id).ToList())
+        {
+            foreach (var reservation in entry.Entity.CodeReservations)
+                db.Entry(reservation).State = EntityState.Detached;
+            entry.State = EntityState.Detached;
+        }
+
+        return await GetByIdAsync(id, ct);
+    }
+
     public Task<TenantOnboarding?> GetByRegistrationTokenHashAsync(
         string registrationTokenHash,
         CancellationToken ct = default
@@ -98,7 +111,8 @@ public sealed class TenantOnboardingRepository(AuthDbContext db) : ITenantOnboar
                     || onboarding.Status == TenantOnboardingStatus.RegistrationPending
                 )
                 && onboarding.PaymentCompletedAtUtc == null
-                && onboarding.CreatedAtUtc < createdBeforeUtc
+                // La edad cuenta desde el último checkout reabierto, no desde la creación.
+                && (onboarding.CheckoutStartedAtUtc ?? onboarding.CreatedAtUtc) < createdBeforeUtc
             )
             .OrderBy(onboarding => onboarding.CreatedAtUtc)
             .Take(batchSize)

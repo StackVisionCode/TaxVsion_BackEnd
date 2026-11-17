@@ -40,7 +40,11 @@ public sealed class InternalAddOnCheckoutController(IMessageBus bus) : Controlle
         /// <summary>SEC-M1.C — HMAC emitido por Subscription que PaymentApp verifica localmente.</summary>
         string? AmountSignature = null,
         /// <summary>Nombre comercial del add-on del catálogo de Subscription, para el recibo.</summary>
-        string? AddOnDisplayName = null
+        string? AddOnDisplayName = null,
+        // Descuento de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+        long? DiscountAmountCents = null,
+        string? DiscountSource = null,
+        string? DiscountLabel = null
     );
 
     [HttpPost("checkout")]
@@ -65,7 +69,10 @@ public sealed class InternalAddOnCheckoutController(IMessageBus bus) : Controlle
                 request.Provider ?? PaymentProviderCode.Stripe,
                 request.Method ?? PaymentMethodKind.Card,
                 request.AmountSignature,
-                request.AddOnDisplayName
+                request.AddOnDisplayName,
+                DiscountAmountCents: request.DiscountAmountCents,
+                DiscountSource: request.DiscountSource,
+                DiscountLabel: request.DiscountLabel
             ),
             ct
         );

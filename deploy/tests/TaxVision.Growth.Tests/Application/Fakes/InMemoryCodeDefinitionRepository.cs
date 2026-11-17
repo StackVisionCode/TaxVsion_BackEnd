@@ -57,4 +57,23 @@ internal sealed class InMemoryCodeDefinitionRepository : ICodeDefinitionReposito
         _definitions.Add(definition);
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<ExpiredCodeRef>> GetExpiredOpenAsync(
+        DateTime nowUtc,
+        int batchSize,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<ExpiredCodeRef>>(
+            _definitions
+                .Where(definition =>
+                    definition.ExpiresAtUtc <= nowUtc
+                    && definition.Status
+                        is CodeDefinitionStatus.Draft
+                            or CodeDefinitionStatus.Active
+                            or CodeDefinitionStatus.Suspended
+                )
+                .Take(batchSize)
+                .Select(definition => new ExpiredCodeRef(definition.TenantId, definition.Id))
+                .ToList()
+        );
 }

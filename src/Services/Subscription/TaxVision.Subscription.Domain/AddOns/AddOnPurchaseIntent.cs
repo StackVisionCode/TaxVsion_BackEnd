@@ -46,8 +46,19 @@ public sealed class AddOnPurchaseIntent : TenantEntity
 
     /// <summary>Total prorrateado a cobrar. Vive en las columnas ProratedTotalCents y Currency.</summary>
     public Money ProratedTotal => Money.FromCents(ProratedTotalCents, Currency);
+
+    /// <summary>Si la compra es la subida de tamaño de un add-on ya activo, cuál; null en una compra nueva.</summary>
+    public Guid? UpgradesTenantAddOnId { get; private set; }
     public AddOnPurchaseIntentStatus Status { get; private set; }
     public Guid? SaaSPaymentId { get; private set; }
+
+    /// <summary>Proveedor con el que se abrió el checkout (Stripe | PayPal).</summary>
+    public string? CheckoutProvider { get; private set; }
+
+    /// <summary>¿El checkout abierto es del proveedor que se pide? Uno sin proveedor (de antes) se reemplaza.</summary>
+    public bool OpenedWith(string? provider) =>
+        string.Equals(CheckoutProvider, provider, StringComparison.OrdinalIgnoreCase);
+
     public string? CheckoutUrl { get; private set; }
 
     /// <summary>Cuándo caduca la sesión de checkout del proveedor. Mientras no caduque, esta intención sigue
@@ -125,8 +136,44 @@ public sealed class AddOnPurchaseIntent : TenantEntity
         return Result.Success(intent);
     }
 
+    /// <summary>Subida de tamaño pagada por checkout: cobra la diferencia y, al pagarse, cambia el add-on existente.</summary>
+    public static Result<AddOnPurchaseIntent> CreateTierUpgrade(
+        TenantAddOn current,
+        AddOnDefinition target,
+        AddOnTierChangePlan plan,
+        Guid requestedByUserId,
+        DateTime nowUtc
+    )
+    {
+        if (plan.Direction != AddOnTierChangeDirection.Upgrade)
+            return Result.Failure<AddOnPurchaseIntent>(
+                new Error("AddOn.TierChangeWrongDirection", "Only an upgrade is paid by checkout.")
+            );
+
+        var created = Create(
+            current.TenantId,
+            target,
+            current.Quantity,
+            current.AutoRenew,
+            plan.TargetUnitPrice,
+            current.BillingCycle,
+            plan.ChargeNow,
+            requestedByUserId,
+            nowUtc
+        );
+        if (created.IsSuccess)
+            created.Value.UpgradesTenantAddOnId = current.Id;
+        return created;
+    }
+
     /// <summary>Guarda la referencia al pago y la URL de checkout una vez creada la sesión en PaymentApp.</summary>
-    public Result AttachCheckout(Guid saaSPaymentId, string checkoutUrl, DateTime expiresAtUtc, DateTime nowUtc)
+    public Result AttachCheckout(
+        Guid saaSPaymentId,
+        string checkoutUrl,
+        DateTime expiresAtUtc,
+        DateTime nowUtc,
+        string? provider = null
+    )
     {
         if (Status != AddOnPurchaseIntentStatus.Pending)
             return Result.Failure(
@@ -136,6 +183,7 @@ public sealed class AddOnPurchaseIntent : TenantEntity
         SaaSPaymentId = saaSPaymentId;
         CheckoutUrl = checkoutUrl;
         CheckoutExpiresAtUtc = expiresAtUtc;
+        CheckoutProvider = string.IsNullOrWhiteSpace(provider) ? null : provider.Trim();
         Touch(nowUtc);
         return Result.Success();
     }

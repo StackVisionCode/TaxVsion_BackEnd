@@ -49,6 +49,14 @@ public sealed record SaaSPaymentSucceededIntegrationEvent : IntegrationEvent
 
     /// <summary>Una línea por cosa cobrada cuando el cobro tiene varias; el recibo las detalla. Null en el resto.</summary>
     public IReadOnlyList<SaaSChargeLine>? Lines { get; init; }
+
+    /// <summary>Descuento del cobro (ya restado en AmountPaidCents) y su fuente (Code | Admin), para el recibo.
+    /// Null sin descuento y en eventos viejos.</summary>
+    public long? DiscountAmountCents { get; init; }
+    public string? DiscountSource { get; init; }
+
+    /// <summary>Cómo se muestra el descuento en el recibo ("Promo code SPRI…0420 · 20% off"). Null en eventos viejos.</summary>
+    public string? DiscountLabel { get; init; }
 }
 
 /// <summary>"Billed to" del recibo: nombre legal, EIN y dirección postal en una línea. Todo opcional.</summary>

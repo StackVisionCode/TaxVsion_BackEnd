@@ -5,6 +5,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.Seats;
+using TaxVision.Subscription.Domain.Subscriptions;
 using Wolverine;
 
 namespace TaxVision.Subscription.Application.Seats.Commands.RenewSeat;
@@ -14,6 +15,7 @@ public static class RenewSeatHandler
     public static async Task<Result> Handle(
         RenewSeatCommand command,
         ISubscriptionSeatRepository seats,
+        ISubscriptionRepository subscriptions,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ILogger<SubscriptionSeat> logger,
@@ -24,7 +26,12 @@ public static class RenewSeatHandler
         if (seat is null)
             return Result.Failure(new Error("Seat.NotFound", "Seat does not exist."));
 
-        var result = BeginAndCompleteRenewal(seat, command.RequestedByUserId);
+        // D-A: termina junto con el plan activo, como la renovación del job.
+        var subscription = await subscriptions.GetByTenantIdAsync(command.TenantId, ct);
+        var planEndUtc = subscription is { Status: SubscriptionStatus.Active }
+            ? subscription.CurrentPeriodEndUtc
+            : (DateTime?)null;
+        var result = BeginAndCompleteRenewal(seat, planEndUtc, command.RequestedByUserId);
         if (result.IsFailure)
             return result;
 
@@ -39,12 +46,15 @@ public static class RenewSeatHandler
         return Result.Success();
     }
 
-    private static Result BeginAndCompleteRenewal(SubscriptionSeat seat, Guid actorUserId)
+    private static Result BeginAndCompleteRenewal(SubscriptionSeat seat, DateTime? planEndUtc, Guid actorUserId)
     {
         var nowUtc = DateTime.UtcNow;
-        var idempotencyKey = IdempotencyKeyFactory.SeatRenewal(seat.Id, seat.CurrentPeriodEndUtc!.Value);
+        if (seat.CurrentPeriodEndUtc is not { } periodEndUtc)
+            return Result.Failure(new Error("Seat.InvalidTransition", $"Cannot renew a seat in status {seat.Status}."));
 
-        var beginResult = seat.BeginRenewal(idempotencyKey, actorUserId, nowUtc);
+        var idempotencyKey = IdempotencyKeyFactory.SeatRenewal(seat.Id, periodEndUtc);
+        var next = SeatAlignment.ForRenewal(seat.UnitPrice, seat.BillingCycle, periodEndUtc, planEndUtc);
+        var beginResult = seat.BeginRenewal(idempotencyKey, next.PeriodEndUtc, actorUserId, nowUtc);
         if (beginResult.IsFailure)
             return beginResult;
 

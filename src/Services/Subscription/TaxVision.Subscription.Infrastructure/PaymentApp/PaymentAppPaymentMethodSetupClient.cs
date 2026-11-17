@@ -6,15 +6,16 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 
 /// <summary>Implementación de <see cref="IPaymentMethodSetupClient"/> contra
 /// <c>POST internal/payment-methods/setup-session</c> de PaymentApp (M2M ServiceOnly). Reusa el
-/// <see cref="IGrowthServiceTokenAcquirer"/>. Molde: <c>PaymentAppRenewalCheckoutClient</c>.</summary>
+/// <see cref="ISubscriptionServiceTokenAcquirer"/>. Molde: <c>PaymentAppRenewalCheckoutClient</c>.</summary>
 internal sealed class PaymentAppPaymentMethodSetupClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     ILogger<PaymentAppPaymentMethodSetupClient> logger
 ) : IPaymentMethodSetupClient
 {

@@ -31,9 +31,14 @@ public static class HostedCheckoutPipeline
         IPaymentAppMetrics metrics,
         ICorrelationContext correlation,
         ILogger logger,
+        ICheckoutReturnUrlGuard returnUrls,
         CancellationToken ct
     )
     {
+        var returnCheck = returnUrls.Validate(request.SuccessUrl, request.CancelUrl);
+        if (returnCheck.IsFailure)
+            return Result.Failure<HostedCheckoutResult>(returnCheck.Error);
+
         var providerResult = await ResolveProviderAsync(request, policy, providerFactory, ct);
         if (providerResult.IsFailure)
             return Result.Failure<HostedCheckoutResult>(providerResult.Error);

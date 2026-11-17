@@ -7,6 +7,7 @@ using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Application.Common;
 using TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements;
 using TaxVision.Subscription.Domain.AddOns;
+using TaxVision.Subscription.Domain.Subscriptions;
 using TaxVision.Subscription.Domain.ValueObjects;
 using Wolverine;
 
@@ -75,7 +76,7 @@ public static class PurchaseAddOnHandler
             }
         );
         if (charge is not null)
-            await bus.PublishAsync(RenewalDue(addOn, charge, correlation.CorrelationId));
+            await bus.PublishAsync(RenewalDue(addOn, charge, subscription, correlation.CorrelationId));
 
         metrics.RecordAddOnPurchased(addOn.AddOnCode);
         if (charge is not null)
@@ -143,12 +144,22 @@ public static class PurchaseAddOnHandler
             );
     }
 
+    // Si el descuento vigente cubre add-ons, el cobro inicial (prorrateado) sale con descuento.
     private static AddOnRenewalDueIntegrationEvent RenewalDue(
         TenantAddOn addOn,
         InitialCharge charge,
+        TenantSubscription subscription,
         string correlationId
-    ) =>
-        new()
+    )
+    {
+        var discounted = DiscountedCharge.For(
+            subscription,
+            DiscountChargeKind.AddOns,
+            charge.AmountCents,
+            charge.Currency,
+            DateTime.UtcNow
+        );
+        return new()
         {
             TenantId = addOn.TenantId,
             CorrelationId = correlationId,
@@ -157,7 +168,11 @@ public static class PurchaseAddOnHandler
             PeriodStartUtc = addOn.CurrentPeriodStartUtc,
             PeriodEndUtc = addOn.CurrentPeriodEndUtc,
             IdempotencyKey = charge.IdempotencyKey,
-            AmountCents = charge.AmountCents,
+            AmountCents = discounted.NetCents,
             Currency = charge.Currency,
+            DiscountAmountCents = discounted.DiscountCents,
+            DiscountSource = discounted.Source,
+            DiscountLabel = discounted.Label,
         };
+    }
 }

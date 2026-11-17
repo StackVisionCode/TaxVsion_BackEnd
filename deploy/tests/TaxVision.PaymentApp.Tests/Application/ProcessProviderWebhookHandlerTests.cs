@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
+using BuildingBlocks.Messaging.PaymentIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -381,6 +382,31 @@ public sealed partial class ProcessProviderWebhookHandlerTests
         Assert.Single(emitted.OfType<WalletTopUpPaymentSucceededIntegrationEvent>());
         Assert.Single(emitted.OfType<SaaSPaymentSucceededIntegrationEvent>());
         Assert.Equal(2, emitted.Count);
+    }
+
+    [Fact]
+    public async Task A_won_dispute_close_publishes_won_with_the_next_version()
+    {
+        var payment = CreateProcessingOffSessionPayment(SaaSPaymentType.WalletTopUp);
+        Assert.True(payment.MarkSucceeded(DateTime.UtcNow, Guid.Empty).IsSuccess);
+        Assert.True(payment.MarkChargedBack(DateTime.UtcNow, "fraudulent", Guid.Empty).IsSuccess);
+        payment.ClearDomainEvents();
+
+        var result = await HandleStripeAsync(
+            payment,
+            new WebhookEventPayload("pi_offsession_1", PaymentStatus.ChargedBack, "fraudulent", null, null)
+            {
+                DisputeOutcome = ChargebackOutcome.Won,
+            }
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(PaymentStatus.Succeeded, payment.Status);
+        var emitted = await SaaSPaymentEventReplay.DispatchAsync(payment);
+        var changed = Assert.IsType<PaymentChargebackChangedIntegrationEvent>(Assert.Single(emitted));
+        Assert.Equal("won", changed.DisputeStatus);
+        Assert.Equal(2, changed.DisputeVersion);
+        Assert.Equal($"chargeback:{payment.Id:N}", changed.DisputeId);
     }
 
     [Fact]

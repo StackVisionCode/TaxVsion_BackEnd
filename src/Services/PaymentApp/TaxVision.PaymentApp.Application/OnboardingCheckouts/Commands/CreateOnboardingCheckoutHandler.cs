@@ -33,6 +33,7 @@ public static class CreateOnboardingCheckoutHandler
         ICorrelationContext correlation,
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
+        ICheckoutReturnUrlGuard returnUrls,
         CancellationToken ct
     )
     {
@@ -55,6 +56,7 @@ public static class CreateOnboardingCheckoutHandler
             metrics,
             correlation,
             logger,
+            returnUrls,
             ct
         );
 
@@ -75,28 +77,43 @@ public static class CreateOnboardingCheckoutHandler
         IOnboardingPaymentMethodCatalog paymentMethodCatalog,
         ISubscriptionPlanPricingClient planPricing,
         PlatformSettingsSnapshot platform
-    ) =>
-        new()
+    )
+    {
+        // El bruto lo resuelve Subscription al calcular el monto; las promociones deben cuadrar con él.
+        long grossCents = 0;
+        return new()
         {
             PaymentType = SaaSPaymentType.OnboardingInitial,
             Subject = "Onboarding checkout",
             ReferenceId = command.OnboardingId,
             StatementDescriptor = PlatformStatementDescriptors.For(platform, "SAAS"),
             PreCheck = ct => EnsureCheckoutMethodEnabledAsync(command, paymentMethodCatalog, ct),
-            ResolveAmount = ct => ResolveAmountAsync(command, planPricing, ct),
+            ResolveAmount = async ct =>
+            {
+                var resolved = await OnboardingCheckoutAmount.ResolveAsync(command, planPricing, ct);
+                if (resolved.IsFailure)
+                    return Result.Failure<Money>(resolved.Error);
+                grossCents = resolved.Value.GrossCents;
+                return Result.Success(resolved.Value.Charge);
+            },
             CreatePayment = (key, amount, descriptor, nowUtc) =>
-                SaaSPayment
-                    .CreateForOnboarding(
-                        command.OnboardingId,
-                        key,
-                        amount,
-                        command.PlanId,
-                        command.Provider,
-                        descriptor,
-                        nowUtc
-                    )
-                    .WithConceptFor(SaaSPaymentType.OnboardingInitial, displayName: command.PlanDisplayName),
-            DecideOnExisting = DecideOnExisting,
+                OnboardingCheckoutPromotions.Attach(
+                    SaaSPayment
+                        .CreateForOnboarding(
+                            command.OnboardingId,
+                            key,
+                            amount,
+                            command.PlanId,
+                            command.Provider,
+                            descriptor,
+                            nowUtc,
+                            command.ReferralDeclared
+                        )
+                        .WithConceptFor(SaaSPaymentType.OnboardingInitial, displayName: command.PlanDisplayName),
+                    command,
+                    grossCents
+                ),
+            DecideOnExisting = (existing, nowUtc) => DecideOnExisting(command, existing, nowUtc),
             ProviderKey = ProviderKeyFor,
             BuildMetadata = payment => new Dictionary<string, string>
             {
@@ -111,6 +128,7 @@ public static class CreateOnboardingCheckoutHandler
                     session.ProviderSessionId,
                 },
         };
+    }
 
     private static async Task<Result> EnsureCheckoutMethodEnabledAsync(
         CreateOnboardingCheckoutCommand command,
@@ -130,39 +148,13 @@ public static class CreateOnboardingCheckoutHandler
         return availability.IsSuccess ? Result.Success() : Result.Failure(availability.Error);
     }
 
-    /// <summary>El precio no viene del caller: lo resuelve Subscription, dueño del plan.</summary>
-    private static async Task<Result<Money>> ResolveAmountAsync(
-        CreateOnboardingCheckoutCommand command,
-        ISubscriptionPlanPricingClient planPricing,
-        CancellationToken ct
-    )
-    {
-        var priceResult = await planPricing.GetPriceAsync(command.PlanId, command.BillingCycle, ct);
-        if (priceResult.IsFailure)
-            return Result.Failure<Money>(priceResult.Error);
-
-        // Gift/Referral: se cobra el NETO si Auth lo pasó (descuento parcial), validado contra el bruto
-        // autoritativo de Subscription; si no, el bruto. El carril $0 no llega acá (Auth no invoca checkout).
-        var price = priceResult.Value;
-        var chargeCents = price.AmountCents;
-        if (command.NetAmountCents is { } net)
-        {
-            if (net <= 0 || net > price.AmountCents)
-                return Result.Failure<Money>(
-                    new Error(
-                        "Onboarding.Checkout.InvalidNet",
-                        "The net amount must be greater than zero and not exceed the resolved plan price."
-                    )
-                );
-            chargeCents = net;
-        }
-
-        return Money.Create(chargeCents, price.Currency);
-    }
-
     /// <summary>Replay del intento vigente, reintento en sitio de uno fallido, o rechazo. Un webhook viejo no
     /// puede colarse: al reintentar se limpia la referencia externa del intento anterior.</summary>
-    private static Result<ExistingPaymentDecision> DecideOnExisting(SaaSPayment existing, DateTime nowUtc)
+    private static Result<ExistingPaymentDecision> DecideOnExisting(
+        CreateOnboardingCheckoutCommand command,
+        SaaSPayment existing,
+        DateTime nowUtc
+    )
     {
         if (
             HostedCheckoutPipeline.TryBuildResponse(existing) is { } replay
@@ -172,6 +164,11 @@ public static class CreateOnboardingCheckoutHandler
 
         if (existing.Status is PaymentStatus.Failed or PaymentStatus.Cancelled)
         {
+            // Reintento con reservas renovadas: el pago apunta a las vigentes (mismo descuento).
+            var renewed = OnboardingCheckoutPromotions.Renew(existing, command);
+            if (renewed.IsFailure)
+                return Result.Failure<ExistingPaymentDecision>(renewed.Error);
+
             var prep = existing.PrepareForOnboardingRetry(nowUtc);
             return prep.IsFailure
                 ? Result.Failure<ExistingPaymentDecision>(prep.Error)

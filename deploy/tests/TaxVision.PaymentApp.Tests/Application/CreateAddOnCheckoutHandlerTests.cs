@@ -21,8 +21,8 @@ public sealed class CreateAddOnCheckoutHandlerTests
             AmountCents: 2900,
             "USD",
             "buyer@example.com",
-            "https://app.example.com/success",
-            "https://app.example.com/cancel",
+            "https://app.taxoffix.io/success",
+            "https://app.taxoffix.io/cancel",
             $"addon-checkout-{intentId:N}"
         );
 
@@ -45,6 +45,7 @@ public sealed class CreateAddOnCheckoutHandlerTests
             new FakePurchaseIntentAmountVerifier(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 
@@ -85,6 +86,7 @@ public sealed class CreateAddOnCheckoutHandlerTests
             new FakePurchaseIntentAmountVerifier(),
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
             CancellationToken.None
         );
 

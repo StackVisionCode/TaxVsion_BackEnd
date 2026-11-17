@@ -31,5 +31,8 @@ public sealed record RequestReceiptGenerationRequest(
     string IdempotencyKey,
     string CorrelationId,
     string? OfficeName = null,
-    string? TimeZoneId = null
+    string? TimeZoneId = null,
+    // Precio de lista y cada descuento, para que el recibo los detalle. Null sin códigos.
+    long? GrossAmountCents = null,
+    IReadOnlyList<TaxVision.Auth.Onboarding.Domain.TenantOnboardings.OnboardingReceiptDiscount>? Discounts = null
 );

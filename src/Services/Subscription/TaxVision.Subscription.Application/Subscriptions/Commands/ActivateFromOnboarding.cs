@@ -18,7 +18,19 @@ public sealed record ActivateFromOnboardingCommand(
     Guid PlanId,
     BillingCycle BillingCycle,
     Guid OwnerUserId,
-    bool AutoRenewRequested = false
+    bool AutoRenewRequested = false,
+    // Código de N meses o para siempre usado en el alta: queda como descuento vigente de la suscripción.
+    OnboardingRecurringDiscount? RecurringDiscount = null
+);
+
+/// <summary>El descuento recurrente de un código del alta (<paramref name="Duration"/> = "Months" | "Forever").</summary>
+public sealed record OnboardingRecurringDiscount(
+    Guid CodeDefinitionId,
+    int? PercentBasisPoints,
+    long? AmountCents,
+    string? Currency,
+    string Duration,
+    int? Months
 );
 
 /// <summary>
@@ -70,6 +82,7 @@ public static class ActivateFromOnboardingHandler
             return Result.Failure(createResult.Error);
 
         var subscription = createResult.Value;
+        GrantSignupDiscount(subscription, command.RecurringDiscount, nowUtc);
         await subscriptions.AddAsync(subscription, ct);
 
         if (await settingsRepository.GetByTenantIdAsync(command.TenantId, ct) is null)
@@ -131,5 +144,35 @@ public static class ActivateFromOnboardingHandler
         await bus.PublishAsync(new RecalculateEntitlementsCommand(command.TenantId));
 
         return Result.Success();
+    }
+
+    // El primer cobro (el del alta) cuenta dentro de la ventana: el descuento empieza con el período. Un dato
+    // inválido no frena la activación (el cliente ya pagó); el alta queda sin descuento recurrente.
+    private static void GrantSignupDiscount(
+        TenantSubscription subscription,
+        OnboardingRecurringDiscount? recurring,
+        DateTime nowUtc
+    )
+    {
+        if (recurring is null || !Enum.TryParse<DiscountDuration>(recurring.Duration, out var duration))
+            return;
+        if (duration == DiscountDuration.Once)
+            return;
+
+        var terms = SubscriptionDiscountTerms.Create(
+            DiscountSource.Code,
+            recurring.CodeDefinitionId,
+            recurring.PercentBasisPoints,
+            recurring.AmountCents,
+            recurring.Currency,
+            duration,
+            recurring.Months,
+            DiscountAppliesTo.Base,
+            planCode: null,
+            reason: null,
+            subscription.CurrentPeriodStartUtc
+        );
+        if (terms.IsSuccess)
+            subscription.GrantDiscount(terms.Value, replace: false, Guid.Empty, nowUtc);
     }
 }

@@ -6,18 +6,19 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 
 /// <summary>
 /// Implementación de <see cref="IAccountPaymentOptionsClient"/> contra
 /// <c>GET internal/account/payment-options</c> de PaymentApp (M2M ServiceOnly). Reusa el
-/// <see cref="IGrowthServiceTokenAcquirer"/> igual que los demás clientes M2M del Subscription.
+/// <see cref="ISubscriptionServiceTokenAcquirer"/> igual que los demás clientes M2M del Subscription.
 /// Molde: <see cref="PaymentAppPaymentMethodSetupClient"/>.
 /// </summary>
 internal sealed class PaymentAppAccountPaymentOptionsClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     ILogger<PaymentAppAccountPaymentOptionsClient> logger
 ) : IAccountPaymentOptionsClient
 {

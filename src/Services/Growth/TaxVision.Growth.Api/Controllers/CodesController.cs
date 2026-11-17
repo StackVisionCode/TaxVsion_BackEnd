@@ -12,8 +12,12 @@ using TaxVision.Codes.Application.Definitions.Admin;
 using TaxVision.Codes.Application.Definitions.Common;
 using TaxVision.Codes.Application.Definitions.CreateCodeDefinition;
 using TaxVision.Codes.Application.Definitions.GetCodeDetails;
+using TaxVision.Codes.Application.Definitions.PublishCodeRule;
+using TaxVision.Codes.Application.Definitions.ReactivateCode;
 using TaxVision.Codes.Application.Definitions.RevokeCode;
 using TaxVision.Codes.Application.Definitions.SendGiftcard;
+using TaxVision.Codes.Application.Definitions.SuspendCode;
+using TaxVision.Codes.Application.Definitions.UpdateCodeScopes;
 using TaxVision.Codes.Application.Reservations.LateCommitReviews;
 using TaxVision.Codes.Domain.Definitions;
 using TaxVision.Growth.Api.Common;
@@ -63,7 +67,11 @@ public sealed class CodesController(
         long? MaxRedemptionsPerTenant,
         long? MaxRedemptionsPerSubject,
         IReadOnlyCollection<CreateCodeScopeInput>? Scopes,
-        DateOnly? ExpiresOn = null
+        DateOnly? ExpiresOn = null,
+        CodeDurationKind Duration = CodeDurationKind.Once,
+        int? DurationMonths = null,
+        CodeUsageContext UsableOn = CodeUsageContext.Signup,
+        Guid? RestrictToTenantId = null
     )
     {
         public override string ToString() =>
@@ -111,7 +119,11 @@ public sealed class CodesController(
                 request.Scopes,
                 actorId,
                 idempotencyKey,
-                request.ExpiresOn
+                request.ExpiresOn,
+                request.Duration,
+                request.DurationMonths,
+                request.UsableOn,
+                request.RestrictToTenantId
             ),
             ct
         );
@@ -279,6 +291,119 @@ public sealed class CodesController(
 
         var result = await bus.InvokeAsync<Result<CodeDefinitionStateResponse>>(
             new RevokeCodeCommand(tenantId, codeDefinitionId, actorId, idempotencyKey),
+            ct
+        );
+        return ToActionResult(result);
+    }
+
+    /// <summary>Pausa un código activo: no cotiza ni reserva hasta reactivarlo.</summary>
+    [HttpPost("{codeDefinitionId:guid}/suspend")]
+    [RateLimit("growth.g.codes_revoke")]
+    [HasPermission(GrowthPermissions.CodesRevoke)]
+    [ProducesResponseType<CodeDefinitionStateResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Suspend(
+        Guid codeDefinitionId,
+        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CodeDefinitionStateResponse>>(
+            new SuspendCodeCommand(tenantId, codeDefinitionId, actorId, idempotencyKey),
+            ct
+        );
+        return ToActionResult(result);
+    }
+
+    [HttpPost("{codeDefinitionId:guid}/reactivate")]
+    [RateLimit("growth.g.codes_activate")]
+    [HasPermission(GrowthPermissions.CodesActivate)]
+    [ProducesResponseType<CodeDefinitionStateResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Reactivate(
+        Guid codeDefinitionId,
+        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CodeDefinitionStateResponse>>(
+            new ReactivateCodeCommand(tenantId, codeDefinitionId, actorId, idempotencyKey),
+            ct
+        );
+        return ToActionResult(result);
+    }
+
+    public sealed record PublishRuleRequest(
+        CodeBenefitType BenefitType,
+        int? PercentageBasisPoints,
+        long? FixedAmountCents,
+        string? FixedAmountCurrency,
+        long? MinimumPurchaseAmountCents,
+        string? MinimumPurchaseCurrency,
+        bool AllowStacking,
+        CodeDurationKind Duration = CodeDurationKind.Once,
+        int? DurationMonths = null
+    );
+
+    /// <summary>Nueva versión de la regla; lo ya cotizado o reservado conserva la anterior.</summary>
+    [HttpPost("{codeDefinitionId:guid}/rules")]
+    [RateLimit("growth.g.codes_create")]
+    [HasPermission(GrowthPermissions.CodesManage)]
+    [ProducesResponseType<CodeDefinitionDetailsResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> PublishRule(
+        Guid codeDefinitionId,
+        PublishRuleRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CodeDefinitionDetailsResponse>>(
+            new PublishCodeRuleCommand(
+                tenantId,
+                codeDefinitionId,
+                request.BenefitType,
+                request.PercentageBasisPoints,
+                request.FixedAmountCents,
+                request.FixedAmountCurrency,
+                request.MinimumPurchaseAmountCents,
+                request.MinimumPurchaseCurrency,
+                request.AllowStacking,
+                request.Duration,
+                request.DurationMonths,
+                actorId,
+                idempotencyKey
+            ),
+            ct
+        );
+        return ToActionResult(result);
+    }
+
+    public sealed record UpdateScopesRequest(IReadOnlyCollection<CreateCodeScopeInput> Scopes);
+
+    /// <summary>Reemplaza todos los alcances del código (plan, oferta, producto, oficina o sujeto).</summary>
+    [HttpPut("{codeDefinitionId:guid}/scopes")]
+    [RateLimit("growth.g.codes_create")]
+    [HasPermission(GrowthPermissions.CodesManage)]
+    [ProducesResponseType<CodeDefinitionDetailsResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> UpdateScopes(
+        Guid codeDefinitionId,
+        UpdateScopesRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<CodeDefinitionDetailsResponse>>(
+            new UpdateCodeScopesCommand(tenantId, codeDefinitionId, request.Scopes ?? [], actorId, idempotencyKey),
             ct
         );
         return ToActionResult(result);

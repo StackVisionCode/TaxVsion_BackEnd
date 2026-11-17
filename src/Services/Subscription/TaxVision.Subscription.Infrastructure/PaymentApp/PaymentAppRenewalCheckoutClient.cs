@@ -7,17 +7,18 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Application.Abstractions;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.PaymentApp;
 
 /// <summary>
 /// Implementación de <see cref="IRenewalCheckoutPaymentClient"/> contra <c>POST internal/subscription-renewal/checkout</c>
-/// de PaymentApp (M2M ServiceOnly). Reusa el <see cref="IGrowthServiceTokenAcquirer"/> (token
+/// de PaymentApp (M2M ServiceOnly). Reusa el <see cref="ISubscriptionServiceTokenAcquirer"/> (token
 /// <c>actor_type=Service</c> vale para la policy ServiceOnly). Molde: <c>PaymentAppSeatCheckoutClient</c>.
 /// </summary>
 internal sealed class PaymentAppRenewalCheckoutClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     IPurchaseIntentAmountSigner amountSigner,
     ILogger<PaymentAppRenewalCheckoutClient> logger
 ) : IRenewalCheckoutPaymentClient
@@ -72,6 +73,10 @@ internal sealed class PaymentAppRenewalCheckoutClient(
                         provider = request.Provider,
                         method = request.Method,
                         amountSignature,
+                        discountAmountCents = request.DiscountAmountCents,
+                        discountSource = request.DiscountSource,
+                        discountLabel = request.DiscountLabel,
+                        lines = request.Lines,
                     },
                     options: Json
                 ),

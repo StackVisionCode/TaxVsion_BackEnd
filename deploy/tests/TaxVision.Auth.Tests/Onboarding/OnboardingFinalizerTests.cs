@@ -80,7 +80,6 @@ public sealed class OnboardingFinalizerTests
             NetAmountCents: 5_000 - reservations.Sum(r => r.DiscountCents),
             "USD",
             "Mixed",
-            ReferralAttributionId: null,
             reservations
         );
 

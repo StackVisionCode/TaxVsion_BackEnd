@@ -342,6 +342,36 @@ public sealed class TenantSubscriptionEmailConsumerTests
         Assert.Equal("Enterprise", request.PlanName);
     }
 
+    // Cobro automático: el correo dice qué se cobró, el descuento si lo hubo y lleva al historial de recibos.
+    [Fact]
+    public async Task A_recurring_charge_forwards_what_was_charged_its_discount_and_the_receipts_link()
+    {
+        var tenantId = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        await TenantSubscriptionEmailConsumer.Handle(
+            StatusEvent(tenantId, "Active", nameof(SubscriptionChangeReason.RecurringChargeSucceeded)) with
+            {
+                Amount = "12.00",
+                ItemDescription = "Subscription renewal",
+                DiscountAmount = "3.00",
+                DiscountLabel = "Promo code SPRI...0420 · 20% off",
+            },
+            AdminRepo(tenantId),
+            TenantRegistry(tenantId, "coretaxpro"),
+            bus,
+            Domain("taxproffice.com"),
+            new NoopCorrelationContext(),
+            NullLogger<TenantSubscriptionEmailRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        var request = Assert.IsType<TenantSubscriptionEmailRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal("Subscription renewal", request.ItemDescription);
+        Assert.Equal(("3.00", "Promo code SPRI...0420 · 20% off"), (request.DiscountAmount, request.DiscountLabel));
+        Assert.Equal($"{request.RenewUrl}/account/billing", request.ReceiptUrl);
+    }
+
     private static TenantSubscriptionStatusChangedIntegrationEvent StatusEvent(
         Guid tenantId,
         string status,

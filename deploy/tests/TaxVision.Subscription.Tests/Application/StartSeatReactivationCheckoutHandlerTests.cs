@@ -99,11 +99,50 @@ public sealed class StartSeatReactivationCheckoutHandlerTests
         Assert.Equal(2, seat.Renewals.Count);
     }
 
+    // D-A: reactivar cobra el tramo hasta el fin del período del plan, no un mes entero desde hoy.
+    [Fact]
+    public async Task Reactivating_charges_up_to_the_plan_end_and_ends_with_it()
+    {
+        var seat = SuspendedSeat();
+        var nowUtc = DateTime.UtcNow;
+        var plan = TestSubscriptions.Active(TenantId, nowUtc.AddDays(-20), nowUtc.AddDays(10));
+        var unitOfWork = new FakeUnitOfWork();
+        var client = new OrderCheckingClient(unitOfWork);
+
+        await StartAsync(seat, unitOfWork, client, subscription: plan);
+
+        var renewal = Assert.Single(seat.Renewals);
+        Assert.Equal(plan.CurrentPeriodEndUtc, renewal.PeriodEndUtc);
+        Assert.InRange(client.LastRequest!.AmountCents, 450, 550);
+    }
+
+    // Elegir PayPal y después Stripe abre otra sesión con otra clave: la de PayPal deja de cobrarse.
+    [Fact]
+    public async Task Another_provider_gets_its_own_key_and_drops_the_open_one()
+    {
+        var seat = SuspendedSeat();
+        var unitOfWork = new FakeUnitOfWork();
+        var client = new OrderCheckingClient(unitOfWork);
+
+        await StartAsync(seat, unitOfWork, client, provider: "PayPal");
+        var paypalKey = client.LastRequest!.IdempotencyKey;
+        await StartAsync(seat, unitOfWork, client, provider: "Stripe");
+
+        Assert.NotEqual(paypalKey, client.LastRequest.IdempotencyKey);
+        Assert.Equal("Stripe", client.LastRequest.Provider);
+        Assert.Equal(
+            TaxVision.Subscription.Domain.Renewals.RenewalStatus.Cancelled,
+            seat.Renewals.Single(renewal => renewal.IdempotencyKey == paypalKey).Status
+        );
+    }
+
     private static Task<Result<StartSeatReactivationCheckoutResponse>> StartAsync(
         SubscriptionSeat seat,
         FakeUnitOfWork unitOfWork,
         ISeatReactivationCheckoutClient client,
-        TimeSpan? sessionWindow = null
+        TimeSpan? sessionWindow = null,
+        TaxVision.Subscription.Domain.Subscriptions.TenantSubscription? subscription = null,
+        string provider = "Stripe"
     )
     {
         var options = new SeatReactivationOptions();
@@ -116,6 +155,7 @@ public sealed class StartSeatReactivationCheckoutHandlerTests
                 await BeginSeatReactivationHandler.Handle(
                     (BeginSeatReactivationCommand)message,
                     seats,
+                    new FakeSubscriptionRepo(subscription),
                     unitOfWork,
                     Options.Create(options),
                     token
@@ -129,8 +169,8 @@ public sealed class StartSeatReactivationCheckoutHandlerTests
                 "owner@acme.test",
                 "https://app/ok",
                 "https://app/cancel",
-                "Stripe",
-                "Card",
+                provider,
+                provider == "PayPal" ? "Wallet" : "Card",
                 Guid.NewGuid()
             ),
             bus,

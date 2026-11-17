@@ -28,7 +28,8 @@ public sealed class InternalSubscriptionActivationController(IMessageBus bus) : 
         Guid PlanId,
         Guid OwnerUserId,
         string? BillingCycle = null,
-        bool AutoRenewRequested = false
+        bool AutoRenewRequested = false,
+        OnboardingRecurringDiscount? RecurringDiscount = null
     );
 
     /// <summary>Fase 4.10 (rate limiting) — M2M-only ([AllowActorTypes(ActorType.Service)],
@@ -52,7 +53,8 @@ public sealed class InternalSubscriptionActivationController(IMessageBus bus) : 
             request.PlanId,
             parsedCycle ?? BillingCycle.Monthly,
             request.OwnerUserId,
-            request.AutoRenewRequested
+            request.AutoRenewRequested,
+            request.RecurringDiscount
         );
 
         var result = await bus.InvokeAsync<Result>(command, ct);

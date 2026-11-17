@@ -35,7 +35,11 @@ public sealed class InternalPlanChangeCheckoutController(IMessageBus bus) : Cont
         /// <summary>SEC-M1.C — HMAC emitido por Subscription que PaymentApp verifica localmente.</summary>
         string? AmountSignature = null,
         IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null,
-        string? ConceptDisplayName = null
+        string? ConceptDisplayName = null,
+        // Descuento de la suscripción ya restado en AmountCents, y su fuente (Code | Admin).
+        long? DiscountAmountCents = null,
+        string? DiscountSource = null,
+        string? DiscountLabel = null
     );
 
     [HttpPost("checkout")]
@@ -57,7 +61,10 @@ public sealed class InternalPlanChangeCheckoutController(IMessageBus bus) : Cont
                 request.Method ?? PaymentMethodKind.Card,
                 request.AmountSignature,
                 request.Lines,
-                request.ConceptDisplayName
+                request.ConceptDisplayName,
+                DiscountAmountCents: request.DiscountAmountCents,
+                DiscountSource: request.DiscountSource,
+                DiscountLabel: request.DiscountLabel
             ),
             ct
         );

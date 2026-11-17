@@ -65,6 +65,9 @@ public sealed record PaymentRefundedIntegrationEvent : PaymentLifecycleIntegrati
     public required long RefundDeltaAmountCents { get; init; }
     public required long CumulativeRefundedAmountCents { get; init; }
     public required DateTime RefundedAtUtc { get; init; }
+
+    /// <summary>Códigos de descuento del pago, para compensar cada canje. Null en eventos anteriores.</summary>
+    public IReadOnlyList<PaymentPromotionData>? Promotions { get; init; }
 }
 
 /// <summary>
@@ -80,4 +83,10 @@ public sealed record PaymentChargebackChangedIntegrationEvent : PaymentLifecycle
     public required long DisputeVersion { get; init; }
     public required long DisputedAmountCents { get; init; }
     public required DateTime ChangedAtUtc { get; init; }
+
+    /// <summary>Códigos de descuento del pago, para compensar cada canje. Null en eventos anteriores.</summary>
+    public IReadOnlyList<PaymentPromotionData>? Promotions { get; init; }
 }
+
+/// <summary>Un código de descuento aplicado a un pago: su reserva en Growth y el descuento que dio.</summary>
+public sealed record PaymentPromotionData(Guid CodeReservationId, long DiscountAmountCents, int Order);

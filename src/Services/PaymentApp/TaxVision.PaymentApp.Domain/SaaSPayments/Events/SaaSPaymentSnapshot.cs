@@ -33,5 +33,9 @@ public sealed record SaaSPaymentSnapshot(
     long? UnitAmountCents,
     string? ConceptCode,
     string? ConceptDisplayName,
-    IReadOnlyList<SaaSPaymentLineSnapshot>? Lines = null
+    IReadOnlyList<SaaSPaymentLineSnapshot>? Lines = null,
+    bool? ReferralDeclared = null,
+    IReadOnlyList<SaaSPaymentPromotionSnapshot>? Promotions = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );

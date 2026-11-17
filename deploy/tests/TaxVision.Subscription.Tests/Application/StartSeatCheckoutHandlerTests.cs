@@ -23,10 +23,11 @@ public sealed class StartSeatCheckoutHandlerTests
         ISeatPurchaseIntentRepository intents,
         ISeatCheckoutPaymentClient client,
         IUnitOfWork unitOfWork,
-        CancellationToken ct
+        CancellationToken ct,
+        CapturingMessageBus? sharedBus = null
     )
     {
-        var bus = new CapturingMessageBus();
+        var bus = sharedBus ?? new CapturingMessageBus();
         bus.OnInvoke = async (message, token) =>
             message switch
             {
@@ -70,6 +71,43 @@ public sealed class StartSeatCheckoutHandlerTests
         Assert.Equal(failing.LastRequest!.IdempotencyKey, retryClient.LastRequest!.IdempotencyKey);
     }
 
+    // El reintento tras un fallo del proveedor no pierde el descuento: el recibo lo necesita.
+    [Fact]
+    public async Task The_retry_of_a_failed_checkout_keeps_its_discount_and_label()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var terms = SubscriptionDiscountTerms
+            .Create(
+                DiscountSource.Admin,
+                null,
+                2_000,
+                null,
+                null,
+                DiscountDuration.Forever,
+                null,
+                DiscountAppliesTo.BaseSeatsAddOns,
+                null,
+                "Retention deal",
+                DateTime.UtcNow.AddMinutes(-1)
+            )
+            .Value;
+        Assert.True(subscription.GrantDiscount(terms, false, Guid.NewGuid(), DateTime.UtcNow).IsSuccess);
+        var intents = new FakeSeatPurchaseIntentRepository();
+        var command = Command(subscription.TenantId, "Standard", 2);
+        var failing = new FakeSeatCheckoutPaymentClient(
+            Result.Failure<SeatCheckoutClientResult>(new Error("Seats.Checkout.ProviderError", "boom"))
+        );
+        await HandleAsync(command, subscription, pricing, intents, failing);
+
+        var retryClient = Client();
+        await HandleAsync(command, subscription, pricing, intents, retryClient);
+
+        var retried = retryClient.LastRequest!;
+        Assert.Equal(failing.LastRequest!.DiscountAmountCents, retried.DiscountAmountCents);
+        Assert.Equal("Admin", retried.DiscountSource);
+        Assert.Equal("Discount · 20% off", retried.DiscountLabel);
+    }
+
     [Fact]
     public async Task An_unattached_intent_of_another_purchase_is_not_reused()
     {
@@ -90,6 +128,59 @@ public sealed class StartSeatCheckoutHandlerTests
 
         Assert.True(retry.IsSuccess);
         Assert.Equal(2, intents.Added.Count);
+    }
+
+    [Fact]
+    public async Task Coming_back_with_another_provider_opens_a_new_seat_checkout_and_closes_the_old_one()
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var intents = new FakeSeatPurchaseIntentRepository();
+        var bus = new CapturingMessageBus();
+
+        await StartWithAsync(
+            Command(subscription.TenantId, "Standard", 2) with
+            {
+                Provider = "PayPal",
+                Method = "Wallet",
+            }
+        );
+        var second = await StartWithAsync(Command(subscription.TenantId, "Standard", 2));
+
+        Assert.True(second.IsSuccess, second.IsFailure ? second.Error.Code : null);
+        Assert.Equal(2, intents.Added.Count);
+        Assert.Equal(SeatPurchaseIntentStatus.Cancelled, intents.Added[0].Status);
+        Assert.Contains(
+            bus.Published,
+            message => message is TaxVision.Subscription.Application.Common.CancelHostedCheckoutCommand
+        );
+        // PaymentApp marca el pago reemplazado como cancelado, igual que al cancelar a mano.
+        var cancelled = Assert.Single(
+            bus.Published.OfType<BuildingBlocks.Messaging.SubscriptionIntegrationEvents.SeatCheckoutCancelledIntegrationEvent>()
+        );
+        Assert.Equal(intents.Added[0].Id, cancelled.SeatPurchaseIntentId);
+        Assert.Equal(intents.Added[0].SaaSPaymentId, cancelled.SaaSPaymentId);
+        Assert.Equal("Payment method changed.", cancelled.Reason);
+
+        Task<Result<StartSeatCheckoutResponse>> StartWithAsync(StartSeatCheckoutCommand command) =>
+            Start(
+                command,
+                new FakeSubscriptionRepo(subscription),
+                new FakeSeatPricingRepository(pricing),
+                intents,
+                new FakeSeatCheckoutPaymentClient(
+                    Result.Success(
+                        new SeatCheckoutClientResult(
+                            Guid.NewGuid(),
+                            "https://pay/x",
+                            "cs_1",
+                            DateTime.UtcNow.AddHours(24)
+                        )
+                    )
+                ),
+                new FakeUnitOfWork(),
+                CancellationToken.None,
+                bus
+            );
     }
 
     private static StartSeatCheckoutCommand Command(Guid tenantId, string seatType, int quantity) =>
@@ -244,6 +335,56 @@ public sealed class StartSeatCheckoutHandlerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(2, intents.Added.Count);
         Assert.Equal(1, fresh.CreateCalls);
+    }
+
+    [Theory]
+    [InlineData(DiscountAppliesTo.BaseSeatsAddOns, true)]
+    [InlineData(DiscountAppliesTo.Base, false)]
+    public async Task Seat_proration_applies_the_discount_when_in_scope(DiscountAppliesTo appliesTo, bool discounted)
+    {
+        var (subscription, pricing) = ActiveSubscriptionWithPricing();
+        var terms = SubscriptionDiscountTerms
+            .Create(
+                DiscountSource.Admin,
+                null,
+                2_000,
+                null,
+                null,
+                DiscountDuration.Forever,
+                null,
+                appliesTo,
+                null,
+                "Retention deal",
+                DateTime.UtcNow.AddMinutes(-1)
+            )
+            .Value;
+        Assert.True(subscription.GrantDiscount(terms, false, Guid.NewGuid(), DateTime.UtcNow).IsSuccess);
+        var intents = new FakeSeatPurchaseIntentRepository();
+        var client = Client();
+
+        var result = await HandleAsync(
+            Command(subscription.TenantId, "Standard", 2),
+            subscription,
+            pricing,
+            intents,
+            client
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        var request = client.LastRequest!;
+        var intent = Assert.Single(intents.Added);
+        // Lo que se firma y se cobra es el neto; el descuento viaja aparte para el recibo.
+        Assert.Equal(intent.ProratedTotal.Cents, request.AmountCents);
+        if (discounted)
+        {
+            Assert.Equal("Admin", request.DiscountSource);
+            Assert.Equal(request.AmountCents / 4, request.DiscountAmountCents);
+        }
+        else
+        {
+            Assert.Null(request.DiscountAmountCents);
+            Assert.Null(request.DiscountSource);
+        }
     }
 
     private static FakeSeatCheckoutPaymentClient Client(DateTime? expiresAtUtc = null) =>

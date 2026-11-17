@@ -26,7 +26,12 @@ public sealed record MySaaSPaymentResponse(
     /// <summary>true cuando esta fila sigue siendo pagable: no hay otro pago Succeeded posterior que la
     /// salde. El UI usa este flag para no mostrar "Pay now" en filas Failed que ya quedaron saldadas por
     /// una renovación/reintento posterior.</summary>
-    bool CanRetry
+    bool CanRetry,
+    /// <summary>Descuento del cobro (ya restado de AmountCents) y su código enmascarado. Null sin descuento.</summary>
+    long? DiscountAmountCents = null,
+    string? DiscountLabel = null,
+    /// <summary>Lo que cobró (asiento, add-on, suscripción): la cuenta solo ofrece "Pay now" si sigue vencido.</summary>
+    Guid? TargetId = null
 );
 
 public sealed record MySaaSPaymentsPage(IReadOnlyList<MySaaSPaymentResponse> Items, int TotalCount);
@@ -103,13 +108,14 @@ public static class SearchMySaaSPaymentsHandler
         );
     }
 
-    private static MySaaSPaymentResponse Map(
+    public static MySaaSPaymentResponse Map(
         SaaSPayment payment,
         IReadOnlyDictionary<SaaSPaymentType, DateTime> latestByType,
         IReadOnlyDictionary<(SaaSPaymentType Type, Guid TargetAggregateId), DateTime> latestByTarget
     )
     {
         var canRetry = ComputeCanRetry(payment, latestByType, latestByTarget);
+        var discounted = payment.DiscountSource is not null && payment.DiscountAmountCents is > 0;
         return new(
             payment.Id,
             payment.Status.ToString(),
@@ -121,7 +127,10 @@ public static class SearchMySaaSPaymentsHandler
             payment.PaidAtUtc,
             payment.CreatedAtUtc,
             payment.ReceiptFileId is not null,
-            canRetry
+            canRetry,
+            discounted ? payment.DiscountAmountCents : null,
+            discounted ? payment.DiscountLabel : null,
+            payment.TargetAggregateId
         );
     }
 

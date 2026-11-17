@@ -167,4 +167,30 @@ public sealed class OnboardingReceiptTemplateRenderingTests
         Assert.Contains("<div class=\"name\">Ada Lovelace</div>", result.Value);
         Assert.DoesNotContain("Attn:", result.Value);
     }
+
+    [Fact]
+    public async Task A_discounted_signup_shows_the_gross_each_code_and_the_paid_total()
+    {
+        var renderer = new TemplateDocumentRenderer(NullLogger<TemplateDocumentRenderer>.Instance);
+        var data = (Dictionary<string, object?>)SampleData();
+        var receipt = (Dictionary<string, object>)data["receipt"]!;
+        foreach (
+            var (key, value) in TaxVision.Documents.Application.Generations.Receipts.ReceiptRenderData.Totals(
+                4_900,
+                [new("Referral discount", 500), new("Promo code SPRI...0420", 1_000)]
+            )
+        )
+            receipt[key] = value;
+
+        var result = await renderer.RenderHtmlAsync("onboarding.receipt.v1", 1, Guid.NewGuid(), data);
+
+        Assert.True(result.IsSuccess);
+        var html = result.Value;
+        Assert.Contains("<span>Subtotal</span><span>64.00 USD</span>", html);
+        Assert.Contains("Referral discount", html);
+        Assert.Contains("&minus;5.00 USD", html);
+        Assert.Contains("Promo code SPRI...0420", html);
+        Assert.Contains("&minus;10.00 USD", html);
+        Assert.Contains("<span class=\"g\">49.00 USD</span>", html);
+    }
 }

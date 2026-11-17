@@ -17,6 +17,7 @@ public static class CreateReferralAttributionHandler
         IReferralAttributionRepository attributions,
         IReferralCodeTokenHasher codeTokenHasher,
         IReferralIdempotencyExecutor idempotency,
+        IReferralCodeShareRepository shares,
         TimeProvider timeProvider,
         CancellationToken ct
     )
@@ -75,6 +76,13 @@ public static class CreateReferralAttributionHandler
                     );
                 }
 
+                // El envío viaja en la URL: solo cuenta si es de este mismo código.
+                var shareId =
+                    command.ShareId is { } requested
+                    && await shares.FindReferralCodeIdAsync(requested, operationCt) == code.Id
+                        ? requested
+                        : (Guid?)null;
+
                 var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
                 var created = ReferralAttribution.Create(
                     program,
@@ -86,7 +94,7 @@ public static class CreateReferralAttributionHandler
                     command.ActorUserId,
                     nowUtc,
                     command.Channel,
-                    command.ShareId
+                    shareId
                 );
                 if (created.IsFailure)
                     return Result.Failure<CreateReferralAttributionResult>(created.Error);

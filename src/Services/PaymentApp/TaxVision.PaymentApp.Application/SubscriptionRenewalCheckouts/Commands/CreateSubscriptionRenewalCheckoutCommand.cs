@@ -18,7 +18,13 @@ public sealed record CreateSubscriptionRenewalCheckoutCommand(
     PaymentProviderCode Provider = PaymentProviderCode.Stripe,
     PaymentMethodKind Method = PaymentMethodKind.Card,
     /// <summary>SEC-M1.C — firma HMAC emitida por Subscription (ver CreateSeatsCheckoutCommand).</summary>
-    string? AmountSignature = null
+    string? AmountSignature = null,
+    // Descuento vigente de la suscripción que ya va restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null,
+    // Pago de lo vencido: una línea por cosa (plan, asientos, add-ons) para el recibo.
+    IReadOnlyList<BuildingBlocks.Messaging.PaymentAppIntegrationEvents.SaaSChargeLine>? Lines = null
 );
 
 public sealed record SubscriptionRenewalCheckoutResponse(

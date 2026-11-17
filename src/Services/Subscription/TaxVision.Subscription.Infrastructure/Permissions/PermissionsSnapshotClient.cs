@@ -4,13 +4,14 @@ using System.Text.Json;
 using BuildingBlocks.Permissions;
 using Microsoft.Extensions.Logging;
 using TaxVision.Subscription.Infrastructure.Growth;
+using TaxVision.Subscription.Infrastructure.ServiceAuth;
 
 namespace TaxVision.Subscription.Infrastructure.Permissions;
 
 /// <summary>
 /// Opción B — recuperación pull bajo demanda: cuando <c>ProjectionPermissionsSource</c> no encuentra
 /// la fila local (usuario pre-Fase-7 nunca sincronizado por este servicio, evento perdido, backfill
-/// pendiente), pregunta a Auth en vez de negar sin más. Reutiliza el <see cref="IGrowthServiceTokenAcquirer"/>
+/// pendiente), pregunta a Auth en vez de negar sin más. Reutiliza el <see cref="ISubscriptionServiceTokenAcquirer"/>
 /// que ya apunta a Auth — un HttpClient tipado más, no un acquirer más.
 ///
 /// <para>
@@ -20,7 +21,7 @@ namespace TaxVision.Subscription.Infrastructure.Permissions;
 /// </summary>
 internal sealed class PermissionsSnapshotClient(
     HttpClient httpClient,
-    IGrowthServiceTokenAcquirer tokenAcquirer,
+    ISubscriptionServiceTokenAcquirer tokenAcquirer,
     ILogger<PermissionsSnapshotClient> logger
 ) : IPermissionsSnapshotClient
 {

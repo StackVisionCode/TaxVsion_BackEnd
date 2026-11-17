@@ -186,6 +186,7 @@ public sealed class ReferralsIdempotencyApplicationTests
             attributions,
             hasher,
             idempotency,
+            new NoShares(),
             timeProvider,
             CancellationToken.None
         );
@@ -202,6 +203,7 @@ public sealed class ReferralsIdempotencyApplicationTests
             attributions,
             hasher,
             idempotency,
+            new NoShares(),
             timeProvider,
             CancellationToken.None
         );
@@ -213,5 +215,16 @@ public sealed class ReferralsIdempotencyApplicationTests
         Assert.Equal(1, idempotency.StoredResponseCount);
         Assert.Equal([plaintextCode, plaintextCode], hasher.ReceivedTokens);
         Assert.DoesNotContain(plaintextCode, command.ToString(), StringComparison.Ordinal);
+    }
+
+    private sealed class NoShares : TaxVision.Referrals.Application.Abstractions.IReferralCodeShareRepository
+    {
+        public Task AddAsync(
+            TaxVision.Referrals.Domain.Shares.ReferralCodeShare share,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
+
+        public Task<Guid?> FindReferralCodeIdAsync(Guid shareId, CancellationToken ct = default) =>
+            Task.FromResult<Guid?>(null);
     }
 }

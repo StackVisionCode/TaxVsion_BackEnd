@@ -13,6 +13,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Codes.Application.Compensations.CompensateRedemption;
+using TaxVision.Codes.Application.Compensations.FindRedemptionByReservation;
 using TaxVision.Codes.Application.Reservations.CancelReservation;
 using TaxVision.Codes.Application.Reservations.CommitReservation;
 using TaxVision.Codes.Application.Reservations.ExpireReservation;
@@ -184,6 +185,92 @@ public sealed class GrowthDomainEventIntegrationTests : IAsyncLifetime
         Assert.Equal(1, await IncomingAsync<CodeReservationCompensatedDomainEvent>());
     }
 
+    [Fact(Timeout = 120_000)]
+    public async Task A_full_refund_restores_the_code_only_once()
+    {
+        var reservation = await ReserveAsync("refund-once");
+        Assert.True((await CommitAsync(reservation, "refund-once-commit")).IsSuccess);
+        var found = await Bus.InvokeAsync<Result<RedemptionToCompensate?>>(
+            new FindRedemptionByReservationQuery(_tenantId, reservation.ReservationId)
+        );
+        var redemption = found.Value!;
+
+        Task<Result<CompensateRedemptionResponse>> RestoreAsync(string refund) =>
+            Bus.InvokeAsync<Result<CompensateRedemptionResponse>>(
+                new CompensateRedemptionCommand(
+                    _tenantId,
+                    redemption.RedemptionId,
+                    CodeCompensationType.RestoreAvailability,
+                    redemption.DiscountAmountCents,
+                    redemption.Currency,
+                    "Refunded",
+                    Guid.NewGuid(),
+                    $"refund:{refund}:{reservation.ReservationId:N}"
+                )
+            );
+
+        var first = await RestoreAsync("first");
+        var second = await RestoreAsync("second");
+
+        // El segundo reembolso no devuelve el uso otra vez.
+        Assert.True(first.IsSuccess, first.IsSuccess ? null : first.Error.Code);
+        Assert.True(second.IsFailure);
+        Assert.Equal(CodeReservationStatus.Compensated, await StatusAsync(reservation.ReservationId));
+    }
+
+    [Fact(Timeout = 120_000)]
+    public async Task Two_signups_of_the_same_buyer_at_once_reserve_the_code_only_once()
+    {
+        var definition = GrowthTestData.CreateActivePercentageCode(
+            maxRedemptionsPerTenant: null,
+            maxRedemptionsPerSubject: 1
+        );
+        var buyer = $"v1:{Guid.NewGuid():N}";
+        var first = GrowthTestData.CreateQuote(definition, _tenantId, subjectId: "signup-a");
+        var second = GrowthTestData.CreateQuote(definition, _tenantId, subjectId: "signup-b");
+        Assert.True(first.AttachBuyer(buyer).IsSuccess);
+        Assert.True(second.AttachBuyer(buyer).IsSuccess);
+        // Una cotización por contexto: comparten la instancia de su valor de exhibición (tipo owned).
+        await using (var db = _database.NewContext(_tenantId))
+        {
+            db.CodeDefinitions.Add(definition);
+            db.CodeQuotes.Add(first);
+            await db.SaveChangesAsync();
+        }
+        await using (var db = _database.NewContext(_tenantId))
+        {
+            db.CodeQuotes.Add(second);
+            await db.SaveChangesAsync();
+        }
+
+        async Task<bool> ReservesAsync(Guid quoteId)
+        {
+            try
+            {
+                var result = await Bus.InvokeAsync<Result<ReserveCodeResponse>>(
+                    new ReserveCodeCommand(
+                        _tenantId,
+                        quoteId,
+                        "PaymentApp",
+                        Guid.NewGuid(),
+                        $"reserve-{quoteId:N}",
+                        300
+                    )
+                );
+                return result.IsSuccess;
+            }
+            catch (Exception)
+            {
+                return false; // el choque de concurrencia también cuenta como "no reservó"
+            }
+        }
+
+        var outcomes = await Task.WhenAll(ReservesAsync(first.Id), ReservesAsync(second.Id));
+
+        // La misma persona en dos altas simultáneas no pasa el límite por comprador.
+        Assert.Single(outcomes, reserved => reserved);
+    }
+
     private Task<int> CommittedNoticesAsync() =>
         _database.CountEnvelopesAsync(
             OutgoingTable,
@@ -293,6 +380,7 @@ public sealed class GrowthDomainEventIntegrationTests : IAsyncLifetime
                     .IncludeType(typeof(CancelReservationHandler))
                     .IncludeType(typeof(ExpireReservationHandler))
                     .IncludeType(typeof(CompensateRedemptionHandler))
+                    .IncludeType(typeof(FindRedemptionByReservationHandler))
                     .IncludeType(typeof(CodeReservationCommittedDomainEventHandler))
                     .IncludeType(typeof(UnconsumedCodeReservationDomainEventHandler));
                 options.Policies.AddMiddleware(typeof(GrowthLocalCommandTenantMiddleware));

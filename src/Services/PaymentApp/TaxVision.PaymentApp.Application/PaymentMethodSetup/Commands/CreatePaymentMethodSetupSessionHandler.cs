@@ -1,6 +1,7 @@
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.PaymentApp.Application.Abstractions;
+using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 
 namespace TaxVision.PaymentApp.Application.PaymentMethodSetup.Commands;
 
@@ -13,6 +14,7 @@ public static class CreatePaymentMethodSetupSessionHandler
         CreatePaymentMethodSetupSessionCommand command,
         IHostedCheckoutSessionCreatorFactory creators,
         ILogger<CreatePaymentMethodSetupSessionCommand> logger,
+        ICheckoutReturnUrlGuard returnUrls,
         CancellationToken ct
     )
     {
@@ -24,6 +26,10 @@ public static class CreatePaymentMethodSetupSessionHandler
             return Result.Failure<PaymentMethodSetupSessionResponse>(
                 new Error("PaymentMethodSetup.InvalidPayerEmail", "PayerEmail is required.")
             );
+
+        var returnCheck = returnUrls.Validate(command.SuccessUrl, command.CancelUrl);
+        if (returnCheck.IsFailure)
+            return Result.Failure<PaymentMethodSetupSessionResponse>(returnCheck.Error);
 
         // Setup-only es Stripe-only hoy. PayPal usa su propio flujo de wallet.
         var providerCode = string.IsNullOrWhiteSpace(command.Provider) ? "Stripe" : command.Provider;

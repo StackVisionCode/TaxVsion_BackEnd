@@ -57,6 +57,7 @@ public sealed class SubscriptionActivationClient(
                         billingCycle = request.BillingCycle,
                         ownerUserId = request.OwnerUserId,
                         autoRenewRequested = request.AutoRenewRequested,
+                        recurringDiscount = request.RecurringDiscount,
                     }
                 ),
             };

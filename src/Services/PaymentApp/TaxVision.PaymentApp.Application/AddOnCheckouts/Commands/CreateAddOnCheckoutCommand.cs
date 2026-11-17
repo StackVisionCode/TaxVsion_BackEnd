@@ -29,7 +29,11 @@ public sealed record CreateAddOnCheckoutCommand(
     string? AmountSignature = null,
     /// <summary>Nombre comercial del add-on del catálogo de Subscription, para el recibo. Si no viene,
     /// el concept cae al genérico "Add-on" / "Add-on × N".</summary>
-    string? AddOnDisplayName = null
+    string? AddOnDisplayName = null,
+    // Descuento vigente de la suscripción que ya va restado en AmountCents, y su fuente (Code | Admin).
+    long? DiscountAmountCents = null,
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );
 
 public sealed record AddOnCheckoutResponse(

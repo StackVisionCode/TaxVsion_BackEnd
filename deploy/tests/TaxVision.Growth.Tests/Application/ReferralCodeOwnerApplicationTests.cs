@@ -300,7 +300,7 @@ public sealed class ReferralCodeOwnerApplicationTests
             );
     }
 
-    private sealed class KeyDerivedTokenGenerator : IReferralCodeTokenGenerator
+    internal sealed class KeyDerivedTokenGenerator : IReferralCodeTokenGenerator
     {
         public Result<ReferralCodeToken> Generate(Guid programId, Guid ownerId, string idempotencyKey) =>
             ReferralCodeToken.Create(
@@ -308,7 +308,7 @@ public sealed class ReferralCodeOwnerApplicationTests
             );
     }
 
-    private sealed class Sha256Hasher : IReferralCodeTokenHasher
+    internal sealed class Sha256Hasher : IReferralCodeTokenHasher
     {
         public Result<string> Hash(string referralCode) =>
             Result.Success(
@@ -326,6 +326,9 @@ public sealed class ReferralCodeOwnerApplicationTests
             _items.Add(share);
             return Task.CompletedTask;
         }
+
+        public Task<Guid?> FindReferralCodeIdAsync(Guid shareId, CancellationToken ct = default) =>
+            Task.FromResult(_items.FirstOrDefault(share => share.Id == shareId)?.ReferralCodeId);
     }
 
     private sealed class CountingUnitOfWork : IUnitOfWork

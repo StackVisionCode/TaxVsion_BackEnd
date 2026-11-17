@@ -257,7 +257,8 @@ public sealed class OnboardingCheckoutController(
                 planId,
                 string.IsNullOrWhiteSpace(billingCycle) ? "Monthly" : billingCycle,
                 promoCode,
-                giftCode
+                giftCode,
+                sessionResult.Value.Email
             ),
             ct
         );

@@ -45,6 +45,9 @@ internal static class WebhookPayloadApplier
                     metrics.RecordRefunded(payment.ProviderCode.ToString());
                 return Result.Success();
 
+            case PaymentStatus.ChargedBack when payload.DisputeOutcome is { } outcome:
+                return payment.ResolveChargeback(outcome, occurredUtc);
+
             case PaymentStatus.ChargedBack:
                 var chargedBack = payment.MarkChargedBack(
                     occurredUtc,

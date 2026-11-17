@@ -2,6 +2,7 @@
 #pragma warning disable
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using TaxVision.PaymentApp.Application.Common.HostedCheckout;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -11,11 +12,13 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.PaymentApp.Application.PaymentMethodSetup.Commands.CreatePaymentMethodSetupSessionCommand> _loggerForMessage;
+        private readonly TaxVision.PaymentApp.Application.Common.HostedCheckout.ICheckoutReturnUrlGuard _checkoutReturnUrlGuard;
 
-        public CreatePaymentMethodSetupSessionCommandHandler1225724765(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.PaymentApp.Application.PaymentMethodSetup.Commands.CreatePaymentMethodSetupSessionCommand> loggerForMessage)
+        public CreatePaymentMethodSetupSessionCommandHandler1225724765(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.PaymentApp.Application.PaymentMethodSetup.Commands.CreatePaymentMethodSetupSessionCommand> loggerForMessage, TaxVision.PaymentApp.Application.Common.HostedCheckout.ICheckoutReturnUrlGuard checkoutReturnUrlGuard)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _loggerForMessage = loggerForMessage;
+            _checkoutReturnUrlGuard = checkoutReturnUrlGuard;
         }
 
 
@@ -23,7 +26,6 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: System.Collections.Generic.IEnumerable"1[TaxVision.PaymentApp.Application.Abstractions.IHostedCheckoutSessionCreator] Lifetime: Scoped ImplementationType: System.Collections.Generic.IEnumerable"1[TaxVision.PaymentApp.Application.Abstractions.IHostedCheckoutSessionCreator]
@@ -43,6 +45,7 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.PaymentApp.Infrastructure.Providers.PayPal.PayPalGateway is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var hostedCheckoutSessionCreatorFactory = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.PaymentApp.Application.Abstractions.IHostedCheckoutSessionCreatorFactory>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var createPaymentMethodSetupSessionCommand = (TaxVision.PaymentApp.Application.PaymentMethodSetup.Commands.CreatePaymentMethodSetupSessionCommand)context.Envelope.Message;
 
@@ -51,7 +54,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.PaymentApp.Application.PaymentMethodSetup.Commands.CreatePaymentMethodSetupSessionHandler");
             
             // The actual message execution
-            var outgoing1 = await TaxVision.PaymentApp.Application.PaymentMethodSetup.Commands.CreatePaymentMethodSetupSessionHandler.Handle(createPaymentMethodSetupSessionCommand, hostedCheckoutSessionCreatorFactory, _loggerForMessage, cancellation).ConfigureAwait(false);
+            var outgoing1 = await TaxVision.PaymentApp.Application.PaymentMethodSetup.Commands.CreatePaymentMethodSetupSessionHandler.Handle(createPaymentMethodSetupSessionCommand, hostedCheckoutSessionCreatorFactory, _loggerForMessage, _checkoutReturnUrlGuard, cancellation).ConfigureAwait(false);
 
             
             // Outgoing, cascaded message

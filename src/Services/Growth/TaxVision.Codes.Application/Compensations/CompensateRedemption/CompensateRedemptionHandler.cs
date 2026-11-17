@@ -101,7 +101,7 @@ public static class CompensateRedemptionHandler
                     var counterSetResult = await CodeUsageCounterSet.LoadAsync(
                         definition,
                         command.TenantId,
-                        reservation.Subject,
+                        reservation.LimitSubject,
                         usageCounters,
                         nowUtc,
                         operationCt

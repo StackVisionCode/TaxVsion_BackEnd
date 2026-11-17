@@ -3,6 +3,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using TaxVision.Codes.Application.Abstractions;
+using TaxVision.Growth.SharedKernel.Buyers;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -13,12 +14,16 @@ namespace Internal.Generated.WolverineHandlers
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly System.TimeProvider _timeProvider;
         private readonly TaxVision.Codes.Application.Abstractions.ICodeTokenHasher _codeTokenHasher;
+        private readonly TaxVision.Growth.SharedKernel.Buyers.IBuyerIdentityHasher _buyerIdentityHasher;
+        private readonly TaxVision.Growth.SharedKernel.Buyers.IDisposableEmailDomains _disposableEmailDomains;
 
-        public CreateQuoteCommandHandler756105101(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.TimeProvider timeProvider, TaxVision.Codes.Application.Abstractions.ICodeTokenHasher codeTokenHasher)
+        public CreateQuoteCommandHandler756105101(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.TimeProvider timeProvider, TaxVision.Codes.Application.Abstractions.ICodeTokenHasher codeTokenHasher, TaxVision.Growth.SharedKernel.Buyers.IBuyerIdentityHasher buyerIdentityHasher, TaxVision.Growth.SharedKernel.Buyers.IDisposableEmailDomains disposableEmailDomains)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _timeProvider = timeProvider;
             _codeTokenHasher = codeTokenHasher;
+            _buyerIdentityHasher = buyerIdentityHasher;
+            _disposableEmailDomains = disposableEmailDomains;
         }
 
 
@@ -26,15 +31,17 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var growthDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Growth.Infrastructure.Persistence.GrowthDbContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Codes.Application.Abstractions.IBusinessIdempotencyExecutor is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var businessIdempotencyExecutor = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Codes.Application.Abstractions.IBusinessIdempotencyExecutor>(serviceScope.ServiceProvider);
+            
+            /*
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.Tenancy.ITenantContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_0
+            * The service registration for BuildingBlocks.Tenancy.ITenantContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var codeUsageCounterRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeUsageCounterRepository>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: BuildingBlocks.Tenancy.ITenantContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_0
@@ -47,6 +54,10 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for BuildingBlocks.Tenancy.ITenantContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var codeDefinitionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Codes.Application.Abstractions.ICodeDefinitionRepository>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var growthDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Growth.Infrastructure.Persistence.GrowthDbContext>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var createQuoteCommand = (TaxVision.Codes.Application.Quotes.CreateQuote.CreateQuoteCommand)context.Envelope.Message;
 
@@ -67,7 +78,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Codes.Application.Quotes.CreateQuote.CreateQuoteHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Codes.Application.Quotes.CreateQuote.CreateQuoteHandler.Handle(createQuoteCommand, codeDefinitionRepository, codeQuoteRepository, _codeTokenHasher, businessIdempotencyExecutor, _timeProvider, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Codes.Application.Quotes.CreateQuote.CreateQuoteHandler.Handle(createQuoteCommand, codeDefinitionRepository, codeQuoteRepository, codeUsageCounterRepository, _codeTokenHasher, _buyerIdentityHasher, _disposableEmailDomains, businessIdempotencyExecutor, _timeProvider, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

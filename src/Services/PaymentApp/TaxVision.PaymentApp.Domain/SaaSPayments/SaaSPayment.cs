@@ -40,6 +40,8 @@ public sealed class SaaSPayment : AggregateRoot
     public DateTime? NextRetryAtUtc { get; private set; }
     public DateTime? PaidAtUtc { get; private set; }
     public DateTime? ChargedBackAtUtc { get; private set; }
+    public ChargebackOutcome? ChargebackOutcome { get; private set; }
+    public DateTime? ChargebackResolvedAtUtc { get; private set; }
     public bool IsLegalHeld { get; private set; }
 
     /// <summary>Set only when this charge carries a Growth/Codes discount reservation (e.g. a
@@ -51,12 +53,24 @@ public sealed class SaaSPayment : AggregateRoot
     public Guid? CodeReservationId { get; private set; }
     public Guid? CodeReservationPaymentId { get; private set; }
     public long? DiscountAmountCents { get; private set; }
+
+    /// <summary>De dónde salió el descuento de un cobro de la suscripción: "Code" o "Admin"; null sin descuento.</summary>
+    public string? DiscountSource { get; private set; }
+
+    /// <summary>Cómo lo lee el cliente en el recibo ("Promo code SPRI…0420 · 20% off"); nunca el código en claro.</summary>
+    public string? DiscountLabel { get; private set; }
+
+    public const int DiscountLabelMaxLength = 200;
     public string? PromotionSnapshotHash { get; private set; }
 
     /// <summary>PayFlow (Fase 8) — solo poblado cuando <see cref="Type"/> es
     /// <see cref="SaaSPaymentType.OnboardingInitial"/>: el <c>TenantOnboarding</c> que este pago
     /// financia, del lado de Auth. No hay FK — Auth y PaymentApp son bases de datos separadas.</summary>
     public Guid? OnboardingId { get; private set; }
+
+    /// <summary>Solo en el pago de un alta: el comprador declaró un código de referido. Va en el evento de pago
+    /// exitoso para que Growth reintente si la atribución todavía no llegó. Nulo en pagos anteriores a la marca.</summary>
+    public bool? ReferralDeclared { get; private set; }
 
     /// <summary>El PDF del recibo, una vez que Documents lo generó y CloudStorage lo guardó.</summary>
     public Guid? ReceiptFileId { get; private set; }
@@ -87,6 +101,61 @@ public sealed class SaaSPayment : AggregateRoot
     /// <summary>Una línea por cosa cobrada, cuando el pago cobra varias. Vacío en los pagos de un solo concepto.</summary>
     public IReadOnlyCollection<SaaSPaymentLine> Lines => _lines;
 
+    private readonly List<SaaSPaymentPromotion> _promotions = [];
+
+    /// <summary>Códigos de descuento con los que se cobró (alta: promo y regalo). Vacío en pagos anteriores.</summary>
+    public IReadOnlyCollection<SaaSPaymentPromotion> Promotions => _promotions;
+
+    /// <summary>Guarda los códigos del cobro. Sus descuentos deben sumar bruto menos neto: no se acepta otro descuento.</summary>
+    public Result AttachPromotions(IReadOnlyList<SaaSPaymentPromotion> promotions, long grossAmountCents)
+    {
+        if (Status != PaymentStatus.Pending || _promotions.Count > 0)
+            return Result.Failure(InvalidPromotionTransition());
+
+        var valid = ValidatePromotions(promotions, grossAmountCents - Amount.AmountCents);
+        if (valid.IsFailure)
+            return valid;
+
+        _promotions.AddRange(promotions);
+        return Result.Success();
+    }
+
+    /// <summary>Reintento del alta con reservas renovadas: mismo descuento total, reservas nuevas.</summary>
+    public Result RenewPromotions(IReadOnlyList<SaaSPaymentPromotion> promotions)
+    {
+        if (Status is not (PaymentStatus.Pending or PaymentStatus.Failed or PaymentStatus.Cancelled))
+            return Result.Failure(InvalidPromotionTransition());
+
+        var expected =
+            _promotions.Count > 0
+                ? _promotions.Sum(p => p.DiscountAmountCents)
+                : promotions.Sum(p => p.DiscountAmountCents);
+        var valid = ValidatePromotions(promotions, expected);
+        if (valid.IsFailure)
+            return valid;
+
+        _promotions.Clear();
+        _promotions.AddRange(promotions);
+        return Result.Success();
+    }
+
+    private static Result ValidatePromotions(IReadOnlyList<SaaSPaymentPromotion> promotions, long expectedDiscountCents)
+    {
+        if (promotions.Select(p => p.CodeReservationId).Distinct().Count() != promotions.Count)
+            return Result.Failure(
+                new Error("SaaSPayment.PromotionsMismatch", "A code reservation can appear only once in a payment.")
+            );
+
+        return promotions.Sum(p => p.DiscountAmountCents) == expectedDiscountCents
+            ? Result.Success()
+            : Result.Failure(
+                new Error("SaaSPayment.PromotionsMismatch", "The promotions do not add up to the discount charged.")
+            );
+    }
+
+    private Error InvalidPromotionTransition() =>
+        new("SaaSPayment.InvalidTransition", $"Promotions cannot be changed from {Status}.");
+
     // Revisión manual: éxito del proveedor que no se pudo aplicar. No cambia Status.
     public DateTime? ReviewRequiredAtUtc { get; private set; }
     public string? ReviewReasonCode { get; private set; }
@@ -110,7 +179,10 @@ public sealed class SaaSPayment : AggregateRoot
     private SaaSPayment() { }
 
     /// <summary>Etiqueta del recibo. Se fija una sola vez, antes de cobrar.</summary>
-    /// <summary>Fija el detalle del cobro antes de cobrar. Tiene que sumar exactamente el importe.</summary>
+    /// <summary>
+    /// Fija el detalle del cobro antes de cobrar. Suma el importe cobrado o, con descuento, el bruto (precio de lista):
+    /// el recibo resta el descuento debajo.
+    /// </summary>
     public Result AttachLines(IReadOnlyList<SaaSPaymentLine> lines)
     {
         if (Status != PaymentStatus.Pending || _lines.Count > 0)
@@ -118,7 +190,9 @@ public sealed class SaaSPayment : AggregateRoot
                 new Error("SaaSPayment.LinesAlreadySet", "The lines can only be set once, before the charge.")
             );
 
-        if (lines.Count == 0 || lines.Sum(line => line.AmountCents) != Amount.AmountCents)
+        var total = lines.Sum(line => line.AmountCents);
+        var gross = Amount.AmountCents + (DiscountAmountCents ?? 0);
+        if (lines.Count == 0 || total != Amount.AmountCents && total != gross)
             return Result.Failure(
                 new Error("SaaSPayment.LinesMismatch", "The lines do not add up to the amount charged.")
             );
@@ -152,9 +226,24 @@ public sealed class SaaSPayment : AggregateRoot
         Guid? codeReservationPaymentId = null,
         long? discountAmountCents = null,
         string? promotionSnapshotHash = null,
-        ChargeBreakdown? breakdown = null
+        ChargeBreakdown? breakdown = null,
+        string? discountSource = null,
+        string? discountLabel = null
     )
     {
+        // Un descuento nunca es negativo; con fuente, tiene que haber descuento y la fuente es Code o Admin.
+        // La etiqueta solo acompaña a un descuento con fuente.
+        var label = string.IsNullOrWhiteSpace(discountLabel) ? null : discountLabel.Trim();
+        if (
+            discountAmountCents is < 0
+            || discountSource is not null
+                && (discountAmountCents is not > 0 || discountSource is not ("Code" or "Admin"))
+            || label is not null && (discountSource is null || label.Length > DiscountLabelMaxLength)
+        )
+            return Result.Failure<SaaSPayment>(
+                new Error("SaaSPayment.InvalidDiscount", "The discount or its source is not valid.")
+            );
+
         if (tenantId == Guid.Empty)
             return Result.Failure<SaaSPayment>(new Error("SaaSPayment.InvalidTenant", "TenantId is required."));
 
@@ -188,6 +277,8 @@ public sealed class SaaSPayment : AggregateRoot
             CodeReservationId = codeReservationId,
             CodeReservationPaymentId = codeReservationPaymentId,
             DiscountAmountCents = discountAmountCents,
+            DiscountSource = discountSource,
+            DiscountLabel = label,
             PromotionSnapshotHash = promotionSnapshotHash,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
@@ -216,7 +307,8 @@ public sealed class SaaSPayment : AggregateRoot
         Guid planId,
         PaymentProviderCode provider,
         StatementDescriptor descriptor,
-        DateTime nowUtc
+        DateTime nowUtc,
+        bool? referralDeclared = null
     )
     {
         if (onboardingId == Guid.Empty)
@@ -240,6 +332,7 @@ public sealed class SaaSPayment : AggregateRoot
             Status = PaymentStatus.Pending,
             StatementDescriptor = descriptor,
             OnboardingId = onboardingId,
+            ReferralDeclared = referralDeclared,
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
             CreatedBy = Guid.Empty,
@@ -951,6 +1044,34 @@ public sealed class SaaSPayment : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>
+    /// Cierra la disputa de un contracargo. Ganada: el pago vuelve a cobrado (o a parcialmente reembolsado). Perdida:
+    /// sigue como contracargo. Repetir el mismo cierre no hace nada; un cierre distinto al ya guardado se rechaza.
+    /// </summary>
+    public Result ResolveChargeback(ChargebackOutcome outcome, DateTime resolvedAtUtc)
+    {
+        if (ChargebackOutcome is { } current)
+            return current == outcome
+                ? Result.Success()
+                : Result.Failure(
+                    new Error("SaaSPayment.ChargebackAlreadyResolved", $"The dispute was already {current}.")
+                );
+
+        if (Status != PaymentStatus.ChargedBack)
+            return Result.Failure(
+                new Error("SaaSPayment.InvalidTransition", $"Cannot resolve a dispute from {Status}.")
+            );
+
+        if (outcome == SaaSPayments.ChargebackOutcome.Won)
+            Status = RefundedAmountCents > 0 ? PaymentStatus.PartiallyRefunded : PaymentStatus.Succeeded;
+
+        ChargebackOutcome = outcome;
+        ChargebackResolvedAtUtc = resolvedAtUtc;
+        Touch(Guid.Empty, resolvedAtUtc);
+        AddDomainEvent(new SaaSPaymentChargebackResolved(Snapshot(), outcome, resolvedAtUtc));
+        return Result.Success();
+    }
+
     /// <summary>Coloca o levanta el legal hold. Es una acción humana: exige actor y, si el valor no cambia, no hace nada.
     /// Todavía no hay handler ni endpoint que la llame.</summary>
     public Result SetLegalHold(bool isLegalHeld, Guid actorUserId, DateTime nowUtc)
@@ -1100,9 +1221,24 @@ public sealed class SaaSPayment : AggregateRoot
                     .. _lines.Select(line => new SaaSPaymentLineSnapshot(
                         line.Description,
                         line.Quantity,
-                        line.UnitAmountCents
+                        line.UnitAmountCents,
+                        line.TargetKind,
+                        line.TargetId
                     )),
-                ]
+                ],
+            ReferralDeclared,
+            _promotions.Count == 0
+                ? null
+                :
+                [
+                    .. _promotions.Select(promotion => new SaaSPaymentPromotionSnapshot(
+                        promotion.CodeReservationId,
+                        promotion.DiscountAmountCents,
+                        promotion.Order
+                    )),
+                ],
+            DiscountSource,
+            DiscountLabel
         );
 
     private void Touch(Guid actorUserId, DateTime nowUtc)

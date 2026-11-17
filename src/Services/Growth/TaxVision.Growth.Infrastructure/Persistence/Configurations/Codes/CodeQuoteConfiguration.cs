@@ -48,6 +48,9 @@ public sealed class CodeQuoteConfiguration : IEntityTypeConfiguration<CodeQuote>
         builder.Navigation(quote => quote.CodeDisplay).IsRequired();
         builder.OwnsOne(quote => quote.Subject, subject => subject.ConfigureSubject());
         builder.Navigation(quote => quote.Subject).IsRequired();
+        // Comprador del alta (HMAC del email normalizado); los límites por sujeto cuentan por él.
+        builder.Property(quote => quote.BuyerSubjectId).HasMaxLength(200);
+        builder.Ignore(quote => quote.LimitSubject);
         builder.OwnsOne(quote => quote.Offer, offer => offer.ConfigureOffer());
         builder.Navigation(quote => quote.Offer).IsRequired();
         builder.OwnsOne(quote => quote.GrossAmount, money => money.ConfigureMoney("Gross"));

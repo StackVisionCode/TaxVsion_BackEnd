@@ -1,19 +1,19 @@
+using BuildingBlocks.Messaging;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Messaging.GrowthIntegrationEvents;
 using BuildingBlocks.Messaging.PaymentAppIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Growth.Api.IntegrationEvents;
+using TaxVision.Growth.Tests.Application.Fakes;
 using TaxVision.Referrals.Application.Attributions.CreateReferralAttribution;
 using TaxVision.Referrals.Application.Attributions.FindAttributionByReferee;
+using TaxVision.Referrals.Application.Attributions.OnboardingReferralRejections;
 using TaxVision.Referrals.Application.Programs.GetActiveReferralProgram;
 using TaxVision.Referrals.Application.Qualifications.QualifyReferral;
 using TaxVision.Referrals.Domain.Attributions;
 using TaxVision.Referrals.Domain.Qualifications;
 using TaxVision.Referrals.Domain.Rewards;
-using Wolverine;
-using Wolverine.Runtime;
-using Wolverine.Transports.Sending;
 
 namespace TaxVision.Growth.Tests.Application;
 
@@ -99,12 +99,13 @@ public sealed class OnboardingReferralConsumersTests
     }
 
     [Fact]
-    public async Task An_invalid_code_is_dropped_without_throwing_so_the_signup_is_never_blocked()
+    public async Task An_invalid_code_is_dropped_without_throwing_and_its_rejection_is_recorded()
     {
         var bus = new ScriptedBus(message =>
             message switch
             {
                 GetActiveReferralProgramQuery => Result.Success(Program()),
+                RecordOnboardingReferralRejectionCommand => Result.Success(),
                 _ => Result.Failure<CreateReferralAttributionResult>(
                     new Error("Growth.Attribution.CodeNotFound", "Revoked.")
                 ),
@@ -119,13 +120,22 @@ public sealed class OnboardingReferralConsumersTests
         );
 
         Assert.Empty(bus.Published);
+        // El pago del alta lo leerá para no reintentar un referido que nunca tendrá atribución.
+        var rejection = Assert.Single(bus.Invoked.OfType<RecordOnboardingReferralRejectionCommand>());
+        Assert.Equal(OnboardingId, rejection.OnboardingId);
+        Assert.Equal("Growth.Attribution.CodeNotFound", rejection.ReasonCode);
+        Assert.Equal(OnboardingId.ToString(), bus.TenantIdDuring[^1]);
     }
 
     [Fact]
-    public async Task Without_an_active_program_the_declaration_is_dropped()
+    public async Task Without_an_active_program_the_declaration_is_dropped_and_its_rejection_is_recorded()
     {
-        var bus = new ScriptedBus(_ =>
-            Result.Failure<ReferralProgramTermsResult>(new Error("ReferralProgram.NotFound", "None."))
+        var bus = new ScriptedBus(message =>
+            message switch
+            {
+                RecordOnboardingReferralRejectionCommand => Result.Success(),
+                _ => Result.Failure<ReferralProgramTermsResult>(new Error("ReferralProgram.NotFound", "None.")),
+            }
         );
 
         await OnboardingReferralDeclaredConsumer.Handle(
@@ -135,7 +145,11 @@ public sealed class OnboardingReferralConsumersTests
             default
         );
 
-        Assert.Single(bus.Invoked); // solo se preguntó por el programa
+        Assert.Equal(2, bus.Invoked.Count); // el programa y el rechazo; ninguna atribución
+        Assert.Equal(
+            "ReferralProgram.NotFound",
+            Assert.IsType<RecordOnboardingReferralRejectionCommand>(bus.Invoked[1]).ReasonCode
+        );
         Assert.Empty(bus.Published);
     }
 
@@ -196,6 +210,86 @@ public sealed class OnboardingReferralConsumersTests
     }
 
     [Fact]
+    public async Task A_declared_referral_without_attribution_is_retried_not_dropped()
+    {
+        var bus = new ScriptedBus(message =>
+            message switch
+            {
+                FindAttributionByRefereeQuery => Result.Success<Guid?>(null),
+                HasOnboardingReferralRejectionQuery => Result.Success(false),
+                _ => throw new InvalidOperationException(message.GetType().Name),
+            }
+        );
+
+        // La declaración sigue en camino: BB-7 reintenta con espera larga y al final va a la DLQ, donde se ve.
+        await Assert.ThrowsAsync<DependencyNotReadyException>(() =>
+            OnboardingPaymentQualifiesReferralConsumer.Handle(
+                Paid(12_900, referralDeclared: true),
+                bus,
+                NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
+                default
+            )
+        );
+        Assert.Equal(OnboardingId.ToString(), bus.TenantIdDuring[1]);
+    }
+
+    [Fact]
+    public async Task A_declared_referral_whose_code_was_rejected_is_not_retried()
+    {
+        var bus = new ScriptedBus(message =>
+            message switch
+            {
+                FindAttributionByRefereeQuery => Result.Success<Guid?>(null),
+                HasOnboardingReferralRejectionQuery => Result.Success(true),
+                _ => throw new InvalidOperationException(message.GetType().Name),
+            }
+        );
+
+        var ex = await Record.ExceptionAsync(() =>
+            OnboardingPaymentQualifiesReferralConsumer.Handle(
+                Paid(12_900, referralDeclared: true),
+                bus,
+                NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
+                default
+            )
+        );
+
+        // El alta pagó precio completo; no hay nada que calificar ni que reintentar.
+        Assert.Null(ex);
+        Assert.Equal(2, bus.Invoked.Count);
+    }
+
+    [Fact]
+    public async Task A_payment_without_referral_is_ignored()
+    {
+        var bus = new ScriptedBus(_ => Result.Success<Guid?>(null));
+
+        await OnboardingPaymentQualifiesReferralConsumer.Handle(
+            Paid(12_900, referralDeclared: false),
+            bus,
+            NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
+            default
+        );
+
+        Assert.Single(bus.Invoked); // solo la búsqueda de atribución
+    }
+
+    [Fact]
+    public async Task An_old_event_without_the_flag_keeps_the_current_behavior()
+    {
+        var bus = new ScriptedBus(_ => Result.Success<Guid?>(null));
+
+        await OnboardingPaymentQualifiesReferralConsumer.Handle(
+            Paid(12_900, referralDeclared: null),
+            bus,
+            NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
+            default
+        );
+
+        Assert.Single(bus.Invoked);
+    }
+
+    [Fact]
     public async Task A_zero_amount_signup_is_not_looked_up_at_all()
     {
         var bus = new ScriptedBus(_ => throw new InvalidOperationException("Nothing must be invoked."));
@@ -243,9 +337,10 @@ public sealed class OnboardingReferralConsumersTests
             ShareId = Guid.NewGuid(),
         };
 
-    private static OnboardingPaymentSucceededIntegrationEvent Paid(long amountCents) =>
+    private static OnboardingPaymentSucceededIntegrationEvent Paid(long amountCents, bool? referralDeclared = null) =>
         new()
         {
+            ReferralDeclared = referralDeclared,
             TenantId = Guid.Empty,
             OnboardingId = OnboardingId,
             SaaSPaymentId = Guid.NewGuid(),
@@ -258,88 +353,4 @@ public sealed class OnboardingReferralConsumersTests
 
     private static ReferralProgramTermsResult Program() =>
         new(Guid.NewGuid(), "TENANT-REFERRALS", 1, ReferralRewardType.WalletCredit, 1_000, 5_000, "USD", 30, 10, 30);
-
-    /// <summary>Bus falso: responde cada comando con un guion y apunta el tenant activo en cada invocación.</summary>
-    private sealed class ScriptedBus(Func<object, object> script) : IMessageBus
-    {
-        public string? TenantId { get; set; }
-
-        public List<object> Invoked { get; } = [];
-        public List<object> Published { get; } = [];
-        public List<string?> TenantIdDuring { get; } = [];
-
-        public Task<T> InvokeAsync<T>(
-            object message,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        )
-        {
-            Invoked.Add(message);
-            TenantIdDuring.Add(TenantId);
-            return Task.FromResult((T)script(message));
-        }
-
-        public ValueTask PublishAsync<T>(T message, DeliveryOptions? options = null)
-        {
-            Published.Add(message!);
-            return ValueTask.CompletedTask;
-        }
-
-        public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-            throw new NotImplementedException();
-
-        public Task InvokeAsync(
-            object message,
-            DeliveryOptions options,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        ) => throw new NotImplementedException();
-
-        public Task<T> InvokeAsync<T>(
-            object message,
-            DeliveryOptions options,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        ) => throw new NotImplementedException();
-
-        public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(
-            object message,
-            CancellationToken cancellation = default
-        ) => throw new NotImplementedException();
-
-        public IAsyncEnumerable<TResponse> StreamAsync<TResponse>(
-            object message,
-            DeliveryOptions options,
-            CancellationToken cancellation = default
-        ) => throw new NotImplementedException();
-
-        public Task InvokeForTenantAsync(
-            string tenantId,
-            object message,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        ) => throw new NotImplementedException();
-
-        public Task<T> InvokeForTenantAsync<T>(
-            string tenantId,
-            object message,
-            CancellationToken cancellation = default,
-            TimeSpan? timeout = null
-        ) => throw new NotImplementedException();
-
-        public IDestinationEndpoint EndpointFor(string endpointName) => throw new NotImplementedException();
-
-        public IDestinationEndpoint EndpointFor(Uri uri) => throw new NotImplementedException();
-
-        public IReadOnlyList<Envelope> PreviewSubscriptions(object message) => throw new NotImplementedException();
-
-        public IReadOnlyList<Envelope> PreviewSubscriptions(object message, DeliveryOptions options) =>
-            throw new NotImplementedException();
-
-        public ValueTask SendAsync<T>(T message, DeliveryOptions? options = null) =>
-            throw new NotImplementedException();
-
-        public ValueTask BroadcastToTopicAsync(string topicName, object message, DeliveryOptions? options = null) =>
-            throw new NotImplementedException();
-    }
 }

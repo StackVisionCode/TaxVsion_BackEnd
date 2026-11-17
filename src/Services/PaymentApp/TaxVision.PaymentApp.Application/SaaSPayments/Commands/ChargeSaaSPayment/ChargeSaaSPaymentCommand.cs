@@ -28,5 +28,8 @@ public sealed record ChargeSaaSPaymentCommand(
     Guid? CodeReservationId = null,
     Guid? CodeReservationPaymentId = null,
     long? DiscountAmountCents = null,
-    string? PromotionSnapshotHash = null
+    string? PromotionSnapshotHash = null,
+    // Fuente del descuento vigente de la suscripción (Code | Admin); null si el cobro no lleva.
+    string? DiscountSource = null,
+    string? DiscountLabel = null
 );

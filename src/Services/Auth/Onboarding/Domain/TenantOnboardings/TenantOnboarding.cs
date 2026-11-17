@@ -59,15 +59,23 @@ public sealed class TenantOnboarding : BaseEntity
     /// comprador puede reintentar el cobro sin empezar de cero.</summary>
     public int PaymentRetryCount { get; private set; }
 
+    /// <summary>Inicio del último checkout reabierto; el vencimiento se mide desde aquí (o desde la creación).</summary>
+    public DateTime? CheckoutStartedAtUtc { get; private set; }
+
+    /// <summary>Ciclos que se pueden contratar desde el alta.</summary>
+    public static readonly IReadOnlyList<string> SelfServeBillingCycles = ["Monthly", "Yearly"];
+
     // Gift/Referral: desglose comercial calculado por la reserva secuencial (apilada) en Growth.
     // Se congela antes del checkout. Null hasta que se aplica al menos un código; FullyCovered = neto 0.
-    public Guid? ReferralAttributionId { get; private set; }
     public long? GrossAmountCents { get; private set; }
     public long? TotalDiscountCents { get; private set; }
     public long? NetAmountCents { get; private set; }
     public string? Currency { get; private set; }
     public bool FullyCovered { get; private set; }
     public IReadOnlyCollection<OnboardingCodeReservation> CodeReservations => _codeReservations;
+
+    /// <summary>Cuántas veces se renovaron las reservas de código (cada renovación usa referencias de pago nuevas).</summary>
+    public int PricingGeneration { get; private set; }
 
     public string? RegistrationTokenHash { get; private set; }
     public Guid? RegistrationTokenReference { get; private set; }
@@ -148,13 +156,24 @@ public sealed class TenantOnboarding : BaseEntity
                 new Error("Onboarding.Name", "First name and last name are required.")
             );
 
+        // Solo los ciclos que vende el alta; un valor editado en la URL no entra.
+        var cycle = string.IsNullOrWhiteSpace(billingCycle)
+            ? "Monthly"
+            : SelfServeBillingCycles.FirstOrDefault(sold =>
+                string.Equals(sold, billingCycle.Trim(), StringComparison.OrdinalIgnoreCase)
+            );
+        if (cycle is null)
+            return Result.Failure<TenantOnboarding>(
+                new Error("Onboarding.InvalidBillingCycle", "Choose a monthly or yearly billing cycle.")
+            );
+
         return Result.Success(
             new TenantOnboarding
             {
                 Email = normalizedEmail,
                 EmailVerifiedAtUtc = emailVerifiedAtUtc,
                 PlanId = planId,
-                BillingCycle = string.IsNullOrWhiteSpace(billingCycle) ? "Monthly" : billingCycle.Trim(),
+                BillingCycle = cycle,
                 AutoRenewRequested = autoRenewRequested,
                 FirstName = firstName.Trim(),
                 LastName = lastName.Trim(),
@@ -167,6 +186,13 @@ public sealed class TenantOnboarding : BaseEntity
             }
         );
     }
+
+    /// <summary>El descuento recurrente del alta (el primer código de N meses o para siempre); null si no hay.</summary>
+    public OnboardingRecurringDiscount? RecurringDiscount() =>
+        _codeReservations
+            .OrderBy(reservation => reservation.Order)
+            .Select(r => r.Recurring)
+            .FirstOrDefault(r => r is not null);
 
     public Result MarkPaymentProcessing(Guid paymentId, string paymentReference)
     {
@@ -186,21 +212,6 @@ public sealed class TenantOnboarding : BaseEntity
         return Result.Success();
     }
 
-    /// <summary>
-    /// Engancha la atribución de referido creada en Growth para este alta (el código de referido solo identifica
-    /// quién recomendó; NO cambia el precio). Idempotente: si ya hay una atribución, conserva la primera.
-    /// </summary>
-    public Result AttachReferralAttribution(Guid referralAttributionId)
-    {
-        if (referralAttributionId == Guid.Empty)
-            return Result.Failure(
-                new Error("Onboarding.InvalidReferralAttribution", "ReferralAttributionId is required.")
-            );
-
-        ReferralAttributionId ??= referralAttributionId;
-        return Result.Success();
-    }
-
     /// <summary>Gift/Referral: congela el desglose comercial (bruto/descuento/neto) y las reservas de
     /// código apiladas ANTES del checkout. Válido solo en PendingPayment. Idempotente: si ya se aplicó
     /// (hay reservas), es no-op — un reintento del checkout no re-reserva. <c>FullyCovered = neto 0</c>.</summary>
@@ -209,7 +220,6 @@ public sealed class TenantOnboarding : BaseEntity
         long totalDiscountCents,
         long netCents,
         string currency,
-        Guid? referralAttributionId,
         IReadOnlyList<OnboardingCodeReservationInput> reservations,
         DateTime nowUtc
     )
@@ -237,7 +247,6 @@ public sealed class TenantOnboarding : BaseEntity
         TotalDiscountCents = totalDiscountCents;
         NetAmountCents = netCents;
         Currency = currency;
-        ReferralAttributionId = referralAttributionId;
         FullyCovered = netCents == 0;
 
         var order = 0;
@@ -251,10 +260,83 @@ public sealed class TenantOnboarding : BaseEntity
                     r.DiscountCents,
                     r.SnapshotHash,
                     order++,
-                    nowUtc
+                    nowUtc,
+                    r.ExpiresAtUtc,
+                    r.PaymentReferenceId,
+                    r.Recurring,
+                    r.CodeDisplay
                 )
             );
 
+        return Result.Success();
+    }
+
+    /// <summary>Precio de lista para el recibo; null sin descuento (el recibo muestra solo lo cobrado).</summary>
+    public long? ReceiptGrossAmountCents() => TotalDiscountCents is > 0 ? GrossAmountCents : null;
+
+    /// <summary>Las filas de descuento del recibo, en el orden en que se aplicaron.</summary>
+    public IReadOnlyList<OnboardingReceiptDiscount> ReceiptDiscounts() =>
+        [
+            .. _codeReservations
+                .Where(reservation => reservation.DiscountCents > 0)
+                .OrderBy(reservation => reservation.Order)
+                .Select(reservation => new OnboardingReceiptDiscount(
+                    reservation.ReceiptLabel(),
+                    reservation.DiscountCents
+                )),
+        ];
+
+    public bool HasExpiredCodeReservations(DateTime nowUtc) => _codeReservations.Any(r => r.IsExpired(nowUtc));
+
+    /// <summary>
+    /// Reintento del pago con alguna reserva vencida: la reemplaza por la reservada de nuevo con los mismos códigos.
+    /// El neto ya está fijado en el pago, así que el descuento debe ser idéntico; si cambió o falta un código, el
+    /// comprador debe volver a empezar (<c>Onboarding.CodeNoLongerAvailable</c>) y no se cobra.
+    /// </summary>
+    public Result RenewCodeReservations(IReadOnlyList<OnboardingCodeReservationInput> renewed, DateTime nowUtc)
+    {
+        if (Status != TenantOnboardingStatus.PendingPayment)
+            return Result.Failure(InvalidTransition());
+
+        if (!HasExpiredCodeReservations(nowUtc))
+            return Result.Failure(
+                new Error("Onboarding.ReservationsStillValid", "The code reservations are still valid.")
+            );
+
+        var current = _codeReservations.OrderBy(r => r.Order).ToList();
+        var sameCodes =
+            renewed.Count == current.Count
+            && current
+                .Zip(renewed)
+                .All(pair =>
+                    pair.First.BenefitType == pair.Second.BenefitType
+                    && pair.First.DiscountCents == pair.Second.DiscountCents
+                );
+        if (!sameCodes)
+            return Result.Failure(
+                new Error("Onboarding.CodeNoLongerAvailable", "The discount code is no longer available.")
+            );
+
+        _codeReservations.Clear();
+        var order = 0;
+        foreach (var r in renewed)
+            _codeReservations.Add(
+                new OnboardingCodeReservation(
+                    Id,
+                    r.CodeReservationId,
+                    r.BenefitType,
+                    r.Code,
+                    r.DiscountCents,
+                    r.SnapshotHash,
+                    order++,
+                    nowUtc,
+                    r.ExpiresAtUtc,
+                    r.PaymentReferenceId,
+                    r.Recurring,
+                    r.CodeDisplay
+                )
+            );
+        PricingGeneration++;
         return Result.Success();
     }
 
@@ -287,7 +369,9 @@ public sealed class TenantOnboarding : BaseEntity
         if (Status == TenantOnboardingStatus.PaymentCompleted && PaymentReference == paymentReference)
             return Result.Success();
 
-        if (Status != TenantOnboardingStatus.PaymentProcessing)
+        // Cobro de este mismo checkout que llegó después del vencimiento: el dinero gana.
+        var paidAfterExpiry = Status == TenantOnboardingStatus.Expired && PaymentReference == paymentReference;
+        if (Status != TenantOnboardingStatus.PaymentProcessing && !paidAfterExpiry)
             return Result.Failure(InvalidTransition());
 
         if (paymentReference != PaymentReference)
@@ -353,6 +437,7 @@ public sealed class TenantOnboarding : BaseEntity
         PaymentRetryCount++;
         PaymentStatus = null;
         FailureReason = null;
+        CheckoutStartedAtUtc = nowUtc;
         Status = TenantOnboardingStatus.PendingPayment;
         return Result.Success();
     }

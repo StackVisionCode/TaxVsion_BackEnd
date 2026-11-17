@@ -31,10 +31,11 @@ public sealed class StartAddOnCheckoutHandlerTests
         IAddOnPurchaseIntentRepository intents,
         IAddOnCheckoutPaymentClient client,
         IUnitOfWork unitOfWork,
-        CancellationToken ct
+        CancellationToken ct,
+        CapturingMessageBus? sharedBus = null
     )
     {
-        var bus = new CapturingMessageBus();
+        var bus = sharedBus ?? new CapturingMessageBus();
         bus.OnInvoke = async (message, token) =>
             message switch
             {
@@ -190,7 +191,37 @@ public sealed class StartAddOnCheckoutHandlerTests
         );
     }
 
-    private static Task<Result<StartAddOnCheckoutResponse>> HandleAsync(Fixture fixture, int quantity) =>
+    [Fact]
+    public async Task Coming_back_with_another_provider_opens_a_new_add_on_checkout_and_closes_the_old_one()
+    {
+        var fixture = Scenario();
+        var bus = new CapturingMessageBus();
+
+        await HandleAsync(fixture, 1, "PayPal", bus);
+        var second = await HandleAsync(fixture, 1, "Stripe", bus);
+
+        Assert.True(second.IsSuccess, second.IsFailure ? second.Error.Code : null);
+        Assert.Equal(2, fixture.Intents.Added.Count);
+        Assert.Equal(AddOnPurchaseIntentStatus.Cancelled, fixture.Intents.Added[0].Status);
+        Assert.Contains(
+            bus.Published,
+            message => message is TaxVision.Subscription.Application.Common.CancelHostedCheckoutCommand
+        );
+        // PaymentApp marca el pago reemplazado como cancelado, igual que al cancelar a mano.
+        var cancelled = Assert.Single(
+            bus.Published.OfType<BuildingBlocks.Messaging.SubscriptionIntegrationEvents.AddOnCheckoutCancelledIntegrationEvent>()
+        );
+        Assert.Equal(fixture.Intents.Added[0].Id, cancelled.AddOnPurchaseIntentId);
+        Assert.Equal(fixture.Intents.Added[0].SaaSPaymentId, cancelled.SaaSPaymentId);
+        Assert.Equal("Payment method changed.", cancelled.Reason);
+    }
+
+    private static Task<Result<StartAddOnCheckoutResponse>> HandleAsync(
+        Fixture fixture,
+        int quantity,
+        string provider = "Stripe",
+        CapturingMessageBus? bus = null
+    ) =>
         Start(
             new StartAddOnCheckoutCommand(
                 TenantId,
@@ -200,8 +231,8 @@ public sealed class StartAddOnCheckoutHandlerTests
                 "owner@acme.test",
                 "https://app/ok",
                 "https://app/cancel",
-                "Stripe",
-                "Card",
+                provider,
+                provider == "PayPal" ? "Wallet" : "Card",
                 Guid.NewGuid()
             ),
             new FakeSubscriptionRepo(fixture.Subscription),
@@ -213,7 +244,8 @@ public sealed class StartAddOnCheckoutHandlerTests
             fixture.Intents,
             fixture.Client,
             new FakeUnitOfWork(),
-            CancellationToken.None
+            CancellationToken.None,
+            bus
         );
 
     private sealed class NoAddOnSettingsRepo : ISubscriptionTenantSettingsRepository

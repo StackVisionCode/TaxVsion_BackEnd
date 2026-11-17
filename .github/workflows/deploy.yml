@@ -234,8 +234,7 @@ jobs:
           PAYMENTAPP_GROWTH_CLIENT_SECRET=${{ secrets.PAYMENTAPP_GROWTH_CLIENT_SECRET }}
           PAYMENTCLIENT_GROWTH_CLIENT_ID=${{ secrets.PAYMENTCLIENT_GROWTH_CLIENT_ID }}
           PAYMENTCLIENT_GROWTH_CLIENT_SECRET=${{ secrets.PAYMENTCLIENT_GROWTH_CLIENT_SECRET }}
-          SUBSCRIPTION_GROWTH_CLIENT_ID=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_ID }}
-          SUBSCRIPTION_GROWTH_CLIENT_SECRET=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_SECRET }}
+          # SUBSCRIPTION_GROWTH_* vive en production-extra (lo escribe el job `deploy`).
           # PayFlow Fase 16 -- PaymentApp resuelve el precio real del plan server-side
           # (GET subscriptions/internal/plans/{id}/pricing) al armar el Stripe Checkout
           # Session de onboarding, en vez de confiar en un monto del frontend. Faltaba
@@ -599,6 +598,10 @@ jobs:
           FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID=${{ secrets.FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID }}
           FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET=${{ secrets.FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET }}
           FINANCIAL_INSIGHTS_OPENAI_API_KEY=${{ secrets.FINANCIAL_INSIGHTS_OPENAI_API_KEY }}
+          # Subscription → Growth: canje de códigos de la oficina (subscription-growth, Auth client 11).
+          # Vacío = "Have a code?" responde no disponible; nada más se rompe.
+          SUBSCRIPTION_GROWTH_CLIENT_ID=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_ID }}
+          SUBSCRIPTION_GROWTH_CLIENT_SECRET=${{ secrets.SUBSCRIPTION_GROWTH_CLIENT_SECRET }}
           # CloudStorage: OAuth de Google Drive / OneDrive / Dropbox. Opcionales: vacíos dejan
           # solo MinIO y deshabilitan conectar ese proveedor.
           GOOGLE_DRIVE_CLIENT_ID=${{ secrets.GOOGLE_DRIVE_CLIENT_ID }}
