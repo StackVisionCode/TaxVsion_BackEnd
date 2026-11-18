@@ -92,7 +92,7 @@ public static class SettleReservationHandler
         var covered = wallet.EnsureHoldCovers(total.Value);
         if (covered.IsFailure)
             return Result.Failure<SettlementView>(covered.Error);
-        var settled = reservation.Settle(consumedAmount.Value, releasedAmount.Value);
+        var settled = reservation.Settle(consumedAmount.Value, releasedAmount.Value, usedUnits);
         if (settled.IsFailure)
             return Result.Failure<SettlementView>(settled.Error);
 
@@ -101,7 +101,8 @@ public static class SettleReservationHandler
             var consume = wallet.Consume(
                 consumedAmount.Value,
                 opKey: $"wallet-consume:{command.ReferenceType}:{command.ReferenceId:N}",
-                referenceId: command.ReferenceId
+                referenceId: command.ReferenceId,
+                referenceType: command.ReferenceType
             );
             if (consume.IsFailure)
                 return Result.Failure<SettlementView>(consume.Error);
@@ -113,7 +114,8 @@ public static class SettleReservationHandler
             var release = wallet.Release(
                 releasedAmount.Value,
                 opKey: $"wallet-release:{command.ReferenceType}:{command.ReferenceId:N}",
-                referenceId: command.ReferenceId
+                referenceId: command.ReferenceId,
+                referenceType: command.ReferenceType
             );
             if (release.IsFailure)
                 return Result.Failure<SettlementView>(release.Error);

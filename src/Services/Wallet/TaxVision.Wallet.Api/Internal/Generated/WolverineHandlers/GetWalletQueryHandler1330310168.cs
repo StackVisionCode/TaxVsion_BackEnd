@@ -22,12 +22,12 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Wallet.Infrastructure.Persistence.WalletDbContext walletDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Wallet.Infrastructure.Persistence.WalletDbContext.");
             var walletRepository = new TaxVision.Wallet.Infrastructure.Persistence.Repositories.WalletRepository(walletDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var getWalletQuery = (TaxVision.Wallet.Application.Wallet.Queries.GetWalletQuery)context.Envelope.Message;
 

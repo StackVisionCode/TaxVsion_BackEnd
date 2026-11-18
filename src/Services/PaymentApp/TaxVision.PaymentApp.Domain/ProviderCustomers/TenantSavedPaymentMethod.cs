@@ -53,6 +53,9 @@ public sealed class TenantSavedPaymentMethod : BaseEntity
     /// <c>ExpiringPaymentMethodsJob</c> para avisar antes de que ocurra.</summary>
     public bool ExpiresBefore(DateTime cutoffUtc) => new DateTime(ExpYear, ExpMonth, 1).AddMonths(1) <= cutoffUtc;
 
+    /// <summary>Vencido a la fecha dada. Sin vencimiento guardado (cuenta PayPal: mes y año 0) nunca vence.</summary>
+    public bool IsExpiredAt(DateTime nowUtc) => ExpYear > 0 && ExpMonth is >= 1 and <= 12 && ExpiresBefore(nowUtc);
+
     public void SetDefault(bool isDefault) => IsDefault = isDefault;
 
     public void MarkDetached(DateTime nowUtc)

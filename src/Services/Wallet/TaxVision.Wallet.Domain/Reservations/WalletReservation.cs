@@ -1,5 +1,6 @@
 using BuildingBlocks.Domain;
 using BuildingBlocks.Results;
+using TaxVision.Wallet.Domain.Pricing;
 using TaxVision.Wallet.Domain.ValueObjects;
 using TaxVision.Wallet.Domain.Wallet;
 
@@ -50,14 +51,36 @@ public sealed class WalletReservation : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? SettledAtUtc { get; private set; }
 
+    public const int MaxDescriptionLength = 200;
+
+    /// <summary>Texto legible del origen al reservar (nombre de campaña, "SMS to …"). Null = el consumidor no lo mandó.</summary>
+    public string? Description { get; private set; }
+
+    public int EmailUnits { get; private set; }
+    public int SmsUnits { get; private set; }
+    public int PushUnits { get; private set; }
+    public int WhatsAppUnits { get; private set; }
+
+    /// <summary>Unidades usadas según el settle. Null mientras está abierta (y en reservas anteriores al dato).</summary>
+    public int? ConsumedUnits { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance, Note = "Quién disparó el gasto; null = proceso automático.")]
+    public Guid? RequestedByUserId { get; private set; }
+
+    /// <summary>Canales con unidades, en orden fijo.</summary>
+    public IReadOnlyList<(PriceChannel Channel, int Units)> ChannelUnits() =>
+        new ReservationChannelUnits(EmailUnits, SmsUnits, PushUnits, WhatsAppUnits).NonZero();
+
     public static Result<WalletReservation> Open(
         Guid tenantId,
         ReservationReference reference,
         WalletMoney reserved,
         int reservedUnits,
-        int priceBookVersion
+        int priceBookVersion,
+        ReservationTrace? trace = null
     )
     {
+        trace ??= ReservationTrace.Empty;
         if (tenantId == Guid.Empty)
             return Result.Failure<WalletReservation>(ReservationErrors.TenantRequired);
         if (reserved.Micros <= 0)
@@ -74,9 +97,24 @@ public sealed class WalletReservation : TenantEntity
             PriceBookVersion = priceBookVersion,
             Status = ReservationStatus.Open,
             CreatedAtUtc = DateTime.UtcNow,
+            Description = Describe(trace.Description),
+            EmailUnits = trace.Units.Email,
+            SmsUnits = trace.Units.Sms,
+            PushUnits = trace.Units.Push,
+            WhatsAppUnits = trace.Units.WhatsApp,
+            RequestedByUserId = trace.RequestedByUserId,
         };
         reservation.SetTenant(tenantId);
         return Result.Success(reservation);
+    }
+
+    // Es una foto para mostrar: se recorta en vez de rechazar el gasto.
+    private static string? Describe(string? description)
+    {
+        var trimmed = description?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+        return trimmed.Length <= MaxDescriptionLength ? trimmed : trimmed[..MaxDescriptionLength].TrimEnd();
     }
 
     /// <summary>
@@ -84,7 +122,7 @@ public sealed class WalletReservation : TenantEntity
     /// exactamente <see cref="ReservedMicros"/>. Marca <see cref="ReservationStatus.Settled"/> (idempotente a
     /// nivel de agregado: una segunda llamada falla con <see cref="ReservationErrors.AlreadySettled"/>).
     /// </summary>
-    public Result Settle(WalletMoney consumed, WalletMoney released)
+    public Result Settle(WalletMoney consumed, WalletMoney released, int consumedUnits)
     {
         if (Status == ReservationStatus.Settled)
             return Result.Failure(ReservationErrors.AlreadySettled);
@@ -100,6 +138,7 @@ public sealed class WalletReservation : TenantEntity
 
         ConsumedMicros = consumed.Micros;
         ReleasedMicros = released.Micros;
+        ConsumedUnits = Math.Clamp(consumedUnits, 0, ReservedUnits);
         Status = ReservationStatus.Settled;
         SettledAtUtc = DateTime.UtcNow;
         return Result.Success();
@@ -115,6 +154,7 @@ public sealed class WalletReservation : TenantEntity
 
         ConsumedMicros = 0;
         ReleasedMicros = ReservedMicros;
+        ConsumedUnits = 0;
         Status = ReservationStatus.Expired;
         SettledAtUtc = nowUtc;
         return Result.Success();

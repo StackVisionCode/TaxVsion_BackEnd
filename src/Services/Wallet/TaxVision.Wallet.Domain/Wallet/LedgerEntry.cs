@@ -29,6 +29,11 @@ public sealed class LedgerEntry : TenantEntity
 
     /// <summary>Referencia opaca al hecho que originó el movimiento (topUpId, runId, settlementId…).</summary>
     public Guid? ReferenceId { get; private set; }
+
+    /// <summary>Tipo de origen ("campaign-run", "individual-sms", "topup"…). Null en asientos sin tipo conocido.</summary>
+    public string? ReferenceType { get; private set; }
+
+    public const int MaxReferenceTypeLength = 64;
     public DateTime CreatedAtUtc { get; private set; }
 
     /// <summary>Solo lo construye el aggregate <see cref="Wallet"/>.</summary>
@@ -40,7 +45,8 @@ public sealed class LedgerEntry : TenantEntity
         long postedAfterMicros,
         long heldAfterMicros,
         string operationKey,
-        Guid? referenceId
+        Guid? referenceId,
+        string? referenceType
     )
     {
         var entry = new LedgerEntry
@@ -53,6 +59,7 @@ public sealed class LedgerEntry : TenantEntity
             HeldAfterMicros = heldAfterMicros,
             OperationKey = operationKey,
             ReferenceId = referenceId,
+            ReferenceType = string.IsNullOrWhiteSpace(referenceType) ? null : referenceType.Trim(),
             CreatedAtUtc = DateTime.UtcNow,
         };
         entry.SetTenant(tenantId);

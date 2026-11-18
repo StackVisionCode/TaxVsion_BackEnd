@@ -179,4 +179,32 @@ public sealed class SettleReservationHandlerTests
         Assert.Equal(0, unitOfWork.SaveCount);
         Assert.Empty(wallet.DomainEvents);
     }
+
+    [Fact]
+    public async Task Handle_Settled_KeepsConsumedUnitsAndTheReferenceTypeOnBothEntries()
+    {
+        var tenantId = Guid.NewGuid();
+        var referenceId = Guid.NewGuid();
+        var wallets = new FakeWalletRepository();
+        var reservations = new FakeReservationRepository();
+        var wallet = WalletAggregate.Create(tenantId).Value;
+        wallet.Credit(Usd(10_000_000), "topup:seed");
+        wallet.Reserve(Usd(1_000), "reserve:seed");
+        wallets.Wallets.Add(wallet);
+        var reservation = ReservationBuilder.Open(tenantId, "campaign-run", referenceId, 1_000, 4);
+        reservations.Reservations.Add(reservation);
+
+        await SettleReservationHandler.Handle(
+            new SettleReservationCommand(tenantId, "campaign-run", referenceId, ConsumedUnits: 3),
+            reservations,
+            wallets,
+            new FakeUnitOfWork(),
+            NullLogger<WalletReservation>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Equal(3, reservation.ConsumedUnits);
+        Assert.All(wallets.LedgerEntries, e => Assert.Equal("campaign-run", e.ReferenceType));
+        Assert.Equal(2, wallets.LedgerEntries.Count);
+    }
 }

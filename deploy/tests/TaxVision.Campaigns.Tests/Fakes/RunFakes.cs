@@ -98,6 +98,10 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
 
     public string? LastCallerBearerToken { get; private set; }
 
+    public string? LastDescription { get; private set; }
+
+    public Guid? LastRequestedByUserId { get; private set; }
+
     public WalletReserveResult ReserveResult { get; set; } = new(true, true, 0, 0, 0, "USD");
 
     /// <summary>Corre dentro de la reserva, para mirar qué había confirmado en ese momento.</summary>
@@ -109,11 +113,15 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
         Guid referenceId,
         WalletUnitCounts units,
         string? callerBearerToken,
+        string? description = null,
+        Guid? requestedByUserId = null,
         CancellationToken ct = default
     )
     {
         ReservedReferences.Add(referenceId);
         LastCallerBearerToken = callerBearerToken;
+        LastDescription = description;
+        LastRequestedByUserId = requestedByUserId;
         OnReserve?.Invoke();
         return Task.FromResult(ReserveResult);
     }

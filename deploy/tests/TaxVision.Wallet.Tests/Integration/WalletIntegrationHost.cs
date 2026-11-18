@@ -40,6 +40,13 @@ internal static class WalletIntegrationHost
                 s.AddSingleton<ITenantContext>(new WalletTestDatabase.FixedTenant(tenantId));
                 s.AddScoped<IWalletRepository, WalletRepository>();
                 s.AddScoped<IReservationRepository, ReservationRepository>();
+                s.AddScoped<
+                    TaxVision.Wallet.Application.Settings.Abstractions.IWalletSettingsRepository,
+                    WalletSettingsRepository
+                >();
+                s.AddSingleton<TaxVision.Wallet.Application.Settings.Abstractions.IOfficeTimeZone>(
+                    new FakeOfficeTimeZone()
+                );
                 // Catálogo falso: no se toca el catálogo global de precios de la base local.
                 s.AddSingleton<IPriceBookRepository>(new FakePriceBookRepository());
                 s.AddSingleton<ICorrelationContext>(new FakeCorrelationContext());

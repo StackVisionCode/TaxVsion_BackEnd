@@ -68,6 +68,11 @@ public sealed class FakeWalletRepository : IWalletRepository
         CancellationToken ct = default
     ) => Task.FromResult(FundingCredits.Any(c => c.SourceService == sourceService && c.SaaSPaymentId == saaSPaymentId));
 
+    public Task<bool> HasPendingAutomaticTopUpAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult(
+            TopUps.Any(t => t.TenantId == tenantId && t.Automatic && t.Status == WalletTopUpStatus.Pending)
+        );
+
     public Task AddFundingCreditAsync(FundingCredit credit, CancellationToken ct = default)
     {
         FundingCredits.Add(credit);

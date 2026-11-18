@@ -37,12 +37,18 @@ public sealed record WalletReserveResult(
 /// </summary>
 public interface IWalletSpendClient
 {
+    /// <summary>
+    /// <paramref name="description"/> es el texto legible del movimiento (≤ 200, nunca teléfonos);
+    /// <paramref name="requestedByUserId"/> es quien envía (null = servicio o proceso automático).
+    /// </summary>
     Task<WalletReserveResult> ReserveAsync(
         Guid tenantId,
         string referenceType,
         Guid referenceId,
         WalletUnitCounts units,
         string? callerBearerToken,
+        string? description = null,
+        Guid? requestedByUserId = null,
         CancellationToken ct = default
     );
 

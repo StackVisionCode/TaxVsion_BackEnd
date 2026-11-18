@@ -38,7 +38,10 @@ public sealed class InternalWalletController(IMessageBus bus, IOptions<Reservati
         long Email,
         long Sms,
         long Push,
-        long WhatsApp
+        long WhatsApp,
+        // Opcionales: foto legible del origen y quién lo disparó (null = proceso automático).
+        string? Description = null,
+        Guid? RequestedByUserId = null
     );
 
     /// <summary>Liquida la reserva de una referencia: cuántas de las unidades reservadas se usaron de verdad.</summary>
@@ -57,7 +60,14 @@ public sealed class InternalWalletController(IMessageBus bus, IOptions<Reservati
             return Unauthorized();
 
         var units = new PerChannelUnits(request.Email, request.Sms, request.Push, request.WhatsApp);
-        var command = new ReserveFundsCommand(tenantId, request.ReferenceType, request.ReferenceId, units);
+        var command = new ReserveFundsCommand(
+            tenantId,
+            request.ReferenceType,
+            request.ReferenceId,
+            units,
+            request.Description,
+            request.RequestedByUserId
+        );
         var result = await ReservationConflictRetry.InvokeAsync(
             token => bus.InvokeAsync<Result<ReservationView>>(command, token),
             conflictRetry.Value.MaxAttempts,

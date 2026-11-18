@@ -22,6 +22,11 @@ public sealed class WalletReservationConfiguration : IEntityTypeConfiguration<Wa
         builder.Property(r => r.ConsumedMicros).IsRequired();
         builder.Property(r => r.ReleasedMicros).IsRequired();
         builder.Property(r => r.CreatedAtUtc).IsRequired();
+        builder.Property(r => r.Description).HasMaxLength(WalletReservation.MaxDescriptionLength);
+        builder.Property(r => r.EmailUnits).IsRequired();
+        builder.Property(r => r.SmsUnits).IsRequired();
+        builder.Property(r => r.PushUnits).IsRequired();
+        builder.Property(r => r.WhatsAppUnits).IsRequired();
 
         // Idempotencia de la reserva: una sola por referencia (cualquier consumidor).
         builder

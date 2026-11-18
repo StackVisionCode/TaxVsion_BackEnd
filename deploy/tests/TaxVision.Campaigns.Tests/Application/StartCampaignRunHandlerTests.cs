@@ -48,10 +48,13 @@ public sealed class StartCampaignRunHandlerTests
                 [new StartRunRecipient("c1", "ana@x.com", null), new StartRunRecipient("c2", "beto@x.com", null)]
             ),
             _campaigns,
-            new CampaignRunStarter(_wallet, new FakeCorrelationContext(), NullLogger<CampaignRunStarter>.Instance),
+            Starter(),
             _bus,
             CancellationToken.None
         );
+
+    private CampaignRunStarter Starter() =>
+        new(_wallet, _campaigns, new FakeCorrelationContext(), NullLogger<CampaignRunStarter>.Instance);
 
     private Task ResumeAsync(Guid runId) =>
         ResumeCreatedCampaignRunHandler.Handle(
@@ -59,7 +62,7 @@ public sealed class StartCampaignRunHandlerTests
             _runs,
             _schedules,
             Options.Create(_schedulerOptions),
-            _wallet,
+            Starter(),
             _bus,
             NullLogger<CampaignRun>.Instance,
             CancellationToken.None
@@ -122,6 +125,28 @@ public sealed class StartCampaignRunHandlerTests
         Assert.Equal([run.Id, run.Id], _wallet.ReservedReferences);
         Assert.Equal(CampaignRunStatus.Dispatching, run.Status);
         Assert.Equal(2, _bus.OfType<CampaignDispatchRequestedIntegrationEvent>().Count());
+    }
+
+    [Fact]
+    public async Task Manual_start_reserves_with_the_campaign_name_and_the_user()
+    {
+        await StartAsync();
+
+        Assert.Equal("Newsletter", _wallet.LastDescription);
+        Assert.Equal(Actor, _wallet.LastRequestedByUserId);
+    }
+
+    // El barrido no es una persona: la reserva va sin usuario, pero con el nombre de la campaña.
+    [Fact]
+    public async Task Resume_reserves_with_the_campaign_name_and_no_user()
+    {
+        var run = CreatedRun();
+
+        await ResumeAsync(run.Id);
+
+        Assert.Equal([run.Id], _wallet.ReservedReferences);
+        Assert.Equal("Newsletter", _wallet.LastDescription);
+        Assert.Null(_wallet.LastRequestedByUserId);
     }
 
     [Fact]

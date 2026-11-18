@@ -28,9 +28,13 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             
             /*
+            * Dependency: Descriptor: ServiceType: TaxVision.Campaigns.Application.Runs.Abstractions.IWalletSpendClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
             * The service registration for TaxVision.Campaigns.Application.Runs.Abstractions.IWalletSpendClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
+            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
-            var walletSpendClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Campaigns.Application.Runs.Abstractions.IWalletSpendClient>(serviceScope.ServiceProvider);
+            var campaignRunStarter = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Campaigns.Application.Runs.Commands.CampaignRunStarter>(serviceScope.ServiceProvider);
             var campaignScheduleRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Campaigns.Application.Scheduling.Abstractions.ICampaignScheduleRepository>(serviceScope.ServiceProvider);
             var campaignRunRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Campaigns.Application.Runs.Abstractions.ICampaignRunRepository>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
@@ -42,7 +46,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Campaigns.Application.Runs.Commands.ResumeCreatedCampaignRunHandler");
             
             // The actual message execution
-            await TaxVision.Campaigns.Application.Runs.Commands.ResumeCreatedCampaignRunHandler.Handle(resumeCreatedCampaignRunCommand, campaignRunRepository, campaignScheduleRepository, _optionsOfCampaignSchedulerOptions, walletSpendClient, context, _loggerOfCampaignRun, cancellation).ConfigureAwait(false);
+            await TaxVision.Campaigns.Application.Runs.Commands.ResumeCreatedCampaignRunHandler.Handle(resumeCreatedCampaignRunCommand, campaignRunRepository, campaignScheduleRepository, _optionsOfCampaignSchedulerOptions, campaignRunStarter, context, _loggerOfCampaignRun, cancellation).ConfigureAwait(false);
 
         }
 

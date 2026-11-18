@@ -71,7 +71,8 @@ public static class ExpireReservationHandler
         var release = wallet.Release(
             amount.Value,
             opKey: $"wallet-release:{command.ReferenceType}:{command.ReferenceId:N}",
-            referenceId: command.ReferenceId
+            referenceId: command.ReferenceId,
+            referenceType: command.ReferenceType
         );
         if (release.IsFailure)
             return Result.Failure<ReservationExpiry>(release.Error);

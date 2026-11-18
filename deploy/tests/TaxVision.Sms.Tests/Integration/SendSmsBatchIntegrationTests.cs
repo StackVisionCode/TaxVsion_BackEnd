@@ -185,6 +185,8 @@ public sealed class SendSmsBatchIntegrationTests : IAsyncLifetime
             Guid referenceId,
             WalletUnitCounts units,
             string? callerBearerToken,
+            string? description = null,
+            Guid? requestedByUserId = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 

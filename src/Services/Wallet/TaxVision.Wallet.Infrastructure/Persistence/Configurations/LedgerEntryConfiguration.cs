@@ -18,11 +18,14 @@ public sealed class LedgerEntryConfiguration : IEntityTypeConfiguration<LedgerEn
         builder.Property(e => e.PostedAfterMicros).IsRequired();
         builder.Property(e => e.HeldAfterMicros).IsRequired();
         builder.Property(e => e.OperationKey).HasMaxLength(200).IsRequired();
+        builder.Property(e => e.ReferenceType).HasMaxLength(LedgerEntry.MaxReferenceTypeLength);
         builder.Property(e => e.CreatedAtUtc).IsRequired();
 
         // Idempotencia económica: un reintento con la misma OperationKey no duplica el asiento.
         builder.HasIndex(e => new { e.TenantId, e.OperationKey }).IsUnique();
         // Listado del ledger (más recientes primero) por tenant.
         builder.HasIndex(e => new { e.TenantId, e.CreatedAtUtc });
+        // Pasos de una misma referencia (detalle de un movimiento).
+        builder.HasIndex(e => new { e.TenantId, e.ReferenceId });
     }
 }

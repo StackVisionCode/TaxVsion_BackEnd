@@ -144,11 +144,11 @@ public static class FireCampaignScheduleHandler
             return Result.Success(opened.Value.Run);
 
         var runId = opened.Value.Run.Id;
-        var funding = await starter.ReserveAsync(
+        var funding = await starter.ReserveAutomaticAsync(
             schedule.TenantId,
+            schedule.CampaignId,
             runId,
             opened.Value.Billable,
-            callerBearerToken: null,
             ct
         );
 

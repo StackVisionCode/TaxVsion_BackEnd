@@ -342,6 +342,8 @@ public sealed class SettleSmsBatchIntegrationTests : IAsyncLifetime
             Guid referenceId,
             WalletUnitCounts units,
             string? callerBearerToken,
+            string? description = null,
+            Guid? requestedByUserId = null,
             CancellationToken ct = default
         ) => Task.FromResult(new WalletReserveResult(true, true, 0, 1_000_000, 0, "USD"));
 

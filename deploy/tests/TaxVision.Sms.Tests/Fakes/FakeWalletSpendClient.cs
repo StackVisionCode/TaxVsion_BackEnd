@@ -27,10 +27,22 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
         Guid referenceId,
         WalletUnitCounts units,
         string? callerBearerToken,
+        string? description = null,
+        Guid? requestedByUserId = null,
         CancellationToken ct = default
     )
     {
-        Reservations.Add(new ReservationCall(tenantId, referenceType, referenceId, units, callerBearerToken));
+        Reservations.Add(
+            new ReservationCall(
+                tenantId,
+                referenceType,
+                referenceId,
+                units,
+                callerBearerToken,
+                description,
+                requestedByUserId
+            )
+        );
         return Task.FromResult(ReserveResult);
     }
 
@@ -52,7 +64,9 @@ internal sealed class FakeWalletSpendClient : IWalletSpendClient
         string ReferenceType,
         Guid ReferenceId,
         WalletUnitCounts Units,
-        string? CallerBearerToken
+        string? CallerBearerToken,
+        string? Description = null,
+        Guid? RequestedByUserId = null
     );
 
     public sealed record SettlementCall(

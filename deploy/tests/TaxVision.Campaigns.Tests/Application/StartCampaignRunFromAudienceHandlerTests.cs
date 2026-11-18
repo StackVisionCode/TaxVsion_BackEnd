@@ -74,7 +74,12 @@ public sealed class StartCampaignRunFromAudienceHandlerTests
             command,
             _campaigns,
             Audience(),
-            new CampaignRunStarter(_wallet, new FakeCorrelationContext(), NullLogger<CampaignRunStarter>.Instance),
+            new CampaignRunStarter(
+                _wallet,
+                _campaigns,
+                new FakeCorrelationContext(),
+                NullLogger<CampaignRunStarter>.Instance
+            ),
             _bus,
             CancellationToken.None
         );

@@ -1688,6 +1688,8 @@ services:
       - "8080"
     environment:
       TZ: Etc/UTC
+      # Marca de la plataforma (texto del permiso de recarga) y zona horaria de la oficina desde Tenant.
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${WALLET_DB_CONNECTION:?Set WALLET_DB_CONNECTION in .env}
