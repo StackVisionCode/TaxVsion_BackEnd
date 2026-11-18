@@ -12,7 +12,8 @@ export interface CustomerDirectoryEntrySnapshot {
   readonly customerId: string;
   readonly tenantId: string;
   readonly displayName: string;
-  readonly email: string;
+  /** null = cliente sin email (D-3). */
+  readonly email: string | null;
   readonly isActive: boolean;
   /** Foto vigente de la ficha del cliente; null = sin foto (o archivado). */
   readonly avatarFileId: string | null;
@@ -20,14 +21,21 @@ export interface CustomerDirectoryEntrySnapshot {
 }
 
 export interface CustomerDirectoryRepository {
+  /**
+   * Con `occurredAtUtc` (fecha del aviso) un aviso más viejo que el último aplicado no pisa el perfil, y su
+   * estado respeta el orden de los avisos de estado. Sin fecha (reconciliación) se aplica siempre.
+   */
   upsert(snapshot: {
     customerId: string;
     tenantId: string;
     displayName: string;
-    email: string;
-    isActive: boolean;
+    /** null = el aviso no trae email: nunca borra el conocido (el email no se quita). */
+    email: string | null;
+    /** undefined = no tocar el estado guardado (la fila nueva nace activa). */
+    isActive?: boolean;
     /** undefined = no tocar la foto guardada; null = quitarla. */
     avatarFileId?: string | null;
+    occurredAtUtc?: Date;
   }): Promise<void>;
 
   findByCustomerId(tenantId: string, customerId: string): Promise<CustomerDirectoryEntrySnapshot | null>;

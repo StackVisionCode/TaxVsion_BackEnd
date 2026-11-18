@@ -172,7 +172,7 @@ internal sealed class CalendarCustomerClient(
         Guid TenantId,
         Guid CustomerId,
         string DisplayName,
-        string PrimaryEmail,
+        string? PrimaryEmail,
         string Status
     );
 }

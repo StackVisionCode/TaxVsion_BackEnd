@@ -17,8 +17,8 @@ using Wolverine;
 namespace TaxVision.Notification.Tests.Integration;
 
 /// <summary>
-/// CUS-9 contra SQL Server, en base temporal: un cliente importado (solo llega <c>CustomersBulkImported</c>,
-/// sin <c>CustomerCreated</c>) tiene su fila de política, sin pisar lo que un evento ya proyectó.
+/// Contra SQL Server, en base temporal: un cliente importado llega con el aviso de su bloque y su política real;
+/// un evento más viejo que el aplicado no la pisa (el sello persiste en la columna).
 /// </summary>
 public sealed class CustomerImportedContactPolicyIntegrationTests : IAsyncLifetime
 {
@@ -86,53 +86,87 @@ public sealed class CustomerImportedContactPolicyIntegrationTests : IAsyncLifeti
     }
 
     [Fact]
-    public async Task Imported_customers_get_their_row_and_a_redelivery_changes_nothing()
+    public async Task An_imported_client_gets_its_real_policy_and_a_redelivery_changes_nothing()
     {
         var imported = Guid.NewGuid();
-        var updated = Guid.NewGuid();
+        var evt = Chunk(DateTime.UtcNow, Card(imported, isNew: true, emailEnabled: false, smsEnabled: false));
 
-        await SendAsync(Imported([imported], [updated]));
-        await SendAsync(Imported([imported], [updated]));
+        await SendAsync(evt);
+        await SendAsync(evt);
 
-        Assert.Equal((true, true), await ReadAsync(imported));
+        Assert.Equal((false, false), await ReadAsync(imported));
         Assert.Equal(1, await CountAsync());
     }
 
     [Fact]
-    public async Task A_row_already_projected_by_an_event_is_not_overwritten()
+    public async Task An_older_event_after_the_chunk_does_not_overwrite_it()
     {
         var customer = Guid.NewGuid();
-        await using (var seed = NewContext())
-        {
-            seed.CustomerContactPolicyProjections.Add(
-                CustomerContactPolicyProjection.Create(_tenant, customer, emailEnabled: false, smsEnabled: false, "Es")
-            );
-            await seed.SaveChangesAsync();
-        }
+        var at = DateTime.UtcNow;
+        await SendAsync(Chunk(at, Card(customer, isNew: true, emailEnabled: false, smsEnabled: false)));
 
-        await SendAsync(Imported([customer], []));
-
+        await SendAsync(Updated(customer, at.AddMinutes(-1)));
         Assert.Equal((false, false), await ReadAsync(customer));
+
+        await SendAsync(Updated(customer, at.AddMinutes(1)));
+        Assert.Equal((true, true), await ReadAsync(customer));
     }
 
-    private Task SendAsync(CustomersBulkImportedIntegrationEvent evt) =>
-        _host.Services.GetRequiredService<IMessageBus>().InvokeAsync(evt);
+    private Task SendAsync(object evt) => _host.Services.GetRequiredService<IMessageBus>().InvokeAsync(evt);
 
-    private CustomersBulkImportedIntegrationEvent Imported(Guid[] created, Guid[] updated) =>
+    private CustomersImportChunkCommittedIntegrationEvent Chunk(DateTime at, params ImportedCustomerCard[] cards) =>
         new()
         {
             TenantId = _tenant,
-            CorrelationId = "cus-9",
+            CorrelationId = "import-chunk",
+            OccurredOn = at,
             ImportJobId = Guid.NewGuid(),
+            ChunkNumber = 1,
             CreatedByUserId = Guid.NewGuid(),
-            CompletedAtUtc = DateTime.UtcNow,
-            TotalRows = created.Length + updated.Length,
-            SuccessCount = created.Length,
-            UpdatedCount = updated.Length,
-            SkippedCount = 0,
-            FailedCount = 0,
-            CreatedCustomerIds = created,
-            UpdatedCustomerIds = updated,
+            Customers = cards,
+        };
+
+    private static ImportedCustomerCard Card(
+        Guid customerId,
+        bool isNew,
+        bool emailEnabled = true,
+        bool smsEnabled = true,
+        string language = "En",
+        string? email = "client@example.com",
+        string name = "Client"
+    ) =>
+        new()
+        {
+            CustomerId = customerId,
+            IsNew = isNew,
+            Kind = "Individual",
+            DisplayName = name,
+            PrimaryEmail = email,
+            Language = language,
+            Status = "Active",
+            EmailEnabled = emailEnabled,
+            SmsEnabled = smsEnabled,
+        };
+
+    private CustomerUpdatedIntegrationEvent Updated(
+        Guid customerId,
+        DateTime at,
+        bool emailEnabled = true,
+        bool smsEnabled = true,
+        string email = "old@example.com",
+        string name = "Old"
+    ) =>
+        new()
+        {
+            TenantId = _tenant,
+            OccurredOn = at,
+            CustomerId = customerId,
+            DisplayName = name,
+            PrimaryEmail = email,
+            Language = "En",
+            EmailEnabled = emailEnabled,
+            SmsEnabled = smsEnabled,
+            ModifiedByUserId = Guid.NewGuid(),
         };
 
     private async Task<(bool Email, bool Sms)> ReadAsync(Guid customer)

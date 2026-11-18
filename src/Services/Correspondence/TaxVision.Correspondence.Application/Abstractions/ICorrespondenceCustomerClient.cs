@@ -23,4 +23,4 @@ public interface ICorrespondenceCustomerClient
 }
 
 /// <summary>Proyección mínima de un customer remoto — solo lo que el backfill necesita.</summary>
-public sealed record RemoteCustomerSummary(Guid Id, string PrimaryEmail, bool IsActive);
+public sealed record RemoteCustomerSummary(Guid Id, string? PrimaryEmail, bool IsActive);

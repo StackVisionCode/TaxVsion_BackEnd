@@ -53,9 +53,9 @@ export function startCustomerReconciliationScheduler(
       }
 
       for (const row of result.items) {
-        // Mismo criterio que los consumers customer.created/updated: sin id/nombre/email no se
-        // proyecta (el autocomplete de invitaciones necesita ambos).
-        if (!row.customerId || !row.displayName || !row.primaryEmail) {
+        // Mismo criterio que los consumers customer.created/updated: sin id o nombre no se proyecta.
+        // Sin email sí (D-3): el cliente sale en el rail y en el chat por su nombre.
+        if (!row.customerId || !row.displayName) {
           skipped += 1;
           continue;
         }

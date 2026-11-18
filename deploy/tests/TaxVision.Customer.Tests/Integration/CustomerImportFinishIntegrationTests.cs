@@ -107,8 +107,6 @@ public sealed class CustomerImportFinishIntegrationTests : IAsyncLifetime
             Scopes,
             attemptId,
             new ImportStartInfo(_tenantId, _userId, DuplicateStrategy.Skip, ImportSourceKind.Csv),
-            new ImportChunkAggregate(3, 0, 0, 0, [Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid()], []),
-            total: 3,
             NullLogger.Instance,
             CancellationToken.None
         );

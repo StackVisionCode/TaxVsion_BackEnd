@@ -169,7 +169,7 @@ public sealed class CustomerProjectionReconciliationJob(
         return changed ? UpsertOutcome.Updated : UpsertOutcome.Unchanged;
     }
 
-    private static string NormalizeEmail(string email) =>
+    private static string NormalizeEmail(string? email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 
     private enum UpsertOutcome

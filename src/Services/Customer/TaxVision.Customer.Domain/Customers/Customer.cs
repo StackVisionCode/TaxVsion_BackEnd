@@ -37,7 +37,9 @@ public sealed class Customer : AggregateRoot
     /// </summary>
     public ContactPolicy ContactPolicy { get; private set; } = ContactPolicy.Default;
     public Language Language { get; private set; }
-    public EmailAddress PrimaryEmail { get; private set; } = default!;
+
+    // D-3: null en un Individual que se ubica por teléfono o fecha de nacimiento. Una vez puesto, solo se cambia.
+    public EmailAddress? PrimaryEmail { get; private set; }
     public PhoneNumber? PrimaryPhone { get; private set; }
 
     /// <summary>Foto de perfil vigente (ya pasó el antivirus). La sirve CloudStorage en <c>/storage/avatars/{id}</c>.</summary>
@@ -86,13 +88,14 @@ public sealed class Customer : AggregateRoot
         CustomerKind kind,
         PersonalName? personalName,
         BusinessIdentity? businessIdentity,
-        EmailAddress primaryEmail,
+        EmailAddress? primaryEmail,
         PhoneNumber? primaryPhone,
         Language language,
         Guid createdByUserId,
         DateOnly? dateOfBirth = null,
         Guid? occupationId = null,
-        ContactPolicy? contactPolicy = null
+        ContactPolicy? contactPolicy = null,
+        bool withTaxIdentifier = false
     )
     {
         if (tenantId == Guid.Empty)
@@ -119,6 +122,11 @@ public sealed class Customer : AggregateRoot
                     new Error("Customer.BusinessIdentity", "Business customers require a business identity.")
                 );
         }
+
+        // withTaxIdentifier: el alta trae SSN/EIN y lo fija con SetFiscalProfile en la misma transacción (import).
+        var reachable = Reachability(kind, primaryEmail, primaryPhone, dateOfBirth, withTaxIdentifier);
+        if (reachable.IsFailure)
+            return Result.Failure<Customer>(reachable.Error);
 
         var displayName = kind == CustomerKind.Individual ? personalName!.DisplayName : businessIdentity!.LegalName;
 
@@ -198,6 +206,9 @@ public sealed class Customer : AggregateRoot
         var active = EnsureActive();
         if (active.IsFailure)
             return active;
+        var reachable = Reachability(Kind, PrimaryEmail, newPhone, DateOfBirth, HasTaxIdentifier);
+        if (reachable.IsFailure)
+            return reachable;
         PrimaryPhone = newPhone;
         Touch(byUserId);
         RaiseUpdated(byUserId);
@@ -389,6 +400,9 @@ public sealed class Customer : AggregateRoot
         var active = EnsureActive();
         if (active.IsFailure)
             return active;
+        var reachable = Reachability(Kind, PrimaryEmail, PrimaryPhone, dateOfBirth, HasTaxIdentifier);
+        if (reachable.IsFailure)
+            return reachable;
         DateOfBirth = dateOfBirth;
         Touch(byUserId);
         RaiseUpdated(byUserId);
@@ -685,6 +699,48 @@ public sealed class Customer : AggregateRoot
     }
 
     /// <summary>
+    /// D-4: guarda filing status, AGI y "cliente recurrente" sin SSN/EIN. Si no hay perfil, nace con el
+    /// identificador pendiente; si ya hay uno, solo cambian esos campos y el identificador se conserva.
+    /// </summary>
+    public Result SetFiscalProfileWithoutTaxIdentifier(
+        FiscalProfiles.FiscalSubjectKind subjectKind,
+        FiscalProfiles.FilingStatus? filingStatus,
+        decimal? priorYearAgi,
+        bool isReturningCustomer,
+        Guid byUserId,
+        short taxIdentifierKeyVersion = 1
+    )
+    {
+        var active = EnsureActive();
+        if (active.IsFailure)
+            return active;
+
+        if (FiscalProfile is null)
+        {
+            var created = FiscalProfiles.CustomerFiscalProfile.CreatePending(
+                TenantId,
+                Id,
+                subjectKind,
+                byUserId,
+                filingStatus,
+                priorYearAgi,
+                isReturningCustomer,
+                taxIdentifierKeyVersion
+            );
+            if (created.IsFailure)
+                return created;
+            FiscalProfile = created.Value;
+        }
+        else
+        {
+            FiscalProfile.Update(filingStatus, priorYearAgi, isReturningCustomer, byUserId);
+        }
+
+        Touch(byUserId);
+        return Result.Success();
+    }
+
+    /// <summary>
     /// Actualiza los campos NO sensibles del perfil fiscal (filing/AGI/returning) sin tocar el
     /// identificador cifrado ni su last4 — para editar el perfil sin re-teclear el SSN/EIN. El banco
     /// solo se reemplaza si se pasan cifras nuevas; si vienen null se CONSERVA lo existente (a
@@ -923,6 +979,32 @@ public sealed class Customer : AggregateRoot
         AddDomainEvent(new CustomerActivatedDomainEvent(Id, TenantId, byUserId, UpdatedAtUtc!.Value));
         return Result.Success();
     }
+
+    // D-3: sin email, un Individual necesita teléfono o fecha de nacimiento; un Business, teléfono o EIN.
+    private static Result Reachability(
+        CustomerKind kind,
+        EmailAddress? email,
+        PhoneNumber? phone,
+        DateOnly? dateOfBirth,
+        bool hasTaxIdentifier
+    )
+    {
+        if (email is not null || phone is not null)
+            return Result.Success();
+        if (kind == CustomerKind.Business)
+            return hasTaxIdentifier
+                ? Result.Success()
+                : Result.Failure(
+                    new Error("Customer.ContactRequired", "A business without email needs a phone number or an EIN.")
+                );
+        return dateOfBirth is null
+            ? Result.Failure(
+                new Error("Customer.ContactRequired", "A client without email needs a phone number or a date of birth.")
+            )
+            : Result.Success();
+    }
+
+    private bool HasTaxIdentifier => FiscalProfile?.HasTaxIdentifier == true;
 
     private Result EnsureActive() =>
         Status == CustomerStatus.Archived

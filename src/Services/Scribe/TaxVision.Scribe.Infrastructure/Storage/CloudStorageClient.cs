@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Minio;
 using Minio.DataModel.Args;
 using TaxVision.Scribe.Application.Abstractions;
+using TaxVision.Scribe.Application.Templates.Storage;
 using Wolverine;
 
 namespace TaxVision.Scribe.Infrastructure.Storage;
@@ -128,7 +130,7 @@ public sealed class CloudStorageClient(
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("CloudStorage download-url call failed ({Status}).", (int)response.StatusCode);
-            return Result.Failure<Uri>(new Error("CloudStorageClient.Download", "download-url request failed."));
+            return Result.Failure<Uri>(DownloadError(response.StatusCode, "download-url request failed."));
         }
 
         var payload = await response.Content.ReadFromJsonAsync<DownloadUrlResponseDto>(Json, ct);
@@ -143,11 +145,17 @@ public sealed class CloudStorageClient(
         if (!response.IsSuccessStatusCode)
         {
             logger.LogWarning("MinIO presigned download failed ({Status}).", (int)response.StatusCode);
-            return Result.Failure<string>(new Error("CloudStorageClient.Download", "presigned download failed."));
+            return Result.Failure<string>(DownloadError(response.StatusCode, "presigned download failed."));
         }
 
         return Result.Success(await response.Content.ReadAsStringAsync(ct));
     }
+
+    // Solo el 404 dice que el archivo no existe; lo demás es pasajero y no autoriza reponerlo.
+    private static Error DownloadError(HttpStatusCode status, string message) =>
+        status == HttpStatusCode.NotFound
+            ? new Error(StoredFile.NotFoundCode, message)
+            : new Error("CloudStorageClient.Download", message);
 
     private sealed record DownloadUrlResponseDto(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
 }

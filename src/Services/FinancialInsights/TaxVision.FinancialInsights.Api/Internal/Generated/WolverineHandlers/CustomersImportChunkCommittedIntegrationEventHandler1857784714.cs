@@ -4,13 +4,13 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Internal.Generated.WolverineHandlers
 {
-    // START: CustomersBulkImportedIntegrationEventHandler518759354
+    // START: CustomersImportChunkCommittedIntegrationEventHandler1857784714
     [global::System.CodeDom.Compiler.GeneratedCode("JasperFx", "1.0.0")]
-    public sealed class CustomersBulkImportedIntegrationEventHandler518759354 : Wolverine.Runtime.Handlers.MessageHandler
+    public sealed class CustomersImportChunkCommittedIntegrationEventHandler1857784714 : Wolverine.Runtime.Handlers.MessageHandler
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
 
-        public CustomersBulkImportedIntegrationEventHandler518759354(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory)
+        public CustomersImportChunkCommittedIntegrationEventHandler1857784714(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory)
         {
             _serviceScopeFactory = serviceScopeFactory;
         }
@@ -20,18 +20,18 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var financialProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.FinancialInsights.Application.Projections.Abstractions.IFinancialProjectionRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
-            var customersBulkImportedIntegrationEvent = (BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent)context.Envelope.Message;
+            var customersImportChunkCommittedIntegrationEvent = (BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersImportChunkCommittedIntegrationEvent)context.Envelope.Message;
 
             if (unitOfWork is not TaxVision.FinancialInsights.Infrastructure.Persistence.FinancialInsightsDbContext financialInsightsDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.FinancialInsights.Infrastructure.Persistence.FinancialInsightsDbContext.");
             
@@ -46,13 +46,13 @@ namespace Internal.Generated.WolverineHandlers
 
             try
             {
-                BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(customersBulkImportedIntegrationEvent, tenantContext, context);
+                BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(customersImportChunkCommittedIntegrationEvent, tenantContext, context);
                 BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
                 System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.FinancialInsights.Application.Projections.Consumers.ProjectionConsumer");
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.FinancialInsights.Application.Projections.Consumers.ProjectionConsumer");
                 
                 // The actual message execution
-                await TaxVision.FinancialInsights.Application.Projections.Consumers.ProjectionConsumer.Handle(customersBulkImportedIntegrationEvent, financialProjectionRepository, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
+                await TaxVision.FinancialInsights.Application.Projections.Consumers.ProjectionConsumer.Handle(customersImportChunkCommittedIntegrationEvent, financialProjectionRepository, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware
@@ -72,7 +72,7 @@ namespace Internal.Generated.WolverineHandlers
 
     }
 
-    // END: CustomersBulkImportedIntegrationEventHandler518759354
+    // END: CustomersImportChunkCommittedIntegrationEventHandler1857784714
     
     
 }

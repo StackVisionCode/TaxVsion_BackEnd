@@ -6,7 +6,10 @@ import type { IntegrationEventPublisher } from '../ports/integration-event-publi
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { TenantHostResolver } from '../ports/tenant-host-resolver.js';
-import { MeetingEventTypes, type MeetingInvitationCreatedEvent } from '../../contracts/events/meeting-events.js';
+import {
+  MeetingEventTypes,
+  type MeetingInvitationCreatedEvent,
+} from '../../contracts/events/meeting-events.js';
 import { MeetingSocketEvents, type MeetingInvitedDto } from '../../contracts/socket/meeting-socket-events.js';
 import { MeetingEventType } from '../../domain/meetings/meeting-event-log.js';
 import { recordMeetingEvent, type MeetingEventLogDeps } from './meeting-event-log-writer.js';
@@ -92,7 +95,9 @@ export interface CreateMeetingInvitationsDeps extends MeetingEventLogDeps {
    * F6: nombres legibles del host y de quien invita. MNT-01: un "externo" cuyo email es de staff de la
    * oficina se invita como empleado.
    */
-  readonly userDirectory?: Pick<UserDirectoryRepository, 'findByUserId' | 'findActiveStaffByEmail'> | undefined;
+  readonly userDirectory?:
+    | Pick<UserDirectoryRepository, 'findByUserId' | 'findActiveStaffByEmail'>
+    | undefined;
   /** MNT-01: un "externo" cuyo email es de un cliente de ESTA oficina se invita como cliente. */
   readonly customerDirectory?: Pick<CustomerDirectoryRepository, 'findActiveByEmail'> | undefined;
   readonly publisher: IntegrationEventPublisher;
@@ -135,22 +140,35 @@ export async function createMeetingInvitations(
   const now = new Date();
   const effective = await deps.effectiveSettings.resolve(command.tenantId);
   const existing = await deps.meetings.listInvitationsByMeeting(command.tenantId, command.meetingId);
-  const { invitees, skipped } = await normalizeInvitees(command.tenantId, command.invitees, existing, now, deps);
+  const { invitees, skipped } = await normalizeInvitees(
+    command.tenantId,
+    command.invitees,
+    existing,
+    now,
+    deps,
+  );
   if (invitees.length === 0) return Result.ok({ invitations: [], skipped });
 
   // F11 (E-259) + D-69: sin externos permitidos (oficina o reunion) no se crea su enlace.
   if (invitees.some((i) => i.kind === 'External')) {
     if (!effective.meeting.guestsAllowed) {
-      return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This office does not allow external guests.'));
+      return Result.fail(
+        makeError('Meeting.GuestsNotAllowed', 'This office does not allow external guests.'),
+      );
     }
     if (!meetingSnapshot.guestsAllowed) {
-      return Result.fail(makeError('Meeting.GuestsNotAllowed', 'This meeting does not allow external guests.'));
+      return Result.fail(
+        makeError('Meeting.GuestsNotAllowed', 'This meeting does not allow external guests.'),
+      );
     }
   }
   // F11 (E-259): tope por reunión: cada invitación puede ser un email a cualquier dirección.
   if (existing.length + invitees.length > deps.maxInvitationsPerMeeting) {
     return Result.fail(
-      makeError('Meeting.Invitation.LimitReached', `A meeting can have at most ${deps.maxInvitationsPerMeeting} invitations.`),
+      makeError(
+        'Meeting.Invitation.LimitReached',
+        `A meeting can have at most ${deps.maxInvitationsPerMeeting} invitations.`,
+      ),
     );
   }
   const ttlSeconds = invitationTtlSeconds({
@@ -185,15 +203,24 @@ export async function createMeetingInvitations(
   // host UNA vez por batch (cacheado). Si falla, buildMeetingJoinUrl cae al base fijo.
   const tenantHost = await deps.tenantHostResolver.resolveHost(command.tenantId);
   // TZ03-H7: la sala de una cita usa la zona de la cita; si no, la de la oficina.
-  const timeZone = meetingSnapshot.timeZoneId ?? (await deps.tenantHostResolver.resolveTimeZone?.(command.tenantId)) ?? null;
-  const nameOf = (userId: string) => meetingSnapshot.participants.find((p) => p.userId === userId)?.displayName;
-  const hostDisplayName = await resolveUserDisplayName(deps.userDirectory, meetingSnapshot.hostUserId, nameOf(meetingSnapshot.hostUserId));
+  const timeZone =
+    meetingSnapshot.timeZoneId ?? (await deps.tenantHostResolver.resolveTimeZone?.(command.tenantId)) ?? null;
+  const nameOf = (userId: string) =>
+    meetingSnapshot.participants.find((p) => p.userId === userId)?.displayName;
+  const hostDisplayName = await resolveUserDisplayName(
+    deps.userDirectory,
+    meetingSnapshot.hostUserId,
+    nameOf(meetingSnapshot.hostUserId),
+  );
   const invitedByDisplayName =
     command.actorUserId === meetingSnapshot.hostUserId
       ? hostDisplayName
       : await resolveUserDisplayName(deps.userDirectory, command.actorUserId, nameOf(command.actorUserId));
   const meetingStatus: 'Scheduled' | 'Live' = meetingSnapshot.status === 'Live' ? 'Live' : 'Scheduled';
-  const durationMinutes = meetingSnapshot.scheduledDurationMinutes ?? meetingSnapshot.maxDurationMinutes ?? effective.meeting.defaultDurationMinutes;
+  const durationMinutes =
+    meetingSnapshot.scheduledDurationMinutes ??
+    meetingSnapshot.maxDurationMinutes ??
+    effective.meeting.defaultDurationMinutes;
 
   const summaries: CreateMeetingInvitationSummary[] = [];
   for (const { invitation, plainToken, rsvpToken } of issued) {
@@ -346,11 +373,19 @@ async function recognizeInvitee(
   const staff = await deps.userDirectory?.findActiveStaffByEmail?.(tenantId, invitee.email).catch(() => null);
   // Reconocerlo no le quita su enlace de respuesta.
   const rsvp = invitee.rsvpToken ? { rsvpToken: invitee.rsvpToken } : {};
-  if (staff) return { kind: 'Employee', userId: staff.userId, email: staff.email, name: staff.displayName, ...rsvp };
-  const customers = (await deps.customerDirectory?.findActiveByEmail?.(tenantId, invitee.email).catch(() => [])) ?? [];
+  if (staff)
+    return { kind: 'Employee', userId: staff.userId, email: staff.email, name: staff.displayName, ...rsvp };
+  const customers =
+    (await deps.customerDirectory?.findActiveByEmail?.(tenantId, invitee.email).catch(() => [])) ?? [];
   const [customer] = customers;
   if (customers.length === 1 && customer) {
-    return { kind: 'Customer', customerId: customer.customerId, email: customer.email, name: customer.displayName, ...rsvp };
+    return {
+      kind: 'Customer',
+      customerId: customer.customerId,
+      email: customer.email ?? invitee.email,
+      name: customer.displayName,
+      ...rsvp,
+    };
   }
   return invitee;
 }

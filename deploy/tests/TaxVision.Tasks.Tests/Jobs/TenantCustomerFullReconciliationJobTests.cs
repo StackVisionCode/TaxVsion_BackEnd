@@ -122,9 +122,9 @@ public sealed class TenantCustomerFullReconciliationJobTests
         public Task<string?> GetDisplayNameAsync(Guid tenantId, Guid customerId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
-        public Task UpsertBulkAsync(
+        public Task UpsertImportedAsync(
             Guid tenantId,
-            IReadOnlyCollection<Guid> customerIds,
+            IReadOnlyList<ImportedDirectoryEntry> entries,
             DateTime observedAtUtc,
             CancellationToken ct = default
         ) => throw new NotSupportedException();

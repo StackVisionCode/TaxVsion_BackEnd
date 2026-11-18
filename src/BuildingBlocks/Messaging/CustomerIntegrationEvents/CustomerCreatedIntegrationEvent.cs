@@ -8,7 +8,9 @@ public sealed record CustomerCreatedIntegrationEvent : IntegrationEvent
     public required Guid CustomerId { get; init; }
     public required string Kind { get; init; } // "Individual" | "Business"
     public required string DisplayName { get; init; }
-    public required string PrimaryEmail { get; init; }
+
+    // D-3: null en un Individual sin email; el email puede llegar después en CustomerUpdated.
+    public required string? PrimaryEmail { get; init; }
     public string? PrimaryPhone { get; init; }
     public required string Language { get; init; } // "Es" | "En"
 

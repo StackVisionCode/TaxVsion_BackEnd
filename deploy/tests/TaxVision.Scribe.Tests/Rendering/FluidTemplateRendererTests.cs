@@ -675,7 +675,9 @@ public sealed class FluidTemplateRendererTests
             v =>
                 v.Type switch
                 {
-                    VariableType.Date => Marker("$instant", "2026-11-18T14:00:00Z"),
+                    // Fecha pasada: office_deadline cuenta desde la hora real y, a menos de una hora, imprime
+                    // solo "in N minutes"; en el pasado siempre imprime la fecha completa.
+                    VariableType.Date => Marker("$instant", "2025-11-18T14:00:00Z"),
                     // false: las ramas "es el último intento" o "vencido" esconden la fecha.
                     VariableType.Bool => (object?)false,
                     VariableType.Number => 3,
@@ -693,7 +695,7 @@ public sealed class FluidTemplateRendererTests
         foreach (var output in new[] { result.Value.Html, result.Value.Text ?? string.Empty })
         {
             Assert.DoesNotContain("$instant", output);
-            Assert.DoesNotContain("2026-11-18T14", output);
+            Assert.DoesNotContain("2025-11-18T14", output);
             Assert.DoesNotContain(" UTC", output);
         }
         // Lo que sí se imprime: 14:00Z del 18 es el 18 en Nueva York (9:00) y en Tokio (23:00).

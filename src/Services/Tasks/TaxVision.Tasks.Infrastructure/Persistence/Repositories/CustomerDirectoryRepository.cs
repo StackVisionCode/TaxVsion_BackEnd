@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Projections.Abstractions;
@@ -35,33 +36,54 @@ public sealed class CustomerDirectoryRepository(TasksDbContext db) : ICustomerDi
     public async Task AddAsync(CustomerDirectoryEntry entry, CancellationToken ct = default) =>
         await db.CustomerDirectoryEntries.AddAsync(entry, ct);
 
-    // MERGE set-based: el import masivo puede traer miles de ids y cargarlos como entidades no es
-    // opción. Las filas nuevas nacen sin nombre porque el evento no trae PII.
-    public async Task UpsertBulkAsync(
+    // MERGE set-based de un bloque del import (hasta 500 filas, 4 parámetros cada una, bajo el tope de 2100).
+    // Perfil (nombre/email) y estado se actualizan cada uno si no tiene un cambio más nuevo; un email nulo no borra.
+    public async Task UpsertImportedAsync(
         Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
+        IReadOnlyList<ImportedDirectoryEntry> entries,
         DateTime observedAtUtc,
         CancellationToken ct = default
     )
     {
-        if (customerIds.Count == 0)
+        if (entries.Count == 0)
             return;
 
-        var ids = customerIds.ToArray();
-        var valuesSql = string.Join(", ", ids.Select((_, i) => $"(@p{i})"));
-
+        var valuesSql = string.Join(", ", entries.Select((_, i) => $"(@c{i}, @n{i}, @e{i}, @s{i})"));
         var parameters = new List<SqlParameter> { new("@tenantId", tenantId), new("@observedAtUtc", observedAtUtc) };
-        parameters.AddRange(ids.Select((id, i) => new SqlParameter($"@p{i}", id)));
+        for (var i = 0; i < entries.Count; i++)
+        {
+            parameters.Add(new SqlParameter($"@c{i}", entries[i].CustomerId));
+            parameters.Add(new SqlParameter($"@n{i}", SqlDbType.NVarChar, 300) { Value = entries[i].DisplayName });
+            parameters.Add(
+                new SqlParameter($"@e{i}", SqlDbType.NVarChar, 254)
+                {
+                    Value = (object?)entries[i].PrimaryEmailNormalized ?? DBNull.Value,
+                }
+            );
+            parameters.Add(new SqlParameter($"@s{i}", (int)entries[i].Status));
+        }
 
         var sql = $"""
             MERGE INTO CustomerDirectoryEntries WITH (HOLDLOCK) AS target
-            USING (VALUES {valuesSql}) AS source(CustomerId)
+            USING (VALUES {valuesSql}) AS source(CustomerId, DisplayName, PrimaryEmailNormalized, Status)
             ON target.TenantId = @tenantId AND target.CustomerId = source.CustomerId
-            WHEN MATCHED THEN
-                UPDATE SET UpdatedAtUtc = @observedAtUtc
+            WHEN MATCHED AND (target.UpdatedAtUtc <= @observedAtUtc
+                              OR COALESCE(target.StatusChangedAtUtc, target.UpdatedAtUtc) <= @observedAtUtc) THEN
+                UPDATE SET DisplayName = CASE WHEN target.UpdatedAtUtc <= @observedAtUtc
+                                              THEN source.DisplayName ELSE target.DisplayName END,
+                           PrimaryEmailNormalized = CASE WHEN target.UpdatedAtUtc <= @observedAtUtc
+                                              THEN COALESCE(source.PrimaryEmailNormalized, target.PrimaryEmailNormalized)
+                                              ELSE target.PrimaryEmailNormalized END,
+                           UpdatedAtUtc = CASE WHEN target.UpdatedAtUtc <= @observedAtUtc
+                                              THEN @observedAtUtc ELSE target.UpdatedAtUtc END,
+                           Status = CASE WHEN COALESCE(target.StatusChangedAtUtc, target.UpdatedAtUtc) <= @observedAtUtc
+                                              THEN source.Status ELSE target.Status END,
+                           StatusChangedAtUtc = CASE WHEN COALESCE(target.StatusChangedAtUtc, target.UpdatedAtUtc) <= @observedAtUtc
+                                              THEN @observedAtUtc ELSE target.StatusChangedAtUtc END
             WHEN NOT MATCHED THEN
-                INSERT (Id, TenantId, CustomerId, DisplayName, Status, UpdatedAtUtc)
-                VALUES (NEWID(), @tenantId, source.CustomerId, NULL, 0, @observedAtUtc);
+                INSERT (Id, TenantId, CustomerId, DisplayName, PrimaryEmailNormalized, Status, UpdatedAtUtc, StatusChangedAtUtc)
+                VALUES (NEWID(), @tenantId, source.CustomerId, source.DisplayName, source.PrimaryEmailNormalized,
+                        source.Status, @observedAtUtc, @observedAtUtc);
             """;
 
         await db.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), ct);

@@ -46,7 +46,16 @@ public static class CustomerCreatedConsumer
                 return null;
             }
 
-            var applied = await UpsertProjection(evt, emailResult.Value, repository, logger, ct);
+            var applied = await UpsertProjection(
+                evt.TenantId,
+                evt.CustomerId,
+                evt.EventId,
+                evt.OccurredOn,
+                emailResult.Value,
+                repository,
+                logger,
+                ct
+            );
             await unitOfWork.SaveChangesAsync(ct);
 
             // COR-05: lo que esta dirección escribió antes de ser cliente pasa a su ficha.
@@ -56,37 +65,40 @@ public static class CustomerCreatedConsumer
         }
     }
 
-    private static async Task<bool> UpsertProjection(
-        CustomerCreatedIntegrationEvent evt,
+    internal static async Task<bool> UpsertProjection(
+        Guid tenantId,
+        Guid customerId,
+        Guid eventId,
+        DateTime occurredOn,
         EmailAddress email,
         ICustomerEmailAddressRepository repository,
         ILogger<CustomerEmailAddress> logger,
         CancellationToken ct
     )
     {
-        var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
+        var existing = await repository.GetByCustomerIdAsync(tenantId, customerId, ct);
         if (existing is not null)
         {
             // Igual que COR-06: un email activo de otro cliente se omite en vez de violar el índice (DLQ).
-            var owner = await repository.FindActiveByAddressAsync(evt.TenantId, email.NormalizedValue, ct);
-            if (owner is not null && owner.CustomerId != evt.CustomerId)
+            var owner = await repository.FindActiveByAddressAsync(tenantId, email.NormalizedValue, ct);
+            if (owner is not null && owner.CustomerId != customerId)
             {
                 logger.LogWarning(
                     "CustomerCreated event {EventId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping reconcile.",
-                    evt.EventId,
-                    evt.CustomerId,
+                    eventId,
+                    customerId,
                     owner.CustomerId
                 );
                 return false;
             }
 
-            existing.UpdateEmail(email, evt.OccurredOn);
+            existing.UpdateEmail(email, occurredOn);
             if (!existing.IsActive)
-                existing.Reactivate(evt.OccurredOn);
+                existing.Reactivate(occurredOn);
 
             logger.LogInformation(
                 "CustomerEmailAddress already exists for {CustomerId}; reconciled from Created event.",
-                evt.CustomerId
+                customerId
             );
             return true;
         }
@@ -96,21 +108,21 @@ public static class CustomerCreatedConsumer
         // usado por otro cliente) violarían el índice y tirarían el evento entero a la DLQ. Resolver
         // a qué customer pertenece un email compartido es una decisión de negocio pendiente; por
         // ahora se registra y se omite la proyección en vez de crashear el consumer.
-        var emailOwner = await repository.FindActiveByAddressAsync(evt.TenantId, email.NormalizedValue, ct);
-        if (emailOwner is not null && emailOwner.CustomerId != evt.CustomerId)
+        var emailOwner = await repository.FindActiveByAddressAsync(tenantId, email.NormalizedValue, ct);
+        if (emailOwner is not null && emailOwner.CustomerId != customerId)
         {
             logger.LogWarning(
                 "CustomerCreated event {EventId}: email for customer {CustomerId} is already active for a different customer {ExistingCustomerId}; skipping projection.",
-                evt.EventId,
-                evt.CustomerId,
+                eventId,
+                customerId,
                 emailOwner.CustomerId
             );
             return false;
         }
 
-        var projection = CustomerEmailAddress.Create(evt.TenantId, evt.CustomerId, email, evt.OccurredOn);
+        var projection = CustomerEmailAddress.Create(tenantId, customerId, email, occurredOn);
         await repository.AddAsync(projection, ct);
-        logger.LogInformation("CustomerEmailAddress created for {CustomerId}.", evt.CustomerId);
+        logger.LogInformation("CustomerEmailAddress created for {CustomerId}.", customerId);
         return true;
     }
 }

@@ -23,6 +23,6 @@ public sealed record RemoteCustomerRecord(
     Guid TenantId,
     Guid CustomerId,
     string DisplayName,
-    string PrimaryEmail,
+    string? PrimaryEmail,
     bool IsActive
 );

@@ -35,7 +35,7 @@ public static class CustomerReactivatedConsumer
                 return;
             }
 
-            existing.MarkReactivated();
+            existing.MarkReactivated(evt.OccurredOn);
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

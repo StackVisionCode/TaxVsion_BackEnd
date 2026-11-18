@@ -4,6 +4,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Dtos;
+using TaxVision.Customer.Application.Imports.Helpers;
 using TaxVision.Customer.Domain.Imports;
 
 namespace TaxVision.Customer.Infrastructure.Imports;
@@ -14,6 +15,10 @@ namespace TaxVision.Customer.Infrastructure.Imports;
 /// </summary>
 internal sealed class CsvCustomerImportReader : ICustomerImportReader
 {
+    private const string UnclosedQuoteMessage =
+        "This row has a quote (\") that is never closed, so the rest of the file was read as part of it. "
+        + "Close or remove the quote and import the remaining rows again.";
+
     public ImportSourceKind SourceKind => ImportSourceKind.Csv;
 
     public async IAsyncEnumerable<ImportCustomerRow> ReadAsync(
@@ -43,7 +48,9 @@ internal sealed class CsvCustomerImportReader : ICustomerImportReader
         while (await csv.ReadAsync())
         {
             ct.ThrowIfCancellationRequested();
-            rowNumber++;
+            rowNumber = ImportRowNumber.Next(GetField(csv, ImportRowNumber.SourceRowColumn), rowNumber);
+            // Comillas impares = una comilla que nunca se cerró y se tragó el resto del archivo.
+            var unclosedQuote = csv.Parser.RawRecord.Count(c => c == '"') % 2 == 1;
 
             yield return new ImportCustomerRow
             {
@@ -81,6 +88,9 @@ internal sealed class CsvCustomerImportReader : ICustomerImportReader
                 SpouseEmail = GetField(csv, "SpouseEmail"),
                 SpousePhone = GetField(csv, "SpousePhone"),
                 SpouseTaxIdentifier = GetField(csv, "SpouseTaxIdentifier"),
+                EmailOptIn = GetField(csv, "EmailOptIn"),
+                SmsOptIn = GetField(csv, "SmsOptIn"),
+                ReadError = unclosedQuote ? UnclosedQuoteMessage : null,
             };
         }
     }

@@ -10,8 +10,8 @@ namespace TaxVision.Notes.Domain.Projections;
 /// ADR-09 (00_Overview_Decisiones_Y_Alcance.md).
 ///
 /// <para>
-/// <c>DisplayName</c> nullable a propósito: el consumer masivo de bulk import solo trae IDs (sin
-/// PII), así que una fila creada desde ahí nace sin nombre — <see cref="CustomerDirectoryReconciliationJob"/>
+/// <c>DisplayName</c> nullable a propósito: el backfill o un evento sin nombre pueden crear la fila
+/// antes de conocerlo — <see cref="CustomerDirectoryReconciliationJob"/>
 /// lo rellena después vía M2M. Nunca "reventar" el flujo de creación de una nota por falta de
 /// nombre — <c>DisplayName</c> es cosmético, la existencia del customer es lo único que importa.
 /// </para>

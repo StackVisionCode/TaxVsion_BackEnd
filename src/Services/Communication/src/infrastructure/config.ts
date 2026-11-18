@@ -70,7 +70,12 @@ const rawEnv = z
       .string()
       .default('true')
       .transform((value) => value === 'true'),
-    COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE: z.coerce.number().int().min(1024).max(65000).default(40000),
+    COMMUNICATION_MEDIASOUP_WEBRTC_SERVER_PORT_BASE: z.coerce
+      .number()
+      .int()
+      .min(1024)
+      .max(65000)
+      .default(40000),
     // ICE-TCP ademas de UDP (D-57): respaldo para redes que bloquean UDP. Exige reenviar los mismos
     // puertos en TCP en el router.
     COMMUNICATION_MEDIASOUP_ENABLE_TCP: z
@@ -137,8 +142,17 @@ const rawEnv = z
     COMMUNICATION_RATE_LIMIT_MEETING_JOIN_CODE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
     // F11 (E-259): invitaciones por persona y ventana, y tope de invitaciones por reunión.
     COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_MAX: z.coerce.number().int().positive().default(20),
-    COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_WINDOW_SECONDS: z.coerce.number().int().positive().default(3600),
-    COMMUNICATION_MEETING_INVITATIONS_MAX_PER_MEETING: z.coerce.number().int().positive().max(5000).default(200),
+    COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_WINDOW_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(3600),
+    COMMUNICATION_MEETING_INVITATIONS_MAX_PER_MEETING: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(5000)
+      .default(200),
 
     COMMUNICATION_PLATFORM_TENANT_ID: z.string().uuid().default('8f58a521-4c25-4d91-9f4e-7ad5df14c001'),
 
@@ -232,9 +246,6 @@ const rawEnv = z
     // = la crea Notification (.NET) vía notification.inapp.requested.v1 y este servicio solo hace su
     // realtime propio (proyecciones), sin pushNotification. El dedupe por SourceEventId evita duplicados
     // si ambos corren un instante durante el cambio.
-    COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT: z
-      .enum(['Communication', 'Notification'])
-      .default('Communication'),
     COMMUNICATION_INAPP_SOURCE_CONNECTORS: z.enum(['Communication', 'Notification']).default('Communication'),
     COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL: z
       .enum(['Communication', 'Notification'])
@@ -414,7 +425,6 @@ export const config = {
 
   // T3.7 — quién crea la fila de la campana por grupo de hechos.
   inAppSource: {
-    customerImport: rawEnv.COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT,
     connectors: rawEnv.COMMUNICATION_INAPP_SOURCE_CONNECTORS,
     cloudStorageLegal: rawEnv.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL,
     cloudStoragePolicy: rawEnv.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY,

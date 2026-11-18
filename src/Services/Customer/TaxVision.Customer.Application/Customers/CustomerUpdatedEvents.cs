@@ -20,13 +20,14 @@ public static class CustomerUpdatedEvents
             CorrelationId = correlationId,
             CustomerId = customer.Id,
             DisplayName = customer.DisplayName,
-            PrimaryEmail = customer.PrimaryEmail.Value,
+            PrimaryEmail = customer.PrimaryEmail?.Value,
             PrimaryPhone = customer.PrimaryPhone?.E164Value,
             Language = customer.Language.ToString(),
             EmailEnabled = customer.ContactPolicy.EmailEnabled,
             SmsEnabled = customer.ContactPolicy.SmsEnabled,
             OccupationId = customer.OccupationId,
             AvatarFileId = customer.ProfilePictureFileId,
+            Status = customer.Status.ToString(),
             ModifiedByUserId = modifiedByUserId,
         };
 }

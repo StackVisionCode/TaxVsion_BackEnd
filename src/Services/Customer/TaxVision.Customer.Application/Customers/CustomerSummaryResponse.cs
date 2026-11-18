@@ -7,7 +7,7 @@ public sealed record CustomerSummaryResponse(
     CustomerKind Kind,
     CustomerStatus Status,
     string DisplayName,
-    string PrimaryEmail,
+    string? PrimaryEmail,
     string? PrimaryPhone,
     DateTime CreatedAtUtc,
     // Staff asignado (M:N) — para pintar los avatares de asignados en el directorio. El nombre lo resuelve el front.

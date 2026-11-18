@@ -51,6 +51,9 @@ public sealed class CustomerImportAttempt : TenantEntity
     public int SkippedCount { get; private set; }
     public int FailedCount { get; private set; }
 
+    /// <summary>Filas creadas o actualizadas que dejaron algún dato opcional sin importar.</summary>
+    public int WarningCount { get; private set; }
+
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? StartedAtUtc { get; private set; }
     public DateTime? CompletedAtUtc { get; private set; }
@@ -61,6 +64,12 @@ public sealed class CustomerImportAttempt : TenantEntity
 
     /// <summary>Mensaje de fallo a nivel job (no por fila). Sin PII.</summary>
     public string? FailureReason { get; private set; }
+
+    /// <summary>Último avance confirmado (inicio, bloque guardado o reanudación). Detecta imports atascados.</summary>
+    public DateTime? LastProgressAtUtc { get; private set; }
+
+    /// <summary>Veces que el barrido lo volvió a encolar por falta de avance.</summary>
+    public int RecoveryCount { get; private set; }
 
     public IReadOnlyCollection<CustomerImportRow> Rows => _rows.AsReadOnly();
 
@@ -108,11 +117,40 @@ public sealed class CustomerImportAttempt : TenantEntity
 
         Status = ImportStatus.Validating;
         StartedAtUtc = DateTime.UtcNow;
+        LastProgressAtUtc = StartedAtUtc;
+        return Result.Success();
+    }
+
+    /// <summary>Retoma un import interrumpido (mensaje reentregado): conserva estado y filas ya aplicadas.</summary>
+    public Result Resume(DateTime nowUtc)
+    {
+        if (!IsInProgress)
+            return Result.Failure(new Error("Import.InvalidState", $"Cannot resume an import in state {Status}."));
+
+        MarkProgress(nowUtc);
+        return Result.Success();
+    }
+
+    public void MarkProgress(DateTime nowUtc) => LastProgressAtUtc = nowUtc;
+
+    public bool IsStuck(DateTime nowUtc, TimeSpan idle) =>
+        IsInProgress && nowUtc - (LastProgressAtUtc ?? StartedAtUtc ?? CreatedAtUtc) > idle;
+
+    /// <summary>El barrido lo vuelve a encolar: cuenta el intento y reinicia el reloj de inactividad.</summary>
+    public Result MarkRecoveryRequested(DateTime nowUtc)
+    {
+        if (!IsInProgress)
+            return Result.Failure(new Error("Import.InvalidState", $"Cannot recover an import in state {Status}."));
+
+        RecoveryCount++;
+        MarkProgress(nowUtc);
         return Result.Success();
     }
 
     public Result MoveToApplying()
     {
+        if (Status == ImportStatus.Applying)
+            return Result.Success(); // idempotente: reanudación
         if (Status != ImportStatus.Validating)
             return Result.Failure(new Error("Import.InvalidState", $"Cannot move to Applying from {Status}."));
 
@@ -131,21 +169,40 @@ public sealed class CustomerImportAttempt : TenantEntity
     // ============== Row recording (DDD: solo el aggregate muta sus rows) ==============
 
     /// <summary>Registra una fila exitosa (customer creado). Crea el row, lo marca, incrementa contadores.</summary>
-    public void RecordSuccess(int rowNumber, Guid customerId, string displayName)
+    public void RecordSuccess(
+        int rowNumber,
+        Guid customerId,
+        string displayName,
+        IReadOnlyList<string>? warnings = null
+    )
     {
         var row = AddOrGetRow(rowNumber);
-        row.MarkSuccess(customerId, displayName);
+        row.MarkSuccess(customerId, displayName, warnings);
         ProcessedRows++;
         SuccessCount++;
+        CountWarnings(row);
     }
 
     /// <summary>Registra una fila actualizada (duplicado matcheado con strategy Merge/Overwrite).</summary>
-    public void RecordUpdated(int rowNumber, Guid existingCustomerId, string displayName, string matchedBy)
+    public void RecordUpdated(
+        int rowNumber,
+        Guid existingCustomerId,
+        string displayName,
+        string matchedBy,
+        IReadOnlyList<string>? warnings = null
+    )
     {
         var row = AddOrGetRow(rowNumber);
-        row.MarkUpdated(existingCustomerId, displayName, matchedBy);
+        row.MarkUpdated(existingCustomerId, displayName, matchedBy, warnings);
         ProcessedRows++;
         UpdatedCount++;
+        CountWarnings(row);
+    }
+
+    private void CountWarnings(CustomerImportRow row)
+    {
+        if (row.HasWarnings)
+            WarningCount++;
     }
 
     /// <summary>Registra una fila saltada (duplicado matcheado con strategy Skip).</summary>
@@ -157,6 +214,24 @@ public sealed class CustomerImportAttempt : TenantEntity
         SkippedCount++;
     }
 
+    /// <summary>Merge u Overwrite sin nada nuevo para el cliente: la fila se salta y dice por qué.</summary>
+    public void RecordUnchanged(
+        int rowNumber,
+        Guid existingCustomerId,
+        string displayName,
+        string matchedBy,
+        IReadOnlyList<string>? warnings = null
+    )
+    {
+        var row = AddOrGetRow(rowNumber);
+        row.MarkSkipped(existingCustomerId, displayName, matchedBy, UnchangedMessage, warnings);
+        ProcessedRows++;
+        SkippedCount++;
+        CountWarnings(row);
+    }
+
+    private const string UnchangedMessage = "No changes: the client already has this information.";
+
     /// <summary>Registra una fila fallida (validacion, catalogo, dedup intra-chunk, etc).</summary>
     public void RecordFailed(int rowNumber, string? displayName, string errorCode, string message)
     {
@@ -165,6 +240,22 @@ public sealed class CustomerImportAttempt : TenantEntity
         ProcessedRows++;
         FailedCount++;
     }
+
+    public bool IsRowRecorded(int rowNumber) =>
+        _rows.Any(r => r.RowNumber == rowNumber && r.Status != RowStatus.Pending);
+
+    /// <summary>Clientes creados por el import, de todas las corridas (también las previas a un reinicio).</summary>
+    public IReadOnlyList<Guid> CreatedCustomerIds => CustomerIdsWith(RowStatus.Success);
+
+    public IReadOnlyList<Guid> UpdatedCustomerIds => CustomerIdsWith(RowStatus.Updated);
+
+    private List<Guid> CustomerIdsWith(RowStatus status) =>
+        _rows
+            .Where(r => r.Status == status && r.ResultingCustomerId is not null)
+            .OrderBy(r => r.RowNumber)
+            .Select(r => r.ResultingCustomerId!.Value)
+            .Distinct()
+            .ToList();
 
     private CustomerImportRow AddOrGetRow(int rowNumber)
     {
@@ -238,6 +329,8 @@ public sealed class CustomerImportAttempt : TenantEntity
     }
 
     public bool IsCancelRequested => Status == ImportStatus.Canceling;
+
+    public bool IsInProgress => Status is ImportStatus.Validating or ImportStatus.Applying or ImportStatus.Canceling;
 
     public bool IsTerminal => Status is ImportStatus.Completed or ImportStatus.Failed or ImportStatus.Canceled;
 }

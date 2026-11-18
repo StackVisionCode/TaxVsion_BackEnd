@@ -179,7 +179,7 @@ internal sealed class NotesCustomerClient(
         Guid TenantId,
         Guid CustomerId,
         string DisplayName,
-        string PrimaryEmail,
+        string? PrimaryEmail,
         string Status
     );
 }

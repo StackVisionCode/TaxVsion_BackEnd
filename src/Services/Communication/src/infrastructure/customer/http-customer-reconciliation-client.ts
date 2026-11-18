@@ -18,7 +18,8 @@ export interface CustomerReconciliationRow {
   readonly tenantId: string;
   readonly customerId: string;
   readonly displayName: string;
-  readonly primaryEmail: string;
+  /** null = cliente sin email (D-3). */
+  readonly primaryEmail: string | null;
   readonly status: string;
   /** F5: undefined = Customer.Api anterior sin el campo (no tocar la foto guardada); null = sin foto. */
   readonly avatarFileId?: string | null;
@@ -104,7 +105,7 @@ export class HttpCustomerReconciliationClient {
         tenantId: tenantId ?? '',
         customerId: customerId ?? '',
         displayName: displayName ?? '',
-        primaryEmail: primaryEmail ?? '',
+        primaryEmail: primaryEmail ?? null,
         status: status ?? '',
         ...(avatarFileId !== undefined ? { avatarFileId } : {}),
       });

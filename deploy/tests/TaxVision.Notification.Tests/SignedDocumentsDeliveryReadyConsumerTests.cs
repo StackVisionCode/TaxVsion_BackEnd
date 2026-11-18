@@ -411,12 +411,6 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
                 id == customerId ? CustomerContactPolicyProjection.Create(tenantId, id, emailEnabled, smsEnabled) : null
             );
 
-        public Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
-            Guid tenantId,
-            IReadOnlyCollection<Guid> customerIds,
-            CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyCollection<Guid>>([]);
-
         public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) => Task.CompletedTask;
     }
 

@@ -67,8 +67,16 @@ public sealed class CustomerFiscalReEncryptionStore(
                             .Take(batchSize),
                     profile =>
                     {
-                        var re = reEncryptor.ReEncrypt(profile.TaxIdentifierCipher, profile.TenantId);
-                        profile.ReEncryptTaxIdentifier(re.Cipher, re.BlindIndex, current);
+                        // D-4: con el SSN pendiente solo hay banco que re-cifrar.
+                        if (profile.TaxIdentifierCipher is { } cipher)
+                        {
+                            var re = reEncryptor.ReEncrypt(cipher, profile.TenantId);
+                            profile.ReEncryptTaxIdentifier(re.Cipher, re.BlindIndex, current);
+                        }
+                        else
+                        {
+                            profile.AdoptKeyVersion(current);
+                        }
                         // Las cifras bancarias (sin blind index) viajan con la fila: se refrescan a la clave actual.
                         if (profile.RefundBankAccountCipher is not null || profile.RefundBankRoutingCipher is not null)
                             profile.ReEncryptRefundBank(

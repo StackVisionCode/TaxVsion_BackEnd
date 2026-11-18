@@ -8,24 +8,26 @@ namespace TaxVision.Customer.Application.Imports.Helpers;
 
 /// <summary>
 /// Llaves de duplicado de una fila del import, armadas con los mismos value objects que el alta (B-17):
-/// email normalizado, teléfono E.164, nombre para mostrar (persona: First Middle Last; empresa: razón social) y DOB.
+/// email normalizado, teléfono E.164, nombre (persona: nombre y apellido, el segundo aparte; empresa: razón social) y DOB.
 /// </summary>
 public static class ImportDuplicateKeys
 {
     /// <summary>Desde la fila cruda; cada llave se calcula por separado y queda null si no es válida.</summary>
-    public static CustomerDuplicateRules.Keys From(ImportCustomerRow row) =>
-        new(EmailOf(row.Email), PhoneOf(row.Phone), NameOf(row), DateOfBirthOf(row.DateOfBirth));
+    public static CustomerDuplicateRules.Keys From(ImportCustomerRow row)
+    {
+        var (name, middle) = NameOf(row);
+        return new(EmailOf(row.Email), PhoneOf(row.Phone), name, DateOfBirthOf(row.DateOfBirth), middle);
+    }
 
     /// <summary>Desde la fila ya parseada: mismas llaves que daría la fila cruda.</summary>
-    internal static CustomerDuplicateRules.Keys From(ParsedRow row) =>
-        new(
-            row.Email.NormalizedValue,
-            row.Phone?.E164Value,
-            CustomerDuplicateRules.NormalizeName(
-                row.Kind == CustomerKind.Business ? row.BusinessIdentity?.LegalName : row.PersonalName?.DisplayName
-            ),
-            row.DateOfBirth
+    internal static CustomerDuplicateRules.Keys From(ParsedRow row)
+    {
+        var (name, middle) = CustomerDuplicateRules.NameOf(
+            row.Kind == CustomerKind.Business ? null : row.PersonalName,
+            row.BusinessIdentity?.LegalName
         );
+        return new(row.Email?.NormalizedValue, row.Phone?.E164Value, name, row.DateOfBirth, middle);
+    }
 
     private static string? EmailOf(string? raw)
     {
@@ -43,10 +45,10 @@ public static class ImportDuplicateKeys
         return phone.IsSuccess ? phone.Value.E164Value : null;
     }
 
-    private static string? NameOf(ImportCustomerRow row)
+    private static (string? Name, string? MiddleName) NameOf(ImportCustomerRow row)
     {
         if (Enum.TryParse<CustomerKind>(row.Kind, ignoreCase: true, out var kind) && kind == CustomerKind.Business)
-            return CustomerDuplicateRules.NormalizeName(row.LegalName);
+            return CustomerDuplicateRules.NameOf(null, row.LegalName);
 
         var name = PersonalName.Create(
             row.FirstName ?? string.Empty,
@@ -55,7 +57,7 @@ public static class ImportDuplicateKeys
             row.Prefix,
             row.Suffix
         );
-        return name.IsSuccess ? CustomerDuplicateRules.NormalizeName(name.Value.DisplayName) : null;
+        return name.IsSuccess ? CustomerDuplicateRules.NameOf(name.Value, null) : (null, null);
     }
 
     private static DateOnly? DateOfBirthOf(string? raw) =>

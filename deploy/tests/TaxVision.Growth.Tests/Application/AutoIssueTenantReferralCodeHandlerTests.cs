@@ -29,7 +29,8 @@ public sealed class AutoIssueTenantReferralCodeHandlerTests
         Assert.Equal(ReferralCodeStatus.Active, code.Status);
         Assert.Equal(Office, code.OwnerId);
         Assert.Equal(OwnerUser, code.OwnerUserId);
-        Assert.Equal($"referral-auto:{Office:N}", code.IdempotencyKey);
+        // Clave del formato corto: la oficina nueva recibe un código fácil de dictar.
+        Assert.Equal($"referral-auto:v2:{Office:N}", code.IdempotencyKey);
         // Cinco años, pero nunca más allá del fin del programa.
         Assert.Equal(f.Program.EndsAtUtc, code.ExpiresAtUtc);
     }

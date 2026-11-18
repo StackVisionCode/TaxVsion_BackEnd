@@ -17,12 +17,14 @@ using Wolverine.SqlServer;
 
 namespace TaxVision.Notification.Tests.Integration;
 
-/// <summary>NOT-21: un importado llega solo con CustomersBulkImported, que no trae correos.</summary>
+/// <summary>
+/// Contra SQL Server, en base temporal: los importados llegan al directorio con el aviso de su bloque, sin pedir los
+/// correos a Customer. Un email vacío no borra el conocido y un evento más viejo no pisa.
+/// </summary>
 public sealed class CustomerImportedEmailDirectoryIntegrationTests : IAsyncLifetime
 {
     private readonly NotificationTempDatabase _database = new("notn21_");
     private readonly Guid _tenant = Guid.NewGuid();
-    private readonly PagedCustomerClient _client = new();
     private IHost _host = null!;
 
     public async Task InitializeAsync()
@@ -35,7 +37,6 @@ public sealed class CustomerImportedEmailDirectoryIntegrationTests : IAsyncLifet
                 options.Discovery.DisableConventionalDiscovery();
                 options.Discovery.IncludeType(typeof(CustomerContactPolicyConsumer));
                 options.Discovery.IncludeType(typeof(CustomerEmailDirectoryConsumer));
-                options.Discovery.IncludeType(typeof(SyncImportedCustomerEmailsHandler));
                 options.UseTaxVisionDurableLocalQueues();
                 options.Durability.Mode = DurabilityMode.Solo;
                 options.PersistMessagesWithSqlServer(_database.ConnectionString);
@@ -49,7 +50,6 @@ public sealed class CustomerImportedEmailDirectoryIntegrationTests : IAsyncLifet
                 options.Services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<NotificationDbContext>());
                 options.Services.AddScoped<ICustomerContactPolicyRepository, CustomerContactPolicyRepository>();
                 options.Services.AddScoped<ICustomerEmailDirectoryRepository, CustomerEmailDirectoryRepository>();
-                options.Services.AddSingleton<INotificationCustomerClient>(_client);
             })
             .StartAsync();
     }
@@ -64,21 +64,59 @@ public sealed class CustomerImportedEmailDirectoryIntegrationTests : IAsyncLifet
         await _database.DisposeAsync();
     }
 
-    private CustomersBulkImportedIntegrationEvent Imported(Guid[] created, Guid[] updated) =>
+    private CustomersImportChunkCommittedIntegrationEvent Chunk(DateTime at, params ImportedCustomerCard[] cards) =>
         new()
         {
             TenantId = _tenant,
-            CorrelationId = "not-21",
+            CorrelationId = "import-chunk",
+            OccurredOn = at,
             ImportJobId = Guid.NewGuid(),
+            ChunkNumber = 1,
             CreatedByUserId = Guid.NewGuid(),
-            CompletedAtUtc = DateTime.UtcNow,
-            TotalRows = created.Length + updated.Length,
-            SuccessCount = created.Length,
-            UpdatedCount = updated.Length,
-            SkippedCount = 0,
-            FailedCount = 0,
-            CreatedCustomerIds = created,
-            UpdatedCustomerIds = updated,
+            Customers = cards,
+        };
+
+    private static ImportedCustomerCard Card(
+        Guid customerId,
+        bool isNew,
+        bool emailEnabled = true,
+        bool smsEnabled = true,
+        string language = "En",
+        string? email = "client@example.com",
+        string name = "Client"
+    ) =>
+        new()
+        {
+            CustomerId = customerId,
+            IsNew = isNew,
+            Kind = "Individual",
+            DisplayName = name,
+            PrimaryEmail = email,
+            Language = language,
+            Status = "Active",
+            EmailEnabled = emailEnabled,
+            SmsEnabled = smsEnabled,
+        };
+
+    private CustomerUpdatedIntegrationEvent Updated(
+        Guid customerId,
+        DateTime at,
+        bool emailEnabled = true,
+        bool smsEnabled = true,
+        string email = "old@example.com",
+        string name = "Old"
+    ) =>
+        new()
+        {
+            TenantId = _tenant,
+            OccurredOn = at,
+            CustomerId = customerId,
+            DisplayName = name,
+            PrimaryEmail = email,
+            Language = "En",
+            EmailEnabled = emailEnabled,
+            SmsEnabled = smsEnabled,
+            ModifiedByUserId = Guid.NewGuid(),
         };
 
     private async Task<string?> EmailOfAsync(Guid customerId)
@@ -92,49 +130,35 @@ public sealed class CustomerImportedEmailDirectoryIntegrationTests : IAsyncLifet
     }
 
     [Fact]
-    public async Task Imported_customers_get_their_directory_row_without_waiting_for_the_reconciliation()
+    public async Task Imported_clients_get_their_directory_row_from_the_chunk()
     {
         var created = Guid.NewGuid();
-        var updated = Guid.NewGuid();
-        _client.Add(_tenant, created, "created@not21.test");
-        _client.Add(_tenant, updated, "updated@not21.test");
-        _client.Add(_tenant, Guid.NewGuid(), "other@not21.test");
+        var withoutEmail = Guid.NewGuid();
 
-        await _host.Services.GetRequiredService<IMessageBus>().InvokeAsync(Imported([created], [updated]));
+        await SendAsync(
+            Chunk(
+                DateTime.UtcNow,
+                Card(created, isNew: true, email: "Created@Import.Test"),
+                Card(withoutEmail, isNew: true, email: null)
+            )
+        );
 
-        // La fila llega por una cola local, después del evento.
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline && await EmailOfAsync(updated) is null)
-            await Task.Delay(100);
-
-        Assert.Equal("created@not21.test", await EmailOfAsync(created));
-        Assert.Equal("updated@not21.test", await EmailOfAsync(updated));
+        Assert.Equal("created@import.test", await EmailOfAsync(created));
+        Assert.Null(await EmailOfAsync(withoutEmail));
     }
 
-    private sealed class PagedCustomerClient : INotificationCustomerClient
+    [Fact]
+    public async Task An_update_without_email_keeps_it_and_an_older_event_does_not_overwrite()
     {
-        private readonly List<RemoteCustomerContact> _contacts = [];
+        var customer = Guid.NewGuid();
+        var at = DateTime.UtcNow;
+        await SendAsync(Chunk(at, Card(customer, isNew: true, email: "client@import.test")));
+        await SendAsync(Chunk(at.AddMinutes(1), Card(customer, isNew: false, email: null, name: "Renamed")));
 
-        public void Add(Guid tenantId, Guid customerId, string email) =>
-            _contacts.Add(new RemoteCustomerContact(tenantId, customerId, "Name", email, true));
+        await SendAsync(Updated(customer, at.AddMinutes(-1), email: "stale@import.test"));
 
-        public Task<RemoteCustomerPage?> ListAllForReconciliationAsync(
-            int page,
-            int size,
-            CancellationToken ct = default
-        ) => Task.FromResult<RemoteCustomerPage?>(new RemoteCustomerPage(_contacts, false));
-
-        // Una fila por página: obliga a seguir hasta encontrarlos a todos.
-        public Task<RemoteCustomerPage?> ListTenantCustomersAsync(
-            Guid tenantId,
-            int page,
-            CancellationToken ct = default
-        )
-        {
-            var ofTenant = _contacts.Where(x => x.TenantId == tenantId).ToList();
-            return Task.FromResult<RemoteCustomerPage?>(
-                new RemoteCustomerPage(ofTenant.Skip(page - 1).Take(1).ToList(), page < ofTenant.Count)
-            );
-        }
+        Assert.Equal("client@import.test", await EmailOfAsync(customer));
     }
+
+    private Task SendAsync(object evt) => _host.Services.GetRequiredService<IMessageBus>().InvokeAsync(evt);
 }

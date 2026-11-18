@@ -7,7 +7,9 @@ public sealed record CustomerUpdatedIntegrationEvent : IntegrationEvent
 {
     public required Guid CustomerId { get; init; }
     public required string DisplayName { get; init; }
-    public required string PrimaryEmail { get; init; }
+
+    // D-3: null en un Individual sin email; el email puede llegar después en CustomerUpdated.
+    public required string? PrimaryEmail { get; init; }
     public string? PrimaryPhone { get; init; }
     public required string Language { get; init; }
 
@@ -21,5 +23,12 @@ public sealed record CustomerUpdatedIntegrationEvent : IntegrationEvent
 
     /// <summary>Foto de perfil vigente (null = sin foto). Aditivo; se sirve en <c>/storage/avatars/{id}</c>.</summary>
     public Guid? AvatarFileId { get; init; }
+
+    /// <summary>
+    /// Estado del cliente (Active, Inactive, Archived). Aditivo, null en mensajes viejos: el consumidor que crea
+    /// la fila tarde (p. ej. cuando llega el email) la deja con el estado real.
+    /// </summary>
+    public string? Status { get; init; }
+
     public required Guid ModifiedByUserId { get; init; }
 }

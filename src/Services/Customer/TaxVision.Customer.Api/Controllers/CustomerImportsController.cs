@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Mvc;
 using TaxVision.Customer.Api.Filters;
 using TaxVision.Customer.Api.Requests;
 using TaxVision.Customer.Application.Abstractions;
+using TaxVision.Customer.Application.Imports;
 using TaxVision.Customer.Application.Imports.Commands.CancelCustomerImport;
 using TaxVision.Customer.Application.Imports.Commands.StartCustomerImport;
 using TaxVision.Customer.Application.Imports.Dtos;
@@ -188,14 +189,17 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
             Response.Headers.ContentDisposition = $"attachment; filename=\"import-{id}.csv\"";
 
             await using var writer = new StreamWriter(Response.Body, Encoding.UTF8);
-            await writer.WriteLineAsync("RowNumber,Status,ResultingCustomerId,DisplayName,MatchedBy,ErrorCode,Message");
+            await writer.WriteLineAsync(
+                "RowNumber,Status,ResultingCustomerId,DisplayName,MatchedBy,ErrorCode,Message,Warnings"
+            );
 
             await foreach (var row in reader.StreamRowsAsync(id, ct))
             {
                 await writer.WriteLineAsync(
                     $"{row.RowNumber},{row.Status},{row.ResultingCustomerId},"
-                        + $"\"{Escape(row.DisplayName)}\",\"{Escape(row.MatchedBy)}\","
-                        + $"\"{Escape(row.ErrorCode)}\",\"{Escape(row.Message)}\""
+                        + $"{ImportReportCsv.Cell(row.DisplayName)},{ImportReportCsv.Cell(row.MatchedBy)},"
+                        + $"{ImportReportCsv.Cell(row.ErrorCode)},{ImportReportCsv.Cell(row.Message)},"
+                        + ImportReportCsv.Cell(row.Warnings is null ? null : string.Join("; ", row.Warnings))
                 );
             }
             await writer.FlushAsync();
@@ -217,41 +221,27 @@ public sealed class CustomerImportsController(IMessageBus bus) : ControllerBase
         await Response.WriteAsync("]", ct);
     }
 
-    // ---------- GET /customers/imports/template ----------
+    // ---------- GET /customers/imports/template?format=csv|xlsx ----------
+    // CSV por defecto (lo que ya usaban los clientes); xlsx trae instrucciones y listas con el catálogo de ocupaciones.
     [HttpGet("template")]
-    [RateLimitExempt("Contenido estático (plantilla CSV fija) sin cómputo ni lectura por tenant.")]
-    [Produces("text/csv")]
-    public IActionResult GetTemplate()
+    [RateLimit("customer.f.get")]
+    [Produces("text/csv", XlsxContentType)]
+    public async Task<IActionResult> GetTemplate(
+        [FromQuery] string? format,
+        [FromServices] ICustomerImportXlsxTemplate xlsxTemplate,
+        CancellationToken ct
+    )
     {
-        var headers =
-            "Kind,FirstName,MiddleName,LastName,Prefix,Suffix,LegalName,Dba,BusinessStructure,"
-            + "FormationDate,PrincipalBusinessActivityCode,DateOfBirth,OccupationName,Email,Phone,"
-            + "Language,AddressLine1,AddressLine2,City,Region,PostalCode,CountryCode,"
-            + "TaxIdentifier,FilingStatus,PriorYearAgi,IsReturningCustomer,SpouseFirstName,SpouseMiddleName,"
-            + "SpouseLastName,SpouseDateOfBirth,SpouseEmail,SpousePhone,SpouseTaxIdentifier";
+        if (!string.Equals(format, "xlsx", StringComparison.OrdinalIgnoreCase))
+            return File(
+                Encoding.UTF8.GetBytes(CustomerImportTemplate.Csv),
+                "text/csv",
+                CustomerImportTemplate.FileName
+            );
 
-        // Telefonos en formato E.164. El import tambien acepta formatos comunes US como
-        // (305) 555-1234 o 305-555-1234, pero la plantilla muestra siempre el canonico.
-        var exampleIndividual =
-            "Individual,John,A,Doe,Mr,,,,,,,1985-03-15,Accountant,john.doe@example.com,"
-            + "+13055551234,En,Email,123 Main St,,Miami,FL,33101,US,123-45-6789,Single,45000.00,"
-            + "false,Jane,B,Doe,1987-07-22,jane.doe@example.com,+13057654321,987-65-4321";
-
-        var exampleBusiness =
-            "Business,,,,,,Acme LLC,Acme Inc,Llc,2020-01-15,541211,,"
-            + ",contact@acme.com,+13055551111,En,Email,500 Brickell Ave,Suite 200,Miami,FL,33131,US,"
-            + "12-3456789,,,,,,,,,,";
-
-        var content = $"{headers}\n{exampleIndividual}\n{exampleBusiness}\n";
-        return File(Encoding.UTF8.GetBytes(content), "text/csv", "customer-import-template.csv");
+        var bytes = await xlsxTemplate.BuildAsync(ct);
+        return File(bytes, XlsxContentType, CustomerImportTemplate.XlsxFileName);
     }
 
-    // ============ Helpers ============
-
-    private static string Escape(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return string.Empty;
-        return value.Replace("\"", "\"\"").Replace("\n", " ").Replace("\r", " ");
-    }
+    private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 }

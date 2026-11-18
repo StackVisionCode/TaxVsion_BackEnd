@@ -72,16 +72,5 @@ public sealed class FinancialProjectionRepository(FinancialInsightsDbContext db)
             .CustomerDirectoryProjections.IgnoreQueryFilters()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CustomerId == customerId, ct);
 
-    public async Task<IReadOnlyCollection<Guid>> FindKnownCustomerIdsAsync(
-        Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
-        CancellationToken ct = default
-    ) =>
-        await db
-            .CustomerDirectoryProjections.IgnoreQueryFilters()
-            .Where(x => x.TenantId == tenantId && customerIds.Contains(x.CustomerId))
-            .Select(x => x.CustomerId)
-            .ToListAsync(ct);
-
     public void AddCustomer(CustomerDirectoryProjection projection) => db.CustomerDirectoryProjections.Add(projection);
 }

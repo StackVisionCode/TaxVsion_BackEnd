@@ -16,6 +16,7 @@ public sealed class CustomerRepository(CustomerDbContext db) : ICustomerReposito
             .Include(c => c.Addresses)
             .Include(c => c.ContactPoints)
             .Include(c => c.Relations)
+                .ThenInclude(r => r.FiscalProfile)
             .Include(c => c.Assignments)
             .Include(c => c.FiscalProfile)
             .AsSplitQuery()

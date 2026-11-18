@@ -34,15 +34,18 @@ public static class UpdateCustomerHandler
         // Editar es la otra puerta: sin esto, mover el correo de un cliente al de otro deja dos clientes
         // con el mismo. Se mira solo el correo —no nombre ni telefono— porque es lo que la base va a
         // exigir, y porque bloquear una edicion por un homonimo seria peor que el problema.
-        var emailTaken = await duplicates.FindDuplicateAsync(
-            cmd.TenantId,
-            new CustomerDuplicateCandidate(voResult.Value.Email.Value, null, null, null),
-            excludeCustomerId: customer.Id,
-            ct
-        );
+        if (voResult.Value.Email is { } email)
+        {
+            var emailTaken = await duplicates.FindDuplicateAsync(
+                cmd.TenantId,
+                new CustomerDuplicateCandidate(email.Value, null, null, null),
+                excludeCustomerId: customer.Id,
+                ct
+            );
 
-        if (emailTaken is not null)
-            return Result.Failure<CustomerResponse>(CustomerDuplicateErrors.EmailAlreadyInUse);
+            if (emailTaken is not null)
+                return Result.Failure<CustomerResponse>(CustomerDuplicateErrors.EmailAlreadyInUse);
+        }
 
         var applyResult = ApplyChanges(customer, cmd, voResult.Value);
         if (applyResult.IsFailure)
@@ -56,13 +59,19 @@ public static class UpdateCustomerHandler
 
     // ============== Fase 1: construir value objects de contacto (email/phone) ==============
 
-    private sealed record ContactValueObjects(EmailAddress Email, PhoneNumber? Phone);
+    // E-1: Email null = el request no lo trae y se conserva el actual (el email no se quita).
+    private sealed record ContactValueObjects(EmailAddress? Email, PhoneNumber? Phone);
 
     private static Result<ContactValueObjects> BuildContactValueObjects(UpdateCustomerCommand cmd)
     {
-        var emailResult = EmailAddress.Create(cmd.PrimaryEmail);
-        if (emailResult.IsFailure)
-            return Result.Failure<ContactValueObjects>(emailResult.Error);
+        EmailAddress? email = null;
+        if (!string.IsNullOrWhiteSpace(cmd.PrimaryEmail))
+        {
+            var emailResult = EmailAddress.Create(cmd.PrimaryEmail);
+            if (emailResult.IsFailure)
+                return Result.Failure<ContactValueObjects>(emailResult.Error);
+            email = emailResult.Value;
+        }
 
         PhoneNumber? phone = null;
         if (!string.IsNullOrWhiteSpace(cmd.PrimaryPhone))
@@ -73,7 +82,7 @@ public static class UpdateCustomerHandler
             phone = phoneResult.Value;
         }
 
-        return Result.Success(new ContactValueObjects(emailResult.Value, phone));
+        return Result.Success(new ContactValueObjects(email, phone));
     }
 
     // ============== Fase 2: aplicar cambios al aggregate ==============
@@ -84,9 +93,11 @@ public static class UpdateCustomerHandler
         {
             customer.ChangeLanguage(cmd.Language, cmd.ModifiedByUserId),
             customer.ChangeOccupation(cmd.OccupationId, cmd.ModifiedByUserId),
-            customer.ChangePrimaryEmail(vo.Email, cmd.ModifiedByUserId),
-            customer.ChangePrimaryPhone(vo.Phone, cmd.ModifiedByUserId),
         };
+        // El email primero: si llega, cuenta como contacto antes de quitar el teléfono.
+        if (vo.Email is not null)
+            results.Add(customer.ChangePrimaryEmail(vo.Email, cmd.ModifiedByUserId));
+        results.Add(customer.ChangePrimaryPhone(vo.Phone, cmd.ModifiedByUserId));
 
         // ContactPolicy es aditivo (T7.2): si el request no viene con los flags, se preservan.
         if (cmd.EmailEnabled.HasValue || cmd.SmsEnabled.HasValue)
@@ -181,7 +192,7 @@ public static class UpdateCustomerHandler
             c.Kind,
             c.Status,
             c.DisplayName,
-            c.PrimaryEmail.Value,
+            c.PrimaryEmail?.Value,
             c.PrimaryPhone?.E164Value,
             c.Language,
             c.OccupationId,

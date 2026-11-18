@@ -33,6 +33,11 @@ public sealed class CustomerImportRow : TenantEntity
     /// <summary>Mensaje humano. NUNCA debe contener SSN/EIN/datos bancarios.</summary>
     public string? Message { get; private set; }
 
+    /// <summary>Datos opcionales que no se importaron ("importado con avisos"), uno por línea. Sin PII sensible.</summary>
+    public string? Warnings { get; private set; }
+
+    public bool HasWarnings => Warnings is not null;
+
     internal static CustomerImportRow CreatePending(Guid tenantId, Guid attemptId, int rowNumber)
     {
         var row = new CustomerImportRow
@@ -46,28 +51,37 @@ public sealed class CustomerImportRow : TenantEntity
         return row;
     }
 
-    internal void MarkSuccess(Guid customerId, string displayName)
+    internal void MarkSuccess(Guid customerId, string displayName, IReadOnlyList<string>? warnings)
     {
         Status = RowStatus.Success;
         ResultingCustomerId = customerId;
         DisplayName = Truncate(displayName, 200);
+        Warnings = JoinWarnings(warnings);
     }
 
-    internal void MarkUpdated(Guid customerId, string displayName, string matchedBy)
+    internal void MarkUpdated(Guid customerId, string displayName, string matchedBy, IReadOnlyList<string>? warnings)
     {
         Status = RowStatus.Updated;
         ResultingCustomerId = customerId;
         DisplayName = Truncate(displayName, 200);
         MatchedBy = Truncate(matchedBy, 200);
+        Warnings = JoinWarnings(warnings);
     }
 
-    internal void MarkSkipped(Guid existingCustomerId, string displayName, string matchedBy)
+    internal void MarkSkipped(
+        Guid existingCustomerId,
+        string displayName,
+        string matchedBy,
+        string message = "Skipped: duplicate detected, strategy=Skip.",
+        IReadOnlyList<string>? warnings = null
+    )
     {
         Status = RowStatus.Skipped;
         ResultingCustomerId = existingCustomerId;
         DisplayName = Truncate(displayName, 200);
         MatchedBy = Truncate(matchedBy, 200);
-        Message = "Skipped: duplicate detected, strategy=Skip.";
+        Message = message;
+        Warnings = JoinWarnings(warnings);
     }
 
     internal void MarkFailed(string? displayName, string errorCode, string message)
@@ -77,6 +91,9 @@ public sealed class CustomerImportRow : TenantEntity
         ErrorCode = Truncate(errorCode, 80);
         Message = Truncate(message, 500);
     }
+
+    private static string? JoinWarnings(IReadOnlyList<string>? warnings) =>
+        warnings is null || warnings.Count == 0 ? null : Truncate(string.Join('\n', warnings), 1000);
 
     private static string? Truncate(string? value, int max)
     {

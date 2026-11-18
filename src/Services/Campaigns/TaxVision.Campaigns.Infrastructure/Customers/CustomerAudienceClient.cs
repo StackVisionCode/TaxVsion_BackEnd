@@ -100,5 +100,5 @@ public sealed class CustomerAudienceClient(
         public int TotalPagesSafe(int size) => size <= 0 ? 0 : (int)Math.Ceiling((double)TotalCount / size);
     }
 
-    private sealed record CustomerSummaryDto(Guid Id, string DisplayName, string PrimaryEmail, string? PrimaryPhone);
+    private sealed record CustomerSummaryDto(Guid Id, string DisplayName, string? PrimaryEmail, string? PrimaryPhone);
 }

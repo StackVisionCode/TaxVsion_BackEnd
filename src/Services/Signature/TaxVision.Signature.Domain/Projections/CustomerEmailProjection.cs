@@ -27,6 +27,12 @@ public sealed class CustomerEmailProjection
 
     /// <summary>Cuándo ocurrió lo último aplicado. Nulo en las filas anteriores a este control de orden.</summary>
     public DateTime? SourceOccurredOnUtc { get; private set; }
+
+    /// <summary>
+    /// Cuándo ocurrió el último cambio de estado aplicado (archivar/reactivar). Va aparte de
+    /// <see cref="SourceOccurredOnUtc"/>: un cambio de email no ordena el estado. Nulo = aún ninguno.
+    /// </summary>
+    public DateTime? StatusChangedOnUtc { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -35,7 +41,8 @@ public sealed class CustomerEmailProjection
         Guid customerId,
         string normalizedEmail,
         string displayName,
-        DateTime? sourceOccurredOnUtc = null
+        DateTime? sourceOccurredOnUtc = null,
+        bool isArchived = false
     )
     {
         if (tenantId == Guid.Empty)
@@ -53,8 +60,9 @@ public sealed class CustomerEmailProjection
             CustomerId = customerId,
             NormalizedEmail = normalizedEmail,
             DisplayName = displayName,
-            IsArchived = false,
+            IsArchived = isArchived,
             SourceOccurredOnUtc = sourceOccurredOnUtc,
+            StatusChangedOnUtc = sourceOccurredOnUtc,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -89,15 +97,23 @@ public sealed class CustomerEmailProjection
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    public void MarkArchived()
-    {
-        IsArchived = true;
-        UpdatedAtUtc = DateTime.UtcNow;
-    }
+    /// <summary>Archiva salvo que el aviso sea más viejo que el último cambio de estado. Sin fecha (conciliación) aplica.</summary>
+    public bool MarkArchived(DateTime? occurredOnUtc = null) => SetArchived(true, occurredOnUtc);
 
-    public void MarkReactivated()
+    /// <summary>Reactiva salvo que el aviso sea más viejo que el último cambio de estado. Sin fecha (conciliación) aplica.</summary>
+    public bool MarkReactivated(DateTime? occurredOnUtc = null) => SetArchived(false, occurredOnUtc);
+
+    private bool SetArchived(bool archived, DateTime? occurredOnUtc)
     {
-        IsArchived = false;
+        if (occurredOnUtc is { } occurred)
+        {
+            if (occurred < StatusChangedOnUtc)
+                return false;
+            StatusChangedOnUtc = occurred;
+        }
+
+        IsArchived = archived;
         UpdatedAtUtc = DateTime.UtcNow;
+        return true;
     }
 }

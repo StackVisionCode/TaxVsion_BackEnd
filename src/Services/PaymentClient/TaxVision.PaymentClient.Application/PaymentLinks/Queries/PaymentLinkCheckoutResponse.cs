@@ -19,11 +19,14 @@ public sealed record PaymentLinkCheckoutResponse(
 );
 
 /// <summary>Un método de pago ofrecible en el checkout. <see cref="PublishableKey"/> es seguro de
-/// exponer (diseñado para el cliente, p. ej. arrancar Stripe.js); el secret key nunca sale.</summary>
+/// exponer (diseñado para el cliente, p. ej. arrancar Stripe.js); el secret key nunca sale.
+/// <see cref="PayerMethod"/> (Card, Wallet, Bank) y <see cref="PayerLabel"/>: con qué textos lo ve quien paga.</summary>
 public sealed record CheckoutPaymentMethod(
     string ProviderCode,
     string DisplayName,
     string StatementDescriptor,
     string PublishableKey,
-    string? ApiBaseUrl
+    string? ApiBaseUrl,
+    string PayerMethod = "",
+    string PayerLabel = ""
 );

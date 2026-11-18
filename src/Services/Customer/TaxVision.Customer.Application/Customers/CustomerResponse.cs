@@ -8,7 +8,7 @@ public sealed record CustomerResponse(
     CustomerKind Kind,
     CustomerStatus Status,
     string DisplayName,
-    string PrimaryEmail,
+    string? PrimaryEmail,
     string? PrimaryPhone,
     Language Language,
     Guid? OccupationId,

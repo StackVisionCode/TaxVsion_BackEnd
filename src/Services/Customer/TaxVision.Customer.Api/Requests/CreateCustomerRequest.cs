@@ -16,7 +16,8 @@ public sealed record CreateCustomerRequest(
     Guid? PrincipalBusinessActivityId,
     DateOnly? DateOfBirth,
     Guid? OccupationId,
-    string PrimaryEmail,
+    // D-3: opcional para un Individual con teléfono o fecha de nacimiento.
+    string? PrimaryEmail,
     string? PrimaryPhone,
     Language Language,
     /// <summary>

@@ -18,7 +18,7 @@ public sealed record CreateCustomerCommand(
     Guid? PrincipalBusinessActivityId,
     DateOnly? DateOfBirth,
     Guid? OccupationId,
-    string PrimaryEmail,
+    string? PrimaryEmail,
     string? PrimaryPhone,
     Language Language,
     /// <summary>

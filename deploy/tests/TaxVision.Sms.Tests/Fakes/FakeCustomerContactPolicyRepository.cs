@@ -29,18 +29,6 @@ internal sealed class FakeCustomerContactPolicyRepository : ICustomerContactPoli
                 .ToList()
         );
 
-    public Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
-        Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
-        CancellationToken ct = default
-    ) =>
-        Task.FromResult<IReadOnlyCollection<Guid>>(
-            Store
-                .Where(r => r.TenantId == tenantId && customerIds.Contains(r.CustomerId))
-                .Select(r => r.CustomerId)
-                .ToList()
-        );
-
     public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default)
     {
         Store.Add(row);

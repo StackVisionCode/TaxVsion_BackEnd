@@ -10,9 +10,13 @@ namespace TaxVision.Referrals.Application.Codes.AutoIssueTenantReferralCode;
 /// </summary>
 public sealed record AutoIssueTenantReferralCodeCommand(Guid TenantId, Guid OwnerUserId, DateTime RequestedAtUtc)
 {
+    /// <summary>Clave del código automático; con ella el código sale en el formato corto. Los de antes guardan
+    /// "referral-auto:{oficina}" y siguen en el largo.</summary>
+    public const string KeyPrefix = "referral-auto:v2:";
+
     public string? IdempotencyKey { get; init; }
 
-    public string EffectiveIdempotencyKey => IdempotencyKey ?? $"referral-auto:{TenantId:N}";
+    public string EffectiveIdempotencyKey => IdempotencyKey ?? $"{KeyPrefix}{TenantId:N}";
 }
 
 public enum AutoIssueTenantReferralCodeOutcome

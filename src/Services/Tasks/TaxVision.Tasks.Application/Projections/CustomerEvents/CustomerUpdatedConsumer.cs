@@ -48,10 +48,13 @@ public static class CustomerUpdatedConsumer
     )
     {
         var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
+        var status = ParseStatus(evt.Status);
         if (existing is not null)
         {
-            // Update sólo sincroniza el nombre; el status no le corresponde a este evento.
-            existing.ApplyIfNewer(evt.DisplayName, existing.Status, evt.OccurredOn, evt.PrimaryEmail);
+            // Nombre y email por su hora; el estado solo si el aviso lo trae (E-3), con la suya.
+            existing.ApplyProfileIfNewer(evt.DisplayName, evt.PrimaryEmail, evt.OccurredOn);
+            if (status is { } known)
+                existing.ApplyStatusIfNewer(known, evt.OccurredOn);
             return;
         }
 
@@ -61,10 +64,14 @@ public static class CustomerUpdatedConsumer
             evt.TenantId,
             evt.CustomerId,
             evt.DisplayName,
-            CustomerDirectoryStatus.Active,
+            status ?? CustomerDirectoryStatus.Active,
             evt.OccurredOn,
             evt.PrimaryEmail
         );
         await repository.AddAsync(entry, ct);
     }
+
+    // Null en mensajes viejos, que no traen el estado.
+    private static CustomerDirectoryStatus? ParseStatus(string? status) =>
+        Enum.TryParse<CustomerDirectoryStatus>(status, ignoreCase: true, out var parsed) ? parsed : null;
 }

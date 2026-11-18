@@ -6,6 +6,9 @@ namespace TaxVision.Notes.Application.Projections.Abstractions;
 /// Proyección local de customers del tenant (Fase 4B). Consultada por Fase 5 (Application) para
 /// la validación SOFT de <c>CreateNoteCommand</c> cuando <c>TargetType==Customer</c>.
 /// </summary>
+/// <summary>Ficha de un cliente importado, lista para el directorio.</summary>
+public sealed record ImportedDirectoryEntry(Guid CustomerId, string DisplayName, CustomerDirectoryStatus Status);
+
 public interface ICustomerDirectoryRepository
 {
     Task<bool> ExistsAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
@@ -17,14 +20,13 @@ public interface ICustomerDirectoryRepository
     Task AddAsync(CustomerDirectoryEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Upsert set-based por <c>MERGE</c> (raw SQL) para <c>CustomersBulkImportedIntegrationEvent</c> —
-    /// nunca carga N entidades en memoria ni hace fetch por id. Filas nuevas nacen con
-    /// <c>DisplayName = null</c> (el evento no trae PII); filas existentes solo actualizan
-    /// <c>UpdatedAtUtc</c>. Chunking (~500) es responsabilidad del caller.
+    /// Upsert set-based por <c>MERGE</c> de un bloque del import (hasta 500): nunca carga N entidades. Crea las filas
+    /// que faltan y actualiza las existentes solo si no tienen un cambio más nuevo que <paramref name="observedAtUtc"/>
+    /// (misma regla que <see cref="CustomerDirectoryEntry.ApplyIfNewer"/>).
     /// </summary>
-    Task UpsertBulkAsync(
+    Task UpsertImportedAsync(
         Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
+        IReadOnlyList<ImportedDirectoryEntry> entries,
         DateTime observedAtUtc,
         CancellationToken ct = default
     );

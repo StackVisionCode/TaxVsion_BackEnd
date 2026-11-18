@@ -16,6 +16,7 @@ public sealed class CustomerEmailDirectoryEntryConfiguration : IEntityTypeConfig
         builder.Property(e => e.DisplayName).HasMaxLength(200).IsRequired();
         builder.Property(e => e.IsActive).IsRequired();
         builder.Property(e => e.UpdatedAtUtc).IsRequired();
+        builder.Property(e => e.SourceOccurredOnUtc);
 
         // Un cliente, una fila. Los seis consumers pueden llegar en cualquier orden y reintentarse:
         // el índice único es lo que convierte una carrera en un choque visible y no en dos filas.

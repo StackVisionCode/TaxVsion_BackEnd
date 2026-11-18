@@ -17,11 +17,5 @@ internal sealed class AllowAllContactPolicyRepository : ICustomerContactPolicyRe
         CancellationToken ct = default
     ) => Task.FromResult<CustomerContactPolicyProjection?>(null);
 
-    public Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
-        Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
-        CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyCollection<Guid>>([]);
-
     public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) => Task.CompletedTask;
 }

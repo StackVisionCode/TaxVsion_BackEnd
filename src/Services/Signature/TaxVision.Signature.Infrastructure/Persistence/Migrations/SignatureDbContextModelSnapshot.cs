@@ -594,6 +594,9 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("SourceOccurredOnUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("StatusChangedOnUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 

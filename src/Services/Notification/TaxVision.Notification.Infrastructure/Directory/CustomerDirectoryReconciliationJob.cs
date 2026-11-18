@@ -146,7 +146,7 @@ internal sealed class CustomerDirectoryReconciliationJob(
         }
     }
 
-    private static async Task<bool> UpsertAsync(
+    internal static async Task<bool> UpsertAsync(
         ICustomerEmailDirectoryRepository repository,
         RemoteCustomerContact contact,
         CancellationToken ct
@@ -167,7 +167,13 @@ internal sealed class CustomerDirectoryReconciliationJob(
             return false;
 
         await repository.AddAsync(
-            CustomerEmailDirectoryEntry.Create(contact.TenantId, contact.CustomerId, normalized, contact.DisplayName),
+            CustomerEmailDirectoryEntry.Create(
+                contact.TenantId,
+                contact.CustomerId,
+                normalized,
+                contact.DisplayName,
+                isActive: contact.IsActive
+            ),
             ct
         );
         return true;

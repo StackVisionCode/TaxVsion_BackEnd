@@ -15,7 +15,7 @@ internal sealed class SqlServerCatalogResolver(CustomerDbContext db) : ICatalogR
         var normalized = occupationName.Trim().ToLowerInvariant();
         var hit = await db
             .Occupations.AsNoTracking()
-            .Where(o => o.Name.ToLower() == normalized)
+            .Where(o => o.IsActive && o.Name.ToLower() == normalized)
             .Select(o => (Guid?)o.Id)
             .FirstOrDefaultAsync(ct);
         return hit;

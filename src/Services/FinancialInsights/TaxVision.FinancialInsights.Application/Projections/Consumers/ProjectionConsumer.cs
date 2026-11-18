@@ -261,11 +261,11 @@ public static class ProjectionConsumer
     ) => UpsertCustomer(evt, evt.CustomerId, null, false, evt.OccurredOn, projections, unitOfWork, correlation, ct);
 
     /// <summary>
-    /// El evento masivo no trae nombres (sin PII): agrega los clientes que faltan, activos y sin nombre; la
-    /// reconciliación del directorio completa el nombre después. Los ya conocidos no se tocan.
+    /// La importación avisa por bloque con la ficha de cada cliente: el nuevo entra activo y con nombre (como un
+    /// alta); el existente se actualiza sin tocar su estado (como un cambio). Una sola transacción por bloque.
     /// </summary>
     public static async Task Handle(
-        CustomersBulkImportedIntegrationEvent evt,
+        CustomersImportChunkCommittedIntegrationEvent evt,
         IFinancialProjectionRepository projections,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
@@ -274,16 +274,17 @@ public static class ProjectionConsumer
     {
         using (correlation.Push(CorrelationOf(evt)))
         {
-            var ids = evt.CreatedCustomerIds.Concat(evt.UpdatedCustomerIds).Distinct().ToArray();
-            foreach (var chunk in ids.Chunk(500))
-            {
-                var known = (await projections.FindKnownCustomerIdsAsync(evt.TenantId, chunk, ct)).ToHashSet();
-                foreach (var id in chunk.Where(id => !known.Contains(id)))
-                    projections.AddCustomer(
-                        CustomerDirectoryProjection.Create(evt.TenantId, id, null, evt.CompletedAtUtc)
-                    );
-                await unitOfWork.SaveChangesAsync(ct);
-            }
+            foreach (var card in evt.Customers)
+                await ApplyCustomerAsync(
+                    evt.TenantId,
+                    card.CustomerId,
+                    card.DisplayName,
+                    card.IsNew ? true : null,
+                    evt.OccurredOn,
+                    projections,
+                    ct
+                );
+            await unitOfWork.SaveChangesAsync(ct);
         }
     }
 
@@ -301,15 +302,28 @@ public static class ProjectionConsumer
     {
         using (correlation.Push(CorrelationOf(evt)))
         {
-            var row = await projections.FindCustomerAsync(evt.TenantId, customerId, ct);
-            if (row is null)
-            {
-                row = CustomerDirectoryProjection.Create(evt.TenantId, customerId, name, observedAtUtc);
-                projections.AddCustomer(row);
-            }
-            row.Apply(name, active ?? row.IsActive, observedAtUtc);
+            await ApplyCustomerAsync(evt.TenantId, customerId, name, active, observedAtUtc, projections, ct);
             await unitOfWork.SaveChangesAsync(ct);
         }
+    }
+
+    private static async Task ApplyCustomerAsync(
+        Guid tenantId,
+        Guid customerId,
+        string? name,
+        bool? active,
+        DateTime observedAtUtc,
+        IFinancialProjectionRepository projections,
+        CancellationToken ct
+    )
+    {
+        var row = await projections.FindCustomerAsync(tenantId, customerId, ct);
+        if (row is null)
+        {
+            row = CustomerDirectoryProjection.Create(tenantId, customerId, name, observedAtUtc);
+            projections.AddCustomer(row);
+        }
+        row.Apply(name, active ?? row.IsActive, observedAtUtc);
     }
 
     internal static string CorrelationOf(IIntegrationEvent evt) =>

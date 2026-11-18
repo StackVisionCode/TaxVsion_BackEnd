@@ -38,11 +38,5 @@ public interface IFinancialProjectionRepository
         CancellationToken ct = default
     );
 
-    Task<IReadOnlyCollection<Guid>> FindKnownCustomerIdsAsync(
-        Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
-        CancellationToken ct = default
-    );
-
     void AddCustomer(CustomerDirectoryProjection projection);
 }

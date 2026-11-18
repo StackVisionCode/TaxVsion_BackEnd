@@ -14,12 +14,5 @@ public interface ICustomerContactPolicyRepository
         CancellationToken ct = default
     );
 
-    /// <summary>De los clientes dados, los que ya tienen fila. Una sola consulta por lote.</summary>
-    Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
-        Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
-        CancellationToken ct = default
-    );
-
     Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default);
 }

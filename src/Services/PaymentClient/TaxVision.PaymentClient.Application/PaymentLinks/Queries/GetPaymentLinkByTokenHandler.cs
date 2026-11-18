@@ -62,7 +62,9 @@ public static class GetPaymentLinkByTokenHandler
                 m.Descriptor!.DisplayName,
                 m.Config.StatementDescriptor.Value,
                 m.Config.PublishableKey,
-                m.Config.ApiBaseUrl
+                m.Config.ApiBaseUrl,
+                m.Descriptor.PayerMethod.ToString(),
+                m.Descriptor.PayerLabel ?? m.Descriptor.DisplayName
             ))
             .ToList();
 

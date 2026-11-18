@@ -28,6 +28,25 @@ public sealed class TenantCustomerBackfillServiceTests
         Assert.Equal(2, client.CallCount);
     }
 
+    // El backfill guarda la foto completa (nombre, email y estado) con la hora de hoy: sin el email, un aviso
+    // de email más viejo quedaría bloqueado por esa hora.
+    [Fact]
+    public async Task Seeds_the_email_of_each_client()
+    {
+        var client = new StubCustomerClient([
+            Page(
+                [new RemoteCustomerSummary(Guid.NewGuid(), "Acme", true, " Ada@Example.com ")],
+                page: 1,
+                totalCount: 1
+            ),
+        ]);
+        var directory = new InMemoryCustomerDirectoryRepository();
+
+        await NewService(client, directory, new InMemoryTenantBackfillStateRepository()).BackfillAsync(TenantId);
+
+        Assert.Equal("ada@example.com", Assert.Single(directory.Entries).PrimaryEmailNormalized);
+    }
+
     [Fact]
     public async Task Skips_entirely_when_the_tenant_is_already_backfilled()
     {

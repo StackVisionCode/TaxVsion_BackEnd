@@ -62,7 +62,13 @@ internal sealed class TasksCustomerClient(
         return dto is null
             ? null
             : new PagedResult<RemoteCustomerSummary>(
-                dto.Items.Select(x => new RemoteCustomerSummary(x.Id, x.DisplayName, x.Status == "Active")).ToList(),
+                dto.Items.Select(x => new RemoteCustomerSummary(
+                        x.Id,
+                        x.DisplayName,
+                        x.Status == "Active",
+                        x.PrimaryEmail
+                    ))
+                    .ToList(),
                 dto.Page,
                 dto.Size,
                 dto.TotalCount
@@ -160,7 +166,7 @@ internal sealed class TasksCustomerClient(
 
     private sealed record CustomerPageDto(IReadOnlyList<CustomerSummaryDto> Items, int Page, int Size, int TotalCount);
 
-    private sealed record CustomerSummaryDto(Guid Id, string DisplayName, string Status);
+    private sealed record CustomerSummaryDto(Guid Id, string DisplayName, string Status, string? PrimaryEmail);
 
     private sealed record ReconciliationPageDto(
         IReadOnlyList<ReconciliationCustomerDto> Items,
@@ -173,7 +179,7 @@ internal sealed class TasksCustomerClient(
         Guid TenantId,
         Guid CustomerId,
         string DisplayName,
-        string PrimaryEmail,
+        string? PrimaryEmail,
         string Status
     );
 }

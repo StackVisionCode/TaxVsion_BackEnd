@@ -87,7 +87,7 @@ internal sealed class CorrespondenceCustomerReconciliationClient(
         Guid TenantId,
         Guid CustomerId,
         string DisplayName,
-        string PrimaryEmail,
+        string? PrimaryEmail,
         string Status
     );
 }

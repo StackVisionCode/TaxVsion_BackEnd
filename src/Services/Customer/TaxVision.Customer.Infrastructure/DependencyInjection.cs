@@ -71,10 +71,12 @@ public static class InfrastructureRegistration
         services.AddScoped<ICustomerImportRepository, CustomerImportRepository>();
         services.AddScoped<ICustomerImportReadService, CustomerImportReadService>();
         services.AddScoped<ICustomerDuplicateDetector, SqlServerCustomerDuplicateDetector>();
+        services.AddScoped<ICustomerImportIdentifierRegistry, SqlServerCustomerImportIdentifierRegistry>();
         services.AddScoped<ICatalogResolver, SqlServerCatalogResolver>();
         services.AddScoped<CsvCustomerImportReader>();
         services.AddScoped<XlsxCustomerImportReader>();
         services.AddScoped<ICustomerImportReaderFactory, CustomerImportReaderFactory>();
+        services.AddScoped<ICustomerImportXlsxTemplate, XlsxCustomerImportTemplate>();
         // BB-3: el cierre de la importación (Completed/Failed) y su aviso van en la misma transacción.
         services.AddSingleton<ITransactionalUnitRunner, CustomerTransactionalUnitRunner>();
 
@@ -123,6 +125,13 @@ public static class InfrastructureRegistration
         // Cleanup diario (jobs > N dias). Runs como BackgroundService.
         // TODO: cuando exista RealTime Service, agregar SignalR push para notificar completado.
         services.AddHostedService<CustomerImportCleanupHostedService>();
+
+        // Imports sin avance (mensaje perdido, proceso caído): se reencolan para retomarse; tras varios, fallan.
+        services
+            .AddOptions<CustomerImportRecoveryOptions>()
+            .Bind(config.GetSection(CustomerImportRecoveryOptions.SectionName));
+        services.AddScoped<ICustomerImportRecoveryStore, CustomerImportRecoveryStore>();
+        services.AddHostedService<CustomerImportRecoveryHostedService>();
 
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
         // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma

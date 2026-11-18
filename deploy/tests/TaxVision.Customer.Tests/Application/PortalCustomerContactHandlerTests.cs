@@ -36,6 +36,33 @@ public sealed class PortalCustomerContactHandlerTests
     }
 
     [Fact]
+    public async Task A_client_without_email_reads_a_null_email()
+    {
+        var customer = DomainCustomer
+            .Register(
+                TenantId,
+                CustomerKind.Individual,
+                PersonalName.Create("Ana", "Client").Value,
+                null,
+                null,
+                PhoneNumber.Create("+18095551234").Value,
+                Language.En,
+                PortalUser
+            )
+            .Value;
+
+        var result = await GetMyCustomerContactHandler.Handle(
+            new GetMyCustomerContactQuery(TenantId, customer.Id),
+            Repo(customer),
+            TimeProvider.System,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Value.PrimaryEmail);
+    }
+
+    [Fact]
     public async Task Contact_includes_the_current_picture_and_the_upload_in_progress()
     {
         var customer = NewCustomer();

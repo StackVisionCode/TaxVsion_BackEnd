@@ -26,10 +26,28 @@ public sealed class MultipleActiveProvidersTests
 
     private readonly PaymentClientDbContext _db = InMemoryPaymentClient.CreateDb();
     private readonly RecordingPaymentProvider _stripe = new(
-        new(PaymentProviderCode.Stripe, "Stripe", "Publishable key", "Secret key", true, false)
+        new(
+            PaymentProviderCode.Stripe,
+            "Stripe",
+            "Publishable key",
+            "Secret key",
+            true,
+            false,
+            PayerMethod: PayerMethodKind.Card,
+            PayerLabel: "Credit or debit card"
+        )
     );
     private readonly RecordingPaymentProvider _payPal = new(
-        new(PaymentProviderCode.PayPal, "PayPal", "Client ID", "Client secret", false, true)
+        new(
+            PaymentProviderCode.PayPal,
+            "PayPal",
+            "Client ID",
+            "Client secret",
+            false,
+            true,
+            PayerMethod: PayerMethodKind.Wallet,
+            PayerLabel: "PayPal"
+        )
     );
     private readonly IPaymentAdapterFactory _adapters;
     private readonly List<object> _published = [];
@@ -60,6 +78,9 @@ public sealed class MultipleActiveProvidersTests
                 Assert.Equal("Stripe", stripe.ProviderCode);
                 Assert.Equal("pk_test_office", stripe.PublishableKey);
                 Assert.Null(stripe.ApiBaseUrl);
+                // Quien paga ve "una tarjeta", nunca el procesador.
+                Assert.Equal("Card", stripe.PayerMethod);
+                Assert.Equal("Credit or debit card", stripe.PayerLabel);
             },
             payPal =>
             {
@@ -67,6 +88,8 @@ public sealed class MultipleActiveProvidersTests
                 Assert.Equal("PayPal", payPal.DisplayName);
                 Assert.Equal("paypal-client-id", payPal.PublishableKey);
                 Assert.Equal(PayPalSandbox, payPal.ApiBaseUrl);
+                Assert.Equal("Wallet", payPal.PayerMethod);
+                Assert.Equal("PayPal", payPal.PayerLabel);
             }
         );
     }

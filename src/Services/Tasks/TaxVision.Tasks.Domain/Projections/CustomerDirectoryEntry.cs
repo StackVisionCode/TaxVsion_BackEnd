@@ -4,13 +4,12 @@ namespace TaxVision.Tasks.Domain.Projections;
 
 /// <summary>
 /// Proyección local delgada de un customer del tenant, alimentada por los eventos de Customer y por
-/// el consumer de import masivo. Task la usa para mostrar y buscar por cliente sin llamar a Customer,
+/// los bloques del import. Task la usa para mostrar y buscar por cliente sin llamar a Customer,
 /// y para la validación *soft* de <c>CustomerId</c> al crear una tarea.
 ///
 /// <para>
-/// <see cref="DisplayName"/> es nullable a propósito: el evento de import masivo solo trae IDs, sin
-/// PII, así que una fila creada desde ahí nace sin nombre y el job de reconciliación lo rellena
-/// después. El nombre es cosmético; lo que importa es que el customer exista.
+/// <see cref="DisplayName"/> es nullable a propósito: el backfill o un evento sin nombre pueden crear
+/// la fila antes de conocerlo, y el job de reconciliación lo rellena después. El nombre es cosmético; lo que importa es que el customer exista.
 /// </para>
 /// </summary>
 public sealed class CustomerDirectoryEntry : ITenantOwned
@@ -25,7 +24,15 @@ public sealed class CustomerDirectoryEntry : ITenantOwned
     // Email principal normalizado (trim + minúsculas, como Customer): Client Forms lo busca sin llamar a Customer.
     public string? PrimaryEmailNormalized { get; private set; }
     public CustomerDirectoryStatus Status { get; private set; }
+
+    /// <summary>Hora del último nombre/email aplicado (ordena el perfil).</summary>
     public DateTime UpdatedAtUtc { get; private set; }
+
+    /// <summary>
+    /// Hora del último estado aplicado. Va aparte del perfil: un cambio de estado más nuevo no debe bloquear el email
+    /// que llega después del alta. Nulo en filas viejas: cuenta como <see cref="UpdatedAtUtc"/>.
+    /// </summary>
+    public DateTime? StatusChangedAtUtc { get; private set; }
 
     public void SetTenant(Guid tenantId) => TenantId = tenantId;
 
@@ -51,6 +58,7 @@ public sealed class CustomerDirectoryEntry : ITenantOwned
             PrimaryEmailNormalized = NormalizeEmail(primaryEmail),
             Status = status,
             UpdatedAtUtc = observedAtUtc,
+            StatusChangedAtUtc = observedAtUtc,
         };
         entry.SetTenant(tenantId);
         return entry;
@@ -60,7 +68,7 @@ public sealed class CustomerDirectoryEntry : ITenantOwned
     /// Idempotente en dos sentidos: no retrocede si <paramref name="observedAtUtc"/> es más viejo que
     /// lo ya aplicado —los eventos de Customer no traen número de revisión, así que el orden lo da el
     /// tiempo de ocurrencia— y nunca pisa con <c>null</c> un nombre ya conocido, porque un evento de
-    /// cambio de status o un import masivo llegan sin nombre y borrarían el que ya se reconcilió.
+    /// cambio de status llega sin nombre y borrarían el que ya se reconcilió.
     /// </summary>
     public void ApplyIfNewer(
         string? displayName,
@@ -69,16 +77,31 @@ public sealed class CustomerDirectoryEntry : ITenantOwned
         string? primaryEmail = null
     )
     {
+        ApplyProfileIfNewer(displayName, primaryEmail, observedAtUtc);
+        ApplyStatusIfNewer(status, observedAtUtc);
+    }
+
+    /// <summary>Nombre y email, ordenados por su propia hora. Un nulo nunca borra lo conocido.</summary>
+    public void ApplyProfileIfNewer(string? displayName, string? primaryEmail, DateTime observedAtUtc)
+    {
         if (observedAtUtc < UpdatedAtUtc)
             return;
 
         if (displayName is not null)
             DisplayName = displayName;
-        // Igual que el nombre: un evento sin email nunca borra el ya conocido.
         if (NormalizeEmail(primaryEmail) is { } email)
             PrimaryEmailNormalized = email;
-        Status = status;
         UpdatedAtUtc = observedAtUtc;
+    }
+
+    /// <summary>Estado, ordenado por su propia hora: un estado más viejo que el último aplicado no lo revierte.</summary>
+    public void ApplyStatusIfNewer(CustomerDirectoryStatus status, DateTime observedAtUtc)
+    {
+        if (observedAtUtc < (StatusChangedAtUtc ?? UpdatedAtUtc))
+            return;
+
+        Status = status;
+        StatusChangedAtUtc = observedAtUtc;
     }
 
     // Misma normalización que EmailAddress de Customer; null si no parece un email.

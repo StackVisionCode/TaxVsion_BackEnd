@@ -114,9 +114,14 @@ function logSfuStartupGuard(info: SfuRuntimeInfo): void {
     );
   }
   if (!info.webRtcServerEnabled) {
-    logger.warn('WebRtcServer disabled — each SFU transport takes a random RTC port; unreachable behind Docker unless the whole range is published.');
+    logger.warn(
+      'WebRtcServer disabled — each SFU transport takes a random RTC port; unreachable behind Docker unless the whole range is published.',
+    );
   } else if (info.fallbackWorkers > 0) {
-    logger.error({ fallbackWorkers: info.fallbackWorkers, boundPorts: info.webRtcServerPorts }, 'Some SFU workers could not bind their WebRtcServer port.');
+    logger.error(
+      { fallbackWorkers: info.fallbackWorkers, boundPorts: info.webRtcServerPorts },
+      'Some SFU workers could not bind their WebRtcServer port.',
+    );
   }
   sfuWebRtcServerFallbackWorkers.set(info.fallbackWorkers);
   logger.info(
@@ -131,11 +136,19 @@ function withRecordingCapture(observer: SfuObserver, capture: RecordingCaptureSe
     ...observer,
     onProducerOpened(event) {
       observer.onProducerOpened?.(event);
-      void capture.onProducerOpened(event).catch((err: unknown) => logger.warn({ err, producerId: event.producerId }, 'recording capture attach failed'));
+      void capture
+        .onProducerOpened(event)
+        .catch((err: unknown) =>
+          logger.warn({ err, producerId: event.producerId }, 'recording capture attach failed'),
+        );
     },
     onProducerClosed(event) {
       observer.onProducerClosed?.(event);
-      void capture.onProducerClosed(event).catch((err: unknown) => logger.warn({ err, producerId: event.producerId }, 'recording capture detach failed'));
+      void capture
+        .onProducerClosed(event)
+        .catch((err: unknown) =>
+          logger.warn({ err, producerId: event.producerId }, 'recording capture detach failed'),
+        );
     },
   };
 }
@@ -308,12 +321,10 @@ async function main(): Promise<void> {
     customerPortalAccounts: container.customerPortalAccounts,
   });
   bindCustomerConsumers(consumers.register.bind(consumers), {
-    notifications: container.notifications,
     emitter,
     customerDirectory: container.customerDirectory,
     customerPreparerAssignments: container.customerPreparerAssignments,
     customerAssignments: container.customerAssignments,
-    inAppSource: config.inAppSource.customerImport,
     customerPortalAccounts: container.customerPortalAccounts,
     userDirectory: container.userDirectory,
   });
@@ -510,7 +521,9 @@ async function main(): Promise<void> {
 
   // Session-revoked (canal Redis Pub/Sub — separado del canal de notifications
   // de negocio). Cierra CRIT legacy que mezclaba force_logout con notifs.
-  const sessionWatcher = startSessionDenylistWatcher(redisSub, emitter, (message) => sessions.revoke(message));
+  const sessionWatcher = startSessionDenylistWatcher(redisSub, emitter, (message) =>
+    sessions.revoke(message),
+  );
 
   // Presence transitions online/offline: RedisPresenceService publica en
   // comm:presence:changed:{tenantId}; el watcher se suscribe con PSUBSCRIBE

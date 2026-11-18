@@ -11,7 +11,7 @@ public sealed class SqlCustomerCreationLock(CustomerDbContext db) : ICustomerCre
 {
     private const int LockTimeoutMilliseconds = 10_000;
 
-    public async Task AcquireAsync(Guid tenantId, string normalizedEmail, CancellationToken ct)
+    public async Task AcquireAsync(Guid tenantId, string key, CancellationToken ct)
     {
         var transaction =
             db.Database.CurrentTransaction
@@ -21,7 +21,7 @@ public sealed class SqlCustomerCreationLock(CustomerDbContext db) : ICustomerCre
         command.Transaction = transaction.GetDbTransaction();
         command.CommandText = "sp_getapplock";
         command.CommandType = CommandType.StoredProcedure;
-        AddParameter(command, "@Resource", CustomerCreationLockResource.For(tenantId, normalizedEmail));
+        AddParameter(command, "@Resource", CustomerCreationLockResource.For(tenantId, key));
         AddParameter(command, "@LockMode", "Exclusive");
         AddParameter(command, "@LockOwner", "Transaction");
         AddParameter(command, "@LockTimeout", LockTimeoutMilliseconds);

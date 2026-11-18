@@ -10,7 +10,7 @@ public sealed record GetMyCustomerContactQuery(Guid TenantId, Guid CustomerId);
 /// <param name="AvatarModerationStatus">T-20: "under_review" | "blocked" para AvatarModerationFileId, o null.</param>
 public sealed record MyCustomerContactResponse(
     string? PrimaryPhone,
-    string PrimaryEmail,
+    string? PrimaryEmail,
     Guid? AvatarFileId = null,
     Guid? PendingAvatarFileId = null,
     string? AvatarUploadStatus = null,

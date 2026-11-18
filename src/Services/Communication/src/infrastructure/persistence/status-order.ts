@@ -12,3 +12,10 @@ export function newerStatus(statusChangedAtUtc?: Date) {
 export function stamp(statusChangedAtUtc?: Date) {
   return statusChangedAtUtc ? { StatusChangedAtUtc: statusChangedAtUtc } : {};
 }
+
+/** Mismo control para los avisos de perfil (nombre, email, foto): con fecha, solo gana el más nuevo. */
+export function newerProfile(profileChangedAtUtc?: Date) {
+  return profileChangedAtUtc
+    ? { OR: [{ ProfileChangedAtUtc: null }, { ProfileChangedAtUtc: { lt: profileChangedAtUtc } }] }
+    : {};
+}

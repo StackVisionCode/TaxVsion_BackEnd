@@ -13,9 +13,10 @@ public sealed class CustomerFiscalProfileConfiguration : IEntityTypeConfiguratio
         b.Property(fp => fp.TenantId).IsRequired();
         b.Property(fp => fp.CustomerId).IsRequired();
         b.Property(fp => fp.SubjectKind).HasConversion<string>().HasMaxLength(20).IsRequired();
-        b.Property(fp => fp.TaxIdentifierCipher).HasColumnType("varbinary(512)").IsRequired();
-        b.Property(fp => fp.TaxIdentifierBlindIndex).HasMaxLength(64).IsRequired();
-        b.Property(fp => fp.TaxIdentifierLast4).HasMaxLength(4).IsRequired();
+        // D-4: null mientras el SSN/EIN está pendiente.
+        b.Property(fp => fp.TaxIdentifierCipher).HasColumnType("varbinary(512)");
+        b.Property(fp => fp.TaxIdentifierBlindIndex).HasMaxLength(64);
+        b.Property(fp => fp.TaxIdentifierLast4).HasMaxLength(4);
         // B-9/X-9: versión de clave del cipher. Default 1 en BD = las filas existentes quedan en la clave/formato
         // de hoy, consistente con los blobs legacy; el sweep las mueve a la actual tras una rotación.
         b.Property(fp => fp.TaxIdentifierKeyVersion).HasDefaultValue((short)1).IsRequired();
@@ -31,8 +32,10 @@ public sealed class CustomerFiscalProfileConfiguration : IEntityTypeConfiguratio
 
         // Un mismo SSN/EIN no puede aparecer en dos customers del mismo tenant.
         // El blind index es HMAC-tenant, asi que la unicidad se computa sin exponer texto claro.
+        // Los pendientes (null) no cuentan.
         b.HasIndex(fp => new { fp.TenantId, fp.TaxIdentifierBlindIndex })
             .IsUnique()
+            .HasFilter("[TaxIdentifierBlindIndex] IS NOT NULL")
             .HasDatabaseName("UX_CustomerFiscalProfiles_Tenant_BlindIndex");
     }
 }

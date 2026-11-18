@@ -22,5 +22,6 @@ public sealed record CustomerImportAttemptResponse(
     DateTime? CompletedAtUtc,
     DateTime? CanceledAtUtc,
     Guid? CanceledByUserId,
-    string? FailureReason
+    string? FailureReason,
+    int WarningCount = 0
 );

@@ -37,6 +37,9 @@ public sealed class StripePaymentAdapter(ILogger<StripePaymentAdapter> logger, I
         new(
             PaymentProviderCode.Stripe,
             DisplayName: "Stripe",
+            // Quien paga ve una tarjeta: el procesador no se nombra.
+            PayerMethod: PayerMethodKind.Card,
+            PayerLabel: "Credit or debit card",
             PublicKeyLabel: "Publishable key",
             SecretKeyLabel: "Secret key",
             UsesWebhookSecret: true,

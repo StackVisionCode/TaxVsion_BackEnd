@@ -33,7 +33,7 @@ public static class CustomerCreatedDomainEventHandler
                 CustomerId = customer.Id,
                 Kind = customer.Kind.ToString(),
                 DisplayName = customer.DisplayName,
-                PrimaryEmail = customer.PrimaryEmail.Value,
+                PrimaryEmail = customer.PrimaryEmail?.Value,
                 PrimaryPhone = customer.PrimaryPhone?.E164Value,
                 Language = customer.Language.ToString(),
                 EmailEnabled = customer.ContactPolicy.EmailEnabled,

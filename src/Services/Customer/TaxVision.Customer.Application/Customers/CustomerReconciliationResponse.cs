@@ -13,7 +13,7 @@ public sealed record CustomerReconciliationResponse(
     Guid TenantId,
     Guid CustomerId,
     string DisplayName,
-    string PrimaryEmail,
+    string? PrimaryEmail,
     CustomerStatus Status,
     string Language,
     bool EmailEnabled,
