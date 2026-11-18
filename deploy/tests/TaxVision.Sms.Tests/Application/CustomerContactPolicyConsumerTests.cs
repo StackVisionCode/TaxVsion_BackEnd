@@ -75,6 +75,96 @@ public sealed class CustomerContactPolicyConsumerTests
     }
 
     [Fact]
+    public async Task A_new_imported_client_gets_its_real_sms_policy()
+    {
+        var repo = new FakeCustomerContactPolicyRepository();
+
+        await Chunk(repo, DateTime.UtcNow, isNew: true, smsEnabled: false);
+
+        Assert.False(Assert.Single(repo.Store).SmsEnabled);
+    }
+
+    [Fact]
+    public async Task An_updated_imported_client_changes_its_existing_row()
+    {
+        var repo = new FakeCustomerContactPolicyRepository();
+        var at = DateTime.UtcNow;
+        await CustomerContactPolicyConsumer.Handle(
+            Created(smsEnabled: true) with
+            {
+                OccurredOn = at,
+            },
+            repo,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        await Chunk(repo, at.AddMinutes(1), isNew: false, smsEnabled: false);
+
+        Assert.False(Assert.Single(repo.Store).SmsEnabled);
+    }
+
+    [Fact]
+    public async Task An_older_event_does_not_turn_sms_back_on()
+    {
+        var repo = new FakeCustomerContactPolicyRepository();
+        var at = DateTime.UtcNow;
+        await Chunk(repo, at, isNew: true, smsEnabled: false);
+
+        await CustomerContactPolicyConsumer.Handle(
+            Updated(smsEnabled: true) with
+            {
+                OccurredOn = at.AddMinutes(-1),
+            },
+            repo,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.False(Assert.Single(repo.Store).SmsEnabled);
+    }
+
+    // Sus filas por defecto parecerían más nuevas que la ficha real del bloque y la taparían.
+    [Fact]
+    public void The_finished_import_no_longer_writes_policy_rows()
+    {
+        Assert.DoesNotContain(
+            typeof(CustomerContactPolicyConsumer).GetMethods(),
+            m => m.GetParameters().Any(p => p.ParameterType == typeof(CustomersBulkImportedIntegrationEvent))
+        );
+    }
+
+    private static Task Chunk(FakeCustomerContactPolicyRepository repo, DateTime at, bool isNew, bool smsEnabled) =>
+        CustomerContactPolicyConsumer.Handle(
+            new CustomersImportChunkCommittedIntegrationEvent
+            {
+                TenantId = Tenant,
+                CorrelationId = "chunk",
+                OccurredOn = at,
+                ImportJobId = Guid.NewGuid(),
+                ChunkNumber = 1,
+                CreatedByUserId = Guid.NewGuid(),
+                Customers =
+                [
+                    new ImportedCustomerCard
+                    {
+                        CustomerId = Customer,
+                        IsNew = isNew,
+                        Kind = "Individual",
+                        DisplayName = "Client",
+                        PrimaryEmail = "client@example.com",
+                        Language = "En",
+                        Status = "Active",
+                        SmsEnabled = smsEnabled,
+                    },
+                ],
+            },
+            repo,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+    [Fact]
     public async Task Snapshot_inserts_a_missing_customer()
     {
         var repo = new FakeCustomerContactPolicyRepository();

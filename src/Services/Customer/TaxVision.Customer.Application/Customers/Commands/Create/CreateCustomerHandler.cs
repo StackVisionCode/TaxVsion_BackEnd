@@ -31,21 +31,18 @@ public static class CreateCustomerHandler
 
         var draft = draftResult.Value;
 
-        await AcquireCreationLockAsync(creationLock, cmd.TenantId, draft.Email, ct);
+        var candidate = CustomerDuplicateCandidate.For(
+            draft.Email?.Value,
+            draft.Phone?.E164Value,
+            cmd.Kind == CustomerKind.Business ? null : draft.PersonalName,
+            draft.BusinessIdentity?.LegalName,
+            cmd.DateOfBirth
+        );
+        await AcquireCreationLockAsync(creationLock, cmd.TenantId, candidate, ct);
 
         // El mismo detector que usa el import: dos puertas al mismo dato con reglas distintas terminan
         // en que la laxa se usa para meter lo que la otra rechaza.
-        var match = await duplicates.FindDuplicateAsync(
-            cmd.TenantId,
-            new CustomerDuplicateCandidate(
-                draft.Email.Value,
-                draft.Phone?.E164Value,
-                draft.DisplayNameFor(cmd.Kind),
-                cmd.DateOfBirth
-            ),
-            excludeCustomerId: null,
-            ct
-        );
+        var match = await duplicates.FindDuplicateAsync(cmd.TenantId, candidate, excludeCustomerId: null, ct);
 
         if (match is not null)
         {
@@ -85,23 +82,24 @@ public static class CreateCustomerHandler
         return Result.Success(MapToResponse(customer));
     }
 
-    // El email siempre existe: lo exigen el alta y la importación. Sin candado a tiempo, el usuario reintenta.
+    // Llave del email o, sin email, de teléfono/fecha + nombre (E-4). Sin candado a tiempo, el usuario reintenta.
     private static async Task AcquireCreationLockAsync(
         ICustomerCreationLock creationLock,
         Guid tenantId,
-        EmailAddress email,
+        CustomerDuplicateCandidate candidate,
         CancellationToken ct
     )
     {
         try
         {
-            await creationLock.AcquireAsync(tenantId, email.NormalizedValue, ct);
+            var key = CustomerDuplicateRules.LockKey(CustomerDuplicateRules.KeysOf(candidate));
+            await creationLock.AcquireAsync(tenantId, key, ct);
         }
         catch (TimeoutException ex)
         {
             throw new ConflictException(
                 "Customer.CreationBusy",
-                "A client with this email is being created right now. Try again in a moment.",
+                "This client is being created right now. Try again in a moment.",
                 ex
             );
         }
@@ -182,7 +180,7 @@ public static class CreateCustomerHandler
             c.Kind,
             c.Status,
             c.DisplayName,
-            c.PrimaryEmail.Value,
+            c.PrimaryEmail?.Value,
             c.PrimaryPhone?.E164Value,
             c.Language,
             c.OccupationId,

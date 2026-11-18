@@ -56,6 +56,32 @@ public sealed class RequestPortalInvitationHandlerTests
         Assert.Null(portal.LastCall);
     }
 
+    // D-3: sin email no hay cuenta de portal posible; se avisa claro en vez de fallar con 500.
+    [Fact]
+    public async Task A_client_without_email_is_refused_without_calling_auth()
+    {
+        var customer = DomainCustomer
+            .Register(
+                TenantId,
+                CustomerKind.Individual,
+                PersonalName.Create("Ana", "Client").Value,
+                null,
+                null,
+                PhoneNumber.Create("+13055551234").Value,
+                Language.En,
+                Admin
+            )
+            .Value;
+        var portal = new FakePortalAccess(
+            Result.Success(new PortalInvitationOutcome("Invited", "ana@example.com", null))
+        );
+
+        var result = await HandleAsync(customer, portal);
+
+        Assert.Equal("Customer.PortalRequiresEmail", result.Error.Code);
+        Assert.Null(portal.LastCall);
+    }
+
     private static Task<Result<RequestPortalInvitationResponse>> HandleAsync(
         DomainCustomer customer,
         FakePortalAccess portal

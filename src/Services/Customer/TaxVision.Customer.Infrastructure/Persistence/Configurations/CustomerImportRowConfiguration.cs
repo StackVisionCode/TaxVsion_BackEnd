@@ -19,6 +19,7 @@ public sealed class CustomerImportRowConfiguration : IEntityTypeConfiguration<Cu
         b.Property(r => r.MatchedBy).HasMaxLength(200);
         b.Property(r => r.ErrorCode).HasMaxLength(80);
         b.Property(r => r.Message).HasMaxLength(500);
+        b.Property(r => r.Warnings).HasMaxLength(1000);
 
         b.HasIndex(r => new { r.CustomerImportAttemptId, r.RowNumber })
             .HasDatabaseName("IX_CustomerImportRows_Attempt_Row");

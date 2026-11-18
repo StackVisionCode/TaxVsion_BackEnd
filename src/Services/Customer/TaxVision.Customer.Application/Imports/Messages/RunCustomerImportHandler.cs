@@ -13,6 +13,7 @@ namespace TaxVision.Customer.Application.Imports.Messages;
 ///  - Cancelacion cooperativa: antes de cada chunk se recarga el estado del attempt;
 ///    si esta en Canceling, se confirma cancelacion y se sale.
 ///  - 1 solo evento CustomersBulkImportedV1 al final (no por fila).
+///  - Reentregado tras un reinicio, retoma: salta las filas que el intento ya registró.
 /// </summary>
 public static class RunCustomerImportHandler
 {
@@ -48,24 +49,9 @@ public static class RunCustomerImportHandler
             if (!await ImportAttemptLifecycle.MoveToApplyingAsync(scopeFactory, attemptId, allRows.Count, logger, ct))
                 return;
 
-            var aggregate = await ImportChunkProcessor.ProcessAllAsync(
-                scopeFactory,
-                attemptId,
-                startInfo,
-                allRows,
-                logger,
-                ct
-            );
+            await ImportChunkProcessor.ProcessAllAsync(scopeFactory, attemptId, startInfo, allRows, logger, ct);
 
-            await ImportAttemptLifecycle.FinishAsync(
-                scopeFactory,
-                attemptId,
-                startInfo,
-                aggregate,
-                allRows.Count,
-                logger,
-                ct
-            );
+            await ImportAttemptLifecycle.FinishAsync(scopeFactory, attemptId, startInfo, logger, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

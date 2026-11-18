@@ -11,6 +11,8 @@ namespace TaxVision.PaymentClient.Application.Abstractions.Payments;
 /// <see cref="WebhookSecretLabel"/>: cómo llama el proveedor al dato que guardamos como webhook secret.
 /// <see cref="UsesWebhookSecret"/>: el proveedor tiene ese dato y la oficina PUEDE cargarlo; nunca es
 /// obligatorio para activar (sin él se cobra igual, pero no se sincronizan reembolsos ni disputas).
+/// <see cref="PayerMethod"/>/<see cref="PayerLabel"/>: cómo lo ve quien paga en el checkout ("Credit or debit
+/// card" para un procesador de tarjetas, la marca para una billetera). Sin etiqueta se usa el nombre del proveedor.
 /// </summary>
 public sealed record PaymentProviderDescriptor(
     PaymentProviderCode Code,
@@ -24,5 +26,7 @@ public sealed record PaymentProviderDescriptor(
     string? CredentialsHelpUrl = null,
     IReadOnlyList<string>? WebhookEvents = null,
     string? WebhookRouteName = null,
-    string? WebhookSecretLabel = null
+    string? WebhookSecretLabel = null,
+    PayerMethodKind PayerMethod = PayerMethodKind.Card,
+    string? PayerLabel = null
 );

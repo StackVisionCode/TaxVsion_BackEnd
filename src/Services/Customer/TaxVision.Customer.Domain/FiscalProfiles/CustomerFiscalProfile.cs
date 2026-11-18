@@ -9,9 +9,13 @@ public sealed class CustomerFiscalProfile : TenantEntity
 
     public Guid CustomerId { get; private set; }
     public FiscalSubjectKind SubjectKind { get; private set; }
-    public byte[] TaxIdentifierCipher { get; private set; } = default!;
-    public string TaxIdentifierBlindIndex { get; private set; } = default!;
-    public string TaxIdentifierLast4 { get; private set; } = default!;
+
+    // D-4: los tres son null mientras el SSN/EIN está pendiente; se llenan juntos al registrarlo.
+    public byte[]? TaxIdentifierCipher { get; private set; }
+    public string? TaxIdentifierBlindIndex { get; private set; }
+    public string? TaxIdentifierLast4 { get; private set; }
+
+    public bool HasTaxIdentifier => TaxIdentifierCipher is not null;
 
     // B-9/X-9: versión de la clave con la que está cifrado el tax identifier. Hace el sweep filtrable en SQL
     // (WHERE != actual) y acota la ventana del lookup dual. Default 1 = clave/formato legacy de hoy.
@@ -78,6 +82,43 @@ public sealed class CustomerFiscalProfile : TenantEntity
         return Result.Success(entity);
     }
 
+    /// <summary>Perfil con el SSN/EIN pendiente: guarda filing status, AGI y "cliente recurrente".</summary>
+    internal static Result<CustomerFiscalProfile> CreatePending(
+        Guid tenantId,
+        Guid customerId,
+        FiscalSubjectKind subjectKind,
+        Guid updatedByUserId,
+        FilingStatus? filingStatus,
+        decimal? priorYearAgi,
+        bool isReturningCustomer,
+        short taxIdentifierKeyVersion
+    )
+    {
+        if (customerId == Guid.Empty)
+            return Result.Failure<CustomerFiscalProfile>(
+                new Error("FiscalProfile.Customer", "CustomerId is required.")
+            );
+        if (updatedByUserId == Guid.Empty)
+            return Result.Failure<CustomerFiscalProfile>(
+                new Error("FiscalProfile.UpdatedBy", "UpdatedByUserId is required.")
+            );
+
+        var entity = new CustomerFiscalProfile
+        {
+            Id = Guid.Empty,
+            CustomerId = customerId,
+            SubjectKind = subjectKind,
+            TaxIdentifierKeyVersion = taxIdentifierKeyVersion,
+            FilingStatus = filingStatus,
+            PriorYearAgi = priorYearAgi,
+            IsReturningCustomer = isReturningCustomer,
+            UpdatedAtUtc = DateTime.UtcNow,
+            UpdatedByUserId = updatedByUserId,
+        };
+        entity.SetTenant(tenantId);
+        return Result.Success(entity);
+    }
+
     public void Update(
         FilingStatus? filingStatus,
         decimal? priorYearAgi,
@@ -129,6 +170,9 @@ public sealed class CustomerFiscalProfile : TenantEntity
 
     // B-9/X-9: re-cifrado de las cifras bancarias del refund (no llevan blind index). La versión la gobierna
     // el tax identifier: todas las cifras de la fila se reescriben juntas en el mismo pase.
+    // B-9/X-9: sin SSN no hay identificador que re-cifrar; la fila solo pasa a la versión actual.
+    public void AdoptKeyVersion(short keyVersion) => TaxIdentifierKeyVersion = keyVersion;
+
     public void ReEncryptRefundBank(byte[]? accountCipher, byte[]? routingCipher)
     {
         RefundBankAccountCipher = accountCipher;

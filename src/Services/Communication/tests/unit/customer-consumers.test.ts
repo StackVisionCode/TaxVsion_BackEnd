@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 import { bindCustomerConsumers } from '../../src/application/event-handlers/customer-consumers.js';
-import type { NotificationRepository } from '../../src/application/ports/notification-repository.js';
 import type { IncomingEnvelope } from '../../src/application/ports/event-consumer.js';
 import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitter.js';
 import type { CustomerDirectoryRepository } from '../../src/application/ports/customer-directory-repository.js';
@@ -16,20 +15,6 @@ function setup() {
   const register = (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => {
     handlers.set(eventType, handler);
   };
-  const notifications = {
-    createIfMissing: vi.fn().mockResolvedValue(true),
-    findById: vi.fn(),
-    markRead: vi.fn().mockResolvedValue(true),
-    dismiss: vi.fn().mockResolvedValue(true),
-    markAllRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
-    listForUser: vi.fn(),
-    countUnread: vi.fn().mockResolvedValue(0),
-    markUnread: vi.fn().mockResolvedValue(true),
-    markManyRead: vi.fn().mockResolvedValue({ markedCount: 0, unreadCount: 0 }),
-    markManyUnread: vi.fn().mockResolvedValue({ unmarkedCount: 0, unreadCount: 0 }),
-    dismissMany: vi.fn().mockResolvedValue({ dismissedCount: 0, unreadCount: 0 }),
-    countForUser: vi.fn().mockResolvedValue(0),
-  } as unknown as NotificationRepository;
   const emitter = {
     emitToUser: vi.fn(),
     emitToConversation: vi.fn(),
@@ -59,12 +44,10 @@ function setup() {
   } as unknown as CustomerAssignmentProjectionRepository;
 
   bindCustomerConsumers(register, {
-    notifications,
     emitter,
     customerDirectory,
     customerPreparerAssignments,
     customerAssignments,
-    inAppSource: 'Communication',
   });
   return { handlers, emitter, customerAssignments, customerDirectory };
 }
@@ -194,5 +177,202 @@ describe('bindCustomerConsumers — customer.assignments_changed.v1 (P2.5, proye
     );
 
     expect(customerAssignments.replace).not.toHaveBeenCalled();
+  });
+});
+
+// F-E (email opcional): el cliente sin email entra al directorio; el email llega después en customer.updated.v1,
+// que trae el estado para no dejar activa una fila de un cliente que ya se desactivó (E-3).
+describe('bindCustomerConsumers — cliente sin email', () => {
+  const at = '2026-11-18T10:00:00.000Z';
+
+  it('customer.created.v1 sin email entra al directorio con email null y la fecha del aviso', async () => {
+    const { handlers, customerDirectory } = setup();
+
+    await handlers.get('customer.created.v1')!({
+      ...envelope('customer.created.v1', { customerId: 'c-1', displayName: 'Ada', primaryEmail: null }),
+      occurredOnUtc: at,
+    });
+
+    expect(customerDirectory.upsert).toHaveBeenCalledWith({
+      customerId: 'c-1',
+      tenantId: 'tenant-1',
+      displayName: 'Ada',
+      email: null,
+      isActive: true,
+      occurredAtUtc: new Date(at),
+    });
+  });
+
+  it('customer.updated.v1 con el email nuevo y estado Inactive deja la fila inactiva', async () => {
+    const { handlers, customerDirectory } = setup();
+    vi.mocked(customerDirectory.findByCustomerId).mockResolvedValue(null);
+
+    await handlers.get('customer.updated.v1')!({
+      ...envelope('customer.updated.v1', {
+        customerId: 'c-1',
+        displayName: 'Ada',
+        primaryEmail: 'late@example.com',
+        status: 'Inactive',
+      }),
+      occurredOnUtc: at,
+    });
+
+    expect(customerDirectory.upsert).toHaveBeenCalledWith({
+      customerId: 'c-1',
+      tenantId: 'tenant-1',
+      displayName: 'Ada',
+      email: 'late@example.com',
+      isActive: false,
+      occurredAtUtc: new Date(at),
+    });
+  });
+
+  it('customer.updated.v1 sin estado (mensaje viejo) no toca el estado guardado', async () => {
+    const { handlers, customerDirectory } = setup();
+    vi.mocked(customerDirectory.findByCustomerId).mockResolvedValue(null);
+
+    await handlers.get('customer.updated.v1')!({
+      ...envelope('customer.updated.v1', { customerId: 'c-1', displayName: 'Ada', primaryEmail: null }),
+      occurredOnUtc: at,
+    });
+
+    const call = vi.mocked(customerDirectory.upsert).mock.calls[0]![0];
+    expect(call.email).toBeNull();
+    expect(call.isActive).toBeUndefined();
+  });
+
+  it('sin nombre no se proyecta', async () => {
+    const { handlers, customerDirectory } = setup();
+
+    await handlers.get('customer.created.v1')!(
+      envelope('customer.created.v1', { customerId: 'c-1', primaryEmail: 'a@example.com' }),
+    );
+
+    expect(customerDirectory.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// Cada bloque guardado del import trae la ficha de sus clientes: el directorio se llena sin esperar la reconciliación.
+describe('bindCustomerConsumers — customer.import_chunk_committed.v1', () => {
+  const event = 'customer.import_chunk_committed.v1';
+  function handlerOf(handlers: Map<string, (env: IncomingEnvelope) => Promise<void>>) {
+    const handler = handlers.get(event);
+    if (!handler) throw new Error(`${event} sin handler`);
+    return handler;
+  }
+
+  it('proyecta cada cliente del bloque con su estado y su foto', async () => {
+    const { handlers, customerDirectory } = setup();
+
+    await handlerOf(handlers)(
+      envelope(event, {
+        importJobId: 'job-1',
+        chunkNumber: 1,
+        customers: [
+          {
+            customerId: 'c-1',
+            isNew: true,
+            displayName: 'Ada',
+            primaryEmail: 'ada@example.com',
+            status: 'Active',
+          },
+          {
+            CustomerId: 'c-2',
+            IsNew: false,
+            DisplayName: 'Grace',
+            PrimaryEmail: 'grace@example.com',
+            Status: 'Inactive',
+            AvatarFileId: 'AAAAAAAA-0000-0000-0000-000000000001',
+          },
+        ],
+      }),
+    );
+
+    expect(customerDirectory.upsert).toHaveBeenCalledTimes(2);
+    expect(customerDirectory.upsert).toHaveBeenNthCalledWith(1, {
+      customerId: 'c-1',
+      tenantId: 'tenant-1',
+      displayName: 'Ada',
+      email: 'ada@example.com',
+      isActive: true,
+      occurredAtUtc: expect.any(Date),
+    });
+    expect(customerDirectory.upsert).toHaveBeenNthCalledWith(2, {
+      customerId: 'c-2',
+      tenantId: 'tenant-1',
+      displayName: 'Grace',
+      email: 'grace@example.com',
+      isActive: false,
+      avatarFileId: 'aaaaaaaa-0000-0000-0000-000000000001',
+      occurredAtUtc: expect.any(Date),
+    });
+  });
+
+  // F-E: sin email el cliente igual entra al directorio (sale en el rail y en el chat por su nombre).
+  it('proyecta la ficha sin email y salta solo la que no tiene nombre o id', async () => {
+    const { handlers, customerDirectory } = setup();
+
+    await handlerOf(handlers)(
+      envelope(event, {
+        customers: [
+          { customerId: 'c-1', isNew: true, displayName: 'Ada', primaryEmail: null, status: 'Active' },
+          { customerId: 'c-2', isNew: true, primaryEmail: 'x@example.com', status: 'Active' },
+          { isNew: true, displayName: 'Sin id', primaryEmail: 'y@example.com', status: 'Active' },
+        ],
+      }),
+    );
+
+    expect(customerDirectory.upsert).toHaveBeenCalledTimes(1);
+    expect(customerDirectory.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: 'c-1', displayName: 'Ada', email: null, isActive: true }),
+    );
+  });
+
+  // Los nuevos no están en el cache del CRM; los actualizados sí y se invalidan. Sin ráfaga de 500 avisos.
+  it('avisa al CRM solo por los clientes existentes que cambiaron', async () => {
+    const { handlers, emitter } = setup();
+
+    await handlerOf(handlers)(
+      envelope(event, {
+        customers: [
+          {
+            customerId: 'c-1',
+            isNew: true,
+            displayName: 'Ada',
+            primaryEmail: 'ada@example.com',
+            status: 'Active',
+          },
+          {
+            customerId: 'c-2',
+            isNew: false,
+            displayName: 'Grace',
+            primaryEmail: 'g@example.com',
+            status: 'Active',
+          },
+        ],
+      }),
+    );
+
+    expect(emitter.emitToTenantStaff).toHaveBeenCalledTimes(1);
+    const [call] = vi.mocked(emitter.emitToTenantStaff).mock.calls[0] ?? [];
+    expect((call as { envelope: { payload: unknown } } | undefined)?.envelope.payload).toEqual({
+      customerId: 'c-2',
+      changeType: 'updated',
+    });
+  });
+
+  it('no hace nada sin oficina', async () => {
+    const { handlers, customerDirectory } = setup();
+
+    await handlerOf(handlers)({
+      ...envelope(event, {
+        customers: [
+          { customerId: 'c-1', isNew: true, displayName: 'Ada', primaryEmail: 'a@e.com', status: 'Active' },
+        ],
+      }),
+      tenantId: '',
+    });
+
+    expect(customerDirectory.upsert).not.toHaveBeenCalled();
   });
 });

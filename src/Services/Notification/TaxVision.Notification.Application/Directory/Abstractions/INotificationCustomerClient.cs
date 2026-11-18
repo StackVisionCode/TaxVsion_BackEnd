@@ -5,7 +5,8 @@ public sealed record RemoteCustomerContact(
     Guid TenantId,
     Guid CustomerId,
     string DisplayName,
-    string PrimaryEmail,
+    // D-3: null en un cliente sin email.
+    string? PrimaryEmail,
     bool IsActive,
     // Null = Customer anterior a P-21.5, que no manda la política: no se toca la proyección.
     string? Language = null,

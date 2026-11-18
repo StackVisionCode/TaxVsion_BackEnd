@@ -16,6 +16,7 @@ public sealed class CustomerContactPolicyProjectionConfiguration
         // Sin default en la base: con HasDefaultValue(true) EF omite el false al insertar y gana el true.
         builder.Property(e => e.SmsEnabled).IsRequired();
         builder.Property(e => e.UpdatedAtUtc).IsRequired();
+        builder.Property(e => e.SourceOccurredOnUtc);
 
         // Un cliente, una fila: la carrera entre evento y reconciliación choca en el índice.
         builder.HasIndex(e => new { e.TenantId, e.CustomerId }).IsUnique();

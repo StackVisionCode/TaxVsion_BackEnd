@@ -54,6 +54,9 @@ public sealed class PayPalPaymentAdapter(IHttpClientFactory httpClientFactory, I
         new(
             PaymentProviderCode.PayPal,
             DisplayName: "PayPal",
+            // Billetera: quien paga la reconoce por su marca.
+            PayerMethod: PayerMethodKind.Wallet,
+            PayerLabel: "PayPal",
             PublicKeyLabel: "Client ID",
             SecretKeyLabel: "Client secret",
             UsesWebhookSecret: true,

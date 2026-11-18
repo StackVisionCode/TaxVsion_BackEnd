@@ -9,50 +9,42 @@ namespace TaxVision.Customer.Application.Imports.Helpers;
 
 /// <summary>
 /// Convierte la fila string-pura del archivo en value objects + enums validados.
-/// Si algo falla, devuelve un Result.Failure con el codigo del primer error.
-/// El handler del worker lo usa para validar antes de tocar la BD.
+/// Estricto en identidad (tipo, nombre o razón social, estructura, email, forma del SSN/EIN): devuelve el primer
+/// error. Tolerante en lo opcional: un valor que no sirve se importa vacío y deja un aviso en la fila.
 /// </summary>
 internal static class ImportRowParser
 {
+    private static readonly string[] TrueValues = ["true", "yes", "y", "1"];
+    private static readonly string[] FalseValues = ["false", "no", "n", "0"];
+
     public static Result<ParsedRow> Parse(ImportCustomerRow raw)
     {
-        // Kind
-        if (!Enum.TryParse<CustomerKind>(raw.Kind, ignoreCase: true, out var kind))
+        var warnings = new List<string>();
+
+        if (raw.ReadError is not null)
+            return Result.Failure<ParsedRow>(new Error("Row.UnclosedQuote", raw.ReadError));
+
+        if (!ImportEnum.TryParseName<CustomerKind>(raw.Kind, out var kind))
             return Result.Failure<ParsedRow>(
                 new Error("Row.Kind", $"Kind must be Individual or Business. Got '{raw.Kind}'.")
             );
 
-        // Language con default sano
-        var language = Enum.TryParse<Language>(raw.Language, ignoreCase: true, out var lang) ? lang : Language.En;
+        var (language, languageProvided) = OfferedLanguage(raw.Language, warnings);
 
-        // Email obligatorio (Customer.Register lo exige)
-        if (string.IsNullOrWhiteSpace(raw.Email))
-            return Result.Failure<ParsedRow>(new Error("Row.Email", "Email is required."));
-
-        var emailRes = EmailAddress.Create(raw.Email);
-        if (emailRes.IsFailure)
-            return Result.Failure<ParsedRow>(emailRes.Error);
-
-        PhoneNumber? phone = null;
-        if (!string.IsNullOrWhiteSpace(raw.Phone))
+        // D-3: el email es opcional; si viene, tiene que ser válido. El contacto mínimo lo decide el agregado.
+        EmailAddress? email = null;
+        if (!string.IsNullOrWhiteSpace(raw.Email))
         {
-            // El import normaliza formatos humanos (parentesis, guiones, sin +1) a E.164
-            // antes de pasar al VO estricto.
-            var e164 = IdentifierNormalizer.NormalizePhoneToE164(raw.Phone);
-            if (string.IsNullOrEmpty(e164))
-                return Result.Failure<ParsedRow>(
-                    new Error("Row.Phone", $"Phone '{raw.Phone}' cannot be normalized to E.164.")
-                );
-            var phoneRes = PhoneNumber.Create(e164);
-            if (phoneRes.IsFailure)
-                return Result.Failure<ParsedRow>(phoneRes.Error);
-            phone = phoneRes.Value;
+            var emailRes = EmailAddress.Create(raw.Email);
+            if (emailRes.IsFailure)
+                return Result.Failure<ParsedRow>(emailRes.Error);
+            email = emailRes.Value;
         }
 
-        // PersonalName (Individual) o BusinessIdentity (Business)
+        var phone = OptionalPhone(raw.Phone, "Phone", warnings);
+
         PersonalName? personalName = null;
         BusinessIdentity? businessIdentity = null;
-
         if (kind == CustomerKind.Individual)
         {
             var nameRes = PersonalName.Create(
@@ -68,96 +60,28 @@ internal static class ImportRowParser
         }
         else
         {
-            if (string.IsNullOrWhiteSpace(raw.LegalName))
-                return Result.Failure<ParsedRow>(new Error("Row.LegalName", "LegalName is required for Business."));
-            if (!Enum.TryParse<BusinessStructure>(raw.BusinessStructure, ignoreCase: true, out var structure))
-                return Result.Failure<ParsedRow>(
-                    new Error(
-                        "Row.BusinessStructure",
-                        $"BusinessStructure must be one of Sole/Llc/Partnership/SCorp/CCorp/NonProfit/Other. Got '{raw.BusinessStructure}'."
-                    )
-                );
-
-            DateOnly? formationDate = null;
-            if (!string.IsNullOrWhiteSpace(raw.FormationDate))
-            {
-                if (!DateOnly.TryParse(raw.FormationDate, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
-                    return Result.Failure<ParsedRow>(
-                        new Error("Row.FormationDate", $"FormationDate must be yyyy-MM-dd. Got '{raw.FormationDate}'.")
-                    );
-                formationDate = d;
-            }
-
-            var bizRes = BusinessIdentity.Create(
-                legalName: raw.LegalName,
-                structure: structure,
-                dba: raw.Dba,
-                formationDate: formationDate
-            );
+            var bizRes = ParseBusiness(raw, warnings);
             if (bizRes.IsFailure)
                 return Result.Failure<ParsedRow>(bizRes.Error);
             businessIdentity = bizRes.Value;
         }
 
-        DateOnly? dateOfBirth = null;
-        if (!string.IsNullOrWhiteSpace(raw.DateOfBirth))
-        {
-            if (!DateOnly.TryParse(raw.DateOfBirth, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dob))
-                return Result.Failure<ParsedRow>(
-                    new Error("Row.DateOfBirth", $"DateOfBirth must be yyyy-MM-dd. Got '{raw.DateOfBirth}'.")
-                );
-            dateOfBirth = dob;
-        }
+        var dateOfBirth = PastDate(raw.DateOfBirth, "Date of birth", warnings);
+        var address = OptionalAddress(raw, warnings);
 
-        // Direccion primaria (opcional)
-        AddressValue? address = null;
-        if (
-            !string.IsNullOrWhiteSpace(raw.AddressLine1)
-            || !string.IsNullOrWhiteSpace(raw.City)
-            || !string.IsNullOrWhiteSpace(raw.PostalCode)
-        )
-        {
-            var addrRes = AddressValue.Create(
-                line1: raw.AddressLine1 ?? string.Empty,
-                city: raw.City ?? string.Empty,
-                postalCode: raw.PostalCode ?? string.Empty,
-                countryCode: string.IsNullOrWhiteSpace(raw.CountryCode) ? "US" : raw.CountryCode,
-                line2: raw.AddressLine2,
-                region: raw.Region
-            );
-            if (addrRes.IsFailure)
-                return Result.Failure<ParsedRow>(addrRes.Error);
-            address = addrRes.Value;
-        }
-
-        // Fiscal: SubjectKind, FilingStatus, PriorYearAgi, IsReturningCustomer
         FilingStatus? filingStatus = null;
         if (!string.IsNullOrWhiteSpace(raw.FilingStatus))
         {
-            if (!Enum.TryParse<FilingStatus>(raw.FilingStatus, ignoreCase: true, out var fs))
-                return Result.Failure<ParsedRow>(
-                    new Error("Row.FilingStatus", $"FilingStatus invalid: '{raw.FilingStatus}'.")
-                );
-            filingStatus = fs;
+            if (FilingStatusNames.TryParse(raw.FilingStatus, out var fs))
+                filingStatus = fs;
+            else
+                warnings.Add($"Filing status '{raw.FilingStatus.Trim()}' is not recognized; imported without it.");
         }
 
-        decimal? priorYearAgi = null;
-        if (!string.IsNullOrWhiteSpace(raw.PriorYearAgi))
-        {
-            if (!decimal.TryParse(raw.PriorYearAgi, NumberStyles.Number, CultureInfo.InvariantCulture, out var agi))
-                return Result.Failure<ParsedRow>(
-                    new Error("Row.PriorYearAgi", $"PriorYearAgi must be a decimal. Got '{raw.PriorYearAgi}'.")
-                );
-            priorYearAgi = agi;
-        }
-
-        var isReturning =
-            !string.IsNullOrWhiteSpace(raw.IsReturningCustomer)
-            && (
-                raw.IsReturningCustomer.Equals("true", StringComparison.OrdinalIgnoreCase)
-                || raw.IsReturningCustomer.Equals("yes", StringComparison.OrdinalIgnoreCase)
-                || raw.IsReturningCustomer == "1"
-            );
+        var priorYearAgi = OptionalAgi(raw.PriorYearAgi, warnings);
+        var (isReturning, isReturningProvided) = ReturningFlag(raw.IsReturningCustomer, warnings);
+        var emailOptIn = OptIn(raw.EmailOptIn, "Email opt-in", warnings);
+        var smsOptIn = OptIn(raw.SmsOptIn, "SMS opt-in", warnings);
 
         var normalizedTaxId = IdentifierNormalizer.NormalizeDigits(raw.TaxIdentifier);
         if (!string.IsNullOrEmpty(normalizedTaxId))
@@ -175,68 +99,13 @@ internal static class ImportRowParser
         var fiscalSubjectKind =
             kind == CustomerKind.Individual ? FiscalSubjectKind.Individual : FiscalSubjectKind.Business;
 
-        // Spouse (opcional, solo Individual)
         ParsedSpouse? spouse = null;
-        if (
-            kind == CustomerKind.Individual
-            && !string.IsNullOrWhiteSpace(raw.SpouseFirstName)
-            && !string.IsNullOrWhiteSpace(raw.SpouseLastName)
-        )
+        if (kind == CustomerKind.Individual)
         {
-            var spouseNameRes = PersonalName.Create(raw.SpouseFirstName, raw.SpouseLastName, raw.SpouseMiddleName);
-            if (spouseNameRes.IsFailure)
-                return Result.Failure<ParsedRow>(spouseNameRes.Error);
-
-            EmailAddress? spouseEmail = null;
-            if (!string.IsNullOrWhiteSpace(raw.SpouseEmail))
-            {
-                var r = EmailAddress.Create(raw.SpouseEmail);
-                if (r.IsFailure)
-                    return Result.Failure<ParsedRow>(r.Error);
-                spouseEmail = r.Value;
-            }
-
-            PhoneNumber? spousePhone = null;
-            if (!string.IsNullOrWhiteSpace(raw.SpousePhone))
-            {
-                var e164 = IdentifierNormalizer.NormalizePhoneToE164(raw.SpousePhone);
-                if (string.IsNullOrEmpty(e164))
-                    return Result.Failure<ParsedRow>(
-                        new Error("Row.SpousePhone", $"SpousePhone '{raw.SpousePhone}' cannot be normalized to E.164.")
-                    );
-                var r = PhoneNumber.Create(e164);
-                if (r.IsFailure)
-                    return Result.Failure<ParsedRow>(r.Error);
-                spousePhone = r.Value;
-            }
-
-            DateOnly? spouseDob = null;
-            if (!string.IsNullOrWhiteSpace(raw.SpouseDateOfBirth))
-            {
-                if (
-                    !DateOnly.TryParse(
-                        raw.SpouseDateOfBirth,
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.None,
-                        out var sd
-                    )
-                )
-                    return Result.Failure<ParsedRow>(
-                        new Error("Row.SpouseDateOfBirth", $"SpouseDateOfBirth must be yyyy-MM-dd.")
-                    );
-                spouseDob = sd;
-            }
-
-            var normalizedSpouseTaxId = IdentifierNormalizer.NormalizeDigits(raw.SpouseTaxIdentifier);
-            if (
-                !string.IsNullOrEmpty(normalizedSpouseTaxId)
-                && !IdentifierNormalizer.IsValidSsnOrItin(normalizedSpouseTaxId)
-            )
-                return Result.Failure<ParsedRow>(
-                    new Error("Row.SpouseTaxIdentifier", "SpouseTaxIdentifier format invalid.")
-                );
-
-            spouse = new ParsedSpouse(spouseNameRes.Value, spouseEmail, spousePhone, spouseDob, normalizedSpouseTaxId);
+            var spouseRes = ParseSpouse(raw, warnings);
+            if (spouseRes.IsFailure)
+                return Result.Failure<ParsedRow>(spouseRes.Error);
+            spouse = spouseRes.Value;
         }
 
         return Result.Success(
@@ -244,7 +113,7 @@ internal static class ImportRowParser
                 kind,
                 personalName,
                 businessIdentity,
-                emailRes.Value,
+                email,
                 phone,
                 language,
                 dateOfBirth,
@@ -256,9 +125,208 @@ internal static class ImportRowParser
                 isReturning,
                 raw.OccupationName?.Trim(),
                 raw.PrincipalBusinessActivityCode?.Trim(),
-                spouse
+                spouse,
+                warnings,
+                languageProvided,
+                isReturningProvided,
+                emailOptIn,
+                smsOptIn
             )
         );
+    }
+
+    private static Result<BusinessIdentity> ParseBusiness(ImportCustomerRow raw, List<string> warnings)
+    {
+        if (string.IsNullOrWhiteSpace(raw.LegalName))
+            return Result.Failure<BusinessIdentity>(new Error("Row.LegalName", "LegalName is required for Business."));
+        if (!ImportEnum.TryParseName<BusinessStructure>(raw.BusinessStructure, out var structure))
+            return Result.Failure<BusinessIdentity>(
+                new Error(
+                    "Row.BusinessStructure",
+                    $"BusinessStructure must be one of {ImportEnum.Names<BusinessStructure>()}. Got '{raw.BusinessStructure}'."
+                )
+            );
+
+        return BusinessIdentity.Create(
+            legalName: raw.LegalName,
+            structure: structure,
+            dba: raw.Dba,
+            formationDate: OptionalDate(raw.FormationDate, "Formation date", warnings)
+        );
+    }
+
+    // Solo con nombre y apellido. El SSN del cónyuge con forma inválida sí falla la fila; lo demás se omite con aviso.
+    private static Result<ParsedSpouse?> ParseSpouse(ImportCustomerRow raw, List<string> warnings)
+    {
+        var hasFirst = !string.IsNullOrWhiteSpace(raw.SpouseFirstName);
+        var hasLast = !string.IsNullOrWhiteSpace(raw.SpouseLastName);
+        if (!hasFirst || !hasLast)
+        {
+            if (hasFirst || hasLast || HasOtherSpouseData(raw))
+                warnings.Add("Spouse needs both first and last name; spouse data was not imported.");
+            return Result.Success<ParsedSpouse?>(null);
+        }
+
+        var normalizedSpouseTaxId = IdentifierNormalizer.NormalizeDigits(raw.SpouseTaxIdentifier);
+        if (
+            !string.IsNullOrEmpty(normalizedSpouseTaxId)
+            && !IdentifierNormalizer.IsValidSsnOrItin(normalizedSpouseTaxId)
+        )
+            return Result.Failure<ParsedSpouse?>(
+                new Error("Row.SpouseTaxIdentifier", "SpouseTaxIdentifier format invalid.")
+            );
+
+        var spouseNameRes = PersonalName.Create(raw.SpouseFirstName!, raw.SpouseLastName!, raw.SpouseMiddleName);
+        if (spouseNameRes.IsFailure)
+        {
+            warnings.Add($"Spouse name is not valid ({spouseNameRes.Error.Message}); spouse data was not imported.");
+            return Result.Success<ParsedSpouse?>(null);
+        }
+
+        EmailAddress? spouseEmail = null;
+        if (!string.IsNullOrWhiteSpace(raw.SpouseEmail))
+        {
+            var emailRes = EmailAddress.Create(raw.SpouseEmail);
+            if (emailRes.IsSuccess)
+                spouseEmail = emailRes.Value;
+            else
+                warnings.Add($"Spouse email '{raw.SpouseEmail.Trim()}' is not valid; imported without it.");
+        }
+
+        return Result.Success<ParsedSpouse?>(
+            new ParsedSpouse(
+                spouseNameRes.Value,
+                spouseEmail,
+                OptionalPhone(raw.SpousePhone, "Spouse phone", warnings),
+                PastDate(raw.SpouseDateOfBirth, "Spouse date of birth", warnings),
+                normalizedSpouseTaxId
+            )
+        );
+    }
+
+    private static bool HasOtherSpouseData(ImportCustomerRow raw) =>
+        new[]
+        {
+            raw.SpouseMiddleName,
+            raw.SpouseDateOfBirth,
+            raw.SpouseEmail,
+            raw.SpousePhone,
+            raw.SpouseTaxIdentifier,
+        }.Any(value => !string.IsNullOrWhiteSpace(value));
+
+    // El import normaliza formatos humanos (paréntesis, guiones, sin +1) a E.164 antes del VO estricto.
+    private static PhoneNumber? OptionalPhone(string? raw, string label, List<string> warnings)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        var e164 = IdentifierNormalizer.NormalizePhoneToE164(raw);
+        var phoneRes = string.IsNullOrEmpty(e164) ? null : PhoneNumber.Create(e164);
+        if (phoneRes is { IsSuccess: true })
+            return phoneRes.Value;
+        warnings.Add($"{label} '{raw.Trim()}' is not valid; imported without it.");
+        return null;
+    }
+
+    // Al actualizar, el idioma solo cambia si la celda trae uno que se ofrece hoy (En/Es).
+    private static (Language Value, bool Provided) OfferedLanguage(string? raw, List<string> warnings)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return (Language.En, false);
+        if (!ImportEnum.TryParseName<Language>(raw, out var language))
+        {
+            warnings.Add($"Language '{raw.Trim()}' is not recognized; imported as En.");
+            return (Language.En, false);
+        }
+        if (!CustomerImportTemplate.OfferedLanguages.Contains(language))
+        {
+            warnings.Add($"Language '{raw.Trim()}' is no longer offered; imported as En.");
+            return (Language.En, false);
+        }
+        return (language, true);
+    }
+
+    private static DateOnly? OptionalDate(string? raw, string label, List<string> warnings)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        if (DateOnly.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date))
+            return date;
+        warnings.Add($"{label} '{raw.Trim()}' is not a valid date (yyyy-MM-dd); imported without it.");
+        return null;
+    }
+
+    // Un día de margen por la zona horaria de la oficina.
+    private static DateOnly? PastDate(string? raw, string label, List<string> warnings)
+    {
+        var date = OptionalDate(raw, label, warnings);
+        if (date is null || date <= DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1))
+            return date;
+        warnings.Add($"{label} '{raw!.Trim()}' is in the future; imported without it.");
+        return null;
+    }
+
+    private static AddressValue? OptionalAddress(ImportCustomerRow raw, List<string> warnings)
+    {
+        if (
+            string.IsNullOrWhiteSpace(raw.AddressLine1)
+            && string.IsNullOrWhiteSpace(raw.City)
+            && string.IsNullOrWhiteSpace(raw.PostalCode)
+        )
+            return null;
+
+        var addrRes = AddressValue.Create(
+            line1: raw.AddressLine1 ?? string.Empty,
+            city: raw.City ?? string.Empty,
+            postalCode: raw.PostalCode ?? string.Empty,
+            countryCode: string.IsNullOrWhiteSpace(raw.CountryCode) ? "US" : raw.CountryCode,
+            line2: raw.AddressLine2,
+            region: raw.Region
+        );
+        if (addrRes.IsSuccess)
+            return addrRes.Value;
+        warnings.Add($"Address is incomplete or invalid ({addrRes.Error.Message}); imported without it.");
+        return null;
+    }
+
+    // Acepta "$12,500.50": se quitan el signo de dólar y los espacios.
+    private static decimal? OptionalAgi(string? raw, List<string> warnings)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        var text = raw.Replace("$", string.Empty).Replace(" ", string.Empty);
+        if (decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var agi))
+            return agi;
+        warnings.Add($"Prior year AGI '{raw.Trim()}' is not a number; imported without it.");
+        return null;
+    }
+
+    // Vacío = no viene (el import decide el valor por defecto); un valor raro se ignora con aviso.
+    private static bool? OptIn(string? raw, string label, List<string> warnings)
+    {
+        var text = raw?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(text))
+            return null;
+        if (TrueValues.Contains(text))
+            return true;
+        if (FalseValues.Contains(text))
+            return false;
+        warnings.Add($"{label} '{raw!.Trim()}' is not recognized (use yes / no); ignored.");
+        return null;
+    }
+
+    private static (bool Value, bool Provided) ReturningFlag(string? raw, List<string> warnings)
+    {
+        var text = raw?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(text))
+            return (false, false);
+        if (TrueValues.Contains(text))
+            return (true, true);
+        if (FalseValues.Contains(text))
+            return (false, true);
+        warnings.Add(
+            $"Returning customer '{raw!.Trim()}' is not recognized (use true / yes / 1); imported as not returning."
+        );
+        return (false, false);
     }
 }
 
@@ -266,7 +334,7 @@ internal sealed record ParsedRow(
     CustomerKind Kind,
     PersonalName? PersonalName,
     BusinessIdentity? BusinessIdentity,
-    EmailAddress Email,
+    EmailAddress? Email,
     PhoneNumber? Phone,
     Language Language,
     DateOnly? DateOfBirth,
@@ -278,7 +346,15 @@ internal sealed record ParsedRow(
     bool IsReturningCustomer,
     string? OccupationName,
     string? PrincipalBusinessActivityCode,
-    ParsedSpouse? Spouse
+    ParsedSpouse? Spouse,
+    // Datos opcionales que no se pudieron leer y se importan vacíos.
+    IReadOnlyList<string> Warnings,
+    // Si la celda vino con valor: al actualizar, una celda vacía no borra lo existente.
+    bool LanguageProvided = false,
+    bool IsReturningCustomerProvided = false,
+    // Permisos de contacto del archivo; null = la celda vino vacía.
+    bool? EmailOptIn = null,
+    bool? SmsOptIn = null
 );
 
 internal sealed record ParsedSpouse(

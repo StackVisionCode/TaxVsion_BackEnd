@@ -9,5 +9,6 @@ public sealed record CustomerImportRowResponse(
     string? DisplayName,
     string? MatchedBy,
     string? ErrorCode,
-    string? Message
+    string? Message,
+    IReadOnlyList<string>? Warnings = null
 );

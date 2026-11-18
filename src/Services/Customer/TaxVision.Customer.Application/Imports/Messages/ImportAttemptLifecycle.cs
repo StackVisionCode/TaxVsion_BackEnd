@@ -17,15 +17,6 @@ internal sealed record ImportStartInfo(
     ImportSourceKind SourceKind
 );
 
-internal sealed record ImportChunkAggregate(
-    int Success,
-    int Updated,
-    int Skipped,
-    int Failed,
-    List<Guid> CreatedIds,
-    List<Guid> UpdatedIds
-);
-
 /// <summary>
 /// Estados del intento de importación. Cada paso va en su propio scope, para que el progreso se confirme aparte de
 /// los chunks de clientes. El cierre y su aviso van en la misma transacción (BB-3).
@@ -59,7 +50,11 @@ internal static class ImportAttemptLifecycle
             return null;
         }
 
-        var startRes = attempt.Start();
+        // Mensaje reentregado (reinicio, barrido): retoma; las filas ya aplicadas se saltan.
+        var resuming = attempt.Status != ImportStatus.Queued;
+        var startRes = resuming ? attempt.Resume(DateTime.UtcNow) : attempt.Start();
+        if (resuming && startRes.IsSuccess)
+            logger.LogInformation("Resuming import {AttemptId} from {Status}", attemptId, attempt.Status);
         if (startRes.IsFailure)
         {
             logger.LogWarning("Cannot start import {AttemptId}: {Error}", attemptId, startRes.Error.Message);
@@ -144,6 +139,12 @@ internal static class ImportAttemptLifecycle
             return false;
 
         attempt.SetTotalRows(total);
+        // Cancelado antes de aplicar: sigue para que el cierre lo confirme.
+        if (attempt.IsCancelRequested)
+        {
+            await uow.SaveChangesAsync(ct);
+            return true;
+        }
         var moveRes = attempt.MoveToApplying();
         if (moveRes.IsFailure)
         {
@@ -158,8 +159,6 @@ internal static class ImportAttemptLifecycle
         IServiceScopeFactory sf,
         Guid attemptId,
         ImportStartInfo info,
-        ImportChunkAggregate aggregate,
-        int total,
         ILogger logger,
         CancellationToken ct
     )
@@ -168,8 +167,9 @@ internal static class ImportAttemptLifecycle
         var runner = scope.ServiceProvider.GetRequiredService<ITransactionalUnitRunner>();
         var cloudStorage = scope.ServiceProvider.GetRequiredService<ICustomerImportCloudStorageClient>();
 
-        // Estado terminal y aviso en la misma transacción (BB-3): quedan los dos o ninguno.
-        var closed = false;
+        // Estado terminal y aviso en la misma transacción (BB-3): quedan los dos o ninguno. Conteos e ids salen del
+        // intento, así incluyen lo aplicado antes de un reinicio.
+        CustomerImportAttempt? closed = null;
         await runner.RunAsync(
             async (unit, token) =>
             {
@@ -193,21 +193,21 @@ internal static class ImportAttemptLifecycle
                         CreatedByUserId = info.CreatedByUserId,
                         NotifyUserId = attempt.NotifyUserId,
                         CompletedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
-                        TotalRows = total,
-                        SuccessCount = aggregate.Success,
-                        UpdatedCount = aggregate.Updated,
-                        SkippedCount = aggregate.Skipped,
-                        FailedCount = aggregate.Failed,
-                        CreatedCustomerIds = aggregate.CreatedIds,
-                        UpdatedCustomerIds = aggregate.UpdatedIds,
+                        TotalRows = attempt.TotalRows,
+                        SuccessCount = attempt.SuccessCount,
+                        UpdatedCount = attempt.UpdatedCount,
+                        SkippedCount = attempt.SkippedCount,
+                        FailedCount = attempt.FailedCount,
+                        CreatedCustomerIds = attempt.CreatedCustomerIds,
+                        UpdatedCustomerIds = attempt.UpdatedCustomerIds,
                     }
                 );
-                closed = true;
+                closed = attempt;
                 return true;
             },
             ct
         );
-        if (!closed)
+        if (closed is null)
             return;
 
         // Borrar el archivo en CloudStorage: el reporte por fila queda en CustomerImportRows.
@@ -224,11 +224,11 @@ internal static class ImportAttemptLifecycle
         logger.LogInformation(
             "Import {AttemptId} finished: total={Total} success={Success} updated={Updated} skipped={Skipped} failed={Failed}",
             attemptId,
-            total,
-            aggregate.Success,
-            aggregate.Updated,
-            aggregate.Skipped,
-            aggregate.Failed
+            closed.TotalRows,
+            closed.SuccessCount,
+            closed.UpdatedCount,
+            closed.SkippedCount,
+            closed.FailedCount
         );
     }
 
@@ -260,21 +260,25 @@ internal static class ImportAttemptLifecycle
                     return false;
 
                 attempt.Fail(reason);
-                await unit.PublishAsync(
-                    new CustomerImportFailedIntegrationEvent
-                    {
-                        TenantId = attempt.TenantId,
-                        CorrelationId = correlation.CorrelationId,
-                        ImportJobId = attempt.Id,
-                        CreatedByUserId = attempt.CreatedByUserId,
-                        NotifyUserId = attempt.NotifyUserId,
-                        Reason = attempt.FailureReason ?? reason,
-                        FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
-                    }
-                );
+                await unit.PublishAsync(FailedEvent(attempt, correlation.CorrelationId));
                 return true;
             },
             ct
         );
     }
+
+    internal static CustomerImportFailedIntegrationEvent FailedEvent(
+        CustomerImportAttempt attempt,
+        string correlationId
+    ) =>
+        new()
+        {
+            TenantId = attempt.TenantId,
+            CorrelationId = correlationId,
+            ImportJobId = attempt.Id,
+            CreatedByUserId = attempt.CreatedByUserId,
+            NotifyUserId = attempt.NotifyUserId,
+            Reason = attempt.FailureReason ?? "Unknown error",
+            FailedAtUtc = attempt.CompletedAtUtc ?? DateTime.UtcNow,
+        };
 }

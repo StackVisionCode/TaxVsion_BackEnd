@@ -35,7 +35,7 @@ public static class CustomerArchivedConsumer
                 return;
             }
 
-            existing.MarkArchived();
+            existing.MarkArchived(evt.OccurredOn);
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

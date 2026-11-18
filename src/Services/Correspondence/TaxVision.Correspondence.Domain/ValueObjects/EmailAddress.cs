@@ -19,7 +19,7 @@ public sealed record EmailAddress
         NormalizedValue = normalizedValue;
     }
 
-    public static Result<EmailAddress> Create(string raw)
+    public static Result<EmailAddress> Create(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
             return Result.Failure<EmailAddress>(new Error("EmailAddress.Required", "Email is required."));

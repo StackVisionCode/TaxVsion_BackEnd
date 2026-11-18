@@ -10,7 +10,7 @@ namespace TaxVision.Customer.Infrastructure.Imports;
 
 /// <summary>
 /// Detecta duplicados con las reglas del alta (<see cref="CustomerDuplicateRules"/>): Email; Teléfono + Nombre;
-/// Nombre + DOB; sin archivados. El import suma antes el identificador fiscal por blind index (el alta no lo pide).
+/// Nombre + DOB; sin archivados. La consulta trae por nombre y apellido; el segundo nombre se decide en memoria. El import suma antes el identificador fiscal por blind index (el alta no lo pide).
 ///
 /// IgnoreQueryFilters (B-29): el import corre en un scope DI propio sin tenant ambiente y el filtro fail-closed
 /// escondía todo; el tenant va explícito en cada consulta.
@@ -54,21 +54,46 @@ public sealed class SqlServerCustomerDuplicateDetector(CustomerDbContext db, ISe
                 .Where(fp => fp.CustomerId == c.Id)
                 .DefaultIfEmpty()
             where
-                (fp != null && allBlindIndexes.Contains(fp.TaxIdentifierBlindIndex))
-                || allEmails.Contains(c.PrimaryEmail.NormalizedValue)
+                (
+                    fp != null
+                    && fp.TaxIdentifierBlindIndex != null
+                    && allBlindIndexes.Contains(fp.TaxIdentifierBlindIndex)
+                )
+                || allEmails.Contains(c.PrimaryEmail!.NormalizedValue)
                 || (
                     c.PrimaryPhone != null
                     && allPhones.Contains(c.PrimaryPhone.E164Value)
-                    && allNames.Contains(c.DisplayName.ToLower())
+                    && allNames.Contains(
+                        (
+                            c.Kind == CustomerKind.Business
+                                ? c.DisplayName
+                                : c.PersonalName!.FirstName + " " + c.PersonalName.LastName
+                        ).ToLower()
+                    )
                 )
-                || (c.DateOfBirth != null && allNames.Contains(c.DisplayName.ToLower()))
+                || (
+                    c.DateOfBirth != null
+                    && allNames.Contains(
+                        (
+                            c.Kind == CustomerKind.Business
+                                ? c.DisplayName
+                                : c.PersonalName!.FirstName + " " + c.PersonalName.LastName
+                        ).ToLower()
+                    )
+                )
             select new
             {
                 Customer = new CustomerDuplicateRules.ExistingCustomer(
                     c.Id,
                     c.DisplayName,
+                    (
+                        c.Kind == CustomerKind.Business
+                            ? c.DisplayName
+                            : c.PersonalName!.FirstName + " " + c.PersonalName.LastName
+                    ).ToLower(),
+                    c.Kind == CustomerKind.Business ? null : c.PersonalName!.MiddleName,
                     c.DateOfBirth,
-                    c.PrimaryEmail.NormalizedValue,
+                    c.PrimaryEmail!.NormalizedValue,
                     c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null
                 ),
                 BlindIndex = fp != null ? fp.TaxIdentifierBlindIndex : null,
@@ -129,21 +154,40 @@ public sealed class SqlServerCustomerDuplicateDetector(CustomerDbContext db, ISe
             .Where(c => c.TenantId == tenantId && c.Status != CustomerStatus.Archived)
             .Where(c => excludeCustomerId == null || c.Id != excludeCustomerId)
             .Where(c =>
-                (email != null && c.PrimaryEmail.NormalizedValue == email)
+                (email != null && c.PrimaryEmail!.NormalizedValue == email)
                 || (
                     phone != null
                     && name != null
                     && c.PrimaryPhone != null
                     && c.PrimaryPhone.E164Value == phone
-                    && c.DisplayName.ToLower() == name
+                    && (
+                        c.Kind == CustomerKind.Business
+                            ? c.DisplayName
+                            : c.PersonalName!.FirstName + " " + c.PersonalName.LastName
+                    ).ToLower() == name
                 )
-                || (name != null && dob != null && c.DateOfBirth == dob && c.DisplayName.ToLower() == name)
+                || (
+                    name != null
+                    && dob != null
+                    && c.DateOfBirth == dob
+                    && (
+                        c.Kind == CustomerKind.Business
+                            ? c.DisplayName
+                            : c.PersonalName!.FirstName + " " + c.PersonalName.LastName
+                    ).ToLower() == name
+                )
             )
             .Select(c => new CustomerDuplicateRules.ExistingCustomer(
                 c.Id,
                 c.DisplayName,
+                (
+                    c.Kind == CustomerKind.Business
+                        ? c.DisplayName
+                        : c.PersonalName!.FirstName + " " + c.PersonalName.LastName
+                ).ToLower(),
+                c.Kind == CustomerKind.Business ? null : c.PersonalName!.MiddleName,
                 c.DateOfBirth,
-                c.PrimaryEmail.NormalizedValue,
+                c.PrimaryEmail!.NormalizedValue,
                 c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null
             ))
             .ToListAsync(ct);

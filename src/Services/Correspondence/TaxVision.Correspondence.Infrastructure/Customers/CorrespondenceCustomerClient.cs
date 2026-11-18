@@ -81,5 +81,5 @@ internal sealed class CorrespondenceCustomerClient(
 
     private sealed record CustomerPageDto(IReadOnlyList<CustomerSummaryDto> Items, int Page, int Size, int TotalCount);
 
-    private sealed record CustomerSummaryDto(Guid Id, string PrimaryEmail, string Status);
+    private sealed record CustomerSummaryDto(Guid Id, string? PrimaryEmail, string Status);
 }

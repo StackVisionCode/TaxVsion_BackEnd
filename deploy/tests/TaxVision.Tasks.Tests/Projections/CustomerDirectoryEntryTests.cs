@@ -6,6 +6,42 @@ public sealed class CustomerDirectoryEntryTests
 {
     private static readonly DateTime T0 = new(2026, 8, 12, 10, 0, 0, DateTimeKind.Utc);
 
+    // F-E: el email puede llegar después del alta; un cambio de estado más nuevo no lo bloquea.
+    [Fact]
+    public void An_email_added_after_a_newer_status_change_is_kept()
+    {
+        var entry = NewEntry("Acme", CustomerDirectoryStatus.Active);
+        entry.ApplyStatusIfNewer(CustomerDirectoryStatus.Inactive, T0.AddMinutes(10));
+
+        entry.ApplyProfileIfNewer("Acme", "late@example.com", T0.AddMinutes(5));
+
+        Assert.Equal("late@example.com", entry.PrimaryEmailNormalized);
+        Assert.Equal(CustomerDirectoryStatus.Inactive, entry.Status);
+    }
+
+    [Fact]
+    public void A_status_change_is_not_blocked_by_a_newer_profile_change()
+    {
+        var entry = NewEntry("Acme", CustomerDirectoryStatus.Active);
+        entry.ApplyProfileIfNewer("Acme Corp", null, T0.AddMinutes(10));
+
+        entry.ApplyStatusIfNewer(CustomerDirectoryStatus.Inactive, T0.AddMinutes(5));
+
+        Assert.Equal(CustomerDirectoryStatus.Inactive, entry.Status);
+        Assert.Equal("Acme Corp", entry.DisplayName);
+    }
+
+    [Fact]
+    public void An_older_status_is_still_ignored()
+    {
+        var entry = NewEntry("Acme", CustomerDirectoryStatus.Active);
+        entry.ApplyStatusIfNewer(CustomerDirectoryStatus.Inactive, T0.AddMinutes(10));
+
+        entry.ApplyStatusIfNewer(CustomerDirectoryStatus.Active, T0.AddMinutes(5));
+
+        Assert.Equal(CustomerDirectoryStatus.Inactive, entry.Status);
+    }
+
     [Fact]
     public void Create_requires_tenant_and_customer()
     {

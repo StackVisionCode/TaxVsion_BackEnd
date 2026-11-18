@@ -81,12 +81,18 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
             Row(5, emails[1].ToUpperInvariant()),
         ]);
 
-        await RunImportAsync(host, await SeedAttemptAsync());
+        var attemptId = await SeedAttemptAsync();
+        await RunImportAsync(host, attemptId);
 
+        // Primero el candado del import (F-E: cubre filas sin email); después cada email, en orden.
         var steps = _steps.ToArray();
         Assert.Equal(
-            emails.Order(StringComparer.Ordinal).Select(email => $"lock:{email}").Append("detect"),
-            steps.Take(4)
+            emails
+                .Order(StringComparer.Ordinal)
+                .Select(email => $"lock:{email}")
+                .Prepend($"lock:import:{attemptId:N}")
+                .Append("detect"),
+            steps.Take(5)
         );
     }
 
@@ -115,7 +121,8 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
             await seed.SaveChangesAsync();
         }
         var admin = new CustomerConcurrencyIntegrationTests.ConcurrentAdminEdit(database, conflicts: 1);
-        using var host = await StartHostAsync([Row(2, email)], admin);
+        // La fila trae un dato nuevo: sin cambios no se escribe y no habría conflicto.
+        using var host = await StartHostAsync([Row(2, email, phone: "3055550123")], admin);
         var attemptId = await SeedAttemptAsync(DuplicateStrategy.Overwrite);
 
         await RunImportAsync(host, attemptId);
@@ -126,9 +133,9 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
         Assert.False(string.IsNullOrWhiteSpace(attempt.FailureReason));
     }
 
-    // Notification y Sms crean la fila con la política por defecto (CUS-9): cuentan con esto.
+    // D-5 (TCPA): sin consentimiento en el archivo, email sí y SMS no. Notification y Sms lo reciben en la ficha del bloque.
     [Fact]
-    public async Task ImportedCustomer_StartsWithTheDefaultContactPolicy()
+    public async Task ImportedCustomer_StartsWithEmailOnAndSmsOff()
     {
         var email = NewEmail();
         _barrier.Disable();
@@ -138,7 +145,7 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
 
         await using var db = database.NewContext(_tenant);
         var policy = await db.Customers.AsNoTracking().Select(c => c.ContactPolicy).SingleAsync();
-        Assert.Equal(ContactPolicy.Default, policy);
+        Assert.Equal(new ContactPolicy(EmailEnabled: true, SmsEnabled: false), policy);
     }
 
     private Task<IHost> StartHostAsync(
@@ -164,6 +171,10 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
                     _steps
                 ));
                 options.Services.AddScoped<ICustomerImportRepository, CustomerImportRepository>();
+                options.Services.AddScoped<
+                    ICustomerImportIdentifierRegistry,
+                    SqlServerCustomerImportIdentifierRegistry
+                >();
                 options.Services.AddSingleton<ICustomerImportCloudStorageClient, EmptyFile>();
                 options.Services.AddSingleton<ICustomerImportReaderFactory>(new FixedRows(rows ?? []));
                 options.Services.AddSingleton<ICatalogResolver, NoCatalogs>();
@@ -229,7 +240,7 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
 
     private static string NewEmail() => $"cus2-{Guid.NewGuid():N}@example.test";
 
-    private static ImportCustomerRow Row(int number, string email) =>
+    private static ImportCustomerRow Row(int number, string email, string? phone = null) =>
         new()
         {
             RowNumber = number,
@@ -237,6 +248,7 @@ public sealed class CustomerCreationRaceIntegrationTests(CustomerTemporaryDataba
             FirstName = "Race",
             LastName = $"Client{number}",
             Email = email,
+            Phone = phone,
         };
 
     private sealed class RaceBarrier

@@ -100,6 +100,82 @@ public sealed class UpdateCustomerHandlerTests
         Assert.False(published.EmailEnabled);
     }
 
+    // E-1: el email no se quita; un PATCH sin email conserva el que tenía.
+    [Fact]
+    public async Task An_edit_without_email_keeps_the_current_email()
+    {
+        var customer = NewCustomer();
+        var email = customer.PrimaryEmail!.Value;
+
+        var result = await UpdateAsync(customer, email: null);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Equal(email, customer.PrimaryEmail!.Value);
+    }
+
+    // D-3: el email que llega después se guarda y sale en CustomerUpdated.
+    [Fact]
+    public async Task An_email_added_to_a_client_without_one_is_published()
+    {
+        var customer = TaxVision
+            .Customer.Domain.Customers.Customer.Register(
+                TenantId,
+                CustomerKind.Individual,
+                TaxVision.Customer.Domain.Customers.ValueObjects.PersonalName.Create("No", "Email").Value,
+                null,
+                null,
+                TaxVision.Customer.Domain.Customers.ValueObjects.PhoneNumber.Create("+13055551234").Value,
+                Language.En,
+                Editor
+            )
+            .Value;
+        customer.ClearDomainEvents();
+        var bus = new FakeMessageBus();
+
+        var result = await UpdateAsync(customer, email: "late@example.com", phone: "+13055551234", bus: bus);
+        await DomainEventReplay.DispatchIntoAsync(bus, Repo(customer), customer);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Equal(
+            "late@example.com",
+            Assert.Single(bus.Published.OfType<CustomerUpdatedIntegrationEvent>()).PrimaryEmail
+        );
+    }
+
+    private static Task<BuildingBlocks.Results.Result<TaxVision.Customer.Application.Customers.CustomerResponse>> UpdateAsync(
+        TaxVision.Customer.Domain.Customers.Customer customer,
+        string? email,
+        string? phone = null,
+        FakeMessageBus? bus = null
+    ) =>
+        UpdateCustomerHandler.Handle(
+            new UpdateCustomerCommand(
+                TenantId: TenantId,
+                CustomerId: customer.Id,
+                ModifiedByUserId: Editor,
+                Language: customer.Language,
+                OccupationId: null,
+                PrimaryEmail: email,
+                PrimaryPhone: phone,
+                FirstName: null,
+                MiddleName: null,
+                LastName: null,
+                Prefix: null,
+                Suffix: null,
+                DateOfBirth: null,
+                LegalName: null,
+                Dba: null,
+                BusinessStructure: null,
+                FormationDate: null,
+                PrincipalBusinessActivityId: null,
+                CallerCanViewAllCustomers: true
+            ),
+            Repo(customer),
+            new NoDuplicates(),
+            new RecordingUnitOfWork(bus ?? new FakeMessageBus()),
+            CancellationToken.None
+        );
+
     /// <summary>El CRM manda propiedades que el contrato ya no tiene (preferredChannel, profilePictureFileId).</summary>
     [Fact]
     public void Request_binding_tolerates_the_removed_profile_picture_property()

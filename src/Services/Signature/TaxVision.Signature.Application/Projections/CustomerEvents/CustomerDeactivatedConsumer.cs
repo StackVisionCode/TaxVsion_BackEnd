@@ -39,7 +39,7 @@ public static class CustomerDeactivatedConsumer
                 return;
             }
 
-            existing.MarkArchived();
+            existing.MarkArchived(evt.OccurredOn);
             await unitOfWork.SaveChangesAsync(ct);
         }
     }

@@ -90,6 +90,52 @@ public sealed class CustomerFiscalReEncryptionStoreTests
         }
     }
 
+    // D-4: un perfil con el SSN pendiente no tiene identificador que re-cifrar, pero su banco sí y su versión avanza.
+    [Fact]
+    public async Task A_profile_with_the_tax_id_pending_moves_to_the_current_key()
+    {
+        try
+        {
+            var seed = Protector(SeedKey, SeedVersion);
+            var customer = NewCustomer(0);
+            customer.SetFiscalProfileWithoutTaxIdentifier(
+                FiscalSubjectKind.Individual,
+                FilingStatus.Single,
+                null,
+                false,
+                _byUser,
+                SeedVersion
+            );
+            customer.UpdateFiscalProfile(
+                FilingStatus.Single,
+                null,
+                false,
+                seed.Protect("ACCT000001"),
+                seed.Protect("ROUT000001"),
+                _byUser
+            );
+            await using (var db = CreateContext())
+            {
+                db.Customers.Add(customer);
+                await db.SaveChangesAsync();
+            }
+
+            await CreateStore().ReEncryptToCurrentAsync(100, CancellationToken.None);
+
+            await using var read = CreateContext();
+            var profile = await read
+                .CustomerFiscalProfiles.IgnoreQueryFilters()
+                .SingleAsync(fp => fp.TenantId == _tenantId);
+            Assert.Equal(TargetVersion, profile.TaxIdentifierKeyVersion);
+            Assert.Null(profile.TaxIdentifierCipher);
+            Assert.Equal("ACCT000001", Protector(TargetKey, TargetVersion).Unprotect(profile.RefundBankAccountCipher!));
+        }
+        finally
+        {
+            await CleanupAsync();
+        }
+    }
+
     private async Task SeedAsync()
     {
         var seed = Protector(SeedKey, SeedVersion);
@@ -182,7 +228,7 @@ public sealed class CustomerFiscalReEncryptionStoreTests
             .CustomerFiscalProfiles.IgnoreQueryFilters()
             .AsNoTracking()
             .FirstAsync(fp => fp.TenantId == _tenantId && fp.TaxIdentifierLast4 == customerLast4);
-        Assert.Equal(Ssn(0), currentOnly.Unprotect(customer.TaxIdentifierCipher));
+        Assert.Equal(Ssn(0), currentOnly.Unprotect(customer.TaxIdentifierCipher!));
         Assert.Equal(currentOnly.ComputeBlindIndex(Ssn(0), _tenantId), customer.TaxIdentifierBlindIndex);
         Assert.Equal(TargetVersion, customer.TaxIdentifierKeyVersion);
         Assert.NotNull(customer.RefundBankAccountCipher);

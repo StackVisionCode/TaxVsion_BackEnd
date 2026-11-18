@@ -28,15 +28,16 @@ public static class RevealTaxIdentifierHandler
             return Result.Failure<RevealedTaxIdentifierResponse>(new Error("Customer.NotFound", "Customer not found."));
         }
 
-        if (customer.FiscalProfile is null)
+        // D-4: un perfil con el SSN pendiente no tiene nada que revelar.
+        if (customer.FiscalProfile is not { TaxIdentifierCipher: { } cipher })
         {
             await RecordAuditAsync(cmd, auditWriter, unitOfWork, outcome: "denied.no_fiscal_profile", ct);
             return Result.Failure<RevealedTaxIdentifierResponse>(
-                new Error("FiscalProfile.NotFound", "This customer has no fiscal profile on file.")
+                new Error("FiscalProfile.NotFound", "This customer has no tax identifier on file.")
             );
         }
 
-        var plainTaxId = DecryptTaxIdentifier(customer.FiscalProfile, protector);
+        var plainTaxId = protector.Unprotect(cipher);
         var formatted = FormatForDisplay(plainTaxId, customer.FiscalProfile.SubjectKind);
 
         await RecordAuditAsync(cmd, auditWriter, unitOfWork, outcome: "granted", ct);
@@ -66,11 +67,6 @@ public static class RevealTaxIdentifierHandler
     }
 
     // ============== Fase 2: desencriptar y formatear segun SubjectKind ==============
-
-    private static string DecryptTaxIdentifier(
-        CustomerFiscalProfile fiscalProfile,
-        ISensitiveDataProtector protector
-    ) => protector.Unprotect(fiscalProfile.TaxIdentifierCipher);
 
     private static string FormatForDisplay(string normalizedTaxId, FiscalSubjectKind kind) =>
         kind switch

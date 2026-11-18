@@ -18,12 +18,19 @@ public sealed class CustomerContactPolicyProjection : TenantEntity
     public string Language { get; private set; } = "En";
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>
+    /// <c>OccurredOn</c> del último evento de Customer aplicado. Ordena los eventos entre sí; nulo = aún ninguno.
+    /// <see cref="UpdatedAtUtc"/> es reloj de pared (lo usa la reconciliación) y no sirve para esto.
+    /// </summary>
+    public DateTime? SourceOccurredOnUtc { get; private set; }
+
     public static CustomerContactPolicyProjection Create(
         Guid tenantId,
         Guid customerId,
         bool emailEnabled,
         bool smsEnabled,
-        string language = "En"
+        string language = "En",
+        DateTime? sourceOccurredOnUtc = null
     )
     {
         var row = new CustomerContactPolicyProjection
@@ -34,6 +41,7 @@ public sealed class CustomerContactPolicyProjection : TenantEntity
             SmsEnabled = smsEnabled,
             Language = NormalizeLanguage(language),
             UpdatedAtUtc = DateTime.UtcNow,
+            SourceOccurredOnUtc = sourceOccurredOnUtc,
         };
         row.SetTenant(tenantId);
         return row;
@@ -45,6 +53,17 @@ public sealed class CustomerContactPolicyProjection : TenantEntity
         SmsEnabled = smsEnabled;
         Language = NormalizeLanguage(language);
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>Aplica un evento de Customer salvo que sea más viejo que el último aplicado; el igual se aplica.</summary>
+    public bool ApplyIfNewer(DateTime occurredOnUtc, bool emailEnabled, bool smsEnabled, string language)
+    {
+        if (occurredOnUtc < SourceOccurredOnUtc)
+            return false;
+
+        Reconcile(emailEnabled, smsEnabled, language);
+        SourceOccurredOnUtc = occurredOnUtc;
+        return true;
     }
 
     public static string NormalizeLanguage(string? language) =>

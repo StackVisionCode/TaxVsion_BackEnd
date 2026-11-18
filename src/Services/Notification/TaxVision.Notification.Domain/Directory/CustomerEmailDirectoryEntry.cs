@@ -29,11 +29,19 @@ public sealed class CustomerEmailDirectoryEntry : TenantEntity
 
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>
+    /// <c>OccurredOn</c> del último evento de Customer aplicado. Ordena los eventos entre sí; nulo = aún ninguno.
+    /// <see cref="UpdatedAtUtc"/> es reloj de pared (lo usa la reconciliación) y no sirve para esto.
+    /// </summary>
+    public DateTime? SourceOccurredOnUtc { get; private set; }
+
     public static CustomerEmailDirectoryEntry Create(
         Guid tenantId,
         Guid customerId,
         string normalizedEmail,
-        string displayName
+        string displayName,
+        DateTime? sourceOccurredOnUtc = null,
+        bool isActive = true
     )
     {
         var entry = new CustomerEmailDirectoryEntry
@@ -42,8 +50,9 @@ public sealed class CustomerEmailDirectoryEntry : TenantEntity
             CustomerId = customerId,
             NormalizedEmail = normalizedEmail,
             DisplayName = displayName,
-            IsActive = true,
+            IsActive = isActive,
             UpdatedAtUtc = DateTime.UtcNow,
+            SourceOccurredOnUtc = sourceOccurredOnUtc,
         };
         entry.SetTenant(tenantId);
         return entry;
@@ -63,6 +72,17 @@ public sealed class CustomerEmailDirectoryEntry : TenantEntity
 
         IsActive = isActive;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>Aplica un evento de Customer salvo que sea más viejo que el último aplicado; el igual se aplica.</summary>
+    public bool ApplyIfNewer(DateTime occurredOnUtc, string normalizedEmail, string displayName, bool isActive)
+    {
+        if (occurredOnUtc < SourceOccurredOnUtc)
+            return false;
+
+        Reconcile(normalizedEmail, displayName, isActive);
+        SourceOccurredOnUtc = occurredOnUtc;
+        return true;
     }
 
     public static string Normalize(string? email) =>

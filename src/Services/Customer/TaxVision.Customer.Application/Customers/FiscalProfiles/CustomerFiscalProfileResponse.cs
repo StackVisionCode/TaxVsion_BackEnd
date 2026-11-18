@@ -5,7 +5,8 @@ namespace TaxVision.Customer.Application.Customers.FiscalProfiles;
 public sealed record CustomerFiscalProfileResponse(
     Guid CustomerId,
     FiscalSubjectKind SubjectKind,
-    string TaxIdentifierLast4,
+    // Null = SSN/EIN pendiente.
+    string? TaxIdentifierLast4,
     FilingStatus? FilingStatus,
     decimal? PriorYearAgi,
     bool IsReturningCustomer,

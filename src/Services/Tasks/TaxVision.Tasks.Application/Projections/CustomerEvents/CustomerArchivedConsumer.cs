@@ -41,7 +41,7 @@ public static class CustomerArchivedConsumer
                 );
 
             // Este evento no trae fecha propia, a diferencia de sus hermanos: se usa la de ocurrencia.
-            existing.ApplyIfNewer(null, CustomerDirectoryStatus.Archived, evt.OccurredOn);
+            existing.ApplyStatusIfNewer(CustomerDirectoryStatus.Archived, evt.OccurredOn);
             await unitOfWork.SaveChangesAsync(ct);
             logger.LogInformation(
                 "CustomerDirectoryEntry archived for tenant {TenantId}, customer {CustomerId}.",

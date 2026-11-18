@@ -134,6 +134,18 @@ public sealed class ScribeBaseLayoutSeeder(
                     if (download.IsSuccess)
                         return;
 
+                    // Solo se repone si el archivo de verdad no existe; un fallo pasajero no lo prueba.
+                    if (!StoredFile.IsMissing(download.Error))
+                    {
+                        logger.LogWarning(
+                            "Could not verify base layout '{LayoutKey}' file {FileId} ({Error}); keeping it.",
+                            layoutKeyValue,
+                            publishedVersion.HtmlFileId,
+                            download.Error.Code
+                        );
+                        return;
+                    }
+
                     logger.LogWarning(
                         "Published base layout '{LayoutKey}' references missing CloudStorage file {FileId}; repairing it.",
                         layoutKeyValue,

@@ -23,14 +23,60 @@ public static class CustomerEmailDirectoryConsumer
         ICustomerEmailDirectoryRepository repository,
         IUnitOfWork unitOfWork,
         CancellationToken ct
-    ) => UpsertAsync(repository, unitOfWork, evt.TenantId, evt.CustomerId, evt.PrimaryEmail, evt.DisplayName, true, ct);
+    ) =>
+        UpsertAsync(
+            repository,
+            unitOfWork,
+            evt.TenantId,
+            evt.CustomerId,
+            evt.PrimaryEmail,
+            evt.DisplayName,
+            isActive: true,
+            evt.OccurredOn,
+            ct
+        );
 
     public static Task Handle(
         CustomerUpdatedIntegrationEvent evt,
         ICustomerEmailDirectoryRepository repository,
         IUnitOfWork unitOfWork,
         CancellationToken ct
-    ) => UpsertAsync(repository, unitOfWork, evt.TenantId, evt.CustomerId, evt.PrimaryEmail, evt.DisplayName, true, ct);
+    ) =>
+        UpsertAsync(
+            repository,
+            unitOfWork,
+            evt.TenantId,
+            evt.CustomerId,
+            evt.PrimaryEmail,
+            evt.DisplayName,
+            IsActiveStatus(evt.Status),
+            evt.OccurredOn,
+            ct
+        );
+
+    // La importación avisa por bloque con el email de cada cliente: ya no se pide a Customer por HTTP.
+    public static async Task Handle(
+        CustomersImportChunkCommittedIntegrationEvent evt,
+        ICustomerEmailDirectoryRepository repository,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        var written = false;
+        foreach (var card in evt.Customers)
+            written |= await ApplyAsync(
+                repository,
+                evt.TenantId,
+                card.CustomerId,
+                card.PrimaryEmail,
+                card.DisplayName,
+                IsActiveStatus(card.Status),
+                evt.OccurredOn,
+                ct
+            );
+        if (written)
+            await unitOfWork.SaveChangesAsync(ct);
+    }
 
     public static Task Handle(
         CustomerReactivatedIntegrationEvent evt,
@@ -60,13 +106,6 @@ public static class CustomerEmailDirectoryConsumer
         CancellationToken ct
     ) => SetActiveAsync(repository, unitOfWork, evt.TenantId, evt.CustomerId, false, ct);
 
-    // NOT-21: la importación no manda CustomerCreated ni trae correos: se piden a Customer fuera de esta transacción.
-    public static SyncImportedCustomerEmailsCommand? Handle(CustomersBulkImportedIntegrationEvent evt)
-    {
-        var customerIds = evt.CreatedCustomerIds.Concat(evt.UpdatedCustomerIds).Distinct().ToList();
-        return customerIds.Count == 0 ? null : new SyncImportedCustomerEmailsCommand(evt.TenantId, customerIds);
-    }
-
     private static async Task UpsertAsync(
         ICustomerEmailDirectoryRepository repository,
         IUnitOfWork unitOfWork,
@@ -74,17 +113,24 @@ public static class CustomerEmailDirectoryConsumer
         Guid customerId,
         string? email,
         string? displayName,
-        bool isActive,
+        bool? isActive,
+        DateTime occurredOnUtc,
         CancellationToken ct
     )
     {
-        if (await ApplyAsync(repository, tenantId, customerId, email, displayName, isActive, ct))
+        if (await ApplyAsync(repository, tenantId, customerId, email, displayName, isActive, occurredOnUtc, ct))
             await unitOfWork.SaveChangesAsync(ct);
     }
 
+    // E-3: el estado viaja en el aviso; null (mensaje viejo) = no se sabe y se conserva el de la fila.
+    private static bool? IsActiveStatus(string? status) =>
+        string.IsNullOrWhiteSpace(status) ? null : string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// Sin email no se crea la fila: una entrada vacía haría creer que el cliente es alcanzable y el
-    /// envío fallaría en silencio en vez de saltarse el aviso con un motivo claro.
+    /// envío fallaría en silencio en vez de saltarse el aviso con un motivo claro. Con
+    /// <paramref name="occurredOnUtc"/> (eventos) un evento más viejo que el último aplicado no pisa.
+    /// <paramref name="isActive"/> null conserva el flag de la fila; una fila nueva sin dato nace activa.
     /// </summary>
     internal static async Task<bool> ApplyAsync(
         ICustomerEmailDirectoryRepository repository,
@@ -92,7 +138,8 @@ public static class CustomerEmailDirectoryConsumer
         Guid customerId,
         string? email,
         string? displayName,
-        bool isActive,
+        bool? isActive,
+        DateTime? occurredOnUtc,
         CancellationToken ct
     )
     {
@@ -100,10 +147,22 @@ public static class CustomerEmailDirectoryConsumer
         var existing = await repository.GetByCustomerIdAsync(tenantId, customerId, ct);
 
         if (existing is not null)
-            existing.Reconcile(normalized, displayName ?? string.Empty, isActive);
+        {
+            var active = isActive ?? existing.IsActive;
+            if (occurredOnUtc is { } occurredOn)
+                return existing.ApplyIfNewer(occurredOn, normalized, displayName ?? string.Empty, active);
+            existing.Reconcile(normalized, displayName ?? string.Empty, active);
+        }
         else if (normalized.Length > 0)
             await repository.AddAsync(
-                CustomerEmailDirectoryEntry.Create(tenantId, customerId, normalized, displayName ?? string.Empty),
+                CustomerEmailDirectoryEntry.Create(
+                    tenantId,
+                    customerId,
+                    normalized,
+                    displayName ?? string.Empty,
+                    occurredOnUtc,
+                    isActive ?? true
+                ),
                 ct
             );
         else

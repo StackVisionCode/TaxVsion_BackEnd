@@ -138,9 +138,9 @@ internal sealed class FakeCustomerDirectoryRepository(bool exists = true) : ICus
     public Task AddAsync(CustomerDirectoryEntry entry, CancellationToken ct = default) =>
         throw new NotImplementedException();
 
-    public Task UpsertBulkAsync(
+    public Task UpsertImportedAsync(
         Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
+        IReadOnlyList<ImportedDirectoryEntry> entries,
         DateTime observedAtUtc,
         CancellationToken ct = default
     ) => throw new NotImplementedException();

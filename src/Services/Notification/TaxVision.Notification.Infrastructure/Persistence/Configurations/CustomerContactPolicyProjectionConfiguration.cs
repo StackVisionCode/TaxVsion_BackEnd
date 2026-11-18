@@ -17,6 +17,7 @@ public sealed class CustomerContactPolicyProjectionConfiguration
         builder.Property(e => e.SmsEnabled).HasDefaultValue(true).IsRequired();
         builder.Property(e => e.Language).HasMaxLength(10).HasDefaultValue("En").IsRequired();
         builder.Property(e => e.UpdatedAtUtc).IsRequired();
+        builder.Property(e => e.SourceOccurredOnUtc);
 
         // Un cliente, una fila. El unique convierte en choque visible la carrera entre created/updated.
         builder.HasIndex(e => new { e.TenantId, e.CustomerId }).IsUnique();

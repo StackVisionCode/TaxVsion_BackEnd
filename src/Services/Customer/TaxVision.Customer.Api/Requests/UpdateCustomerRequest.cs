@@ -7,7 +7,8 @@ public sealed record UpdateCustomerRequest(
     Language Language,
     // La foto de perfil NO viaja aquí (tiene su endpoint): una edición que la omitía la borraba.
     Guid? OccupationId,
-    string PrimaryEmail,
+    // D-3: opcional para un Individual con teléfono o fecha de nacimiento.
+    string? PrimaryEmail,
     string? PrimaryPhone,
     // Identidad Individual (opcionales, solo aplican a Individual)
     string? FirstName = null,

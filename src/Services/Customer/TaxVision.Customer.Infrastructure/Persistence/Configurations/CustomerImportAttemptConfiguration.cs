@@ -24,12 +24,15 @@ public sealed class CustomerImportAttemptConfiguration : IEntityTypeConfiguratio
         b.Property(a => a.UpdatedCount).IsRequired();
         b.Property(a => a.SkippedCount).IsRequired();
         b.Property(a => a.FailedCount).IsRequired();
+        b.Property(a => a.WarningCount).IsRequired();
         b.Property(a => a.CreatedAtUtc).IsRequired();
         b.Property(a => a.StartedAtUtc);
         b.Property(a => a.CompletedAtUtc);
         b.Property(a => a.CanceledAtUtc);
         b.Property(a => a.CanceledByUserId);
         b.Property(a => a.FailureReason).HasMaxLength(500);
+        b.Property(a => a.LastProgressAtUtc);
+        b.Property(a => a.RecoveryCount).IsRequired();
 
         // Idempotency: una sola attempt por (Tenant, Key)
         b.HasIndex(a => new { a.TenantId, a.IdempotencyKey })

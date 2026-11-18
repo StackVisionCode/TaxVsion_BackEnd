@@ -54,7 +54,8 @@ internal sealed class CustomerImportReadService(CustomerDbContext db) : ICustome
                 a.CompletedAtUtc,
                 a.CanceledAtUtc,
                 a.CanceledByUserId,
-                a.FailureReason
+                a.FailureReason,
+                a.WarningCount
             ))
             .ToListAsync(ct);
     }
@@ -83,7 +84,8 @@ internal sealed class CustomerImportReadService(CustomerDbContext db) : ICustome
                 r.DisplayName,
                 r.MatchedBy,
                 r.ErrorCode,
-                r.Message
+                r.Message,
+                r.Warnings?.Split('\n')
             );
         }
     }
@@ -109,6 +111,7 @@ internal sealed class CustomerImportReadService(CustomerDbContext db) : ICustome
             a.CompletedAtUtc,
             a.CanceledAtUtc,
             a.CanceledByUserId,
-            a.FailureReason
+            a.FailureReason,
+            a.WarningCount
         );
 }

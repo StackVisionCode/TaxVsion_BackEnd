@@ -21,7 +21,7 @@ public sealed record CustomerDetailResponse(
     string? MiddleName,
     string? LastName,
     string? LegalName,
-    string PrimaryEmail,
+    string? PrimaryEmail,
     string? PrimaryPhone,
     Language Language,
     Guid? OccupationId,

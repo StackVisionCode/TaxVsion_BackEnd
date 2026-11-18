@@ -29,7 +29,7 @@ public interface ITasksCustomerClient
     );
 }
 
-public sealed record RemoteCustomerSummary(Guid Id, string DisplayName, bool IsActive);
+public sealed record RemoteCustomerSummary(Guid Id, string DisplayName, bool IsActive, string? PrimaryEmail = null);
 
 public sealed record RemoteCustomerReconciliationPage(IReadOnlyList<RemoteReconciliationCustomer> Items, bool HasMore);
 

@@ -238,8 +238,9 @@ public sealed class ProjectionConsumerTests
         Assert.Equal("Renamed", row.DisplayName);
     }
 
+    // Los importados llegan con su nombre en el aviso de cada bloque; los existentes se actualizan.
     [Fact]
-    public async Task Bulk_import_adds_missing_customers_without_touching_known_ones()
+    public async Task Imported_chunk_adds_new_clients_with_their_name_and_renames_known_ones()
     {
         var tenant = Guid.NewGuid();
         var known = Guid.NewGuid();
@@ -248,20 +249,12 @@ public sealed class ProjectionConsumerTests
         await h.SeedCustomerAsync(known, active: false, name: "Known");
 
         await ProjectionConsumer.Handle(
-            new CustomersBulkImportedIntegrationEvent
-            {
-                TenantId = tenant,
-                ImportJobId = Guid.NewGuid(),
-                CreatedByUserId = Guid.NewGuid(),
-                CompletedAtUtc = DateTime.UtcNow,
-                TotalRows = 2,
-                SuccessCount = 1,
-                UpdatedCount = 1,
-                SkippedCount = 0,
-                FailedCount = 0,
-                CreatedCustomerIds = [created],
-                UpdatedCustomerIds = [known],
-            },
+            ImportChunk(
+                tenant,
+                DateTime.UtcNow,
+                Card(created, isNew: true, "New"),
+                Card(known, isNew: false, "Renamed")
+            ),
             h.Projections,
             h.Db,
             h.Correlation,
@@ -270,10 +263,67 @@ public sealed class ProjectionConsumerTests
 
         var rows = await h.Db.CustomerDirectoryProjections.ToDictionaryAsync(r => r.CustomerId);
         Assert.True(rows[created].IsActive);
-        Assert.Null(rows[created].DisplayName);
+        Assert.Equal("New", rows[created].DisplayName);
         Assert.False(rows[known].IsActive);
-        Assert.Equal("Known", rows[known].DisplayName);
+        Assert.Equal("Renamed", rows[known].DisplayName);
     }
+
+    [Fact]
+    public async Task Imported_chunk_older_than_the_last_change_is_ignored()
+    {
+        var tenant = Guid.NewGuid();
+        var known = Guid.NewGuid();
+        await using var h = new FinancialTestHarness(tenant);
+        await h.SeedCustomerAsync(known, name: "Current");
+
+        await ProjectionConsumer.Handle(
+            ImportChunk(tenant, DateTime.UtcNow.AddHours(-1), Card(known, isNew: false, "Stale")),
+            h.Projections,
+            h.Db,
+            h.Correlation,
+            Ct
+        );
+
+        Assert.Equal("Current", (await h.Db.CustomerDirectoryProjections.SingleAsync()).DisplayName);
+    }
+
+    // Sus filas sin nombre parecerían más nuevas que la ficha real del bloque y la taparían.
+    [Fact]
+    public void The_finished_import_no_longer_writes_directory_rows()
+    {
+        Assert.DoesNotContain(
+            typeof(ProjectionConsumer).GetMethods(),
+            m => m.GetParameters().Any(p => p.ParameterType == typeof(CustomersBulkImportedIntegrationEvent))
+        );
+    }
+
+    private static CustomersImportChunkCommittedIntegrationEvent ImportChunk(
+        Guid tenant,
+        DateTime at,
+        params ImportedCustomerCard[] cards
+    ) =>
+        new()
+        {
+            TenantId = tenant,
+            CorrelationId = "chunk",
+            OccurredOn = at,
+            ImportJobId = Guid.NewGuid(),
+            ChunkNumber = 1,
+            CreatedByUserId = Guid.NewGuid(),
+            Customers = cards,
+        };
+
+    private static ImportedCustomerCard Card(Guid customerId, bool isNew, string name) =>
+        new()
+        {
+            CustomerId = customerId,
+            IsNew = isNew,
+            Kind = "Individual",
+            DisplayName = name,
+            PrimaryEmail = "client@example.com",
+            Language = "En",
+            Status = "Active",
+        };
 
     [Fact]
     public async Task Tenant_status_does_not_roll_back_on_older_event()

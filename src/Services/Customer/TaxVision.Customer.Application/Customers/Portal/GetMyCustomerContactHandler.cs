@@ -29,7 +29,7 @@ public static class GetMyCustomerContactHandler
         return Result.Success(
             new MyCustomerContactResponse(
                 customer.PrimaryPhone?.E164Value,
-                customer.PrimaryEmail.Value,
+                customer.PrimaryEmail?.Value,
                 customer.ProfilePictureFileId,
                 upload.PendingAvatarFileId,
                 upload.UploadStatus,

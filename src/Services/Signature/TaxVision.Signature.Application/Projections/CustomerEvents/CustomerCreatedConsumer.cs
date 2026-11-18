@@ -70,7 +70,7 @@ public static class CustomerCreatedConsumer
     private static string ResolveCorrelationId(CustomerCreatedIntegrationEvent evt) =>
         string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
 
-    private static string NormalizeEmail(string email) =>
+    private static string NormalizeEmail(string? email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 
     private static void ReconcileExisting(
@@ -81,6 +81,6 @@ public static class CustomerCreatedConsumer
     )
     {
         if (existing.ApplyIfNewer(normalizedEmail, displayName, occurredOnUtc) && existing.IsArchived)
-            existing.MarkReactivated();
+            existing.MarkReactivated(occurredOnUtc);
     }
 }

@@ -5,14 +5,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Internal.Generated.WolverineHandlers
 {
-    // START: CustomersBulkImportedIntegrationEventHandler518759354
+    // START: CustomersImportChunkCommittedIntegrationEventHandler1857784714
     [global::System.CodeDom.Compiler.GeneratedCode("JasperFx", "1.0.0")]
-    public sealed class CustomersBulkImportedIntegrationEventHandler518759354 : Wolverine.Runtime.Handlers.MessageHandler
+    public sealed class CustomersImportChunkCommittedIntegrationEventHandler1857784714 : Wolverine.Runtime.Handlers.MessageHandler
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.Tasks.Domain.Projections.CustomerDirectoryEntry> _loggerOfCustomerDirectoryEntry;
 
-        public CustomersBulkImportedIntegrationEventHandler518759354(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Tasks.Domain.Projections.CustomerDirectoryEntry> loggerOfCustomerDirectoryEntry)
+        public CustomersImportChunkCommittedIntegrationEventHandler1857784714(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Tasks.Domain.Projections.CustomerDirectoryEntry> loggerOfCustomerDirectoryEntry)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _loggerOfCustomerDirectoryEntry = loggerOfCustomerDirectoryEntry;
@@ -25,8 +25,6 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -39,8 +37,10 @@ namespace Internal.Generated.WolverineHandlers
             */
             var tenantCustomerBackfillService = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Backfill.Abstractions.ITenantCustomerBackfillService>(serviceScope.ServiceProvider);
             var customerDirectoryRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Projections.Abstractions.ICustomerDirectoryRepository>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
-            var customersBulkImportedIntegrationEvent = (BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent)context.Envelope.Message;
+            var customersImportChunkCommittedIntegrationEvent = (BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersImportChunkCommittedIntegrationEvent)context.Envelope.Message;
 
             if (unitOfWork is not TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext tasksDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext.");
             
@@ -55,13 +55,13 @@ namespace Internal.Generated.WolverineHandlers
 
             try
             {
-                BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(customersBulkImportedIntegrationEvent, tenantContext, context);
+                BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(customersImportChunkCommittedIntegrationEvent, tenantContext, context);
                 BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
-                System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Tasks.Application.Projections.CustomerEvents.CustomersBulkImportedConsumer");
-                System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Projections.CustomerEvents.CustomersBulkImportedConsumer");
+                System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Tasks.Application.Projections.CustomerEvents.CustomersImportChunkCommittedConsumer");
+                System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Projections.CustomerEvents.CustomersImportChunkCommittedConsumer");
                 
                 // The actual message execution
-                await TaxVision.Tasks.Application.Projections.CustomerEvents.CustomersBulkImportedConsumer.Handle(customersBulkImportedIntegrationEvent, customerDirectoryRepository, tenantCustomerBackfillService, context, correlationContext, _loggerOfCustomerDirectoryEntry, cancellation).ConfigureAwait(false);
+                await TaxVision.Tasks.Application.Projections.CustomerEvents.CustomersImportChunkCommittedConsumer.Handle(customersImportChunkCommittedIntegrationEvent, customerDirectoryRepository, tenantCustomerBackfillService, context, correlationContext, _loggerOfCustomerDirectoryEntry, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware
@@ -81,7 +81,7 @@ namespace Internal.Generated.WolverineHandlers
 
     }
 
-    // END: CustomersBulkImportedIntegrationEventHandler518759354
+    // END: CustomersImportChunkCommittedIntegrationEventHandler1857784714
     
     
 }

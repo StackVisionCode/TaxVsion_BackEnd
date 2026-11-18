@@ -62,6 +62,9 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                     b.Property<bool>("SmsEnabled")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("SourceOccurredOnUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 

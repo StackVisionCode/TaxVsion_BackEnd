@@ -20,7 +20,6 @@ import type {
 import type { CustomerPortalAccountRepository } from '../../src/application/ports/customer-portal-account-repository.js';
 import type { UserPermissionsProjectionRepository } from '../../src/application/ports/user-permissions-projection-repository.js';
 import type { RolePermissionsProjectionRepository } from '../../src/application/ports/role-permissions-projection-repository.js';
-import type { NotificationRepository } from '../../src/application/ports/notification-repository.js';
 import type { CustomerPreparerAssignmentRepository } from '../../src/application/ports/customer-preparer-assignment-repository.js';
 import type { CustomerAssignmentProjectionRepository } from '../../src/application/ports/customer-assignment-projection-repository.js';
 
@@ -203,10 +202,8 @@ function setupCustomer(existing: CustomerDirectoryEntrySnapshot | null, portal: 
   } as unknown as UserDirectoryRepository;
   const emitter = fakeEmitter();
   bindCustomerConsumers((type, handler) => handlers.set(type, handler), {
-    notifications: {} as NotificationRepository,
     customerPreparerAssignments: {} as CustomerPreparerAssignmentRepository,
     customerAssignments: {} as CustomerAssignmentProjectionRepository,
-    inAppSource: 'Communication',
     customerDirectory,
     customerPortalAccounts,
     userDirectory,

@@ -72,6 +72,18 @@ public sealed class ScribeSystemAssetSeeder(
                     return;
                 }
 
+                // Un fallo pasajero al arrancar (sin token, CloudStorage aún no listo) no prueba que falte:
+                // reponerlo pisaría el logo que subió el admin con el empacado.
+                if (!StoredFile.IsMissing(download.Error))
+                {
+                    logger.LogWarning(
+                        "ScribeSystemAssetSeeder: could not verify header logo {FileId} ({Error}); keeping it.",
+                        existing.CloudStorageFileId,
+                        download.Error.Code
+                    );
+                    return;
+                }
+
                 logger.LogWarning(
                     "SystemAssetRef '{Key}' references missing CloudStorage file {FileId}; repairing from local '{FileName}'.",
                     SystemAssetKeys.HeaderLogo,

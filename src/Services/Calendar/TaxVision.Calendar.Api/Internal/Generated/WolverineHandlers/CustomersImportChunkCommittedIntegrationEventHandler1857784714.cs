@@ -5,14 +5,14 @@ using Microsoft.Extensions.Logging;
 
 namespace Internal.Generated.WolverineHandlers
 {
-    // START: CustomersBulkImportedIntegrationEventHandler518759354
+    // START: CustomersImportChunkCommittedIntegrationEventHandler1857784714
     [global::System.CodeDom.Compiler.GeneratedCode("JasperFx", "1.0.0")]
-    public sealed class CustomersBulkImportedIntegrationEventHandler518759354 : Wolverine.Runtime.Handlers.MessageHandler
+    public sealed class CustomersImportChunkCommittedIntegrationEventHandler1857784714 : Wolverine.Runtime.Handlers.MessageHandler
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.Calendar.Domain.Projections.CustomerDirectoryEntry> _loggerOfCustomerDirectoryEntry;
 
-        public CustomersBulkImportedIntegrationEventHandler518759354(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Calendar.Domain.Projections.CustomerDirectoryEntry> loggerOfCustomerDirectoryEntry)
+        public CustomersImportChunkCommittedIntegrationEventHandler1857784714(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Calendar.Domain.Projections.CustomerDirectoryEntry> loggerOfCustomerDirectoryEntry)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _loggerOfCustomerDirectoryEntry = loggerOfCustomerDirectoryEntry;
@@ -24,9 +24,6 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var calendarDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Infrastructure.Persistence.CalendarDbContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -34,8 +31,11 @@ namespace Internal.Generated.WolverineHandlers
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var tenantBackfillStateRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Backfill.Abstractions.ITenantBackfillStateRepository>(serviceScope.ServiceProvider);
             var customerDirectoryRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Projections.Abstractions.ICustomerDirectoryRepository>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var calendarDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Infrastructure.Persistence.CalendarDbContext>(serviceScope.ServiceProvider);
             // The actual message body
-            var customersBulkImportedIntegrationEvent = (BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent)context.Envelope.Message;
+            var customersImportChunkCommittedIntegrationEvent = (BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersImportChunkCommittedIntegrationEvent)context.Envelope.Message;
 
             
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
@@ -49,13 +49,13 @@ namespace Internal.Generated.WolverineHandlers
 
             try
             {
-                BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(customersBulkImportedIntegrationEvent, tenantContext, context);
+                BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(customersImportChunkCommittedIntegrationEvent, tenantContext, context);
                 BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
-                System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Calendar.Application.Projections.CustomerEvents.CustomersBulkImportedConsumer");
-                System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Calendar.Application.Projections.CustomerEvents.CustomersBulkImportedConsumer");
+                System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Calendar.Application.Projections.CustomerEvents.CustomersImportChunkCommittedConsumer");
+                System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Calendar.Application.Projections.CustomerEvents.CustomersImportChunkCommittedConsumer");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Calendar.Application.Projections.CustomerEvents.CustomersBulkImportedConsumer.Handle(customersBulkImportedIntegrationEvent, customerDirectoryRepository, tenantBackfillStateRepository, correlationContext, _loggerOfCustomerDirectoryEntry, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Calendar.Application.Projections.CustomerEvents.CustomersImportChunkCommittedConsumer.Handle(customersImportChunkCommittedIntegrationEvent, customerDirectoryRepository, tenantBackfillStateRepository, correlationContext, _loggerOfCustomerDirectoryEntry, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message
@@ -79,7 +79,7 @@ namespace Internal.Generated.WolverineHandlers
 
     }
 
-    // END: CustomersBulkImportedIntegrationEventHandler518759354
+    // END: CustomersImportChunkCommittedIntegrationEventHandler1857784714
     
     
 }

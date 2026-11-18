@@ -2,6 +2,9 @@ using TaxVision.Calendar.Domain.Projections;
 
 namespace TaxVision.Calendar.Application.Projections.Abstractions;
 
+/// <summary>Ficha de un cliente importado, lista para el directorio.</summary>
+public sealed record ImportedDirectoryEntry(Guid CustomerId, string DisplayName, CustomerDirectoryStatus Status);
+
 public interface ICustomerDirectoryRepository
 {
     Task<bool> ExistsAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
@@ -13,13 +16,13 @@ public interface ICustomerDirectoryRepository
     Task AddAsync(CustomerDirectoryEntry entry, CancellationToken ct = default);
 
     /// <summary>
-    /// Upsert set-based por <c>MERGE</c> para el import masivo: nunca carga N entidades ni hace un
-    /// fetch por id. Las filas nuevas nacen sin <c>DisplayName</c> porque el evento no trae PII; las
-    /// existentes sólo refrescan <c>UpdatedAtUtc</c>. El chunking lo hace el caller.
+    /// Upsert set-based por <c>MERGE</c> de un bloque del import (hasta 500): nunca carga N entidades. Crea las filas
+    /// que faltan y actualiza las existentes solo si no tienen un cambio más nuevo que <paramref name="observedAtUtc"/>
+    /// (misma regla que <see cref="CustomerDirectoryEntry.ApplyIfNewer"/>).
     /// </summary>
-    Task UpsertBulkAsync(
+    Task UpsertImportedAsync(
         Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
+        IReadOnlyList<ImportedDirectoryEntry> entries,
         DateTime observedAtUtc,
         CancellationToken ct = default
     );

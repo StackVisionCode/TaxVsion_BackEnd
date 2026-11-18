@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using ClosedXML.Excel;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Imports.Dtos;
+using TaxVision.Customer.Application.Imports.Helpers;
 using TaxVision.Customer.Domain.Imports;
 
 namespace TaxVision.Customer.Infrastructure.Imports;
@@ -20,8 +21,11 @@ internal sealed class XlsxCustomerImportReader : ICustomerImportReader
     )
     {
         using var workbook = new XLWorkbook(stream);
+        // La plantilla oficial trae Instructions primero: se lee la hoja Clients si existe; si no, la primera.
         var sheet =
-            workbook.Worksheets.FirstOrDefault() ?? throw new InvalidOperationException("XLSX has no worksheets.");
+            workbook.Worksheets.FirstOrDefault(s => s.Name.Equals("Clients", StringComparison.OrdinalIgnoreCase))
+            ?? workbook.Worksheets.FirstOrDefault()
+            ?? throw new InvalidOperationException("XLSX has no worksheets.");
 
         // Mapear headers de fila 1 a indices de columna
         var headerRow = sheet.Row(1);
@@ -39,7 +43,7 @@ internal sealed class XlsxCustomerImportReader : ICustomerImportReader
         foreach (var row in dataRows)
         {
             ct.ThrowIfCancellationRequested();
-            rowNumber++;
+            rowNumber = ImportRowNumber.Next(GetCell(row, headers, ImportRowNumber.SourceRowColumn), rowNumber);
 
             yield return new ImportCustomerRow
             {
@@ -77,6 +81,8 @@ internal sealed class XlsxCustomerImportReader : ICustomerImportReader
                 SpouseEmail = GetCell(row, headers, "SpouseEmail"),
                 SpousePhone = GetCell(row, headers, "SpousePhone"),
                 SpouseTaxIdentifier = GetCell(row, headers, "SpouseTaxIdentifier"),
+                EmailOptIn = GetCell(row, headers, "EmailOptIn"),
+                SmsOptIn = GetCell(row, headers, "SmsOptIn"),
             };
         }
 

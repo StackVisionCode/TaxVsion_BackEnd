@@ -69,7 +69,7 @@ public sealed class CustomerReadService(
             var normalized = term.Trim().ToLowerInvariant();
             query = query.Where(c =>
                 c.DisplayName.ToLower().Contains(normalized)
-                || c.PrimaryEmail.NormalizedValue.Contains(normalized)
+                || (c.PrimaryEmail != null && c.PrimaryEmail.NormalizedValue.Contains(normalized))
                 || c.PrimaryPhone != null && c.PrimaryPhone.E164Value.Contains(normalized)
                 || c.Kind == CustomerKind.Individual
                     && c.BusinessIdentity != null
@@ -97,7 +97,7 @@ public sealed class CustomerReadService(
                 c.Kind,
                 c.Status,
                 c.DisplayName,
-                Email = c.PrimaryEmail.Value,
+                Email = c.PrimaryEmail != null ? c.PrimaryEmail.Value : null,
                 Phone = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
                 c.CreatedAtUtc,
                 c.ProfilePictureFileId,
@@ -189,7 +189,7 @@ public sealed class CustomerReadService(
                 c.Kind,
                 c.Status,
                 c.DisplayName,
-                Email = c.PrimaryEmail.Value,
+                Email = c.PrimaryEmail != null ? c.PrimaryEmail.Value : null,
                 Phone = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
                 c.CreatedAtUtc,
                 c.ProfilePictureFileId,
@@ -253,7 +253,7 @@ public sealed class CustomerReadService(
                 c.TenantId,
                 c.Id,
                 c.DisplayName,
-                c.PrimaryEmail.Value,
+                c.PrimaryEmail != null ? c.PrimaryEmail.Value : null,
                 c.Status,
                 c.Language.ToString(),
                 c.ContactPolicy.EmailEnabled,
@@ -363,7 +363,7 @@ public sealed class CustomerReadService(
                 MiddleName = c.PersonalName != null ? c.PersonalName.MiddleName : null,
                 LastName = c.PersonalName != null ? c.PersonalName.LastName : null,
                 LegalName = c.BusinessIdentity != null ? c.BusinessIdentity.LegalName : null,
-                PrimaryEmail = c.PrimaryEmail.Value,
+                PrimaryEmail = c.PrimaryEmail != null ? c.PrimaryEmail.Value : null,
                 PrimaryPhone = c.PrimaryPhone != null ? c.PrimaryPhone.E164Value : null,
                 c.Language,
                 c.OccupationId,
@@ -643,7 +643,7 @@ public sealed class CustomerReadService(
             var hit = await db
                 .Customers.AsNoTracking()
                 .IgnoreQueryFilters()
-                .Where(c => c.TenantId == tenantId && c.PrimaryEmail.NormalizedValue == normalized)
+                .Where(c => c.TenantId == tenantId && c.PrimaryEmail!.NormalizedValue == normalized)
                 .Select(c => (Guid?)c.Id)
                 .FirstOrDefaultAsync(ct);
             emailExists = hit.HasValue;

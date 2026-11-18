@@ -118,8 +118,9 @@ public sealed class CreateCustomerHandlerDraftTests
         var company = new World();
         await company.CreateAsync(Company());
 
-        Assert.Equal("Ada Lovelace", person.LastCandidate!.DisplayName);
-        Assert.Equal("Acme LLC", company.LastCandidate!.DisplayName);
+        // Persona: nombre y apellido (el segundo nombre va aparte); empresa: razón social.
+        Assert.Equal("ada lovelace", person.LastCandidate!.DisplayName);
+        Assert.Equal("acme llc", company.LastCandidate!.DisplayName);
         Assert.Equal(["lock:ok@example.com", "detect"], person.Steps);
     }
 
@@ -148,6 +149,91 @@ public sealed class CreateCustomerHandlerDraftTests
         Assert.Equal("new@example.com", existing.PrimaryEmail.Value);
         Assert.Equal("Old LLC", existing.DisplayName);
         Assert.Single(world.Customers.All);
+    }
+
+    // D-3: sin email se ubica por teléfono o fecha; el candado usa la misma llave que el detector (E-4).
+    [Fact]
+    public async Task An_individual_without_email_is_created_and_locked_by_phone_and_name()
+    {
+        var world = new World();
+
+        var result = await world.CreateAsync(Person("", "+13055551234"));
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Null(result.Value.PrimaryEmail);
+        Assert.Null(Assert.Single(world.Customers.All).PrimaryEmail);
+        Assert.Null(world.LastCandidate!.Email);
+        Assert.Equal(["lock:phone:+13055551234|ada lovelace", "detect"], world.Steps);
+    }
+
+    [Fact]
+    public async Task An_individual_without_email_is_locked_by_name_and_date_of_birth()
+    {
+        var world = new World();
+
+        await world.CreateAsync(Person("") with { DateOfBirth = new DateOnly(1980, 5, 1) });
+
+        Assert.Equal("lock:birth:1980-05-01|ada lovelace", world.Steps[0]);
+    }
+
+    [Fact]
+    public async Task An_individual_without_email_phone_or_date_of_birth_is_refused()
+    {
+        var world = new World();
+
+        var result = await world.CreateAsync(Person(""));
+
+        Assert.Equal("Customer.ContactRequired", result.Error.Code);
+        Assert.Empty(world.Customers.All);
+    }
+
+    // El alta manual no trae EIN: una empresa sin email necesita teléfono.
+    [Fact]
+    public async Task A_business_without_email_or_phone_is_refused()
+    {
+        var world = new World();
+
+        var result = await world.CreateAsync(Company() with { PrimaryEmail = null });
+
+        Assert.Equal("Customer.ContactRequired", result.Error.Code);
+        Assert.Empty(world.Customers.All);
+    }
+
+    [Fact]
+    public async Task A_business_with_a_phone_and_no_email_is_created()
+    {
+        var world = new World();
+
+        var result = await world.CreateAsync(Company() with { PrimaryEmail = null, PrimaryPhone = "+13055550100" });
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Null(Assert.Single(world.Customers.All).PrimaryEmail);
+    }
+
+    // E-1: el email no se quita; sobrescribir sin email conserva el que tenía.
+    [Fact]
+    public async Task Overwriting_without_email_keeps_the_existing_email()
+    {
+        var world = new World();
+        var existing = DomainCustomer
+            .Register(
+                Tenant,
+                CustomerKind.Individual,
+                PersonalName.Create("Ada", "Lovelace").Value,
+                null,
+                EmailAddress.Create("old@example.com").Value,
+                null,
+                Language.En,
+                User
+            )
+            .Value;
+        world.Customers.All.Add(existing);
+        world.Match = new DuplicateMatch(0, existing.Id, existing.DisplayName, "Phone+Name");
+
+        var result = await world.CreateAsync(Person("", "+13055551234") with { Overwrite = true });
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Equal("old@example.com", existing.PrimaryEmail!.Value);
     }
 
     private static CreateCustomerCommand Person(string email, string? phone = null) =>

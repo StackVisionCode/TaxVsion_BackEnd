@@ -77,10 +77,57 @@ public sealed class CustomerUpdatedConsumerTests
         Assert.Equal("jane.doe@example.com", stored!.EmailAddress);
     }
 
-    private static Task HandleUpdatedAsync(
+    // F-E: el email llega después del alta; si el cliente ya está inactivo, la fila nace inactiva (E-3) y no casa correo.
+    [Theory]
+    [InlineData("Inactive")]
+    [InlineData("Archived")]
+    public async Task Handle_back_creates_an_inactive_client_as_inactive(string status)
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var repository = new FakeCustomerEmailAddressRepository();
+
+        var link = await CustomerUpdatedConsumer.Handle(
+            new CustomerUpdatedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CustomerId = customerId,
+                DisplayName = "Jane Doe",
+                PrimaryEmail = "late@example.com",
+                Language = "en",
+                Status = status,
+                ModifiedByUserId = Guid.NewGuid(),
+                OccurredOn = new DateTime(2026, 11, 18, 10, 0, 0, DateTimeKind.Utc),
+            },
+            repository,
+            new FakeTenantCustomerBackfillService(),
+            new TaxVision.Correspondence.Tests.Ingest.FakeMessageBus(),
+            new FakeUnitOfWork(),
+            new FakeCorrelationContext(),
+            NullLogger<CustomerEmailAddress>.Instance,
+            CancellationToken.None
+        );
+
+        var stored = await repository.GetByCustomerIdAsync(tenantId, customerId);
+        Assert.NotNull(stored!.DeletedAtUtc);
+        Assert.Null(link);
+    }
+
+    [Fact]
+    public async Task Handle_skips_an_update_without_email()
+    {
+        var repository = new FakeCustomerEmailAddressRepository();
+
+        var link = await HandleUpdatedAsync(Guid.NewGuid(), Guid.NewGuid(), null, DateTime.UtcNow, repository);
+
+        Assert.Empty(repository.All);
+        Assert.Null(link);
+    }
+
+    private static Task<TaxVision.Correspondence.Application.Ingest.LinkUnlinkedMailCommand?> HandleUpdatedAsync(
         Guid tenantId,
         Guid customerId,
-        string email,
+        string? email,
         DateTime occurredOn,
         FakeCustomerEmailAddressRepository repository
     ) =>

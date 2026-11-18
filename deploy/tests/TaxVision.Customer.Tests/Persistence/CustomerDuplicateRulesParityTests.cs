@@ -22,6 +22,10 @@ namespace TaxVision.Customer.Tests.Persistence;
 /// por teléfono solo (la API no), ignoraba el segundo nombre y la razón social en Nombre + DOB (la API no), y
 /// sin tenant ambiente ninguno de los dos caminos veía a los clientes existentes.
 /// </para>
+/// <para>
+/// Después, en vivo, "Omar Ali Haddad" no casó con "Omar Haddad" y el import lo duplicó: ahora una persona casa por
+/// nombre y apellido, y el segundo nombre solo separa si los dos lo traen y no son compatibles.
+/// </para>
 /// </summary>
 [Collection(nameof(CustomerFiscalSqlCollection))]
 public sealed class CustomerDuplicateRulesParityTests
@@ -77,7 +81,7 @@ public sealed class CustomerDuplicateRulesParityTests
     }
 
     [Fact]
-    public async Task Name_plus_dob_uses_the_full_display_name_on_both_paths()
+    public async Task Name_plus_dob_matches_the_same_full_name_on_both_paths()
     {
         try
         {
@@ -85,7 +89,7 @@ public sealed class CustomerDuplicateRulesParityTests
 
             var (import, api) = await BothAsync(
                 Person("Ada", "Maria", "Lovelace", "other@example.test", dob: "1990-12-10"),
-                new CustomerDuplicateCandidate("other@example.test", null, "Ada Maria Lovelace", Dob)
+                new CustomerDuplicateCandidate("other@example.test", null, "Ada Lovelace", Dob, "Maria")
             );
 
             AssertSameMatch(existingId, "Name+DOB", import, api);
@@ -96,16 +100,38 @@ public sealed class CustomerDuplicateRulesParityTests
         }
     }
 
+    // Un segundo nombre que falta de un lado no separa: "Omar Ali Haddad" es "Omar Haddad".
     [Fact]
-    public async Task Name_without_the_middle_name_is_not_a_name_plus_dob_duplicate_on_either_path()
+    public async Task A_missing_middle_name_still_matches_on_both_paths()
     {
         try
         {
-            await SeedPersonAsync("ada@example.test", phone: null, middleName: "Maria", dob: Dob);
+            var existingId = await SeedPersonAsync("ada@example.test", phone: "+13055550123", dob: Dob);
 
             var (import, api) = await BothAsync(
-                Person("Ada", null, "Lovelace", "other@example.test", dob: "1990-12-10"),
-                new CustomerDuplicateCandidate("other@example.test", null, "Ada Lovelace", Dob)
+                Person("Ada", "Maria", "Lovelace", "other@example.test", phone: "305-555-0123"),
+                new CustomerDuplicateCandidate("other@example.test", "+13055550123", "Ada Lovelace", null, "Maria")
+            );
+
+            AssertSameMatch(existingId, "Phone+Name", import, api);
+        }
+        finally
+        {
+            await CleanupAsync();
+        }
+    }
+
+    // Padre e hijo con el teléfono de la casa: dos segundos nombres distintos son dos personas.
+    [Fact]
+    public async Task Different_middle_names_are_not_a_duplicate_on_either_path()
+    {
+        try
+        {
+            await SeedPersonAsync("ada@example.test", phone: "+13055550123", middleName: "Maria", dob: Dob);
+
+            var (import, api) = await BothAsync(
+                Person("Ada", "Beth", "Lovelace", "other@example.test", phone: "305-555-0123", dob: "1990-12-10"),
+                new CustomerDuplicateCandidate("other@example.test", "+13055550123", "Ada Lovelace", Dob, "Beth")
             );
 
             Assert.Null(import);

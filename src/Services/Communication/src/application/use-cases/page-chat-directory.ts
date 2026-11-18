@@ -1,5 +1,9 @@
 import { Result, makeError } from '../../domain/shared/result.js';
-import type { CustomerDirectoryPager, DirectoryCursor, StaffDirectoryPager } from '../ports/directory-pager.js';
+import type {
+  CustomerDirectoryPager,
+  DirectoryCursor,
+  StaffDirectoryPager,
+} from '../ports/directory-pager.js';
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
 import type { TenantSettingsProvider } from '../ports/tenant-settings-provider.js';
@@ -29,7 +33,8 @@ export interface StaffDirectoryItem {
 export interface CustomerDirectoryItem {
   readonly customerId: string;
   readonly displayName: string;
-  readonly email: string;
+  /** null = cliente sin email (D-3). */
+  readonly email: string | null;
   readonly isActive: boolean;
   readonly avatarFileId: string | null;
   readonly portalUserId: string | null;
@@ -58,7 +63,12 @@ export function decodeDirectoryCursor(raw: string | null | undefined): Result<Di
   if (!raw) return Result.ok(null);
   try {
     const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as { n?: unknown; i?: unknown };
-    if (typeof parsed.n === 'string' && typeof parsed.i === 'string' && parsed.n.length <= 200 && parsed.i.length <= 64) {
+    if (
+      typeof parsed.n === 'string' &&
+      typeof parsed.i === 'string' &&
+      parsed.n.length <= 200 &&
+      parsed.i.length <= 64
+    ) {
       return Result.ok({ displayName: parsed.n, id: parsed.i });
     }
   } catch {
@@ -96,7 +106,8 @@ export async function pageStaffDirectory(
   ]);
   const page = rows.slice(0, take);
   const last = page.at(-1);
-  const employeeGateOff = input.actor.actorType === 'TenantEmployee' && !settings.employeeToEmployeeChatEnabled;
+  const employeeGateOff =
+    input.actor.actorType === 'TenantEmployee' && !settings.employeeToEmployeeChatEnabled;
   return Result.ok({
     items: page.map((r) => ({
       userId: r.userId,
@@ -105,9 +116,13 @@ export async function pageStaffDirectory(
       isActive: r.isActive,
       actorType: r.actorType,
       avatarFileId: r.avatarFileId,
-      chatBlockedReason: employeeGateOff && r.actorType === 'TenantEmployee' ? 'EmployeeToEmployeeDisabled' : null,
+      chatBlockedReason:
+        employeeGateOff && r.actorType === 'TenantEmployee' ? 'EmployeeToEmployeeDisabled' : null,
     })),
-    nextCursor: rows.length > take && last ? encodeDirectoryCursor({ displayName: last.displayName, id: last.userId }) : null,
+    nextCursor:
+      rows.length > take && last
+        ? encodeDirectoryCursor({ displayName: last.displayName, id: last.userId })
+        : null,
   });
 }
 
@@ -127,7 +142,8 @@ export async function pageCustomerDirectory(
   const take = pageSize(input.limit);
   const settings = await deps.settings.get(input.tenantId);
   const restrict = deps.assignmentVisibilityEnabled || settings.restrictCustomerChatToAssignedPreparer;
-  const assignedToUserId = restrict && !(await seesAllCustomers(input.actor, deps.userPermissions)) ? input.actor.userId : null;
+  const assignedToUserId =
+    restrict && !(await seesAllCustomers(input.actor, deps.userPermissions)) ? input.actor.userId : null;
 
   const rows = await deps.customerDirectoryPager.pageCustomers({
     tenantId: input.tenantId,
@@ -137,7 +153,10 @@ export async function pageCustomerDirectory(
     assignedToUserId,
   });
   const page = rows.slice(0, take);
-  const accounts = page.length > 0 ? await deps.customerPortalAccounts.findActiveByCustomerIds(page.map((r) => r.customerId)) : [];
+  const accounts =
+    page.length > 0
+      ? await deps.customerPortalAccounts.findActiveByCustomerIds(page.map((r) => r.customerId))
+      : [];
   const portalUserOf = new Map(accounts.map((a) => [a.customerId, a.userId]));
   const last = page.at(-1);
   return Result.ok({
@@ -153,6 +172,9 @@ export async function pageCustomerDirectory(
         chatBlockedReason: portalUserId ? null : 'NoPortalAccount',
       };
     }),
-    nextCursor: rows.length > take && last ? encodeDirectoryCursor({ displayName: last.displayName, id: last.customerId }) : null,
+    nextCursor:
+      rows.length > take && last
+        ? encodeDirectoryCursor({ displayName: last.displayName, id: last.customerId })
+        : null,
   });
 }

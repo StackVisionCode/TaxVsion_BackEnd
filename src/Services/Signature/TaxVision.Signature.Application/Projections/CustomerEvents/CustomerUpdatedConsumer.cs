@@ -39,12 +39,14 @@ public static class CustomerUpdatedConsumer
             var existing = await repository.GetByCustomerIdAsync(evt.TenantId, evt.CustomerId, ct);
             if (existing is null)
             {
+                // E-3: la fila que nace tarde (el email llegó después del alta) nace con el estado real.
                 var projection = CustomerEmailProjection.ForNewCustomer(
                     evt.TenantId,
                     evt.CustomerId,
                     normalizedEmail,
                     evt.DisplayName,
-                    evt.OccurredOn
+                    evt.OccurredOn,
+                    isArchived: IsInactive(evt.Status)
                 );
                 await repository.AddAsync(projection, ct);
                 logger.LogInformation(
@@ -64,6 +66,9 @@ public static class CustomerUpdatedConsumer
     private static string ResolveCorrelationId(CustomerUpdatedIntegrationEvent evt) =>
         string.IsNullOrWhiteSpace(evt.CorrelationId) ? evt.EventId.ToString("N") : evt.CorrelationId;
 
-    private static string NormalizeEmail(string email) =>
+    private static bool IsInactive(string? status) =>
+        !string.IsNullOrWhiteSpace(status) && !string.Equals(status, "Active", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeEmail(string? email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
 }

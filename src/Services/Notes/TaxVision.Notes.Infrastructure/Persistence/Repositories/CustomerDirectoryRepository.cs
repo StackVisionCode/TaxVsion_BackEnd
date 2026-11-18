@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Notes.Application.Projections.Abstractions;
@@ -36,34 +37,36 @@ public sealed class CustomerDirectoryRepository(NotesDbContext db) : ICustomerDi
     public async Task AddAsync(CustomerDirectoryEntry entry, CancellationToken ct = default) =>
         await db.CustomerDirectoryEntries.AddAsync(entry, ct);
 
-    // Guardrail del plan (03_Plan_De_Fases.md §4B): NUNCA cargar N entidades ni fetch por id para
-    // el consumer masivo — MERGE set-based, chunked por el caller (~500). Filas nuevas nacen con
-    // DisplayName=NULL (el evento no trae PII) — el job de reconciliación las completa después.
-    public async Task UpsertBulkAsync(
+    // MERGE set-based de un bloque del import (hasta 500 filas, 3 parámetros cada una, bajo el tope de 2100).
+    // Solo actualiza la fila si no tiene un cambio más nuevo.
+    public async Task UpsertImportedAsync(
         Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
+        IReadOnlyList<ImportedDirectoryEntry> entries,
         DateTime observedAtUtc,
         CancellationToken ct = default
     )
     {
-        if (customerIds.Count == 0)
+        if (entries.Count == 0)
             return;
 
-        var ids = customerIds.ToArray();
-        var valuesSql = string.Join(", ", ids.Select((_, i) => $"(@p{i})"));
-
+        var valuesSql = string.Join(", ", entries.Select((_, i) => $"(@c{i}, @n{i}, @s{i})"));
         var parameters = new List<SqlParameter> { new("@tenantId", tenantId), new("@observedAtUtc", observedAtUtc) };
-        parameters.AddRange(ids.Select((id, i) => new SqlParameter($"@p{i}", id)));
+        for (var i = 0; i < entries.Count; i++)
+        {
+            parameters.Add(new SqlParameter($"@c{i}", entries[i].CustomerId));
+            parameters.Add(new SqlParameter($"@n{i}", SqlDbType.NVarChar, 300) { Value = entries[i].DisplayName });
+            parameters.Add(new SqlParameter($"@s{i}", (int)entries[i].Status));
+        }
 
         var sql = $"""
             MERGE INTO CustomerDirectoryEntries WITH (HOLDLOCK) AS target
-            USING (VALUES {valuesSql}) AS source(CustomerId)
+            USING (VALUES {valuesSql}) AS source(CustomerId, DisplayName, Status)
             ON target.TenantId = @tenantId AND target.CustomerId = source.CustomerId
-            WHEN MATCHED THEN
-                UPDATE SET UpdatedAtUtc = @observedAtUtc
+            WHEN MATCHED AND target.UpdatedAtUtc <= @observedAtUtc THEN
+                UPDATE SET DisplayName = source.DisplayName, Status = source.Status, UpdatedAtUtc = @observedAtUtc
             WHEN NOT MATCHED THEN
                 INSERT (Id, TenantId, CustomerId, DisplayName, Status, UpdatedAtUtc)
-                VALUES (NEWID(), @tenantId, source.CustomerId, NULL, 0, @observedAtUtc);
+                VALUES (NEWID(), @tenantId, source.CustomerId, source.DisplayName, source.Status, @observedAtUtc);
             """;
 
         await db.Database.ExecuteSqlRawAsync(sql, parameters.ToArray(), ct);

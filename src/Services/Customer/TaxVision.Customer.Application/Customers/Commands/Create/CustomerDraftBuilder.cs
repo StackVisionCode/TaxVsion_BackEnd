@@ -7,16 +7,12 @@ namespace TaxVision.Customer.Application.Customers.Commands.Create;
 
 /// <summary>Los value objects del cliente, ya validados, armados desde el comando de alta.</summary>
 internal sealed record CustomerDraft(
-    EmailAddress Email,
+    EmailAddress? Email,
     PhoneNumber? Phone,
     PersonalName? PersonalName,
     BusinessIdentity? BusinessIdentity
 )
 {
-    /// <summary>Lo que se compara contra el nombre guardado: el aggregate lo arma igual al registrar.</summary>
-    public string? DisplayNameFor(CustomerKind kind) =>
-        kind == CustomerKind.Business ? BusinessIdentity?.LegalName : PersonalName?.DisplayName;
-
     public Result<CustomerEntity> Register(CreateCustomerCommand cmd) =>
         CustomerEntity.Register(
             cmd.TenantId,
@@ -37,7 +33,6 @@ internal sealed record CustomerDraft(
     {
         var results = new List<Result>
         {
-            existing.ChangePrimaryEmail(Email, cmd.CreatedByUserId),
             existing.ChangePrimaryPhone(Phone, cmd.CreatedByUserId),
             existing.ChangeLanguage(cmd.Language, cmd.CreatedByUserId),
             existing.ChangeContactPolicy(cmd.EmailEnabled, cmd.SmsEnabled, cmd.CreatedByUserId),
@@ -53,6 +48,10 @@ internal sealed record CustomerDraft(
         if (cmd.DateOfBirth.HasValue)
             results.Add(existing.ChangeDateOfBirth(cmd.DateOfBirth, cmd.CreatedByUserId));
 
+        // E-1: el email no se quita; sin email se conserva el que tenía.
+        if (Email is not null)
+            results.Insert(0, existing.ChangePrimaryEmail(Email, cmd.CreatedByUserId));
+
         foreach (var r in results)
             if (r.IsFailure)
                 return r;
@@ -66,7 +65,8 @@ internal static class CustomerDraftBuilder
 {
     public static Result<CustomerDraft> Build(CreateCustomerCommand cmd)
     {
-        var emailResult = EmailAddress.Create(cmd.PrimaryEmail);
+        // D-3: el email es opcional; la regla de contacto mínimo la decide el agregado al registrar.
+        var emailResult = BuildEmail(cmd.PrimaryEmail);
         if (emailResult.IsFailure)
             return Result.Failure<CustomerDraft>(emailResult.Error);
 
@@ -85,6 +85,17 @@ internal static class CustomerDraftBuilder
         return Result.Success(
             new CustomerDraft(emailResult.Value, phoneResult.Value, nameResult.Value, businessResult.Value)
         );
+    }
+
+    private static Result<EmailAddress?> BuildEmail(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return Result.Success<EmailAddress?>(null);
+
+        var emailResult = EmailAddress.Create(raw);
+        return emailResult.IsFailure
+            ? Result.Failure<EmailAddress?>(emailResult.Error)
+            : Result.Success<EmailAddress?>(emailResult.Value);
     }
 
     private static Result<PhoneNumber?> BuildPhone(string? raw)

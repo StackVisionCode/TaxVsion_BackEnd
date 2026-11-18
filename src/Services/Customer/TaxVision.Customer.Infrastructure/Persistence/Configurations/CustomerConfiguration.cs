@@ -94,6 +94,8 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
                 e.HasIndex(p => p.NormalizedValue).HasDatabaseName("IX_Customers_PrimaryEmailNormalized");
             }
         );
+        // D-3: opcional. Las columnas quedan nulas; Value/NormalizedValue requeridos marcan que el email existe.
+        b.Navigation(c => c.PrimaryEmail).IsRequired(false);
 
         b.OwnsOne(
             c => c.PrimaryPhone,

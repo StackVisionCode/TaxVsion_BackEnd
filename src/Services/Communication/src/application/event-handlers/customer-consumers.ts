@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { pushAndEmitNotification } from '../use-cases/push-notification.js';
-import type { NotificationRepository } from '../ports/notification-repository.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { CustomerDirectoryRepository } from '../ports/customer-directory-repository.js';
@@ -34,21 +32,17 @@ function emitCustomerChanged(
 }
 
 /**
- * Cierra TODO explicito en src/Services/Customer/DependencyInjection.cs:46 y
- * README §25.15: bulk import completado -> notificacion push al usuario que lo
- * lanzo. Ademas (Fase Backend 10) mantiene al dia CustomerDirectoryEntry, la
- * proyeccion que usa create-meeting-invitations.ts para autocompletar
- * customers por nombre/email sin round-trip HTTP a Customer.
+ * Mantiene al dia CustomerDirectoryEntry, la proyeccion que usa
+ * create-meeting-invitations.ts para autocompletar customers por nombre/email sin
+ * round-trip HTTP a Customer. El aviso de import terminado o fallido lo crea Notification.
  */
 export function bindCustomerConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
   deps: {
-    notifications: NotificationRepository;
     emitter: RealtimeEmitter;
     customerDirectory: CustomerDirectoryRepository;
     customerPreparerAssignments: CustomerPreparerAssignmentRepository;
     customerAssignments: CustomerAssignmentProjectionRepository;
-    inAppSource: 'Communication' | 'Notification';
     /**
      * F5 avatares — para anunciar `user.profile.changed` del usuario de portal enlazado cuando cambia la
      * foto del cliente. Opcionales: sin ellos solo se proyecta (y sale `customer.changed` como siempre).
@@ -77,79 +71,15 @@ export function bindCustomerConsumers(
     );
   }
 
-  register('customer.bulk_imported.v1', async (env) => {
-    if (deps.inAppSource === 'Notification') return;
-    const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
-    const totalRows = getNumber(env.payload, 'totalRows') ?? getNumber(env.payload, 'TotalRows') ?? 0;
-    const successCount =
-      getNumber(env.payload, 'successCount') ?? getNumber(env.payload, 'SuccessCount') ?? 0;
-    const failedCount = getNumber(env.payload, 'failedCount') ?? getNumber(env.payload, 'FailedCount') ?? 0;
-    const importJobId = getString(env.payload, 'importJobId') ?? getString(env.payload, 'ImportJobId') ?? '';
-    if (!createdBy) return;
-
-    await pushAndEmitNotification(
-      env,
-      {
-        userId: createdBy,
-        kind: 'customer.bulk_imported',
-        priority: failedCount > 0 ? 'High' : 'Normal',
-        title: 'Client import completed',
-        body: `${successCount}/${totalRows} clients imported${failedCount > 0 ? `, ${failedCount} with errors` : ''}.`,
-        metadata: { importJobId, totalRows, successCount, failedCount },
-        category: 'Clients',
-        actorUserId: createdBy,
-        // El evento se auto-dirige al usuario que lanzó el import; actúa como "tú lo hiciste".
-        // ActorType=TenantEmployee es el default razonable (los imports son de staff del tenant);
-        // si fuera un admin, el front lo diferencia por el matching actorUserId == currentUserId.
-        actorType: 'TenantEmployee',
-        resourceType: 'import_job',
-        resourceId: importJobId || null,
-        action: 'review',
-        occurredAtUtc: envOccurredAt(env),
-      },
-      deps,
-    );
-  });
-
-  // Fase 1B — evento hermano de customer.bulk_imported.v1: cubre el camino de
-  // Failed (archivo vacio, excede filas, virus, bloqueado por politica, crash
-  // del worker), que antes no publicaba nada — el empleado nunca se enteraba.
-  register('customer.bulk_import_failed.v1', async (env) => {
-    if (deps.inAppSource === 'Notification') return;
-    const createdBy = getString(env.payload, 'createdByUserId') ?? getString(env.payload, 'CreatedByUserId');
-    const importJobId = getString(env.payload, 'importJobId') ?? getString(env.payload, 'ImportJobId') ?? '';
-    const reason = getString(env.payload, 'reason') ?? getString(env.payload, 'Reason') ?? '';
-    if (!createdBy) return;
-
-    await pushAndEmitNotification(
-      env,
-      {
-        userId: createdBy,
-        kind: 'customer.import_failed',
-        priority: 'High',
-        title: 'Client import failed',
-        body: reason ? `The import could not complete: ${reason}` : 'The import could not complete.',
-        metadata: { importJobId, reason },
-        category: 'Clients',
-        actorUserId: createdBy,
-        actorType: 'TenantEmployee',
-        resourceType: 'import_job',
-        resourceId: importJobId || null,
-        action: 'review',
-        occurredAtUtc: envOccurredAt(env),
-      },
-      deps,
-    );
-  });
-
   // Fase Backend 10 — CustomerDirectoryEntry. `Kind` y los otros atributos del
   // cliente no se proyectan aqui: solo lo que un autocomplete de invitacion
   // necesita (nombre + email), igual criterio que UserDirectoryEntry para empleados.
+  // F-E: el email es opcional (D-3); sin email el cliente igual entra, por su nombre.
   register('customer.created.v1', async (env) => {
     const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
     const displayName = getString(env.payload, 'displayName') ?? getString(env.payload, 'DisplayName');
-    const email = getString(env.payload, 'primaryEmail') ?? getString(env.payload, 'PrimaryEmail');
-    if (!customerId || !displayName || !email) return;
+    const email = getString(env.payload, 'primaryEmail') ?? getString(env.payload, 'PrimaryEmail') ?? null;
+    if (!customerId || !displayName) return;
     const avatarFileId = readOptionalGuid(env.payload, 'avatarFileId', 'AvatarFileId');
     await deps.customerDirectory.upsert({
       customerId,
@@ -158,6 +88,7 @@ export function bindCustomerConsumers(
       email,
       isActive: true,
       ...(avatarFileId !== undefined ? { avatarFileId } : {}),
+      occurredAtUtc: envOccurredAt(env),
     });
     emitCustomerChanged(env, deps.emitter, customerId, 'created');
   });
@@ -165,22 +96,55 @@ export function bindCustomerConsumers(
   register('customer.updated.v1', async (env) => {
     const customerId = getString(env.payload, 'customerId') ?? getString(env.payload, 'CustomerId');
     const displayName = getString(env.payload, 'displayName') ?? getString(env.payload, 'DisplayName');
-    const email = getString(env.payload, 'primaryEmail') ?? getString(env.payload, 'PrimaryEmail');
-    if (!customerId || !displayName || !email) return;
+    const email = getString(env.payload, 'primaryEmail') ?? getString(env.payload, 'PrimaryEmail') ?? null;
+    if (!customerId || !displayName) return;
     // Clave ausente = publicador viejo (antes de F3): no tocar la foto guardada.
     const avatarFileId = readOptionalGuid(env.payload, 'avatarFileId', 'AvatarFileId');
+    // E-3: el estado del aviso deja bien la fila que se crea tarde; sin estado (mensaje viejo) no se toca.
+    const status = getString(env.payload, 'status') ?? getString(env.payload, 'Status');
     const existing = await deps.customerDirectory.findByCustomerId(env.tenantId, customerId);
     await deps.customerDirectory.upsert({
       customerId,
       tenantId: env.tenantId,
       displayName,
       email,
-      isActive: existing?.isActive ?? true,
+      ...(status !== undefined ? { isActive: status === 'Active' } : {}),
       ...(avatarFileId !== undefined ? { avatarFileId } : {}),
+      occurredAtUtc: envOccurredAt(env),
     });
     emitCustomerChanged(env, deps.emitter, customerId, 'updated');
     if (avatarFileId !== undefined && avatarFileId !== (existing?.avatarFileId ?? null)) {
       await announcePortalAvatarChanged(env, customerId, displayName, avatarFileId);
+    }
+  });
+
+  // Bloque guardado del import: la ficha de cada cliente creado o actualizado, sin esperar la reconciliacion.
+  register('customer.import_chunk_committed.v1', async (env) => {
+    if (!env.tenantId) return;
+    const cards = env.payload['customers'] ?? env.payload['Customers'];
+    if (!Array.isArray(cards)) return;
+    for (const card of cards) {
+      if (typeof card !== 'object' || card === null) continue;
+      const fields = card as Record<string, unknown>;
+      const customerId = getString(fields, 'customerId') ?? getString(fields, 'CustomerId');
+      const displayName = getString(fields, 'displayName') ?? getString(fields, 'DisplayName');
+      // Sin email también se proyecta, igual que el alta (D-3).
+      const email = getString(fields, 'primaryEmail') ?? getString(fields, 'PrimaryEmail') ?? null;
+      if (!customerId || !displayName) continue;
+      const status = getString(fields, 'status') ?? getString(fields, 'Status') ?? 'Active';
+      const avatarFileId = readOptionalGuid(fields, 'avatarFileId', 'AvatarFileId');
+      await deps.customerDirectory.upsert({
+        customerId,
+        tenantId: env.tenantId,
+        displayName,
+        email,
+        isActive: status === 'Active',
+        ...(avatarFileId !== undefined ? { avatarFileId } : {}),
+        occurredAtUtc: envOccurredAt(env),
+      });
+      // Solo los existentes estan en el cache del CRM: los nuevos no generan una rafaga de avisos.
+      const isNew = fields['isNew'] ?? fields['IsNew'];
+      if (isNew === false) emitCustomerChanged(env, deps.emitter, customerId, 'updated');
     }
   });
 
@@ -270,16 +234,6 @@ function getStringArray(source: Record<string, unknown>, key: string): string[] 
 function getString(source: Record<string, unknown>, key: string): string | undefined {
   const value = source[key];
   return typeof value === 'string' ? value : undefined;
-}
-
-function getNumber(source: Record<string, unknown>, key: string): number | undefined {
-  const value = source[key];
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const parsed = Number.parseInt(value, 10);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return undefined;
 }
 
 /**

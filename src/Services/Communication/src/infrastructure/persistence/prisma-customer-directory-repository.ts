@@ -4,40 +4,90 @@ import type {
   CustomerDirectoryRepository,
   CustomerDirectoryEntrySnapshot,
 } from '../../application/ports/customer-directory-repository.js';
-import { newerStatus, stamp } from './status-order.js';
+import { newerProfile, newerStatus, stamp } from './status-order.js';
 
-export class PrismaCustomerDirectoryRepository implements CustomerDirectoryRepository, CustomerDirectoryPager {
+export class PrismaCustomerDirectoryRepository
+  implements CustomerDirectoryRepository, CustomerDirectoryPager
+{
   constructor(private readonly prisma: PrismaClient) {}
 
   async upsert(snapshot: {
     customerId: string;
     tenantId: string;
     displayName: string;
-    email: string;
-    isActive: boolean;
+    email: string | null;
+    isActive?: boolean;
     avatarFileId?: string | null;
+    occurredAtUtc?: Date;
   }): Promise<void> {
-    await this.prisma.customerDirectoryEntry.upsert({
-      where: { CustomerId: snapshot.customerId },
-      create: {
-        CustomerId: snapshot.customerId,
-        TenantId: snapshot.tenantId,
-        DisplayName: snapshot.displayName,
-        Email: snapshot.email,
-        IsActive: snapshot.isActive,
-        AvatarFileId: snapshot.avatarFileId ?? null,
-      },
-      update: {
-        TenantId: snapshot.tenantId,
-        DisplayName: snapshot.displayName,
-        Email: snapshot.email,
-        IsActive: snapshot.isActive,
-        ...(snapshot.avatarFileId !== undefined ? { AvatarFileId: snapshot.avatarFileId } : {}),
-      },
-    });
+    const at = snapshot.occurredAtUtc;
+    // Prisma no admite una condición en `upsert`: se actualiza solo si el aviso es más nuevo, y si no hay fila se crea.
+    const updated = await this.updateProfile(snapshot);
+    if (updated === 0 && !(await this.exists(snapshot.customerId))) {
+      try {
+        await this.prisma.customerDirectoryEntry.create({
+          data: {
+            CustomerId: snapshot.customerId,
+            TenantId: snapshot.tenantId,
+            DisplayName: snapshot.displayName,
+            Email: snapshot.email,
+            IsActive: snapshot.isActive ?? true,
+            AvatarFileId: snapshot.avatarFileId ?? null,
+            ProfileChangedAtUtc: at ?? null,
+            StatusChangedAtUtc: snapshot.isActive !== undefined ? (at ?? null) : null,
+          },
+        });
+        return;
+      } catch (err) {
+        // Otro aviso la creó al mismo tiempo: se aplica como actualización.
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') throw err;
+        await this.updateProfile(snapshot);
+      }
+    }
+    // El estado sigue el orden de los avisos de estado: un cambio viejo no reactiva a un cliente desactivado.
+    if (snapshot.isActive !== undefined) {
+      await this.prisma.customerDirectoryEntry.updateMany({
+        where: { CustomerId: snapshot.customerId, ...newerStatus(at) },
+        data: { IsActive: snapshot.isActive, ...stamp(at) },
+      });
+    }
   }
 
-  async findByCustomerId(tenantId: string, customerId: string): Promise<CustomerDirectoryEntrySnapshot | null> {
+  private async updateProfile(snapshot: {
+    customerId: string;
+    tenantId: string;
+    displayName: string;
+    email: string | null;
+    avatarFileId?: string | null;
+    occurredAtUtc?: Date;
+  }): Promise<number> {
+    const at = snapshot.occurredAtUtc;
+    const result = await this.prisma.customerDirectoryEntry.updateMany({
+      where: { CustomerId: snapshot.customerId, ...newerProfile(at) },
+      data: {
+        TenantId: snapshot.tenantId,
+        DisplayName: snapshot.displayName,
+        // E-1: el email no se quita; un aviso sin email conserva el conocido.
+        ...(snapshot.email !== null ? { Email: snapshot.email } : {}),
+        ...(snapshot.avatarFileId !== undefined ? { AvatarFileId: snapshot.avatarFileId } : {}),
+        ...(at ? { ProfileChangedAtUtc: at } : {}),
+      },
+    });
+    return result.count;
+  }
+
+  private async exists(customerId: string): Promise<boolean> {
+    const row = await this.prisma.customerDirectoryEntry.findUnique({
+      where: { CustomerId: customerId },
+      select: { CustomerId: true },
+    });
+    return row !== null;
+  }
+
+  async findByCustomerId(
+    tenantId: string,
+    customerId: string,
+  ): Promise<CustomerDirectoryEntrySnapshot | null> {
     const row = await this.prisma.customerDirectoryEntry.findFirst({
       where: { CustomerId: customerId, TenantId: tenantId },
     });
@@ -104,7 +154,10 @@ export class PrismaCustomerDirectoryRepository implements CustomerDirectoryRepos
     after: DirectoryCursor | null;
     assignedToUserId: string | null;
   }): Promise<CustomerDirectoryEntrySnapshot[]> {
-    const conditions: Prisma.Sql[] = [Prisma.sql`d.[TenantId] = ${input.tenantId}`, Prisma.sql`d.[IsActive] = 1`];
+    const conditions: Prisma.Sql[] = [
+      Prisma.sql`d.[TenantId] = ${input.tenantId}`,
+      Prisma.sql`d.[IsActive] = 1`,
+    ];
     if (input.query) {
       const like = `%${escapeLike(input.query)}%`;
       conditions.push(Prisma.sql`(d.[DisplayName] LIKE ${like} OR d.[Email] LIKE ${like})`);

@@ -29,12 +29,36 @@ internal sealed class InMemoryDirectory : ICustomerDirectoryRepository
         return Task.CompletedTask;
     }
 
-    public Task UpsertBulkAsync(
+    public List<IReadOnlyList<ImportedDirectoryEntry>> ImportedUpserts { get; } = [];
+
+    // Misma regla que el MERGE: crea la que falta y solo actualiza si no hay un cambio más nuevo.
+    public Task UpsertImportedAsync(
         Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
+        IReadOnlyList<ImportedDirectoryEntry> entries,
         DateTime observedAtUtc,
         CancellationToken ct = default
-    ) => throw new NotSupportedException();
+    )
+    {
+        ImportedUpserts.Add(entries);
+        foreach (var imported in entries)
+        {
+            var existing = Entries.Find(e => e.TenantId == tenantId && e.CustomerId == imported.CustomerId);
+            if (existing is not null)
+                existing.ApplyIfNewer(imported.DisplayName, imported.Status, observedAtUtc);
+            else
+                Entries.Add(
+                    CustomerDirectoryEntry.Create(
+                        tenantId,
+                        imported.CustomerId,
+                        imported.DisplayName,
+                        imported.Status,
+                        observedAtUtc
+                    )
+                );
+        }
+
+        return Task.CompletedTask;
+    }
 
     public Task<IReadOnlyList<Guid>> ListTenantIdsWithMissingNamesAsync(int limit, CancellationToken ct = default) =>
         throw new NotSupportedException();

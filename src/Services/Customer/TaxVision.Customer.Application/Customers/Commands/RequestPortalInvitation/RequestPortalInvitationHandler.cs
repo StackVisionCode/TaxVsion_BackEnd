@@ -28,6 +28,15 @@ public static class RequestPortalInvitationHandler
                 new Error("Customer.Archived", "Cannot request portal access for an archived customer.")
             );
 
+        // D-3: la cuenta de portal entra con email; sin email no hay a quién invitar.
+        if (customer.PrimaryEmail is null)
+            return Result.Failure<RequestPortalInvitationResponse>(
+                new Error(
+                    "Customer.PortalRequiresEmail",
+                    "Add an email to this client before inviting them to the portal."
+                )
+            );
+
         var outcome = await portalAccess.IssueInvitationAsync(
             customer.TenantId,
             customer.Id,

@@ -1,17 +1,35 @@
+using TaxVision.Customer.Application.Customers;
 using TaxVision.Customer.Application.Imports.Dtos;
+using TaxVision.Customer.Domain.Customers.ValueObjects;
 
 namespace TaxVision.Customer.Application.Abstractions;
 
 /// <summary>
 /// Los datos de un cliente que se va a crear o editar, para preguntar si ya existe.
-/// Sin identificador fiscal: el alta no lo pide, se pone despues.
+/// Sin identificador fiscal: el alta no lo pide, se pone despues. <c>DisplayName</c>: persona = nombre y apellido
+/// (el segundo nombre va en <c>MiddleName</c>); empresa = razón social.
 /// </summary>
 public sealed record CustomerDuplicateCandidate(
-    string Email,
+    string? Email,
     string? PhoneE164,
     string? DisplayName,
-    DateOnly? DateOfBirth
-);
+    DateOnly? DateOfBirth,
+    string? MiddleName = null
+)
+{
+    /// <summary>Persona (con <paramref name="person"/>) o empresa (con <paramref name="legalName"/>).</summary>
+    public static CustomerDuplicateCandidate For(
+        string? email,
+        string? phoneE164,
+        PersonalName? person,
+        string? legalName,
+        DateOnly? dateOfBirth
+    )
+    {
+        var (name, middle) = CustomerDuplicateRules.NameOf(person, legalName);
+        return new(email, phoneE164, name, dateOfBirth, middle);
+    }
+}
 
 /// <summary>
 /// Detecta duplicados en batch para un chunk del archivo de import.

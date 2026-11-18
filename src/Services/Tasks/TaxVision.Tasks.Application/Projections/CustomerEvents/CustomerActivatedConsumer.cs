@@ -40,7 +40,7 @@ public static class CustomerActivatedConsumer
                     $"tenant {evt.TenantId}, customer {evt.CustomerId}"
                 );
 
-            existing.ApplyIfNewer(null, CustomerDirectoryStatus.Active, evt.ActivatedAtUtc);
+            existing.ApplyStatusIfNewer(CustomerDirectoryStatus.Active, evt.ActivatedAtUtc);
             await unitOfWork.SaveChangesAsync(ct);
             logger.LogInformation(
                 "CustomerDirectoryEntry activated for tenant {TenantId}, customer {CustomerId}.",

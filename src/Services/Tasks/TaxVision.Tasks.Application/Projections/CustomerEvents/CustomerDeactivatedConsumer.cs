@@ -40,7 +40,7 @@ public static class CustomerDeactivatedConsumer
                     $"tenant {evt.TenantId}, customer {evt.CustomerId}"
                 );
 
-            existing.ApplyIfNewer(null, CustomerDirectoryStatus.Inactive, evt.DeactivatedAtUtc);
+            existing.ApplyStatusIfNewer(CustomerDirectoryStatus.Inactive, evt.DeactivatedAtUtc);
             await unitOfWork.SaveChangesAsync(ct);
             logger.LogInformation(
                 "CustomerDirectoryEntry deactivated for tenant {TenantId}, customer {CustomerId}.",

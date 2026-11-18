@@ -23,6 +23,7 @@ public sealed class CustomerRelationFiscalProfile : TenantEntity
     [UserReference(UserReferenceKind.Provenance)]
     public Guid UpdatedByUserId { get; private set; }
 
+    // Nace desde su relación: si la relación aún no se guardó, EF fija la FK por la navegación.
     internal static Result<CustomerRelationFiscalProfile> Create(
         Guid tenantId,
         Guid customerRelationId,
@@ -35,10 +36,6 @@ public sealed class CustomerRelationFiscalProfile : TenantEntity
         short taxIdentifierKeyVersion = 1
     )
     {
-        if (customerRelationId == Guid.Empty)
-            return Result.Failure<CustomerRelationFiscalProfile>(
-                new Error("RelationFiscalProfile.Relation", "CustomerRelationId is required.")
-            );
         if (taxIdentifierCipher is null || taxIdentifierCipher.Length == 0)
             return Result.Failure<CustomerRelationFiscalProfile>(
                 new Error("RelationFiscalProfile.TaxId", "Tax identifier cipher is required.")

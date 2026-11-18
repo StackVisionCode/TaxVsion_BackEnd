@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using TaxVision.Growth.Infrastructure.Security;
+using TaxVision.Referrals.Application.Codes.AutoIssueTenantReferralCode;
 
 namespace TaxVision.Growth.Tests.Security;
 
@@ -47,6 +48,29 @@ public sealed class ReferralCodeTokenGeneratorFormatTests
             .ToHashSet();
 
         Assert.Equal(200, codes.Count);
+    }
+
+    [Fact]
+    public void The_automatic_code_of_a_new_office_is_short()
+    {
+        var generator = CreateGenerator();
+
+        var code = generator
+            .Generate(Program, Owner, $"{AutoIssueTenantReferralCodeCommand.KeyPrefix}{Owner:N}")
+            .Value.Reveal();
+
+        Assert.Matches("^TVR-[0-9A-HJKMNP-TV-Z]{10}$", code);
+    }
+
+    // Los automáticos de antes guardan "referral-auto:{oficina}": su texto no cambia y sus links siguen sirviendo.
+    [Fact]
+    public void An_automatic_code_issued_before_keeps_the_long_format()
+    {
+        var generator = CreateGenerator();
+
+        var code = generator.Generate(Program, Owner, $"referral-auto:{Owner:N}").Value.Reveal();
+
+        Assert.Matches("^TVR-[0-9A-F]{32}$", code);
     }
 
     [Fact]

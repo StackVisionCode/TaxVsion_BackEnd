@@ -162,7 +162,7 @@ internal sealed class NotificationCustomerClient(
 
     private sealed record TenantPageDto(IReadOnlyList<TenantItemDto> Items, int Page, int Size, int TotalCount);
 
-    private sealed record TenantItemDto(Guid Id, string Status, string DisplayName, string PrimaryEmail);
+    private sealed record TenantItemDto(Guid Id, string Status, string DisplayName, string? PrimaryEmail);
 
     private sealed record PageDto(IReadOnlyList<ItemDto> Items, int Page, int Size, int TotalCount);
 
@@ -170,7 +170,7 @@ internal sealed class NotificationCustomerClient(
         Guid TenantId,
         Guid CustomerId,
         string DisplayName,
-        string PrimaryEmail,
+        string? PrimaryEmail,
         string Status,
         string? Language = null,
         bool? EmailEnabled = null,

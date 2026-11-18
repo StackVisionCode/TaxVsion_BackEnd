@@ -47,7 +47,7 @@ internal sealed class InMemoryCustomerDirectoryRepository(params CustomerDirecto
         e => (e.TenantId, e.CustomerId)
     );
 
-    public List<(Guid TenantId, IReadOnlyCollection<Guid> CustomerIds)> BulkUpserts { get; } = [];
+    public List<IReadOnlyList<ImportedDirectoryEntry>> ImportedUpserts { get; } = [];
 
     public IReadOnlyCollection<CustomerDirectoryEntry> Entries => _entries.Values;
 
@@ -69,25 +69,33 @@ internal sealed class InMemoryCustomerDirectoryRepository(params CustomerDirecto
         return Task.CompletedTask;
     }
 
-    public Task UpsertBulkAsync(
+    // Misma regla que el MERGE: crea la que falta y solo actualiza si no hay un cambio más nuevo.
+    public Task UpsertImportedAsync(
         Guid tenantId,
-        IReadOnlyCollection<Guid> customerIds,
+        IReadOnlyList<ImportedDirectoryEntry> entries,
         DateTime observedAtUtc,
         CancellationToken ct = default
     )
     {
-        BulkUpserts.Add((tenantId, customerIds));
-        foreach (var customerId in customerIds)
+        ImportedUpserts.Add(entries);
+        foreach (var imported in entries)
         {
-            if (_entries.ContainsKey((tenantId, customerId)))
-                continue;
-            _entries[(tenantId, customerId)] = CustomerDirectoryEntry.Create(
-                tenantId,
-                customerId,
-                null,
-                CustomerDirectoryStatus.Active,
-                observedAtUtc
-            );
+            if (_entries.TryGetValue((tenantId, imported.CustomerId), out var existing))
+                existing.ApplyIfNewer(
+                    imported.DisplayName,
+                    imported.Status,
+                    observedAtUtc,
+                    imported.PrimaryEmailNormalized
+                );
+            else
+                _entries[(tenantId, imported.CustomerId)] = CustomerDirectoryEntry.Create(
+                    tenantId,
+                    imported.CustomerId,
+                    imported.DisplayName,
+                    imported.Status,
+                    observedAtUtc,
+                    imported.PrimaryEmailNormalized
+                );
         }
 
         return Task.CompletedTask;

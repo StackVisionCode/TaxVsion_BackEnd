@@ -3,6 +3,7 @@ using System.Text;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Referrals.Application.Abstractions;
+using TaxVision.Referrals.Application.Codes.AutoIssueTenantReferralCode;
 
 namespace TaxVision.Growth.Infrastructure.Security;
 
@@ -71,6 +72,11 @@ public sealed class HmacSha256ReferralCodeTokenGenerator : IReferralCodeTokenGen
         }
     }
 
+    // Cortos: los generados desde el CRM y el automático de las oficinas nuevas.
+    private static bool IsShortFormatKey(string key) =>
+        key.StartsWith(ShortFormatKeyPrefix, StringComparison.Ordinal)
+        || key.StartsWith(AutoIssueTenantReferralCodeCommand.KeyPrefix, StringComparison.Ordinal);
+
     public Result<ReferralCodeToken> Generate(Guid programId, Guid ownerId, string idempotencyKey)
     {
         if (programId == Guid.Empty || ownerId == Guid.Empty)
@@ -101,7 +107,7 @@ public sealed class HmacSha256ReferralCodeTokenGenerator : IReferralCodeTokenGen
             // (claves "referral-code:v1:…", Postman, etc.) se derivan en el formato LARGO original para que su hash
             // guardado siga coincidiendo con el texto que se muestra. El formato lo decide solo la clave: nada
             // se persiste aparte.
-            var clearText = normalizedKey.StartsWith(ShortFormatKeyPrefix, StringComparison.Ordinal)
+            var clearText = IsShortFormatKey(normalizedKey)
                 ? $"TVR-{EncodeCrockford(digest, ShortCodeLength)}"
                 : $"TVR-{Convert.ToHexString(digest.AsSpan(0, 16))}";
             return ReferralCodeToken.Create(clearText);

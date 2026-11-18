@@ -10,9 +10,9 @@ namespace TaxVision.Notification.Application.Directory.Consumers;
 public sealed record SyncImportedCustomerEmailsCommand(Guid TenantId, IReadOnlyList<Guid> CustomerIds, int Page = 1);
 
 /// <summary>
-/// NOT-21: <c>CustomersBulkImported</c> no trae correos, así que se piden a Customer, una página por transacción y sin
-/// transacción abierta durante la llamada. Sigue hasta encontrarlos a todos o agotar el tenant; lo que no aparezca
-/// lo completa la reconciliación.
+/// NOT-21: pedía a Customer los correos de un import, una página por transacción. Ya nadie emite este comando: los
+/// correos llegan en <c>CustomersImportChunkCommitted</c>. Queda solo para drenar los mensajes durables que estaban
+/// en vuelo al desplegar.
 /// </summary>
 public static class SyncImportedCustomerEmailsHandler
 {
@@ -40,6 +40,7 @@ public static class SyncImportedCustomerEmailsHandler
                 contact.PrimaryEmail,
                 contact.DisplayName,
                 contact.IsActive,
+                occurredOnUtc: null,
                 ct
             );
             pending.Remove(contact.CustomerId);

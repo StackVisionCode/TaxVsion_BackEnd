@@ -106,10 +106,6 @@ const CLR_TYPE_TO_EVENT_TYPE: Readonly<Record<string, string>> = {
   'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsMessageSuppressedIntegrationEvent':
     'sms.message.suppressed.v1',
   // Customer
-  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomersBulkImportedIntegrationEvent':
-    'customer.bulk_imported.v1',
-  'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerImportFailedIntegrationEvent':
-    'customer.bulk_import_failed.v1',
   // Fase Backend 10 — alimentan CustomerDirectoryEntry (ver customer-consumers.ts).
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerCreatedIntegrationEvent': 'customer.created.v1',
   'BuildingBlocks.Messaging.CustomerIntegrationEvents.CustomerUpdatedIntegrationEvent': 'customer.updated.v1',
@@ -347,7 +343,10 @@ export class ConsumerRuntime {
       // Eco propio del fanout compartido (p. ej. el pedido de transcripción para el worker): no es un
       // handler que falte, se descarta sin aviso. Lo de otros servicios sin handler sigue avisando.
       if (config.serviceName && msg.properties.appId === config.serviceName) {
-        logger.debug({ eventType: envelope.eventType }, 'consumer: own event echoed by the fanout; ack to skip');
+        logger.debug(
+          { eventType: envelope.eventType },
+          'consumer: own event echoed by the fanout; ack to skip',
+        );
         rabbit.channel.ack(msg);
         return;
       }
@@ -418,7 +417,10 @@ export class ConsumerRuntime {
     }
   }
 
-  private async runProjections(envelope: IncomingEnvelope, projections: readonly ConsumerHandler[]): Promise<void> {
+  private async runProjections(
+    envelope: IncomingEnvelope,
+    projections: readonly ConsumerHandler[],
+  ): Promise<void> {
     for (const projection of projections) {
       try {
         await projection(envelope);

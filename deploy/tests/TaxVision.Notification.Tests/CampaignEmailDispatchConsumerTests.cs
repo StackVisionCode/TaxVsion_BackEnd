@@ -136,12 +136,6 @@ public sealed class CampaignEmailDispatchConsumerTests
             CancellationToken ct = default
         ) => Task.FromResult(rows.FirstOrDefault(r => r.TenantId == tenantId && r.CustomerId == customerId));
 
-        public Task<IReadOnlyCollection<Guid>> GetExistingCustomerIdsAsync(
-            Guid tenantId,
-            IReadOnlyCollection<Guid> customerIds,
-            CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyCollection<Guid>>([]);
-
         public Task AddAsync(CustomerContactPolicyProjection row, CancellationToken ct = default) => Task.CompletedTask;
     }
 }

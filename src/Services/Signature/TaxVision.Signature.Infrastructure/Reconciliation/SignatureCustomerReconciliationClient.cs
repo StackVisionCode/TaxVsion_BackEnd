@@ -86,7 +86,7 @@ internal sealed class SignatureCustomerReconciliationClient(
         Guid TenantId,
         Guid CustomerId,
         string DisplayName,
-        string PrimaryEmail,
+        string? PrimaryEmail,
         string Status
     );
 }

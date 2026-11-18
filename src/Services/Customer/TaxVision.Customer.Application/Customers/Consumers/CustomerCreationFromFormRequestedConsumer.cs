@@ -227,19 +227,20 @@ public static class CustomerCreationFromFormRequestedConsumer
     )
     {
         var phone = string.IsNullOrWhiteSpace(draft.PrimaryPhone) ? null : PhoneNumber.Create(draft.PrimaryPhone);
-        var displayName = draft.Kind == CustomerKind.Business ? BusinessDisplayName(draft) : PersonDisplayName(draft);
-        if (displayName is null || phone is { IsFailure: true })
+        var person = draft.Kind == CustomerKind.Business ? null : PersonOf(draft);
+        var legalName = draft.Kind == CustomerKind.Business ? BusinessDisplayName(draft) : null;
+        if ((person is null && legalName is null) || phone is { IsFailure: true })
             return Task.FromResult<DuplicateMatch?>(null);
 
         return context.Duplicates.FindDuplicateAsync(
             context.Command.TenantId,
-            new CustomerDuplicateCandidate(email.Value, phone?.Value.E164Value, displayName, draft.DateOfBirth),
+            CustomerDuplicateCandidate.For(email.Value, phone?.Value.E164Value, person, legalName, draft.DateOfBirth),
             excludeCustomerId: null,
             ct
         );
     }
 
-    private static string? PersonDisplayName(CustomerFormDraft draft)
+    private static PersonalName? PersonOf(CustomerFormDraft draft)
     {
         var name = PersonalName.Create(
             draft.FirstName ?? string.Empty,
@@ -248,7 +249,7 @@ public static class CustomerCreationFromFormRequestedConsumer
             draft.Prefix,
             draft.Suffix
         );
-        return name.IsSuccess ? name.Value.DisplayName : null;
+        return name.IsSuccess ? name.Value : null;
     }
 
     private static string? BusinessDisplayName(CustomerFormDraft draft)

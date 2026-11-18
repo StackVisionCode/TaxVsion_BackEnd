@@ -103,12 +103,36 @@ public sealed class ImportChunkDuplicateTrackerTests
             }
         );
 
+        // Nombre y apellido por un lado, segundo nombre por otro.
         Assert.Equal(
-            new CustomerDuplicateRules.Keys("ada@example.test", "+13055550123", "ada maria lovelace", Dob),
+            new CustomerDuplicateRules.Keys("ada@example.test", "+13055550123", "ada lovelace", Dob, "maria"),
             keys
         );
     }
 
-    private static CustomerDuplicateRules.Keys Keys(string? email, string? phone, string? name, DateOnly? dob = null) =>
-        new(email, phone, name, dob);
+    [Fact]
+    public void A_missing_middle_name_in_one_row_is_still_a_duplicate()
+    {
+        var tracker = new ImportChunkDuplicateTracker();
+        tracker.TryAdd(Keys("omar@x.test", "+13055550104", "omar haddad"), null);
+
+        Assert.NotNull(tracker.TryAdd(Keys("o2@x.test", "+13055550104", "omar haddad", middle: "ali"), null));
+    }
+
+    [Fact]
+    public void Two_people_with_different_middle_names_sharing_a_phone_are_not_duplicates()
+    {
+        var tracker = new ImportChunkDuplicateTracker();
+
+        Assert.Null(tracker.TryAdd(Keys("john@x.test", "+13055550123", "john smith", middle: "a."), null));
+        Assert.Null(tracker.TryAdd(Keys("jr@x.test", "+13055550123", "john smith", middle: "b."), null));
+    }
+
+    private static CustomerDuplicateRules.Keys Keys(
+        string? email,
+        string? phone,
+        string? name,
+        DateOnly? dob = null,
+        string? middle = null
+    ) => new(email, phone, name, dob, middle);
 }

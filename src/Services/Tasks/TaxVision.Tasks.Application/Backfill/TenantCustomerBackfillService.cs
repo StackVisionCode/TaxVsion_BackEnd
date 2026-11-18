@@ -85,7 +85,9 @@ public sealed class TenantCustomerBackfillService(
             customer.Id,
             customer.DisplayName,
             customer.IsActive ? CustomerDirectoryStatus.Active : CustomerDirectoryStatus.Inactive,
-            DateTime.UtcNow
+            DateTime.UtcNow,
+            // Foto completa con la hora de hoy: sin el email, un aviso de email más viejo quedaría bloqueado.
+            customer.PrimaryEmail
         );
         await directoryRepository.AddAsync(entry, ct);
     }

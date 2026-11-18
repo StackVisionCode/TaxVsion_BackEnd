@@ -10,7 +10,6 @@ namespace TaxVision.Notification.Application.Abstractions;
 /// </summary>
 public enum InAppSourceGroup
 {
-    CustomerImport,
     Connectors,
     CloudStorageLegal,
     CloudStoragePolicy,
@@ -27,7 +26,6 @@ public sealed class InAppRoutingOptions
     /// como fuente única. Para encender el pipeline nuevo en producción se setea
     /// <c>Notifications__InApp__&lt;Grupo&gt;__Source=Notification</c>.
     /// </summary>
-    public SourceSettings CustomerImport { get; set; } = new();
     public SourceSettings Connectors { get; set; } = new();
     public SourceSettings CloudStorageLegal { get; set; } = new();
     public SourceSettings CloudStoragePolicy { get; set; } = new();
@@ -58,7 +56,6 @@ public sealed class InAppSourceGate(IOptions<InAppRoutingOptions> options) : IIn
     private InAppRoutingOptions.SourceSettings SettingsFor(InAppSourceGroup group) =>
         group switch
         {
-            InAppSourceGroup.CustomerImport => _options.CustomerImport,
             InAppSourceGroup.Connectors => _options.Connectors,
             InAppSourceGroup.CloudStorageLegal => _options.CloudStorageLegal,
             InAppSourceGroup.CloudStoragePolicy => _options.CloudStoragePolicy,

@@ -13,16 +13,12 @@ public static class CustomersBulkImportedConsumer
     public static async Task Handle(
         CustomersBulkImportedIntegrationEvent evt,
         NotificationDispatcher dispatcher,
-        IInAppSourceGate inAppSource,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            if (!inAppSource.PublishesInApp(InAppSourceGroup.CustomerImport))
-                return;
-
             // El creador, salvo que Customer haya pasado el aviso a otro (creador retirado).
             var recipient = evt.NotifyUserId ?? evt.CreatedByUserId;
             var title = "Importación masiva completada";
@@ -52,6 +48,8 @@ public static class CustomersBulkImportedConsumer
                     {
                         ["totalRows"] = evt.TotalRows.ToString(),
                         ["successCount"] = evt.SuccessCount.ToString(),
+                        ["updatedCount"] = evt.UpdatedCount.ToString(),
+                        ["skippedCount"] = evt.SkippedCount.ToString(),
                         ["failedCount"] = evt.FailedCount.ToString(),
                     }
                 ),

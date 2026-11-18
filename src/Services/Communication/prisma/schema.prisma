@@ -436,12 +436,15 @@ model CustomerDirectoryEntry {
   CustomerId   String   @id @db.UniqueIdentifier
   TenantId     String   @db.UniqueIdentifier
   DisplayName  String   @db.NVarChar(200)
-  Email        String   @db.NVarChar(320)
+  // F-E: null = cliente sin email (D-3); igual entra al directorio por su nombre.
+  Email        String?  @db.NVarChar(320)
   IsActive     Boolean  @default(true)
   // Foto vigente de la ficha del cliente (Customer.ProfilePictureFileId). Null = sin foto o archivado.
   AvatarFileId String?  @db.UniqueIdentifier
   // Fecha (occurredOn) del ultimo aviso de estado aplicado; los mas viejos se descartan (prefetch + reintentos).
   StatusChangedAtUtc DateTime? @db.DateTime2
+  // Fecha (occurredOn) del ultimo aviso de perfil aplicado (alta, cambio, bloque); los mas viejos no pisan nombre ni email.
+  ProfileChangedAtUtc DateTime? @db.DateTime2
   UpdatedAtUtc DateTime @default(now()) @updatedAt @db.DateTime2
 
   @@index([TenantId, IsActive])

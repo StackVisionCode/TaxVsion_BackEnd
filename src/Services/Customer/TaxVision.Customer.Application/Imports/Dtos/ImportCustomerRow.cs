@@ -52,4 +52,11 @@ public sealed class ImportCustomerRow
     public string? SpouseEmail { get; init; }
     public string? SpousePhone { get; init; }
     public string? SpouseTaxIdentifier { get; init; }
+
+    // ----- Permisos de contacto (opcionales: yes/no) -----
+    public string? EmailOptIn { get; init; }
+    public string? SmsOptIn { get; init; }
+
+    // El lector no pudo separar bien la fila (comilla sin cerrar): la fila falla con este motivo.
+    public string? ReadError { get; init; }
 }
