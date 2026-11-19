@@ -22,12 +22,12 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.CloudStorage.Infrastructure.Persistence.CloudStorageDbContext cloudStorageDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.CloudStorage.Infrastructure.Persistence.CloudStorageDbContext.");
             var storagePolicyRepository = new TaxVision.CloudStorage.Infrastructure.Persistence.Repositories.StoragePolicyRepository(cloudStorageDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var setStorageProviderCommand = (TaxVision.CloudStorage.Application.Administration.SetStorageProviderCommand)context.Envelope.Message;
 

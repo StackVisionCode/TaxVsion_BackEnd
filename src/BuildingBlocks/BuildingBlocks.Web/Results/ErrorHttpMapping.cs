@@ -8,7 +8,11 @@ public static class ErrorHttpMapping
     public static int ToHttpStatusCode(this Error error) =>
         error.Code switch
         {
-            "Tenant.NotFound"
+            "Trip.SequenceConflict" or "Trip.ReplayConflict" or "Trip.StateConflict" or "Vehicle.InUse" =>
+                StatusCodes.Status409Conflict,
+            "Trip.NotFound"
+            or "Vehicle.NotFound"
+            or "Tenant.NotFound"
             or "Invitation.NotFound"
             or "User.NotFound"
             or "Role.NotFound"

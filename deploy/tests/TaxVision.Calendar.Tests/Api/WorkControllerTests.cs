@@ -2,11 +2,13 @@ using System.Reflection;
 using System.Security.Claims;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Contracts.Work;
 using BuildingBlocks.Results;
 using BuildingBlocks.TenantTimeZones;
 using BuildingBlocks.TimeZones;
 using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Calendar.Api.Controllers;
@@ -112,6 +114,126 @@ public sealed class WorkControllerTests
         Assert.Empty(bus.Invoked);
     }
 
+    [Fact]
+    public void Titles_and_items_use_calendar_read_and_the_work_rate_limit()
+    {
+        Assert.Equal([$"perm:{CalendarPermissions.Read}"], Policies(nameof(WorkController.Titles)));
+        Assert.Equal([$"perm:{CalendarPermissions.Read}"], Policies(nameof(WorkController.Items)));
+        foreach (var action in new[] { nameof(WorkController.Titles), nameof(WorkController.Items) })
+            Assert.Equal(
+                "calendar.h.range",
+                typeof(WorkController).GetMethod(action)!.GetCustomAttribute<RateLimitAttribute>()!.PolicyName
+            );
+        Assert.Equal(
+            "titles",
+            typeof(WorkController)
+                .GetMethod(nameof(WorkController.Titles))!
+                .GetCustomAttribute<HttpPostAttribute>()!
+                .Template
+        );
+        Assert.Equal(
+            "{userId:guid}/items",
+            typeof(WorkController)
+                .GetMethod(nameof(WorkController.Items))!
+                .GetCustomAttribute<HttpGetAttribute>()!
+                .Template
+        );
+    }
+
+    [Fact]
+    public async Task More_refs_than_the_title_batch_or_no_body_is_a_bad_request()
+    {
+        var (controller, bus) = Controller(CalendarPermissions.Read);
+        var refs = Enumerable
+            .Range(0, WorkLimits.TitleBatch + 1)
+            .Select(_ => new WorkTitleRef(WorkResourceTypes.Appointment, Guid.NewGuid()))
+            .ToList();
+
+        var tooMany = await controller.Titles(new WorkTitlesRequest(refs), default);
+        var noBody = await controller.Titles(null, default);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, Assert.IsType<ObjectResult>(tooMany).StatusCode);
+        Assert.Equal(StatusCodes.Status400BadRequest, Assert.IsType<ObjectResult>(noBody).StatusCode);
+        Assert.Empty(bus.Invoked);
+    }
+
+    [Fact]
+    public async Task Titles_only_ask_for_appointments_and_ignore_other_types()
+    {
+        var (controller, bus) = Controller(CalendarPermissions.Read, CustomersPermissions.ViewAll);
+        var appointment = Guid.NewGuid();
+
+        var result = await controller.Titles(
+            new WorkTitlesRequest([
+                new WorkTitleRef(WorkResourceTypes.Task, Guid.NewGuid()),
+                new WorkTitleRef(WorkResourceTypes.Appointment, appointment),
+            ]),
+            default
+        );
+
+        var response = Assert.IsType<WorkTitlesResponse>(Assert.IsType<OkObjectResult>(result).Value);
+        Assert.Equal([appointment], response.Items.Select(i => i.Id));
+        var query = Assert.IsType<GetAppointmentWorkTitlesQuery>(Assert.Single(bus.Invoked));
+        Assert.Equal((Tenant, Actor, true), (query.TenantId, query.ActorUserId, query.CanViewAll));
+        Assert.Equal([appointment], query.Ids);
+    }
+
+    [Fact]
+    public async Task Only_foreign_types_answer_empty_without_reading()
+    {
+        var (controller, bus) = Controller(CalendarPermissions.Read);
+
+        var result = await controller.Titles(
+            new WorkTitlesRequest([new WorkTitleRef(WorkResourceTypes.Note, Guid.NewGuid())]),
+            default
+        );
+
+        Assert.Empty(Assert.IsType<WorkTitlesResponse>(Assert.IsType<OkObjectResult>(result).Value).Items);
+        Assert.Empty(bus.Invoked);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("tasks")]
+    [InlineData("Appointments")]
+    public async Task Items_of_a_kind_calendar_does_not_serve_is_a_bad_request(string? kind)
+    {
+        var (controller, bus) = Controller(CalendarPermissions.Read);
+
+        var result = await controller.Items(Actor, kind, null, null, default);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Empty(bus.Invoked);
+    }
+
+    [Fact]
+    public async Task Someone_elses_items_without_both_rules_are_forbidden()
+    {
+        var (controller, bus) = Controller(UserManagementPermissions.UsersWorkView);
+
+        Assert.IsType<ForbidResult>(await controller.Items(Ana, WorkKinds.Appointments, null, null, default));
+        Assert.Empty(bus.Invoked);
+    }
+
+    [Theory]
+    [InlineData(null, null, 1, WorkLimits.ItemsPageSize)]
+    [InlineData(0, 900, 1, WorkLimits.ItemsMaxPageSize)]
+    [InlineData(4, 10, 4, 10)]
+    public async Task Items_page_with_the_viewer_rights(int? page, int? size, int expectedPage, int expectedSize)
+    {
+        var (controller, bus) = Controller(UserManagementPermissions.UsersWorkView, CustomersPermissions.ViewAll);
+
+        var result = await controller.Items(Ana, WorkKinds.Appointments, page, size, default);
+
+        Assert.IsType<PagedResult<WorkItem>>(Assert.IsType<OkObjectResult>(result).Value);
+        var query = Assert.IsType<GetAppointmentWorkItemsQuery>(Assert.Single(bus.Invoked));
+        Assert.Equal(
+            (Tenant, Ana, Actor, true, expectedPage, expectedSize),
+            (query.TenantId, query.UserId, query.ActorUserId, query.CanViewAll, query.Page, query.Size)
+        );
+        Assert.Equal(NewYork, query.OfficeZone.Id);
+    }
+
     private static string[] Policies(string action) =>
         [
             .. typeof(WorkController)
@@ -149,9 +271,14 @@ public sealed class WorkControllerTests
             Fake.OnInvokeReply = message =>
             {
                 Invoked.Add(message);
-                return message is GetAppointmentWorkQuery
-                    ? Result.Success(new WorkSummaryResponse("calendar", "calendar", [], []))
-                    : Result.Success(new WorkBatchResponse([]));
+                return message switch
+                {
+                    GetAppointmentWorkQuery => Result.Success(new WorkSummaryResponse("calendar", "calendar", [], [])),
+                    GetAppointmentWorkTitlesQuery q => (IReadOnlyList<WorkTitle>)
+                        [.. q.Ids.Select(id => new WorkTitle(WorkResourceTypes.Appointment, id, "Review"))],
+                    GetAppointmentWorkItemsQuery q => Result.Success(new PagedResult<WorkItem>([], q.Page, q.Size, 0)),
+                    _ => Result.Success(new WorkBatchResponse([])),
+                };
             };
         }
 

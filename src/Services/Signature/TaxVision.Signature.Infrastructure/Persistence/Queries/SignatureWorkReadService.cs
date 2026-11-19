@@ -71,4 +71,38 @@ internal sealed class SignatureWorkReadService(SignatureDbContext db, IOptions<S
             ))
             .ToListAsync(ct);
     }
+
+    // Mismo criterio que el listado: con el filtro encendido y sin view_all, cliente asignado o borrador propio.
+    public async Task<IReadOnlyList<SignatureTitleRow>> ListTitlesAsync(
+        SignatureTitleFilter filter,
+        CancellationToken ct = default
+    )
+    {
+        var ids = filter.Ids.Distinct().ToList();
+        if (ids.Count == 0)
+            return [];
+
+        var tenantId = filter.TenantId;
+        var query = db
+            .SignatureRequests.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(r => r.TenantId == tenantId && ids.Contains(r.Id));
+
+        if (visibility.Value.Enabled && !filter.CanViewAll)
+        {
+            var actor = filter.ActorUserId;
+            query = query.Where(r =>
+                (r.Status == SignatureRequestStatus.Draft && r.CreatedByUserId == actor)
+                || db.Set<CustomerAssignmentProjection>()
+                    .IgnoreQueryFilters()
+                    .Any(a =>
+                        a.TenantId == tenantId
+                        && a.UserId == actor
+                        && r.Signers.Any(s => s.MappedCustomerId == a.CustomerId)
+                    )
+            );
+        }
+
+        return await query.Select(r => new SignatureTitleRow(r.Id, r.Title)).ToListAsync(ct);
+    }
 }

@@ -9,6 +9,8 @@ import type { SupportTicket, SupportTicketSnapshot } from '../../domain/support/
 export interface SupportTicketRepository {
   save(ticket: SupportTicket): Promise<void>;
   findById(id: string): Promise<SupportTicket | null>;
+  /** Lote por id dentro de una oficina de agentes (títulos del historial). Una sola consulta. */
+  findManyForAgentTenant(agentTenantId: string, ids: readonly string[]): Promise<SupportTicket[]>;
   listForCustomer(input: {
     tenantId: string;
     openedByUserId: string;

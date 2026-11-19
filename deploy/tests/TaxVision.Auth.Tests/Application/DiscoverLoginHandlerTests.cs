@@ -37,6 +37,20 @@ public sealed class DiscoverLoginHandlerTests
     }
 
     [Fact]
+    public async Task The_mobile_flow_requires_tenant_selection_even_with_one_office()
+    {
+        var context = new Context();
+
+        var result = await context.DiscoverAsync(UserAccountKind.Portal, forceSelection: true);
+
+        Assert.NotNull(result.Value.DiscoverySessionRef);
+        var office = Assert.Single(result.Value.Offices!);
+        Assert.Equal(context.World.Tenant.Id, office.TenantId);
+        Assert.True(office.IsClientPortal);
+        Assert.Empty(context.Tickets.Tickets);
+    }
+
+    [Fact]
     public async Task Choosing_an_entry_hands_off_that_exact_account()
     {
         var context = new Context();
@@ -97,9 +111,12 @@ public sealed class DiscoverLoginHandlerTests
             World.Users.Add(Portal);
         }
 
-        public Task<Result<DiscoverLoginResponse>> DiscoverAsync(UserAccountKind? accountKind) =>
+        public Task<Result<DiscoverLoginResponse>> DiscoverAsync(
+            UserAccountKind? accountKind,
+            bool forceSelection = false
+        ) =>
             DiscoverLoginHandler.Handle(
-                new DiscoverLoginCommand(Email, "same-pass", AccountKind: accountKind),
+                new DiscoverLoginCommand(Email, "same-pass", AccountKind: accountKind, ForceSelection: forceSelection),
                 World.Users,
                 World.Tenants,
                 new PrefixedPasswordHasher(),

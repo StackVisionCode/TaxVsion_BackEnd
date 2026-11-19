@@ -25,14 +25,14 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var correspondenceDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Correspondence.Infrastructure.Persistence.CorrespondenceDbContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Correspondence.Application.Abstractions.IConnectorsClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var connectorsClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Correspondence.Application.Abstractions.IConnectorsClient>(serviceScope.ServiceProvider);
             var mailSearchRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Correspondence.Application.Abstractions.IMailSearchRepository>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var correspondenceDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Correspondence.Infrastructure.Persistence.CorrespondenceDbContext>(serviceScope.ServiceProvider);
             // The actual message body
             var searchMailQuery = (TaxVision.Correspondence.Application.Search.SearchMailQuery)context.Envelope.Message;
 

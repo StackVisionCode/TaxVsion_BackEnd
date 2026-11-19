@@ -82,6 +82,19 @@ public interface INoteRepository
     );
 
     /// <summary>
+    /// Títulos en vivo del historial: de las notas pedidas, solo las que el feed le mostraría al actor (mismo
+    /// predicado de visibilidad y asignación). Inexistentes, borradas o de otro tenant se omiten.
+    /// </summary>
+    Task<IReadOnlyList<NoteTitleRow>> ListTitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
     /// ¿El cliente <paramref name="customerId"/> está asignado a <paramref name="actorUserId"/> en la
     /// proyección local de asignaciones (P2)? Gate del detalle de una nota cuyo target es un Customer.
     /// </summary>
@@ -109,3 +122,6 @@ public interface INoteRepository
 
     Task AddAsync(Note note, CancellationToken ct = default);
 }
+
+/// <summary>Id y texto plano visible (preview) de una nota, para derivar su título.</summary>
+public sealed record NoteTitleRow(Guid Id, string Text);

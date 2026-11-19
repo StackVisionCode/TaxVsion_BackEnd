@@ -28,7 +28,6 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
@@ -36,6 +35,7 @@ namespace Internal.Generated.WolverineHandlers
             var filePolicyCatalogRepository = new TaxVision.CloudStorage.Infrastructure.Persistence.Repositories.FilePolicyCatalogRepository(cloudStorageDbContext);
             var storagePlatformSettingsRepository = new TaxVision.CloudStorage.Infrastructure.Persistence.Repositories.StoragePlatformSettingsRepository(cloudStorageDbContext);
             var storagePlatformSettingsProvider = new TaxVision.CloudStorage.Application.Platform.StoragePlatformSettingsProvider(storagePlatformSettingsRepository, _storagePlatformSettingsCache, _systemClock);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var updateStoragePlatformSettingsCommand = (TaxVision.CloudStorage.Application.Platform.UpdateStoragePlatformSettingsCommand)context.Envelope.Message;
 

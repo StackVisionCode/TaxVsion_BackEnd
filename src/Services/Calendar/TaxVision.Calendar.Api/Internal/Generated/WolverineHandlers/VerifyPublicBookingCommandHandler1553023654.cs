@@ -20,6 +20,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
@@ -29,7 +30,6 @@ namespace Internal.Generated.WolverineHandlers
             var publicBookingScheduler = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.PublicBookingScheduler>(serviceScope.ServiceProvider);
             var bookingPageRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.Abstractions.IBookingPageRepository>(serviceScope.ServiceProvider);
             var publicBookingRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.PublicBookings.Abstractions.IPublicBookingRepository>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);

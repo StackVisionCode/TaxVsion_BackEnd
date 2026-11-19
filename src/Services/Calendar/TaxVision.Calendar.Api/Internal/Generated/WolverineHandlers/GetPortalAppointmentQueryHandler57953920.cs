@@ -20,7 +20,6 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Calendar.Application.Staff.Abstractions.IStaffContactClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
@@ -29,6 +28,7 @@ namespace Internal.Generated.WolverineHandlers
             var bookingPolicyRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Booking.Abstractions.IBookingPolicyRepository>(serviceScope.ServiceProvider);
             var appointmentTypeRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Types.Abstractions.IAppointmentTypeRepository>(serviceScope.ServiceProvider);
             var portalCalendarStore = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Portal.Abstractions.IPortalCalendarStore>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var calendarDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Infrastructure.Persistence.CalendarDbContext>(serviceScope.ServiceProvider);

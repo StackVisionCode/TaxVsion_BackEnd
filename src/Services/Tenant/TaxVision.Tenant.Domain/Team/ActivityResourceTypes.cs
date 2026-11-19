@@ -1,19 +1,21 @@
+using BuildingBlocks.Contracts.Work;
+
 namespace TaxVision.Tenant.Domain.Team;
 
-/// <summary>Tipo del recurso sobre el que se actuó; estable, el CRM arma el enlace con él.</summary>
+/// <summary>Tipo del recurso sobre el que se actuó; mismos valores que <see cref="WorkResourceTypes"/>.</summary>
 public static class ActivityResourceTypes
 {
-    public const string Task = "task";
-    public const string ClientRequest = "client_request";
-    public const string FormRequest = "form_request";
-    public const string Appointment = "appointment";
-    public const string Note = "note";
-    public const string Customer = "customer";
-    public const string SignatureRequest = "signature_request";
-    public const string Invoice = "invoice";
-    public const string SmsMessage = "sms_message";
-    public const string EmailMessage = "email_message";
-    public const string EmailThread = "email_thread";
-    public const string Document = "document";
-    public const string SupportTicket = "support_ticket";
+    public const string Task = WorkResourceTypes.Task;
+    public const string ClientRequest = WorkResourceTypes.ClientRequest;
+    public const string FormRequest = WorkResourceTypes.FormRequest;
+    public const string Appointment = WorkResourceTypes.Appointment;
+    public const string Note = WorkResourceTypes.Note;
+    public const string Customer = WorkResourceTypes.Customer;
+    public const string SignatureRequest = WorkResourceTypes.SignatureRequest;
+    public const string Invoice = WorkResourceTypes.Invoice;
+    public const string SmsMessage = WorkResourceTypes.SmsMessage;
+    public const string EmailMessage = WorkResourceTypes.EmailMessage;
+    public const string EmailThread = WorkResourceTypes.EmailThread;
+    public const string Document = WorkResourceTypes.Document;
+    public const string SupportTicket = WorkResourceTypes.SupportTicket;
 }

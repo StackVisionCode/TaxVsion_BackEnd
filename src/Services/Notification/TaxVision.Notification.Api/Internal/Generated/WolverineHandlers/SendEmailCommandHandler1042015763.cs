@@ -22,8 +22,7 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            
+
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
@@ -31,11 +30,12 @@ namespace Internal.Generated.WolverineHandlers
             var outboundEmailRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IOutboundEmailRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var sendEmailCommand = (TaxVision.Notification.Application.Email.Sending.Commands.SendEmailCommand)context.Envelope.Message;
 
             if (unitOfWork is not TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext notificationDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext.");
-            
+
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
             var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(notificationDbContext, context, domainEventScraperIEnumerable);
             await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
@@ -51,15 +51,15 @@ namespace Internal.Generated.WolverineHandlers
                 TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
                 System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Notification.Application.Email.Sending.Commands.SendEmailHandler");
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Email.Sending.Commands.SendEmailHandler");
-                
+
                 // The actual message execution
                 var outgoing1 = await TaxVision.Notification.Application.Email.Sending.Commands.SendEmailHandler.Handle(sendEmailCommand, outboundEmailRepository, context, correlationContext, unitOfWork, cancellation).ConfigureAwait(false);
 
-                
+
                 // Outgoing, cascaded message
                 await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
 
-                
+
                 // Added by EF Core Transaction Middleware
                 var result_of_SaveChangesAsync = await notificationDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);
 
@@ -78,7 +78,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: SendEmailCommandHandler1042015763
-    
-    
+
+
 }
 

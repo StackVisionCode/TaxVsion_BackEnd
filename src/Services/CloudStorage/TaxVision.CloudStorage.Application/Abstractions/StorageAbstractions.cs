@@ -170,6 +170,13 @@ public interface IFileObjectRepository
         IReadOnlyCollection<Guid> ids,
         CancellationToken ct
     );
+
+    /// <summary>Archivos del tenant por id, sin los de la papelera (títulos del historial). Una sola consulta.</summary>
+    Task<IReadOnlyList<FileObject>> ListLiveByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct
+    );
 }
 
 /// <summary>

@@ -191,6 +191,58 @@ public sealed class AppointmentWorkTests
         Assert.Equal([Ana, Bruno], WorkUserIds.Parse($"{Ana}, {Bruno},{Ana}").Value);
     }
 
+    [Fact]
+    public async Task Items_page_every_upcoming_occurrence_the_open_count_counts()
+    {
+        var single = At(Now.AddDays(1), Ana);
+        var appointments = new InMemoryAppointments(MondaysAtNine(Ana), single);
+
+        var work = await Summary(Query(Ana), appointments);
+        var first = await Items(ItemsQuery(Ana, page: 1, size: 4), appointments);
+        var last = await Items(ItemsQuery(Ana, page: 3, size: 4), appointments);
+
+        Assert.Equal(work.Counts[0].Open, first.TotalCount);
+        Assert.Equal(10, first.TotalCount);
+        Assert.Equal((1, 4, 4), (first.Page, first.Size, first.Items.Count));
+        Assert.Equal(2, last.Items.Count);
+        Assert.Equal(single.Id, first.Items[0].Id);
+        Assert.Equal(work.Top[0], first.Items[0]);
+        var starts = first.Items.Concat(last.Items).Select(i => i.DueAtUtc!.Value).ToList();
+        Assert.Equal(starts.Order(), starts);
+        Assert.Equal(new DateTime(2027, 1, 18, 14, 0, 0, DateTimeKind.Utc), starts[^1]);
+    }
+
+    [Fact]
+    public async Task Items_use_the_viewers_assignment_visibility()
+    {
+        var repository = new CapturingAppointments(new InMemoryAppointments(At(Now.AddDays(1), Ana)));
+
+        await GetAppointmentWorkItemsHandler.Handle(
+            ItemsQuery(Ana, 1, 20) with
+            {
+                CanViewAll = false,
+            },
+            repository,
+            Visibility(true),
+            default
+        );
+
+        Assert.Equal([Viewer], repository.Assignees);
+    }
+
+    private static GetAppointmentWorkItemsQuery ItemsQuery(Guid userId, int page, int size) =>
+        new(Tenant, userId, Viewer, CanViewAll: true, Office, Now, page, size);
+
+    private static async Task<BuildingBlocks.Common.PagedResult<WorkItem>> Items(
+        GetAppointmentWorkItemsQuery query,
+        IAppointmentRepository appointments
+    )
+    {
+        var result = await GetAppointmentWorkItemsHandler.Handle(query, appointments, Visibility(true), default);
+        Assert.True(result.IsSuccess);
+        return result.Value;
+    }
+
     private static GetAppointmentWorkQuery Query(Guid userId) =>
         new(Tenant, userId, Viewer, CanViewAll: true, Office, Now);
 

@@ -1,6 +1,7 @@
 using BuildingBlocks.Contracts.Work;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.TimeZones;
+using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Work;
 using TaxVision.Tasks.Domain.ClientRequests;
 using TaxVision.Tasks.Domain.Tasks;
@@ -137,6 +138,71 @@ public sealed class TaskWorkReaderIntegrationTests : IAsyncLifetime
         Assert.Equal(
             [new WorkBatchRow(_ana, 8, 3), new WorkBatchRow(_luis, 2, 1)],
             rows.OrderBy(r => r.Open).Reverse().ToArray()
+        );
+    }
+
+    [Fact]
+    public async Task Titles_only_come_back_for_what_the_viewer_can_read()
+    {
+        await using var db = _database.NewContext(Guid.Empty);
+        var tasks = await db.Tasks.IgnoreQueryFilters().ToDictionaryAsync(t => t.Title.Value, t => t.Id);
+        var requests = await db
+            .ClientRequests.IgnoreQueryFilters()
+            .Select(r => new
+            {
+                r.Id,
+                r.TenantId,
+                r.CustomerId,
+            })
+            .ToListAsync();
+        Guid[] taskIds =
+        [
+            tasks["Late civil"],
+            tasks["Far away"],
+            tasks["Completed"],
+            tasks["Other tenant"],
+            Guid.NewGuid(),
+        ];
+        var requestIds = requests.Select(r => r.Id).ToArray();
+        var reader = new TaskWorkReader(db);
+
+        var restricted = await reader.TitlesAsync(_tenantId, taskIds, requestIds, _boss, default);
+        var full = await reader.TitlesAsync(_tenantId, taskIds, requestIds, null, default);
+
+        var bossRequest = requests.Single(r => r.TenantId == _tenantId && r.CustomerId == _bossClient).Id;
+        Assert.Equal(
+            [(WorkResourceTypes.ClientRequest, bossRequest), (WorkResourceTypes.Task, tasks["Late civil"])],
+            restricted.Select(t => (t.ResourceType, t.Id)).Order().ToArray()
+        );
+        Assert.Equal(
+            ["Completed", "Far away", "Late civil"],
+            full.Where(t => t.ResourceType == WorkResourceTypes.Task).Select(t => t.Title).Order().ToArray()
+        );
+        Assert.Equal(3, full.Count(t => t.ResourceType == WorkResourceTypes.ClientRequest));
+    }
+
+    [Fact]
+    public async Task Items_page_the_open_universe_most_urgent_first()
+    {
+        await using var db = _database.NewContext(Guid.Empty);
+        var reader = new TaskWorkReader(db);
+        var counts = await reader.CountAsync(_tenantId, _ana, null, Window, default);
+
+        var first = await reader.ItemsAsync(_tenantId, _ana, null, WorkKinds.Tasks, 1, 4, default);
+        var second = await reader.ItemsAsync(_tenantId, _ana, null, WorkKinds.Tasks, 2, 4, default);
+        var requests = await reader.ItemsAsync(_tenantId, _ana, _boss, WorkKinds.ClientRequests, 1, 20, default);
+
+        Assert.Equal(counts.Single(c => c.Kind == WorkKinds.Tasks).Open, first.TotalCount);
+        Assert.Equal((1, 4, 6), (first.Page, first.Size, second.TotalCount));
+        Assert.Equal(
+            ["Late civil", "Legacy today", "Timed this morning", "Due today", "Far away", "Waiting"],
+            first.Items.Concat(second.Items).Select(i => i.Title).ToArray()
+        );
+        Assert.All(first.Items, item => Assert.Equal(WorkKinds.Tasks, item.Kind));
+        var request = Assert.Single(requests.Items);
+        Assert.Equal(
+            (1, WorkKinds.ClientRequests, _bossClient),
+            (requests.TotalCount, request.Kind, request.CustomerId)
         );
     }
 

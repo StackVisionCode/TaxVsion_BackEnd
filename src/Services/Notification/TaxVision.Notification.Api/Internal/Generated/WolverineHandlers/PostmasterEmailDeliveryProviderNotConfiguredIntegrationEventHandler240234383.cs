@@ -25,22 +25,22 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var integrationEventPublisher = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IIntegrationEventPublisher>(serviceScope.ServiceProvider);
             var outboundEmailRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IOutboundEmailRepository>(serviceScope.ServiceProvider);
-            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
-            
+
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var notificationLogQueryRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.INotificationLogQueryRepository>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
             var postmasterEmailDeliveryProviderNotConfiguredIntegrationEvent = (BuildingBlocks.Messaging.EmailIntegrationEvents.PostmasterEmailDeliveryProviderNotConfiguredIntegrationEvent)context.Envelope.Message;
 
             if (unitOfWork is not TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext notificationDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext.");
-            
+
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
             var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(notificationDbContext, context, domainEventScraperIEnumerable);
             await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
@@ -55,15 +55,15 @@ namespace Internal.Generated.WolverineHandlers
                 BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(postmasterEmailDeliveryProviderNotConfiguredIntegrationEvent, tenantContext, context);
                 BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
                 TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
-                
+
                 // The actual message execution
                 await TaxVision.Notification.Application.Consumers.Postmaster.PostmasterEmailDeliveryProviderNotConfiguredConsumer.Handle(postmasterEmailDeliveryProviderNotConfiguredIntegrationEvent, notificationLogQueryRepository, unitOfWork, correlationContext, _loggerForMessage, cancellation).ConfigureAwait(false);
 
-                
+
                 // The actual message execution
                 await TaxVision.Notification.Application.Consumers.Postmaster.PostmasterOutboundEmailProviderNotConfiguredConsumer.Handle(postmasterEmailDeliveryProviderNotConfiguredIntegrationEvent, outboundEmailRepository, integrationEventPublisher, unitOfWork, correlationContext, _loggerForMessage, cancellation).ConfigureAwait(false);
 
-                
+
                 // Added by EF Core Transaction Middleware
                 var result_of_SaveChangesAsync = await notificationDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);
 
@@ -82,7 +82,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: PostmasterEmailDeliveryProviderNotConfiguredIntegrationEventHandler240234383
-    
-    
+
+
 }
 

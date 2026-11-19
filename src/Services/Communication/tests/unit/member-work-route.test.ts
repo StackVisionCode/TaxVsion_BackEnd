@@ -9,6 +9,8 @@ import type {
   MemberWorkReader,
   UpcomingMeetingRow,
 } from '../../src/application/ports/member-work-reader.js';
+import type { SupportTicketRepository } from '../../src/application/ports/support-ticket-repository.js';
+import { SupportTicket, type SupportTicketSnapshot } from '../../src/domain/support/support-ticket.js';
 import {
   createFakeProjectionRepository,
   fakeSnapshot,
@@ -83,6 +85,42 @@ function ticket(over: Partial<TicketFixture> & { assignedAgentId: string }): Tic
   };
 }
 
+/** Ticket completo de soporte (títulos en vivo): mismo agregado que lee `GET /communication/support/:id`. */
+function supportTicket(over: Partial<SupportTicketSnapshot> = {}): SupportTicketSnapshot {
+  const now = new Date();
+  return {
+    id: randomUUID(),
+    tenantId: OFFICE,
+    agentTenantId: PLATFORM,
+    openedByUserId: randomUUID(),
+    assignedAgentId: null,
+    conversationId: randomUUID(),
+    subject: 'Cannot upload',
+    category: 'Technical',
+    priority: 'Normal',
+    status: 'Open',
+    openedAtUtc: now,
+    claimedAtUtc: null,
+    resolvedAtUtc: null,
+    closedAtUtc: null,
+    updatedAtUtc: now,
+    ...over,
+  };
+}
+
+/** Repositorio de tickets en memoria: solo la lectura en lote por oficina de agentes. */
+class MemorySupportTickets implements Pick<SupportTicketRepository, 'findManyForAgentTenant'> {
+  readonly snapshots: SupportTicketSnapshot[] = [];
+  calls = 0;
+
+  async findManyForAgentTenant(agentTenantId: string, ids: readonly string[]): Promise<SupportTicket[]> {
+    this.calls++;
+    return this.snapshots
+      .filter((s) => s.agentTenantId === agentTenantId && ids.includes(s.id))
+      .map((s) => SupportTicket.rehydrate(s));
+  }
+}
+
 function setup(input: {
   viewer: string;
   tenantId?: string;
@@ -91,6 +129,7 @@ function setup(input: {
   timeZoneId?: string;
 }) {
   const reader = new MemoryWorkReader();
+  const supportTickets = new MemorySupportTickets();
   const tenantId = input.tenantId ?? OFFICE;
   const container = {
     userPermissions: createFakeProjectionRepository([
@@ -111,6 +150,7 @@ function setup(input: {
       async save() {},
     },
     memberWork: reader,
+    supportTickets,
   } as unknown as AppContainer;
 
   const principal: AuthenticatedPrincipal = {
@@ -124,19 +164,24 @@ function setup(input: {
     raw: {},
   };
 
-  async function get(url: string) {
+  async function send(method: 'GET' | 'POST', url: string, payload?: unknown) {
     const app = Fastify();
     app.decorate('authenticate', async function authenticate(request: FastifyRequest, _reply: FastifyReply) {
       request.principal = principal;
     });
     await registerWorkRoutes(app, container);
     await app.ready();
-    const response = await app.inject({ method: 'GET', url });
+    const response = await app.inject(
+      payload === undefined ? { method, url } : { method, url, payload: payload as object },
+    );
     await app.close();
     return response;
   }
 
-  return { reader, get };
+  const get = (url: string) => send('GET', url);
+  const post = (url: string, payload: unknown) => send('POST', url, payload);
+
+  return { reader, supportTickets, get, post };
 }
 
 afterEach(() => {
@@ -429,4 +474,235 @@ describe('GET /communication/work/summary', () => {
       expect(response.json().code).toBe('Communication.Work.InvalidUserIds');
     },
   );
+});
+
+describe('GET /communication/work/:userId/items', () => {
+  it('pagina las reuniones en el mismo orden que el top, con los datos de paginado', async () => {
+    const me = randomUUID();
+    const { reader, get } = setup({ viewer: me, permissions: ['communication.meeting.join'] });
+    const live = meeting({
+      hostUserId: me,
+      status: 'Live',
+      scheduledForUtc: null,
+      participants: [{ userId: me, status: 'Joined' }],
+    });
+    const scheduled = Array.from({ length: 7 }, (_, i) =>
+      meeting({ hostUserId: me, scheduledForUtc: new Date(Date.now() + (7 - i) * HOUR) }),
+    );
+    reader.meetings.push(...scheduled, live);
+
+    const response = await get(`/communication/work/${me}/items?kind=meetings&page=2&size=3`);
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const ordered = [live, ...[...scheduled].reverse()];
+    expect(body.items.map((i: { id: string }) => i.id)).toEqual(ordered.slice(3, 6).map((m) => m.id));
+    expect(body).toMatchObject({
+      page: 2,
+      size: 3,
+      totalCount: 8,
+      totalPages: 3,
+      hasMore: true,
+      hasPrevious: true,
+    });
+    const first = ordered[3]?.id;
+    expect(body.items[0]).toMatchObject({ kind: 'meetings', link: `/meetings?meetingId=${first}` });
+  });
+
+  it('size por defecto 20 y nunca más de 50', async () => {
+    const me = randomUUID();
+    const { reader, get } = setup({ viewer: me, permissions: ['communication.meeting.join'] });
+    for (let i = 1; i <= 55; i++) {
+      reader.meetings.push(meeting({ hostUserId: me, scheduledForUtc: new Date(Date.now() + i * HOUR) }));
+    }
+
+    const byDefault = (await get(`/communication/work/${me}/items?kind=meetings`)).json();
+    const capped = (await get(`/communication/work/${me}/items?kind=meetings&size=500`)).json();
+
+    expect(byDefault).toMatchObject({ page: 1, size: 20, totalCount: 55, hasMore: true, hasPrevious: false });
+    expect(byDefault.items).toHaveLength(20);
+    expect(capped.size).toBe(50);
+    expect(capped.items).toHaveLength(50);
+  });
+
+  it.each(['', '?kind=tasks', '?kind=meetings&page=0', '?kind=meetings&size=abc'])(
+    'kind o paginado inválido: 400 (%s)',
+    async (query) => {
+      const me = randomUUID();
+      const { get } = setup({ viewer: me, permissions: ['communication.meeting.join'] });
+
+      const response = await get(`/communication/work/${me}/items${query}`);
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().code).toMatch(/^Communication\.Work\./);
+    },
+  );
+
+  it('con users.work.view solo lista lo que el que mira puede abrir; totalCount = lo visible', async () => {
+    const viewer = randomUUID();
+    const target = randomUUID();
+    const { reader, get } = setup({ viewer, permissions: ['communication.meeting.join', 'users.work.view'] });
+    const shared = meeting({ hostUserId: target, participants: [{ userId: viewer, status: 'Waiting' }] });
+    reader.meetings.push(shared, meeting({ hostUserId: target, title: 'Private 1:1' }));
+
+    const response = await get(`/communication/work/${target}/items?kind=meetings`);
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.items.map((i: { id: string }) => i.id)).toEqual([shared.id]);
+    expect(body.totalCount).toBe(1);
+    expect(JSON.stringify(body)).not.toContain('Private 1:1');
+  });
+
+  it('otra persona sin users.work.view: 403; portal: 403', async () => {
+    const me = randomUUID();
+    const employee = setup({ viewer: me, permissions: ['communication.meeting.join'] });
+    const portal = setup({
+      viewer: me,
+      actorType: 'CustomerPortal',
+      permissions: ['communication.meeting.join'],
+    });
+
+    expect((await employee.get(`/communication/work/${randomUUID()}/items?kind=meetings`)).statusCode).toBe(
+      403,
+    );
+    expect((await portal.get(`/communication/work/${me}/items?kind=meetings`)).statusCode).toBe(403);
+  });
+
+  it('tickets asignados en la oficina de agentes: los más antiguos primero, sin cerrados', async () => {
+    const me = randomUUID();
+    const { reader, get } = setup({
+      viewer: me,
+      tenantId: PLATFORM,
+      permissions: ['communication.support.agent'],
+    });
+    const newer = ticket({ assignedAgentId: me, openedAtUtc: new Date(Date.now() - HOUR) });
+    const oldest = ticket({ assignedAgentId: me, openedAtUtc: new Date(Date.now() - 72 * HOUR) });
+    reader.tickets.push(newer, oldest, ticket({ assignedAgentId: me, status: 'Closed' }));
+
+    const body = (await get(`/communication/work/${me}/items?kind=support-tickets`)).json();
+
+    expect(body.items.map((i: { id: string }) => i.id)).toEqual([oldest.id, newer.id]);
+    expect(body.totalCount).toBe(2);
+  });
+
+  it('un tipo que el que mira no puede leer: 403', async () => {
+    const me = randomUUID();
+    const { get } = setup({
+      viewer: me,
+      permissions: ['communication.meeting.join', 'communication.support.agent'],
+    });
+
+    const response = await get(`/communication/work/${me}/items?kind=support-tickets`);
+
+    expect(response.statusCode).toBe(403);
+  });
+});
+
+describe('POST /communication/work/titles', () => {
+  const ref = (id: string, resourceType = 'support_ticket') => ({ resourceType, id });
+
+  it('el agente obtiene el asunto de los tickets que podría abrir, en una sola lectura', async () => {
+    const me = randomUUID();
+    const { supportTickets, post } = setup({
+      viewer: me,
+      tenantId: PLATFORM,
+      permissions: ['communication.support.agent'],
+    });
+    const mine = supportTicket({ assignedAgentId: me, status: 'Claimed', subject: 'W-2 missing' });
+    const unclaimed = supportTicket({ subject: 'New one' });
+    const othersAgent = supportTicket({
+      assignedAgentId: randomUUID(),
+      status: 'Claimed',
+      subject: 'Secret',
+    });
+    supportTickets.snapshots.push(mine, unclaimed, othersAgent);
+
+    const response = await post('/communication/work/titles', {
+      items: [ref(mine.id), ref(unclaimed.id), ref(othersAgent.id), ref(randomUUID()), ref(mine.id, 'task')],
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      items: [
+        { resourceType: 'support_ticket', id: mine.id, title: 'W-2 missing' },
+        { resourceType: 'support_ticket', id: unclaimed.id, title: 'New one' },
+      ],
+    });
+    expect(supportTickets.calls).toBe(1);
+  });
+
+  it('PlatformAdmin ve el asunto de cualquier ticket de la oficina de agentes', async () => {
+    const me = randomUUID();
+    const { supportTickets, post } = setup({
+      viewer: me,
+      tenantId: PLATFORM,
+      actorType: 'PlatformAdmin',
+      permissions: [],
+    });
+    const any = supportTicket({ assignedAgentId: randomUUID(), status: 'Claimed', subject: 'Escalated' });
+    supportTickets.snapshots.push(any);
+
+    const body = (await post('/communication/work/titles', { items: [ref(any.id)] })).json();
+
+    expect(body.items).toEqual([{ resourceType: 'support_ticket', id: any.id, title: 'Escalated' }]);
+  });
+
+  it('en una oficina cliente la respuesta es vacía y no consulta tickets', async () => {
+    const me = randomUUID();
+    const { supportTickets, post } = setup({ viewer: me, permissions: ['communication.support.agent'] });
+    const opened = supportTicket({ openedByUserId: me });
+    supportTickets.snapshots.push(opened);
+
+    const response = await post('/communication/work/titles', { items: [ref(opened.id)] });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ items: [] });
+    expect(supportTickets.calls).toBe(0);
+  });
+
+  it('recorta el asunto a una línea de 120 caracteres', async () => {
+    const me = randomUUID();
+    const { supportTickets, post } = setup({
+      viewer: me,
+      tenantId: PLATFORM,
+      permissions: ['communication.support.agent'],
+    });
+    const long = supportTicket({
+      assignedAgentId: me,
+      status: 'Claimed',
+      subject: `Help  me\n${'x'.repeat(200)}`,
+    });
+    supportTickets.snapshots.push(long);
+
+    const body = (await post('/communication/work/titles', { items: [ref(long.id)] })).json();
+
+    const title: string = body.items[0].title;
+    expect(title).toHaveLength(120);
+    expect(title.startsWith('Help me x')).toBe(true);
+    expect(title.endsWith('…')).toBe(true);
+  });
+
+  it.each([
+    { items: Array.from({ length: 101 }, () => ({ resourceType: 'support_ticket', id: randomUUID() })) },
+    {},
+    { items: [{ resourceType: 'support_ticket', id: 'not-a-guid' }] },
+  ])('más de 100 o cuerpo inválido: 400 (%#)', async (payload) => {
+    const me = randomUUID();
+    const { post } = setup({ viewer: me, tenantId: PLATFORM, permissions: ['communication.support.agent'] });
+
+    const response = await post('/communication/work/titles', payload);
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe('Communication.Work.InvalidTitles');
+  });
+
+  it('un cliente del portal nunca entra', async () => {
+    const me = randomUUID();
+    const { post } = setup({ viewer: me, actorType: 'CustomerPortal', permissions: [] });
+
+    const response = await post('/communication/work/titles', { items: [] });
+
+    expect(response.statusCode).toBe(403);
+  });
 });

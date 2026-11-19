@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Contracts.Work;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.ClientForms.Application.Requests.Work;
@@ -38,15 +39,50 @@ internal sealed class FormRequestWorkReader(TasksDbContext context) : IFormReque
         bool canViewAll,
         int take,
         CancellationToken ct
+    ) => await ToItemsAsync(Assigned(tenantId, userId, actorUserId, canViewAll).Take(take), ct);
+
+    public async Task<PagedResult<WorkItem>> ItemsAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid actorUserId,
+        bool canViewAll,
+        int page,
+        int size,
+        CancellationToken ct
     )
     {
-        var rows = await Open(tenantId, actorUserId, canViewAll)
+        var assigned = Assigned(tenantId, userId, actorUserId, canViewAll);
+        var total = await assigned.CountAsync(ct);
+        var items = await ToItemsAsync(assigned.Skip((page - 1) * size).Take(size), ct);
+        return new PagedResult<WorkItem>(items, page, size, total);
+    }
+
+    // Un WHERE Id IN (...) con la visibilidad de la bandeja, en cualquier estado.
+    public async Task<IReadOnlyList<WorkTitle>> TitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> requestIds,
+        Guid actorUserId,
+        bool canViewAll,
+        CancellationToken ct
+    ) =>
+        await context
+            .FormRequests.IgnoreQueryFilters()
+            .Where(item => item.TenantId == tenantId && requestIds.Contains(item.Id))
+            .VisibleInInbox(context, tenantId, actorUserId, canViewAll)
+            .Select(item => new WorkTitle(WorkResourceTypes.FormRequest, item.Id, item.Title))
+            .ToListAsync(ct);
+
+    // Universo y orden del top y de la lista: el vencimiento más viejo primero, sin vencimiento al final.
+    private IQueryable<FormRequest> Assigned(Guid tenantId, Guid userId, Guid actorUserId, bool canViewAll) =>
+        Open(tenantId, actorUserId, canViewAll)
             .Where(item => (item.ResponsibleUserId ?? item.RequestedByUserId) == userId)
             .OrderBy(item => item.DueAtUtc == null)
             .ThenBy(item => item.DueAtUtc)
-            .ThenBy(item => item.Id)
-            .Take(take)
-            .Select(item => new
+            .ThenBy(item => item.Id);
+
+    private static async Task<IReadOnlyList<WorkItem>> ToItemsAsync(IQueryable<FormRequest> rows, CancellationToken ct)
+    {
+        var found = await rows.Select(item => new
             {
                 item.Id,
                 item.Title,
@@ -56,7 +92,8 @@ internal sealed class FormRequestWorkReader(TasksDbContext context) : IFormReque
                 item.Status,
             })
             .ToListAsync(ct);
-        return rows.Select(row => new WorkItem(
+        return found
+            .Select(row => new WorkItem(
                 row.Id,
                 WorkKinds.FormRequests,
                 row.Title,

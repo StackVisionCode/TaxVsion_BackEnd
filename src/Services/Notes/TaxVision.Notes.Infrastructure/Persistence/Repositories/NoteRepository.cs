@@ -136,6 +136,30 @@ public sealed class NoteRepository(NotesDbContext db) : INoteRepository
         return new PagedResult<NoteFeedRow>(items, page, size, totalCount);
     }
 
+    public async Task<IReadOnlyList<NoteTitleRow>> ListTitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        var wanted = ids.Distinct().ToList();
+        if (wanted.Count == 0)
+            return [];
+
+        // Solo el preview: alcanza para un título de una línea sin traer el texto completo.
+        return await ApplyAssignmentFilter(
+                VisibleTo(tenantId, actorUserId, actorHasViewAll),
+                tenantId,
+                assignedToUserId
+            )
+            .Where(n => wanted.Contains(n.Id))
+            .Select(n => new NoteTitleRow(n.Id, n.Content.PlainTextPreview))
+            .ToListAsync(ct);
+    }
+
     // Predicado de visibilidad de staff común a los listados: tenant explícito, sin borradas y privadas solo del
     // autor o con notes.view_all (NoteVisibilityPolicy.CanStaffView en SQL). IgnoreQueryFilters(): el filtro
     // ambiental por tenant no está garantizado en el scope de DI con que Wolverine despacha la query (Fase 10:

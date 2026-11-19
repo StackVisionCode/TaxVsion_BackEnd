@@ -23,6 +23,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var outboxUnit = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Correspondence.Application.Abstractions.IOutboxUnit>(serviceScope.ServiceProvider);
             
             /*
@@ -38,7 +39,6 @@ namespace Internal.Generated.WolverineHandlers
             var draftRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Correspondence.Application.Abstractions.IDraftRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var sendDraftCommand = (TaxVision.Correspondence.Application.Compose.SendDraftCommand)context.Envelope.Message;
 

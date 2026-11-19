@@ -11,10 +11,29 @@ public static class TeamWorkProviders
 {
     public static IReadOnlyList<WorkProviderDescriptor> All { get; } =
     [
-        new("tasks", "planner", "/tasks/work/{userId}", "/tasks/work/summary"),
-        new("calendar", "planner", "/calendar/work/{userId}", "/calendar/work/summary"),
-        new("signature", "signatures", "/signature/work/{userId}", "/signature/work/summary"),
+        new("tasks", "planner", "/tasks/work/{userId}", "/tasks/work/summary", "/tasks/work/{userId}/items"),
+        new(
+            "calendar",
+            "planner",
+            "/calendar/work/{userId}",
+            "/calendar/work/summary",
+            "/calendar/work/{userId}/items"
+        ),
+        new(
+            "signature",
+            "signatures",
+            "/signature/work/{userId}",
+            "/signature/work/summary",
+            "/signature/work/{userId}/items"
+        ),
+        // Sin lista paginada: los clientes ya tienen su pestaña.
         new("customer", "customers", "/customers/work/{userId}", "/customers/work/summary"),
-        new("communication", "comms", "/communication/work/{userId}", "/communication/work/summary"),
+        new(
+            "communication",
+            "comms",
+            "/communication/work/{userId}",
+            "/communication/work/summary",
+            "/communication/work/{userId}/items"
+        ),
     ];
 }

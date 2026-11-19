@@ -69,6 +69,12 @@ public sealed class TeamController(IMessageBus bus, IUserPermissionsSource permi
     [ProducesResponseType<IReadOnlyList<WorkProviderDescriptor>>(StatusCodes.Status200OK)]
     public IActionResult WorkProviders() => Ok(TeamWorkProviders.All);
 
+    /// <summary>Registro de títulos del historial (solo rutas, sin datos); cada servicio aplica su autorización.</summary>
+    [HttpGet("title-providers")]
+    [RateLimit("tenant.f.list")]
+    [ProducesResponseType<IReadOnlyList<TitleProviderDescriptor>>(StatusCodes.Status200OK)]
+    public IActionResult TitleProviders() => Ok(TeamTitleProviders.All);
+
     public static int StatusOf(Error error) =>
         error == TeamErrors.ActivityForbidden ? StatusCodes.Status403Forbidden : StatusCodes.Status400BadRequest;
 
