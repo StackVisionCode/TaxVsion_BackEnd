@@ -2,7 +2,6 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.NotesIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using TaxVision.Notes.Application.Notes.Abstractions;
 using TaxVision.Notes.Domain.Notes;
 using Wolverine;
 
@@ -14,19 +13,25 @@ namespace TaxVision.Notes.Application.Notes.Commands;
 // Distinto del grupo de NoteMetadataCommands.cs, que es SOLO autor.
 // ---------------------------------------------------------------------------
 
-public sealed record ArchiveNoteCommand(Guid TenantId, Guid NoteId, Guid ActorUserId, bool ActorHasViewAll);
+public sealed record ArchiveNoteCommand(
+    Guid TenantId,
+    Guid NoteId,
+    Guid ActorUserId,
+    bool ActorHasViewAll,
+    bool CanViewAllCustomers = true
+) : INoteActorRequest;
 
 public static class ArchiveNoteHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         ArchiveNoteCommand command,
-        INoteRepository notes,
+        VisibleNoteReader notes,
         IUnitOfWork unitOfWork,
         TimeProvider clock,
         CancellationToken ct
     )
     {
-        var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
+        var note = await notes.FindAsync(command, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
         if (!NoteVisibilityPolicy.CanManage(note, command.ActorUserId, command.ActorHasViewAll))
@@ -41,19 +46,25 @@ public static class ArchiveNoteHandler
     }
 }
 
-public sealed record RestoreNoteCommand(Guid TenantId, Guid NoteId, Guid ActorUserId, bool ActorHasViewAll);
+public sealed record RestoreNoteCommand(
+    Guid TenantId,
+    Guid NoteId,
+    Guid ActorUserId,
+    bool ActorHasViewAll,
+    bool CanViewAllCustomers = true
+) : INoteActorRequest;
 
 public static class RestoreNoteHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         RestoreNoteCommand command,
-        INoteRepository notes,
+        VisibleNoteReader notes,
         IUnitOfWork unitOfWork,
         TimeProvider clock,
         CancellationToken ct
     )
     {
-        var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
+        var note = await notes.FindAsync(command, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
         if (!NoteVisibilityPolicy.CanManage(note, command.ActorUserId, command.ActorHasViewAll))
@@ -68,13 +79,19 @@ public static class RestoreNoteHandler
     }
 }
 
-public sealed record DeleteNoteCommand(Guid TenantId, Guid NoteId, Guid ActorUserId, bool ActorHasViewAll);
+public sealed record DeleteNoteCommand(
+    Guid TenantId,
+    Guid NoteId,
+    Guid ActorUserId,
+    bool ActorHasViewAll,
+    bool CanViewAllCustomers = true
+) : INoteActorRequest;
 
 public static class DeleteNoteHandler
 {
     public static async Task<Result> Handle(
         DeleteNoteCommand command,
-        INoteRepository notes,
+        VisibleNoteReader notes,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
         ICorrelationContext correlation,
@@ -82,7 +99,7 @@ public static class DeleteNoteHandler
         CancellationToken ct
     )
     {
-        var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
+        var note = await notes.FindAsync(command, ct);
         if (note is null)
             return Result.Failure(NoteErrors.NotFound);
         if (!NoteVisibilityPolicy.CanManage(note, command.ActorUserId, command.ActorHasViewAll))

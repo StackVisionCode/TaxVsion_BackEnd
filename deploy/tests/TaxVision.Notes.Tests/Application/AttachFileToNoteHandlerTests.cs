@@ -37,7 +37,7 @@ public sealed class AttachFileToNoteHandlerTests
                 1024,
                 false
             ),
-            repo,
+            TestNoteReaders.For(repo),
             new FakeOffboardedStaffRepository(),
             uow,
             bus,
@@ -82,7 +82,7 @@ public sealed class AttachFileToNoteHandlerTests
                 1024,
                 false
             ),
-            repo,
+            TestNoteReaders.For(repo),
             new FakeOffboardedStaffRepository(),
             new NoOpUnitOfWork(),
             new FakeMessageBus(),
@@ -111,7 +111,7 @@ public sealed class AttachFileToNoteHandlerTests
                 1024,
                 false
             ),
-            new FakeNoteRepository(),
+            TestNoteReaders.For(new FakeNoteRepository()),
             new FakeOffboardedStaffRepository(),
             new NoOpUnitOfWork(),
             bus,

@@ -6,13 +6,13 @@ namespace TaxVision.Notes.Tests.Application;
 
 public sealed class ArchiveNoteHandlerTests
 {
-    private static Note MakeNote(Guid tenantId, Guid authorId) =>
+    private static Note MakeNote(Guid tenantId, Guid authorId, NoteVisibility visibility = NoteVisibility.Private) =>
         Note.Create(
             tenantId,
             authorId,
             NoteContent.Create("<p>x</p>").Value,
             NoteReference.Create(NoteTargetType.None, null).Value,
-            NoteVisibility.Private,
+            visibility,
             null,
             DateTime.UtcNow
         ).Value;
@@ -29,7 +29,7 @@ public sealed class ArchiveNoteHandlerTests
 
         var result = await ArchiveNoteHandler.Handle(
             new ArchiveNoteCommand(tenantId, note.Id, authorId, ActorHasViewAll: false),
-            repo,
+            TestNoteReaders.For(repo),
             uow,
             TimeProvider.System,
             CancellationToken.None
@@ -51,7 +51,7 @@ public sealed class ArchiveNoteHandlerTests
 
         var result = await ArchiveNoteHandler.Handle(
             new ArchiveNoteCommand(tenantId, note.Id, Guid.NewGuid(), ActorHasViewAll: true),
-            repo,
+            TestNoteReaders.For(repo),
             new NoOpUnitOfWork(),
             TimeProvider.System,
             CancellationToken.None
@@ -65,13 +65,14 @@ public sealed class ArchiveNoteHandlerTests
     {
         var tenantId = Guid.NewGuid();
         var authorId = Guid.NewGuid();
-        var note = MakeNote(tenantId, authorId);
+        // Team: la ve pero no es suya (una privada ajena daría 404, N3).
+        var note = MakeNote(tenantId, authorId, NoteVisibility.Team);
         var repo = new FakeNoteRepository();
         repo.Seed(note);
 
         var result = await ArchiveNoteHandler.Handle(
             new ArchiveNoteCommand(tenantId, note.Id, Guid.NewGuid(), ActorHasViewAll: false),
-            repo,
+            TestNoteReaders.For(repo),
             new NoOpUnitOfWork(),
             TimeProvider.System,
             CancellationToken.None

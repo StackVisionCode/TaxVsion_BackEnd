@@ -15,15 +15,16 @@ public sealed record UpdateNoteContentCommand(
     Guid NoteId,
     Guid ActorUserId,
     string RawHtml,
-    bool ActorHasViewAll
-);
+    bool ActorHasViewAll,
+    bool CanViewAllCustomers = true
+) : INoteActorRequest;
 
 /// <summary>El autor edita el contenido (03_Plan_De_Fases.md §Fase 5); desde el punto 3.2 también un staff con <c>notes.view_all</c> si el autor fue retirado, ver <see cref="NoteVisibilityPolicy.CanEditContentAsync"/>.</summary>
 public static class UpdateNoteContentHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         UpdateNoteContentCommand command,
-        INoteRepository notes,
+        VisibleNoteReader notes,
         IHtmlSanitizer sanitizer,
         IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
@@ -33,7 +34,7 @@ public static class UpdateNoteContentHandler
         CancellationToken ct
     )
     {
-        var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
+        var note = await notes.FindAsync(command, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
 

@@ -30,7 +30,7 @@ public sealed class UpdateNoteContentHandlerTests
 
         var result = await UpdateNoteContentHandler.Handle(
             new UpdateNoteContentCommand(tenantId, note.Id, authorId, "<p>updated</p>", ActorHasViewAll: false),
-            repo,
+            TestNoteReaders.For(repo),
             new PassThroughHtmlSanitizer(),
             new FakeOffboardedStaffRepository(),
             uow,
@@ -58,7 +58,7 @@ public sealed class UpdateNoteContentHandlerTests
         // view_all por sí solo NO habilita editar contenido ajeno — solo si el autor fue retirado.
         var result = await UpdateNoteContentHandler.Handle(
             new UpdateNoteContentCommand(tenantId, note.Id, Guid.NewGuid(), "<p>hijacked</p>", ActorHasViewAll: true),
-            repo,
+            TestNoteReaders.For(repo),
             new PassThroughHtmlSanitizer(),
             new FakeOffboardedStaffRepository(),
             new NoOpUnitOfWork(),
@@ -85,7 +85,7 @@ public sealed class UpdateNoteContentHandlerTests
 
         var result = await UpdateNoteContentHandler.Handle(
             new UpdateNoteContentCommand(tenantId, note.Id, Guid.NewGuid(), "<p>fixed</p>", ActorHasViewAll: true),
-            repo,
+            TestNoteReaders.For(repo),
             new PassThroughHtmlSanitizer(),
             offboarded,
             new NoOpUnitOfWork(),
@@ -112,7 +112,7 @@ public sealed class UpdateNoteContentHandlerTests
                 "<p>x</p>",
                 ActorHasViewAll: false
             ),
-            repo,
+            TestNoteReaders.For(repo),
             new PassThroughHtmlSanitizer(),
             new FakeOffboardedStaffRepository(),
             new NoOpUnitOfWork(),
