@@ -91,6 +91,12 @@
     <Project Path="src/Services/Growth/TaxVision.Referrals.Application/TaxVision.Referrals.Application.csproj" />
     <Project Path="src/Services/Growth/TaxVision.Referrals.Domain/TaxVision.Referrals.Domain.csproj" />
   </Folder>
+  <Folder Name="/src/Services/Mobile/">
+    <Project Path="src/Services/Mobile/TaxVision.Mobile.Domain/TaxVision.Mobile.Domain.csproj" />
+    <Project Path="src/Services/Mobile/TaxVision.Mobile.Application/TaxVision.Mobile.Application.csproj" />
+    <Project Path="src/Services/Mobile/TaxVision.Mobile.Infrastructure/TaxVision.Mobile.Infrastructure.csproj" />
+    <Project Path="src/Services/Mobile/TaxVision.Mobile.Api/TaxVision.Mobile.Api.csproj" />
+  </Folder>
   <!-- NotificationService -->
   <Folder Name="/src/Services/Notification/">
     <Project Path="src/Services/Notification/TaxVision.Notification.Api/TaxVision.Notification.Api.csproj" />
@@ -217,6 +223,7 @@
   </Folder>
   <Folder Name="/deploy/" />
   <Folder Name="/deploy/tests/">
+    <Project Path="deploy/tests/TaxVision.Mobile.Tests/TaxVision.Mobile.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.DataCollection.Engine.Tests/TaxVision.DataCollection.Engine.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.BuildingBlocks.Tests/TaxVision.BuildingBlocks.Tests.csproj" />
     <Project Path="deploy/tests/TaxVision.BuildingBlocks.Testing/TaxVision.BuildingBlocks.Testing.csproj" />

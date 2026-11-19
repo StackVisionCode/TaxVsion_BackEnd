@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $all = @(
   "Auth", "Billing", "Calendar", "Campaigns", "Catalog", "CloudStorage", "Connectors", "Correspondence",
-  "Customer", "Documents", "FinancialInsights", "Growth", "Inventory", "Notes", "Notification", "PaymentApp", "PaymentClient",
+  "Customer", "Documents", "FinancialInsights", "Growth", "Inventory", "Mobile", "Notes", "Notification", "PaymentApp", "PaymentClient",
   "Postmaster", "Reminder", "Scribe", "Signature", "Sms", "Subscription", "Tasks", "Tenant", "Wallet"
 )
 # Con -File la lista llega como un solo texto "Tasks,Auth".

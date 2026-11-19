@@ -73,6 +73,8 @@ public static class NotificationKinds
     public const string CommunicationMeetingCancelled = "communication.meeting.cancelled";
     public const string CommunicationMeetingRescheduled = "communication.meeting.rescheduled";
     public const string CommunicationMeetingReminder = "communication.meeting.reminder";
+    public const string CommunicationCallIncoming = "communication.call.incoming";
+    public const string CommunicationChatMessage = "communication.chat.message";
     public const string CommunicationCallMissed = "communication.call.missed";
     public const string CommunicationCallRecordingReady = "communication.call.recording_ready";
     public const string CommunicationCallRecordingFailed = "communication.call.recording_failed";

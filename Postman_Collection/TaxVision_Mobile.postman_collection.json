@@ -1,0 +1,680 @@
+{
+  "info": {
+    "name": "TaxVision Mobile",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "CustomerPortal bearer token. Tenant/customer ownership comes only from verified JWT claims. Use an isolated sandbox; test 401 without token, 403 without permission and 404 for another owner."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "UrlBase",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "mobileVehicleId",
+      "value": ""
+    },
+    {
+      "key": "adminAccessToken",
+      "value": ""
+    },
+    {
+      "key": "rateEffectiveFrom",
+      "value": ""
+    },
+    {
+      "key": "ratePerMile",
+      "value": ""
+    },
+    {
+      "key": "rateCurrency",
+      "value": ""
+    },
+    {
+      "key": "mobileTripId",
+      "value": ""
+    },
+    {
+      "key": "mobileClientTripId",
+      "value": ""
+    },
+    {
+      "key": "mobileTripNextSequence",
+      "value": ""
+    },
+    {
+      "key": "mobileTripPointSequence",
+      "value": ""
+    },
+    {
+      "key": "mobileTripStartedAt",
+      "value": ""
+    },
+    {
+      "key": "mobileTripObservedAt",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Create vehicle",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{UrlBase}}/mobile/vehicles",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"plate\": \"ABC-123\",\n  \"isDefault\": true\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 201\", () => pm.response.to.have.status(201));",
+              "if (pm.response.code === 201) pm.collectionVariables.set(\"mobileVehicleId\", pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "List vehicles",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{UrlBase}}/mobile/vehicles?page=1&size=50"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Read vehicle",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{UrlBase}}/mobile/vehicles/{{mobileVehicleId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update vehicle",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{UrlBase}}/mobile/vehicles/{{mobileVehicleId}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"plate\": \"ABC-123\",\n  \"currentMileage\": 123,\n  \"isDefault\": true\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete vehicle",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": "{{UrlBase}}/mobile/vehicles/{{mobileVehicleId}}"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"status 204\", () => pm.response.to.have.status(204));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Trips, GPS and mileage configuration",
+      "item": [
+        {
+          "name": "Start trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{UrlBase}}/mobile/trips",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientTripId\": \"{{mobileClientTripId}}\", \"vehicleId\": \"{{mobileVehicleId}}\", \"purpose\": \"business\",\n  \"startedAt\": \"{{mobileTripStartedAt}}\", \"startPoint\": {\n    \"sequence\": 0, \"observedAt\": \"{{mobileTripStartedAt}}\", \"latitude\": 40.0, \"longitude\": -74.0, \"accuracyMeters\": 5\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());",
+                  "pm.collectionVariables.set(\"mobileClientTripId\", pm.variables.replaceIn(\"{{$guid}}\"));",
+                  "pm.collectionVariables.set(\"mobileTripStartedAt\", new Date(Date.now() - 60000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"success\", () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+                  "if ([200,201].includes(pm.response.code)) { const t = pm.response.json(); pm.collectionVariables.set(\"mobileTripId\", t.id); pm.collectionVariables.set(\"mobileTripNextSequence\", t.revision + 1); pm.collectionVariables.set(\"mobileTripPointSequence\", t.lastAcceptedPointSequence + 1); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List trips",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{UrlBase}}/mobile/trips?page=1&size=20&sortBy=date&sortOrder=desc"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Active trips",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{UrlBase}}/mobile/trips/active"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Trip detail",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{UrlBase}}/mobile/trips/{{mobileTripId}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Trip GPS points",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{UrlBase}}/mobile/trips/{{mobileTripId}}/points?after=-1&size=100"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Synchronize GPS batch",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{UrlBase}}/mobile/trips/{{mobileTripId}}/tracking",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sequence\": {{mobileTripNextSequence}}, \"observedAt\": \"{{mobileTripObservedAt}}\", \"points\": [\n    { \"sequence\": {{mobileTripPointSequence}}, \"observedAt\": \"{{mobileTripObservedAt}}\", \"latitude\": 40.01, \"longitude\": -74.0, \"accuracyMeters\": 5 }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"success\", () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+                  "if ([200,201].includes(pm.response.code)) { const t = pm.response.json(); pm.collectionVariables.set(\"mobileTripId\", t.id); pm.collectionVariables.set(\"mobileTripNextSequence\", t.revision + 1); pm.collectionVariables.set(\"mobileTripPointSequence\", t.lastAcceptedPointSequence + 1); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pause trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{UrlBase}}/mobile/trips/{{mobileTripId}}/pause",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sequence\": {{mobileTripNextSequence}}, \"observedAt\": \"{{mobileTripObservedAt}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"success\", () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+                  "if ([200,201].includes(pm.response.code)) { const t = pm.response.json(); pm.collectionVariables.set(\"mobileTripId\", t.id); pm.collectionVariables.set(\"mobileTripNextSequence\", t.revision + 1); pm.collectionVariables.set(\"mobileTripPointSequence\", t.lastAcceptedPointSequence + 1); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Resume trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{UrlBase}}/mobile/trips/{{mobileTripId}}/resume",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sequence\": {{mobileTripNextSequence}}, \"observedAt\": \"{{mobileTripObservedAt}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"success\", () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+                  "if ([200,201].includes(pm.response.code)) { const t = pm.response.json(); pm.collectionVariables.set(\"mobileTripId\", t.id); pm.collectionVariables.set(\"mobileTripNextSequence\", t.revision + 1); pm.collectionVariables.set(\"mobileTripPointSequence\", t.lastAcceptedPointSequence + 1); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{UrlBase}}/mobile/trips/{{mobileTripId}}/cancel",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sequence\": {{mobileTripNextSequence}}, \"observedAt\": \"{{mobileTripObservedAt}}\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"success\", () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+                  "if ([200,201].includes(pm.response.code)) { const t = pm.response.json(); pm.collectionVariables.set(\"mobileTripId\", t.id); pm.collectionVariables.set(\"mobileTripNextSequence\", t.revision + 1); pm.collectionVariables.set(\"mobileTripPointSequence\", t.lastAcceptedPointSequence + 1); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Complete trip",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{UrlBase}}/mobile/trips/{{mobileTripId}}/complete",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sequence\": {{mobileTripNextSequence}}, \"observedAt\": \"{{mobileTripObservedAt}}\", \"points\": []}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"success\", () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+                  "if ([200,201].includes(pm.response.code)) { const t = pm.response.json(); pm.collectionVariables.set(\"mobileTripId\", t.id); pm.collectionVariables.set(\"mobileTripNextSequence\", t.revision + 1); pm.collectionVariables.set(\"mobileTripPointSequence\", t.lastAcceptedPointSequence + 1); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Edit trip purpose and notes",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{UrlBase}}/mobile/trips/{{mobileTripId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sequence\": {{mobileTripNextSequence}}, \"observedAt\": \"{{mobileTripObservedAt}}\", \"purpose\": \"business\", \"notes\": \"Client visit\"}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"success\", () => pm.expect(pm.response.code).to.be.oneOf([200,201]));",
+                  "if ([200,201].includes(pm.response.code)) { const t = pm.response.json(); pm.collectionVariables.set(\"mobileTripId\", t.id); pm.collectionVariables.set(\"mobileTripNextSequence\", t.revision + 1); pm.collectionVariables.set(\"mobileTripPointSequence\", t.lastAcceptedPointSequence + 1); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete finished trip",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{UrlBase}}/mobile/trips/{{mobileTripId}}?sequence={{mobileTripNextSequence}}&observedAt={{mobileTripObservedAt}}"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Trip statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{UrlBase}}/mobile/statistics?timeZone=America/New_York"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Last seven days",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{UrlBase}}/mobile/statistics/daily?days=7&timeZone=America/New_York"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Effective mileage configuration",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{UrlBase}}/mobile/mileage-configuration?purpose=business"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Office rate history (admin)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{UrlBase}}/mobile/mileage-configuration/rates",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create office rate version (admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{UrlBase}}/mobile/mileage-configuration/rates",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"purpose\": \"business\", \"effectiveFrom\": \"{{rateEffectiveFrom}}\", \"ratePerMile\": {{ratePerMile}}, \"currency\": \"{{rateCurrency}}\"}"
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminAccessToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"mobileTripObservedAt\", new Date().toISOString());"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Run Start -> sync -> pause/resume as needed -> complete OR cancel -> edit/delete. Rates are office-managed estimates, not preloaded IRS values. Tokens and rate variables must be configured manually."
+    }
+  ]
+}
