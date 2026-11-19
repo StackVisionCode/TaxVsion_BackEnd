@@ -41,11 +41,19 @@ public sealed class VehicleTests
         );
 
     [Theory]
+    [InlineData("storage:invalid")]
+    [InlineData("storage:../../secret")]
     [InlineData("data:image/png;base64,abc")]
     [InlineData("javascript:alert(1)")]
     [InlineData("http://host/photo.png")]
     public void Unsafe_photo_is_rejected(string photo) =>
         Assert.True(VehicleDetails.Create("ABC", null, null, null, null, photo, 0).IsFailure);
+
+    [Theory]
+    [InlineData("storage:12345678-1234-1234-1234-123456789abc")]
+    [InlineData("https://example.com/car.jpg")]
+    public void Persistent_photo_reference_is_accepted(string photo) =>
+        Assert.Equal(photo, VehicleDetails.Create("ABC", null, null, null, null, photo, 0).Value.Photo);
 
     private static BuildingBlocks.Results.Result<VehicleDetails> Details(string? plate) =>
         VehicleDetails.Create(plate, null, null, 2026, null, null, 0);

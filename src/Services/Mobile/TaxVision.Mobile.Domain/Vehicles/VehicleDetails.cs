@@ -39,8 +39,8 @@ public sealed record VehicleDetails
             !string.IsNullOrWhiteSpace(photo)
             && (
                 photo.Length > 2048
-                || !Uri.TryCreate(photo, UriKind.Absolute, out var uri)
-                || uri.Scheme != Uri.UriSchemeHttps
+                || !(photo.StartsWith("storage:", StringComparison.Ordinal) && Guid.TryParse(photo[8..], out _)
+                    || Uri.TryCreate(photo, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps)
             )
         )
             return Result.Failure<VehicleDetails>(VehicleErrors.InvalidPhoto);

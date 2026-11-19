@@ -105,6 +105,31 @@ namespace TaxVision.Mobile.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("TaxVision.Mobile.Domain.Trips.MileageRetentionPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("RetentionDays")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("MobileMileageRetentionPolicies", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MobileMileageRetentionPolicies_Days", "[RetentionDays] IS NULL OR [RetentionDays] BETWEEN 1 AND 3650");
+                        });
+                });
+
             modelBuilder.Entity("TaxVision.Mobile.Domain.Trips.Trip", b =>
                 {
                     b.Property<Guid>("Id")
@@ -115,6 +140,9 @@ namespace TaxVision.Mobile.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ClientTripId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CoordinatesPurgedAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");

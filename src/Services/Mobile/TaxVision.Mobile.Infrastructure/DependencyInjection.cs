@@ -10,6 +10,7 @@ using TaxVision.Mobile.Application.Vehicles.Abstractions;
 using TaxVision.Mobile.Infrastructure.Permissions;
 using TaxVision.Mobile.Infrastructure.Persistence;
 using TaxVision.Mobile.Infrastructure.Persistence.Repositories;
+using TaxVision.Mobile.Infrastructure.Retention;
 
 namespace TaxVision.Mobile.Infrastructure;
 
@@ -28,6 +29,7 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IVehicleRepository, VehicleRepository>();
         services.AddScoped<ITripRepository, TripRepository>();
+        services.AddHostedService<MileageGpsRetentionJob>();
         services.AddScoped<MobileProjectionRepository>();
         services.AddScoped<IMobileProjectionRepository>(sp => sp.GetRequiredService<MobileProjectionRepository>());
         services.AddScoped<IUserPermissionsProjectionReader>(sp => sp.GetRequiredService<MobileProjectionRepository>());

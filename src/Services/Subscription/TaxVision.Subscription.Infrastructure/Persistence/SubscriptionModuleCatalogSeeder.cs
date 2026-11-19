@@ -77,6 +77,14 @@ public static class SubscriptionModuleCatalogSeeder
             29m,
             290m
         ),
+        Commercial(
+            "b2000000-0000-0000-0000-00000000000b",
+            "mileage",
+            "Mileage",
+            "GPS trip tracking, vehicle management and mileage reporting.",
+            19m,
+            190m
+        ),
     ];
 
     public static async Task SeedAsync(
@@ -86,15 +94,8 @@ public static class SubscriptionModuleCatalogSeeder
         CancellationToken ct
     )
     {
-        var existingCount = await db.Modules.CountAsync(ct);
-        if (existingCount > 0 && options.ModuleCatalog.SeedOnlyIfEmpty)
-        {
-            logger.LogInformation(
-                "Module catalog already present ({ModuleCount} modules); seeder is passive.",
-                existingCount
-            );
-            return;
-        }
+        // Upsert catalog definitions even when the catalog is already populated so newly
+        // introduced commercial modules become available to existing installations.
 
         foreach (var definition in Definitions)
         {
