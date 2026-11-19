@@ -152,6 +152,11 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaidIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
+    // Emisión de factura → actividad del equipo (Tenant). Sale del evento de dominio con el commit.
+    options
+        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceIssuedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
     // Cobro que no se pudo aplicar (factura anulada, desconocida, otra moneda) → UnappliedPayment.
     options
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaymentRejectedIntegrationEvent>()

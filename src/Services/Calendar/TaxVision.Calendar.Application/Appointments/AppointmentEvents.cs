@@ -140,7 +140,8 @@ internal static class AppointmentEvents
         string scope,
         DateTime? originalStartUtc,
         string correlationId,
-        IReadOnlyList<AttendeeRsvpToken>? rsvpTokens = null
+        IReadOnlyList<AttendeeRsvpToken>? rsvpTokens = null,
+        Guid? changedByUserId = null
     ) =>
         new()
         {
@@ -156,6 +157,7 @@ internal static class AppointmentEvents
             MeetingId = appointment.MeetingId,
             OrganizerUserId = appointment.OrganizerUserId,
             Recipients = RecipientsOf(appointment, rsvpTokens),
+            ChangedByUserId = changedByUserId,
         };
 
     public static AppointmentCancelledIntegrationEvent Cancelled(
@@ -163,7 +165,8 @@ internal static class AppointmentEvents
         string scope,
         DateTime? originalStartUtc,
         string? reason,
-        string correlationId
+        string correlationId,
+        Guid? changedByUserId = null
     ) =>
         new()
         {
@@ -179,5 +182,6 @@ internal static class AppointmentEvents
             MeetingId = appointment.MeetingId,
             OrganizerUserId = appointment.OrganizerUserId,
             Recipients = RecipientsOf(appointment),
+            ChangedByUserId = changedByUserId,
         };
 }

@@ -14,4 +14,8 @@ public sealed record SignatureRequestSentIntegrationEvent : IntegrationEvent
     public required Guid CreatedByUserId { get; init; }
     public required DateTime SentAtUtc { get; init; }
     public required IReadOnlyList<Guid> SignerIds { get; init; }
+
+    /// <summary>Quién la envió y de qué cliente (aditivo, Work Profile).</summary>
+    public Guid? SentByUserId { get; init; }
+    public Guid? CustomerId { get; init; }
 }

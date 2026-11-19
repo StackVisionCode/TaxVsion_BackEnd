@@ -36,7 +36,8 @@ public static class AppointmentOccurrenceOverriddenDomainEventHandler
                 appointment.Timing.TimeZone.Id,
                 nameof(EditScope.ThisOccurrence),
                 original,
-                correlationId
+                correlationId,
+                changedByUserId: overridden.ModifiedByUserId
             )
         );
         messages.Add(

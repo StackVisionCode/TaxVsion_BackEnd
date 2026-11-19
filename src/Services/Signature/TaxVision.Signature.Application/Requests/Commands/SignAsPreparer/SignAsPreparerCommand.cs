@@ -62,6 +62,7 @@ public static class SignAsPreparerHandler
                     PtinOrEfin = preparer.PtinOrEfin,
                     PreparerDisplayName = preparer.DisplayName,
                     SignedAtUtc = signedAtUtc,
+                    CustomerId = request.PrimaryCustomerId,
                 }
             )
             .AsTask();

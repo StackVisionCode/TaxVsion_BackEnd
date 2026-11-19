@@ -62,6 +62,7 @@ public sealed class PostmasterClientTests
             new FakeCorrespondenceAuditLogRepository(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeOutboxUnit(new FakeUnitOfWork()),
             NullLogger<SendDraftCommand>.Instance,
             CancellationToken.None
         );

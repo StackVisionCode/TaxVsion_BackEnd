@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Correspondence.Application.Abstractions;
@@ -5,6 +6,7 @@ using TaxVision.Correspondence.Application.Compose;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Domain.ValueObjects;
+using TaxVision.Correspondence.Tests.Ingest;
 using TaxVision.Correspondence.Tests.Projections;
 
 namespace TaxVision.Correspondence.Tests.Compose;
@@ -32,7 +34,8 @@ public sealed class SendDraftHandlerTests
         FakePostmasterClient postmaster,
         FakeCorrespondenceAuditLogRepository auditLogs,
         FakeCorrelationContext correlation,
-        FakeUnitOfWork unitOfWork
+        FakeUnitOfWork unitOfWork,
+        FakeMessageBus? bus = null
     ) =>
         await SendDraftHandler.Handle(
             command,
@@ -41,6 +44,7 @@ public sealed class SendDraftHandlerTests
             auditLogs,
             correlation,
             unitOfWork,
+            new FakeOutboxUnit(unitOfWork, bus),
             NullLogger<SendDraftCommand>.Instance,
             CancellationToken.None
         );
@@ -313,6 +317,150 @@ public sealed class SendDraftHandlerTests
         Assert.True(result.IsFailure);
         Assert.Equal("Draft.NotFound", result.Error.Code);
         Assert.Equal(0, postmaster.CallCount);
+    }
+
+    private static Draft SeedSendableReply(FakeDraftRepository drafts, Guid tenantId, Guid customerId, Guid threadId)
+    {
+        var context = ReplyContext.Create(Guid.NewGuid(), threadId, null, null, null).Value;
+        var draft = Draft.CreateReply(tenantId, customerId, Guid.NewGuid(), Guid.NewGuid(), context, "Hello").Value;
+        draft
+            .AutoSave(
+                "Re: Hello",
+                "<p>body</p>",
+                null,
+                [new DraftRecipientData(EmailAddress.Create("customer@example.com").Value, EmailRecipientType.To, null)]
+            )
+            .EnsureSuccess();
+        drafts.AddAsync(draft).GetAwaiter().GetResult();
+        return draft;
+    }
+
+    [Fact]
+    public async Task Handle_Sent_PublishesEmailSentOnce_WithActorThreadAndCustomer()
+    {
+        var tenantId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var threadId = Guid.NewGuid();
+        var actorId = Guid.NewGuid();
+        var drafts = new FakeDraftRepository();
+        var draft = SeedSendableReply(drafts, tenantId, customerId, threadId);
+        var bus = new FakeMessageBus();
+
+        var result = await InvokeAsync(
+            new SendDraftCommand(tenantId, draft.Id, actorId, "corr-sent"),
+            drafts,
+            new FakePostmasterClient(),
+            new FakeCorrespondenceAuditLogRepository(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            bus
+        );
+
+        Assert.True(result.IsSuccess);
+        var sent = Assert.IsType<CorrespondenceEmailSentIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(tenantId, sent.TenantId);
+        Assert.Equal(draft.Id, sent.DraftId);
+        Assert.Equal(threadId, sent.ThreadId);
+        Assert.Equal(customerId, sent.CustomerId);
+        Assert.Equal(actorId, sent.SentByUserId);
+        Assert.Equal("corr-sent", sent.CorrelationId);
+    }
+
+    [Fact]
+    public async Task Handle_SentToNonCustomer_PublishesWithoutCustomer_AndTheMessageAsItsThread()
+    {
+        var tenantId = Guid.NewGuid();
+        var drafts = new FakeDraftRepository();
+        var draft = Draft.CreateNew(tenantId, null, Guid.NewGuid(), Guid.NewGuid()).Value;
+        draft
+            .AutoSave(
+                "Subject",
+                "<p>body</p>",
+                null,
+                [new DraftRecipientData(EmailAddress.Create("vendor@example.com").Value, EmailRecipientType.To, null)]
+            )
+            .EnsureSuccess();
+        await drafts.AddAsync(draft);
+        var bus = new FakeMessageBus();
+
+        await InvokeAsync(
+            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1"),
+            drafts,
+            new FakePostmasterClient(),
+            new FakeCorrespondenceAuditLogRepository(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            bus
+        );
+
+        var sent = Assert.IsType<CorrespondenceEmailSentIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Null(sent.CustomerId);
+        Assert.Null(sent.ThreadId);
+    }
+
+    [Fact]
+    public async Task Handle_SendRetried_PublishesOnlyOnce()
+    {
+        var tenantId = Guid.NewGuid();
+        var drafts = new FakeDraftRepository();
+        var draft = SeedSendableDraft(drafts, tenantId);
+        var bus = new FakeMessageBus();
+        var command = new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1");
+
+        await InvokeAsync(command, drafts, new FakePostmasterClient(), new(), new(), new(), bus);
+        var again = await InvokeAsync(command, drafts, new FakePostmasterClient(), new(), new(), new(), bus);
+
+        Assert.True(again.IsFailure);
+        Assert.Single(bus.Published);
+    }
+
+    [Fact]
+    public async Task Handle_SentWithoutStaffActor_DoesNotPublish()
+    {
+        var tenantId = Guid.NewGuid();
+        var drafts = new FakeDraftRepository();
+        var draft = SeedSendableDraft(drafts, tenantId);
+        var bus = new FakeMessageBus();
+
+        var result = await InvokeAsync(
+            new SendDraftCommand(tenantId, draft.Id, Guid.Empty, "corr-1"),
+            drafts,
+            new FakePostmasterClient(),
+            new FakeCorrespondenceAuditLogRepository(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            bus
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(DraftStatus.Sent, draft.Status);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Handle_SendNotConfirmed_DoesNotPublish()
+    {
+        var tenantId = Guid.NewGuid();
+        var drafts = new FakeDraftRepository();
+        var draft = SeedSendableDraft(drafts, tenantId);
+        var bus = new FakeMessageBus();
+        var postmaster = new FakePostmasterClient
+        {
+            Response = Result.Success(new SendDraftPostmasterResult(Guid.NewGuid(), null, InProgress: true)),
+        };
+
+        await InvokeAsync(
+            new SendDraftCommand(tenantId, draft.Id, Guid.NewGuid(), "corr-1"),
+            drafts,
+            postmaster,
+            new FakeCorrespondenceAuditLogRepository(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            bus
+        );
+
+        Assert.Equal(DraftStatus.Sending, draft.Status);
+        Assert.Empty(bus.Published);
     }
 }
 

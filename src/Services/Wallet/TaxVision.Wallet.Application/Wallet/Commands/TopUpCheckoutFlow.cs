@@ -37,7 +37,9 @@ public static class TopUpCheckoutFlow
                 request.TenantId,
                 request.RequestedByUserId,
                 request.AmountCents,
-                request.Currency
+                request.Currency,
+                request.Provider,
+                request.Method
             ),
             ct
         );

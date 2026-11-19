@@ -45,6 +45,7 @@ using TaxVision.Customer.Application.Customers.Queries.GetById;
 using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
 using TaxVision.Customer.Application.Customers.Queries.Overview;
 using TaxVision.Customer.Application.Customers.Queries.Search;
+using TaxVision.Customer.Application.Customers.Queries.Work;
 using TaxVision.Customer.Domain.Customers;
 using Wolverine;
 
@@ -114,18 +115,28 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         [FromQuery] CustomerKind? kind = null,
         [FromQuery] CustomerSortField sort = CustomerSortField.Name,
         [FromQuery] CustomerSortDirection dir = CustomerSortDirection.Asc,
+        [FromQuery] Guid? preparerUserId = null,
+        [FromQuery] Guid? assignedUserId = null,
         CancellationToken ct = default
     )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await RunSearchAsync(
-            tenantId,
-            userId,
-            new SearchCustomersRequest(term, status, page, size, kind, sort, dir),
-            ct
+        var search = new SearchCustomersRequest(
+            term,
+            status,
+            page,
+            size,
+            kind,
+            sort,
+            dir,
+            preparerUserId,
+            assignedUserId
         );
+        if (!await CanFilterByStaffAsync(search, userId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, CustomerWorkErrors.OtherUserForbidden);
+        var result = await RunSearchAsync(tenantId, userId, search, ct);
 
         // ETag/If-None-Match: el navegador revalida barato (304 sin cuerpo) cuando el directorio no
         // cambió. `private, no-cache` = cachea por-usuario pero siempre revalida. Weak ETag: refleja
@@ -155,11 +166,18 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
+        if (!await CanFilterByStaffAsync(body, userId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, CustomerWorkErrors.OtherUserForbidden);
 
         var result = await RunSearchAsync(tenantId, userId, body, ct);
         Response.Headers.CacheControl = "no-store";
         return Ok(result);
     }
+
+    // Filtrar por otra persona muestra su cartera: exige users.work.view (por uno mismo, no).
+    private async Task<bool> CanFilterByStaffAsync(SearchCustomersRequest search, Guid userId, CancellationToken ct) =>
+        CustomerStaffFilter.From(search.PreparerUserId, search.AssignedUserId)?.TargetsOtherThan(userId) != true
+        || await permissions.HasPermissionAsync(User, UserManagementPermissions.UsersWorkView, ct);
 
     private async Task<PagedResult<CustomerSummaryResponse>> RunSearchAsync(
         Guid tenantId,
@@ -180,7 +198,8 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
                 canViewAll,
                 search.Kind,
                 search.Sort,
-                search.Dir
+                search.Dir,
+                CustomerStaffFilter.From(search.PreparerUserId, search.AssignedUserId)
             ),
             ct
         );

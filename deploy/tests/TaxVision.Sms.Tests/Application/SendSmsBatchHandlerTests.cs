@@ -231,6 +231,67 @@ public sealed partial class SendSmsBatchHandlerTests
         Assert.Equal("bearer-token", settle.CallerBearerToken);
     }
 
+    private static SendSmsBatchCommand ChargedBy(Guid sender, params SmsSendItemDto[] items) =>
+        new(
+            Tenant,
+            "corr-1",
+            items,
+            ActorUserId: sender,
+            CanViewAll: true,
+            ChargeWallet: true,
+            CallerBearerToken: "bearer-token",
+            BatchKey: BatchKey
+        );
+
+    [Fact]
+    public async Task Charged_single_message_reserves_as_sms_to_the_client_by_the_sender()
+    {
+        var h = new Harness();
+        var sender = Guid.NewGuid();
+
+        await h.Run(ChargedBy(sender, Item() with { RecipientName = "Ana Pérez" }));
+
+        var reserve = Assert.Single(h.Wallet.Reservations);
+        Assert.Equal("SMS to Ana Pérez", reserve.Description);
+        Assert.Equal(sender, reserve.RequestedByUserId);
+    }
+
+    [Fact]
+    public async Task Charged_batch_of_several_reserves_as_a_count()
+    {
+        var h = new Harness();
+
+        await h.Run(
+            ChargedBy(
+                Guid.NewGuid(),
+                Item(idempotencyKey: "a") with
+                {
+                    RecipientName = "Ana Pérez",
+                },
+                Item(to: "+18095551235", idempotencyKey: "b") with
+                {
+                    RecipientName = "Beto Díaz",
+                }
+            )
+        );
+
+        Assert.Equal("2 SMS", Assert.Single(h.Wallet.Reservations).Description);
+    }
+
+    // D1: el Wallet nunca guarda teléfonos. Sin un nombre de cliente, la fila dice solo cuántos.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("  ")]
+    [InlineData("+1 (809) 555-1234")]
+    public async Task Charged_single_message_without_a_client_name_reserves_as_one_sms(string? name)
+    {
+        var h = new Harness();
+
+        await h.Run(ChargedBy(Guid.NewGuid(), Item() with { RecipientName = name }));
+
+        Assert.Equal("1 SMS", Assert.Single(h.Wallet.Reservations).Description);
+    }
+
     [Fact]
     public async Task Wallet_settle_failure_keeps_the_send_and_queues_the_settlement()
     {

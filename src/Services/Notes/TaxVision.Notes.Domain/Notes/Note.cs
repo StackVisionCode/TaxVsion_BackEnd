@@ -100,6 +100,9 @@ public sealed class Note : TenantEntity, IHasOwner
         return Result.Success();
     }
 
+    /// <summary>Backfill de N2: completa el texto plano sin mover UpdatedAtUtc ni el editor. Idempotente.</summary>
+    public void FillPlainText() => Content = Content.WithPlainText();
+
     public Result ChangeVisibility(NoteVisibility newVisibility, Guid editorUserId, DateTime nowUtc)
     {
         var guard = EnsureNotDeleted();

@@ -106,6 +106,18 @@ public static class NotificationKinds
 
     /// <summary>El premio ya acreditado se quitó del Wallet.</summary>
     public const string ReferralRewardReversed = "growth.referral_reward_reversed";
+
+    /// <summary>El saldo del Wallet bajó del umbral (correo y campana a wallet.manage).</summary>
+    public const string WalletLowBalance = "wallet.low_balance";
+
+    /// <summary>Recibo de una recarga automática del Wallet.</summary>
+    public const string WalletAutoRechargeSucceeded = "wallet.auto_recharge_succeeded";
+
+    /// <summary>La recarga automática quedó en pausa (cobro fallido o método no disponible).</summary>
+    public const string WalletAutoRechargePaused = "wallet.auto_recharge_paused";
+
+    /// <summary>Se llegó al tope diario de recargas automáticas; sigue al día siguiente.</summary>
+    public const string WalletAutoRechargeDailyLimitReached = "wallet.auto_recharge_daily_limit";
     public const string PaymentClientPayoutFailed = "payment_client.payout_failed";
     public const string PaymentClientConnectAccountRestricted = "payment_client.connect_account_restricted";
     public const string PaymentClientConnectAccountOnboardingRequired =

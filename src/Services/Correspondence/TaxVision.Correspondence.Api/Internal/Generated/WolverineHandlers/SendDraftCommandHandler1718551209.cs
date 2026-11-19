@@ -23,6 +23,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var outboxUnit = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Correspondence.Application.Abstractions.IOutboxUnit>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -46,7 +47,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Correspondence.Application.Compose.SendDraftHandler");
             
             // The actual message execution
-            var outgoing1 = await TaxVision.Correspondence.Application.Compose.SendDraftHandler.Handle(sendDraftCommand, draftRepository, postmasterClient, correspondenceAuditLogRepository, correlationContext, unitOfWork, _loggerForMessage, cancellation).ConfigureAwait(false);
+            var outgoing1 = await TaxVision.Correspondence.Application.Compose.SendDraftHandler.Handle(sendDraftCommand, draftRepository, postmasterClient, correspondenceAuditLogRepository, correlationContext, unitOfWork, outboxUnit, _loggerForMessage, cancellation).ConfigureAwait(false);
 
             
             // Outgoing, cascaded message

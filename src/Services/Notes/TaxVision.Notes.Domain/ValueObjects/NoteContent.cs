@@ -20,10 +20,14 @@ public sealed partial record NoteContent
     public string Html { get; }
     public string PlainTextPreview { get; }
 
-    private NoteContent(string html, string plainTextPreview)
+    // Texto plano completo (N2, búsqueda). Null solo en notas viejas hasta que corre el backfill.
+    public string? PlainText { get; }
+
+    private NoteContent(string html, string plainTextPreview, string? plainText)
     {
         Html = html;
         PlainTextPreview = plainTextPreview;
+        PlainText = plainText;
     }
 
     public static Result<NoteContent> Create(string sanitizedHtml)
@@ -40,8 +44,12 @@ public sealed partial record NoteContent
             return Result.Failure<NoteContent>(NoteErrors.ContentEmpty);
 
         var preview = plainText.Length > PreviewLength ? plainText[..PreviewLength] : plainText;
-        return Result.Success(new NoteContent(trimmed, preview));
+        return Result.Success(new NoteContent(trimmed, preview, plainText));
     }
+
+    /// <summary>Backfill: deriva <see cref="PlainText"/> del Html guardado sin tocar Html ni el preview. Idempotente.</summary>
+    public NoteContent WithPlainText() =>
+        PlainText is not null ? this : new NoteContent(Html, PlainTextPreview, StripTags(Html));
 
     private static string StripTags(string html)
     {

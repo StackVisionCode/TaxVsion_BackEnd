@@ -69,7 +69,7 @@ public static class CreditWalletHandler
             await wallets.AddAsync(wallet, ct);
         }
 
-        var credited = wallet.CreditReward(money.Value, operationKey, command.ReferenceId);
+        var credited = wallet.CreditReward(money.Value, operationKey, command.ReferenceId, referenceType);
         if (credited.IsFailure)
             return Result.Failure<WalletCreditView>(credited.Error);
 

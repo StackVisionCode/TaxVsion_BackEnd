@@ -15,15 +15,16 @@ public sealed record UpdateNoteContentCommand(
     Guid NoteId,
     Guid ActorUserId,
     string RawHtml,
-    bool ActorHasViewAll
-);
+    bool ActorHasViewAll,
+    bool CanViewAllCustomers = true
+) : INoteActorRequest;
 
 /// <summary>El autor edita el contenido (03_Plan_De_Fases.md §Fase 5); desde el punto 3.2 también un staff con <c>notes.view_all</c> si el autor fue retirado, ver <see cref="NoteVisibilityPolicy.CanEditContentAsync"/>.</summary>
 public static class UpdateNoteContentHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         UpdateNoteContentCommand command,
-        INoteRepository notes,
+        VisibleNoteReader notes,
         IHtmlSanitizer sanitizer,
         IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
@@ -33,7 +34,7 @@ public static class UpdateNoteContentHandler
         CancellationToken ct
     )
     {
-        var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
+        var note = await notes.FindAsync(command, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
 
@@ -57,12 +58,17 @@ public static class UpdateNoteContentHandler
             return Result.Failure<NoteResponse>(updateResult.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishUpdatedAsync(note, correlation, bus);
+        await PublishUpdatedAsync(note, command.ActorUserId, correlation, bus);
 
         return Result.Success(NoteResponse.From(note));
     }
 
-    internal static ValueTask PublishUpdatedAsync(Note note, ICorrelationContext correlation, IMessageBus bus) =>
+    internal static ValueTask PublishUpdatedAsync(
+        Note note,
+        Guid actorUserId,
+        ICorrelationContext correlation,
+        IMessageBus bus
+    ) =>
         bus.PublishAsync(
             new NoteUpdatedIntegrationEvent
             {
@@ -72,6 +78,7 @@ public static class UpdateNoteContentHandler
                 Visibility = note.Visibility.ToString(),
                 IsPinned = note.IsPinned,
                 UpdatedAtUtc = note.UpdatedAtUtc,
+                ActorUserId = actorUserId,
             }
         );
 }

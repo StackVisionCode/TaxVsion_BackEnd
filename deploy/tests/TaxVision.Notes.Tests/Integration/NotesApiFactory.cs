@@ -54,6 +54,8 @@ public sealed class NotesApiFactory : WebApplicationFactory<Program>
                 typeof(TenantCustomerFullReconciliationJob),
                 typeof(PendingAttachmentReconciliationJob),
                 typeof(CustomerAssignmentReconciliationJob),
+                // El backfill de texto plano se prueba aparte; aquí competiría con esa prueba.
+                typeof(NotePlainTextBackfillJob),
             ];
             foreach (
                 var descriptor in services

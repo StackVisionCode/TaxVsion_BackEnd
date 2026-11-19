@@ -79,7 +79,17 @@ public static class PublicBookingHostOffboardedConsumer
             return false;
 
         var start = booking.SlotStartUtc;
-        var token = await scheduler.MoveAsync(page, booking, appointment.Value, start, now, ct, actor, HostChanged);
+        var token = await scheduler.MoveAsync(
+            page,
+            booking,
+            appointment.Value,
+            start,
+            now,
+            ct,
+            actor,
+            HostChanged,
+            bySystem: true
+        );
         if (token.IsFailure)
             return false;
         await unitOfWork.SaveChangesAsync(ct);
@@ -105,7 +115,7 @@ public static class PublicBookingHostOffboardedConsumer
             return false;
         if (booking.CancelByStaff(actor, HostUnavailable, now).IsFailure)
             return false;
-        appointment.Value.CancelByPublicPageStaff(actor, HostUnavailable, now);
+        appointment.Value.CancelByPublicPageStaff(actor, HostUnavailable, now, bySystem: true);
         await unitOfWork.SaveChangesAsync(ct);
         return true;
     }

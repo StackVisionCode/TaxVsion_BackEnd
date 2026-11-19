@@ -19,6 +19,9 @@ public sealed record TaskCreatedIntegrationEvent : IntegrationEvent
     public DateOnly? DueOn { get; init; }
     public string? DueTimeZoneId { get; init; }
     public Guid? ParentTaskId { get; init; }
+
+    /// <summary>Quién la creó (aditivo, Work Profile); null en publicaciones viejas o creadas por el sistema.</summary>
+    public Guid? CreatedByUserId { get; init; }
 }
 
 /// <summary><c>task.assigned.v1</c></summary>
@@ -81,6 +84,9 @@ public sealed record TaskDueChangedIntegrationEvent : IntegrationEvent
 
     /// <summary>Fecha civil del nuevo vencimiento (en <see cref="TimeZoneId"/>).</summary>
     public DateOnly? NewDueOn { get; init; }
+
+    /// <summary>Quién cambió el vencimiento (aditivo, Work Profile).</summary>
+    public Guid? ChangedByUserId { get; init; }
 }
 
 /// <summary>
@@ -140,6 +146,9 @@ public sealed record TaskAttachmentDetachedIntegrationEvent : IntegrationEvent
 
     /// <summary>Lo quitó el usuario, o lo borraron desde CloudStorage.</summary>
     public required bool DeletedAtSource { get; init; }
+
+    /// <summary>Quién lo quitó (aditivo, Work Profile); null si lo borraron desde CloudStorage.</summary>
+    public Guid? DetachedByUserId { get; init; }
 }
 
 /// <summary>

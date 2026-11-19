@@ -214,6 +214,13 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     public IReadOnlyList<Signer> Signers => _signers.AsReadOnly();
     public IReadOnlyList<RequestDocument> Documents => _documents.AsReadOnly();
 
+    /// <summary>Cliente de la solicitud: el del primer firmante mapeado (por orden); null si ninguno es cliente.</summary>
+    public Guid? PrimaryCustomerId =>
+        _signers
+            .OrderBy(signer => signer.Order)
+            .Select(signer => signer.MappedCustomerId)
+            .FirstOrDefault(id => id is not null);
+
     /// <summary>Copias de los archivos finales en el portal de cada cliente firmante (solo con varios clientes).</summary>
     public IReadOnlyList<CustomerFileCopy> CustomerCopies => _customerCopies.AsReadOnly();
 

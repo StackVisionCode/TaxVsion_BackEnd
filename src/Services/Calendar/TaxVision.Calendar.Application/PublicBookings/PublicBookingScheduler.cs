@@ -193,7 +193,8 @@ public sealed class PublicBookingScheduler(
         DateTime nowUtc,
         CancellationToken ct,
         Guid? staffUserId = null,
-        string? reason = null
+        string? reason = null,
+        bool bySystem = false
     )
     {
         // Las dos se revisan antes de tocar ninguna: Wolverine guarda aunque el handler devuelva un error.
@@ -231,7 +232,7 @@ public sealed class PublicBookingScheduler(
         if (token.IsFailure)
             return token;
         var moved = staffUserId is { } actor
-            ? appointment.RescheduleByPublicPageStaff(timing.Value, actor, nowUtc, host, location.Value)
+            ? appointment.RescheduleByPublicPageStaff(timing.Value, actor, nowUtc, host, location.Value, bySystem)
             : appointment.RescheduleByExternalRequester(timing.Value, nowUtc, host, location.Value);
         return moved.IsFailure ? Result.Failure<string>(moved.Error) : token;
     }

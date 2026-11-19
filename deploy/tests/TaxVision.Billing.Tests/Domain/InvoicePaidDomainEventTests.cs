@@ -90,6 +90,8 @@ public sealed class InvoicePaidDomainEventTests
         Assert.True(
             invoice.Issue(InvoiceNumber.Create("INV-2026-00001").Value, Now, Now.AddDays(30), Guid.NewGuid()).IsSuccess
         );
+        // Aquí solo cuenta el evento del pago, no el de la emisión.
+        invoice.ClearDomainEvents();
         return invoice;
     }
 }

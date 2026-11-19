@@ -2,7 +2,6 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.NotesIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using TaxVision.Notes.Application.Notes.Abstractions;
 using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Notes;
 using Wolverine;
@@ -24,14 +23,15 @@ public sealed record AttachFileToNoteCommand(
     string DisplayName,
     string ContentType,
     long SizeBytes,
-    bool ActorHasViewAll
-);
+    bool ActorHasViewAll,
+    bool CanViewAllCustomers = true
+) : INoteActorRequest;
 
 public static class AttachFileToNoteHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         AttachFileToNoteCommand command,
-        INoteRepository notes,
+        VisibleNoteReader notes,
         IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -39,7 +39,7 @@ public static class AttachFileToNoteHandler
         CancellationToken ct
     )
     {
-        var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
+        var note = await notes.FindAsync(command, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
         if (
@@ -82,14 +82,15 @@ public sealed record DetachFileFromNoteCommand(
     Guid NoteId,
     Guid ActorUserId,
     Guid CloudStorageFileId,
-    bool ActorHasViewAll
-);
+    bool ActorHasViewAll,
+    bool CanViewAllCustomers = true
+) : INoteActorRequest;
 
 public static class DetachFileFromNoteHandler
 {
     public static async Task<Result<NoteResponse>> Handle(
         DetachFileFromNoteCommand command,
-        INoteRepository notes,
+        VisibleNoteReader notes,
         IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -98,7 +99,7 @@ public static class DetachFileFromNoteHandler
         CancellationToken ct
     )
     {
-        var note = await notes.GetByIdAsync(command.TenantId, command.NoteId, ct);
+        var note = await notes.FindAsync(command, ct);
         if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
         if (

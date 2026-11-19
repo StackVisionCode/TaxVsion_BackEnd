@@ -15,6 +15,25 @@ public class NoteContentTests
         Assert.Equal("Hello world", result.Value.PlainTextPreview);
     }
 
+    [Fact]
+    public void Create_keeps_the_full_plain_text_beyond_the_preview()
+    {
+        var html = $"<p>{new string('a', 300)} <b>palabra</b> &amp; fin</p>";
+
+        var content = NoteContent.Create(html).Value;
+
+        Assert.Equal($"{new string('a', 300)} palabra & fin", content.PlainText);
+        Assert.Equal(NoteContent.PreviewLength, content.PlainTextPreview.Length);
+    }
+
+    [Fact]
+    public void WithPlainText_is_idempotent_when_the_text_is_already_there()
+    {
+        var content = NoteContent.Create("<p>Hola</p>").Value;
+
+        Assert.Same(content, content.WithPlainText());
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

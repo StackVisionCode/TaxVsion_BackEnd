@@ -76,6 +76,8 @@ public static class ReissueInvoiceHandler
                 InvoiceId = original.Id,
                 InvoiceNumber = original.InvoiceNumber ?? string.Empty,
                 Reason = reissued.Value,
+                VoidedByUserId = command.ActorUserId,
+                CustomerId = original.CustomerId,
             }
         );
         await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, original.Id));

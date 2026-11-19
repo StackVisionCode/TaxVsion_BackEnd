@@ -20,26 +20,69 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Wallet.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Wallet.Application.Settings.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
+            var walletSettingsRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Wallet.Application.Settings.Abstractions.IWalletSettingsRepository>(serviceScope.ServiceProvider);
+            var walletRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Wallet.Application.Wallet.Abstractions.IWalletRepository>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var walletBalanceChangedDomainEvent = (TaxVision.Wallet.Domain.Wallet.Events.WalletBalanceChangedDomainEvent)context.Envelope.Message;
 
-            BuildingBlocks.Web.Hosting.DomainEventCorrelationMiddleware.Before(context.Envelope, correlationContext);
-            BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
-            System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Wallet.Application.Wallet.DomainEvents.WalletBalanceChangedDomainEventHandler");
-            System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Wallet.Application.Wallet.DomainEvents.WalletBalanceChangedDomainEventHandler");
+            if (unitOfWork is not TaxVision.Wallet.Infrastructure.Persistence.WalletDbContext walletDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Wallet.Infrastructure.Persistence.WalletDbContext.");
             
-            // The actual message execution
-            var outgoing1 = TaxVision.Wallet.Application.Wallet.DomainEvents.WalletBalanceChangedDomainEventHandler.Handle(walletBalanceChangedDomainEvent, context.Envelope);
+            // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
+            var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(walletDbContext, context, domainEventScraperIEnumerable);
+            await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
+            // Start the actual database transaction if one does not already exist
+            if (walletDbContext.Database.CurrentTransaction == null)
+            {
+                await walletDbContext.Database.BeginTransactionAsync(cancellation).ConfigureAwait(false);
+            }
 
-            
-            // Outgoing, cascaded message
-            await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
+            try
+            {
+                BuildingBlocks.Web.Hosting.DomainEventCorrelationMiddleware.Before(context.Envelope, correlationContext);
+                BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
+                
+                // The actual message execution
+                var outgoing1 = TaxVision.Wallet.Application.Wallet.DomainEvents.WalletBalanceChangedDomainEventHandler.Handle(walletBalanceChangedDomainEvent, context.Envelope);
+
+                
+                // The actual message execution
+                var outgoing2 = await TaxVision.Wallet.Application.Settings.DomainEvents.WalletBalanceThresholdsHandler.Handle(walletBalanceChangedDomainEvent, walletRepository, walletSettingsRepository, officeTimeZone, unitOfWork, context.Envelope, cancellation).ConfigureAwait(false);
+
+                
+                // Outgoing, cascaded message
+                await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
+
+                
+                // Outgoing, cascaded message
+                await context.EnqueueCascadingAsync(outgoing2).ConfigureAwait(false);
+
+                
+                // Added by EF Core Transaction Middleware
+                var result_of_SaveChangesAsync = await walletDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);
+
+                // Commit the EF Core transaction and flush outgoing messages before writing the response (GH-2917)
+                await efCoreEnvelopeTransaction.CommitAsync(cancellation).ConfigureAwait(false);
+            }
+
+            catch (System.Exception)
+            {
+                await efCoreEnvelopeTransaction.RollbackAsync().ConfigureAwait(false);
+                throw;
+            }
 
         }
 

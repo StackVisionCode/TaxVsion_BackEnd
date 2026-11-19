@@ -30,7 +30,8 @@ public static class AppointmentRescheduledDomainEventHandler
             nameof(EditScope.EntireSeries),
             null,
             envelope.CorrelationId ?? string.Empty,
-            moved.RsvpTokens
+            moved.RsvpTokens,
+            moved.ChangedByUserId
         );
     }
 }

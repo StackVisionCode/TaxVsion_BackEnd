@@ -70,8 +70,11 @@ internal sealed class FakeMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotImplementedException();
 
+    /// <summary>Si se asigna, atiende <c>InvokeAsync&lt;T&gt;</c> con la respuesta que devuelva.</summary>
+    public Func<object, object>? OnInvokeReply { get; set; }
+
     public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+        OnInvokeReply is { } reply ? Task.FromResult((T)reply(message)) : throw new NotImplementedException();
 
     public Task<T> InvokeAsync<T>(
         object message,

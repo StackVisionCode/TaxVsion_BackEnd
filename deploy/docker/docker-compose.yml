@@ -405,6 +405,8 @@ services:
       Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
       Encryption__MasterKeyVersion: "1"
       BillingClient__BaseUrl: http://billing-api:8080
+      # Team (Work Profile): reconciliación de asignaciones cliente/preparador contra Customer.
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
       # Fase D1 — credenciales MinIO propias para subir el logo (IAM scoped a
       # taxvision-temp/tenant-branding/*, ver deploy/docker/minio/policies/tenant-source.json
       # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
@@ -1688,6 +1690,8 @@ services:
       - "8080"
     environment:
       TZ: Etc/UTC
+      # Marca de la plataforma (texto del permiso de recarga) y zona horaria de la oficina desde Tenant.
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${WALLET_DB_CONNECTION:?Set WALLET_DB_CONNECTION in .env}

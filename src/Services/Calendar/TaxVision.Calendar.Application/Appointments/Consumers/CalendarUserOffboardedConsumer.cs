@@ -65,7 +65,7 @@ public static class CalendarUserOffboardedConsumer
             var targets = appointment.ReminderLeadMinutes is null
                 ? new HashSet<Guid>()
                 : AppointmentReminderTargets.Snapshot(appointment, now);
-            if (appointment.Cancel(msg.UserId, canManageAll: true, CancelReason, now).IsSuccess)
+            if (appointment.Cancel(msg.UserId, canManageAll: true, CancelReason, now, bySystem: true).IsSuccess)
             {
                 appointment.CloseReminderTargets([.. targets], CancelReason, now);
                 cancelled++;

@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -57,6 +58,7 @@ public static class SendDraftHandler
         ICorrespondenceAuditLogRepository auditLogs,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IOutboxUnit outboxUnit,
         ILogger<SendDraftCommand> logger,
         CancellationToken ct
     )
@@ -102,7 +104,7 @@ public static class SendDraftHandler
                 sendResult.Value,
                 auditLogs,
                 correlation,
-                unitOfWork,
+                outboxUnit,
                 logger,
                 saveCt
             )
@@ -228,7 +230,7 @@ public static class SendDraftHandler
         SendDraftPostmasterResult postmasterResult,
         ICorrespondenceAuditLogRepository auditLogs,
         ICorrelationContext correlation,
-        IUnitOfWork unitOfWork,
+        IOutboxUnit outboxUnit,
         ILogger<SendDraftCommand> logger,
         CancellationToken ct
     )
@@ -238,9 +240,43 @@ public static class SendDraftHandler
             return Result.Failure<SendDraftResult>(markSentResult.Error);
 
         await RecordAuditLogAsync(command, "Sent successfully.", auditLogs, correlation, logger, ct);
-        await unitOfWork.SaveChangesAsync(ct);
+        await outboxUnit.RunAsync(
+            async (bus, _) =>
+            {
+                await PublishEmailSentAsync(bus, draft, command.ActorId, command.CorrelationId);
+                return true;
+            },
+            ct
+        );
 
         return Result.Success(new SendDraftResult(postmasterResult.SentMessageId, postmasterResult.ProviderMessageId));
+    }
+
+    /// <summary>
+    /// Avisa el envío confirmado (Work Profile). Sin actor staff no se publica. Un correo nuevo todavía no tiene
+    /// hilo: el propio mensaje hace de conversación (<c>ThreadId</c> = <c>DraftId</c>).
+    /// </summary>
+    internal static async Task PublishEmailSentAsync(
+        Wolverine.IMessageBus bus,
+        Draft draft,
+        Guid sentByUserId,
+        string correlationId
+    )
+    {
+        if (sentByUserId == Guid.Empty)
+            return;
+
+        await bus.PublishAsync(
+            new CorrespondenceEmailSentIntegrationEvent
+            {
+                TenantId = draft.TenantId,
+                CorrelationId = correlationId,
+                DraftId = draft.Id,
+                ThreadId = draft.EmailThreadId,
+                CustomerId = draft.CustomerId,
+                SentByUserId = sentByUserId,
+            }
+        );
     }
 
     /// <summary>

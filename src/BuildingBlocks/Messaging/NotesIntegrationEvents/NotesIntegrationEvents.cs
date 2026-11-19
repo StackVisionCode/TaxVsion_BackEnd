@@ -19,6 +19,9 @@ public sealed record NoteCreatedIntegrationEvent : IntegrationEvent
     public Guid? TargetId { get; init; }
     public required string Visibility { get; init; }
     public required DateTime CreatedAtUtc { get; init; }
+
+    /// <summary>Cliente de la nota (aditivo, Work Profile); null si no es de un cliente.</summary>
+    public Guid? CustomerId { get; init; }
 }
 
 /// <summary><c>notes.note_updated.v1</c> — publicado tras cambiar contenido/visibilidad/pin de una nota.</summary>
@@ -29,6 +32,9 @@ public sealed record NoteUpdatedIntegrationEvent : IntegrationEvent
     public required string Visibility { get; init; }
     public required bool IsPinned { get; init; }
     public required DateTime UpdatedAtUtc { get; init; }
+
+    /// <summary>Quién la cambió (aditivo, Work Profile).</summary>
+    public Guid? ActorUserId { get; init; }
 }
 
 /// <summary><c>notes.note_deleted.v1</c> — publicado tras el soft-delete de una nota.</summary>
@@ -36,6 +42,9 @@ public sealed record NoteUpdatedIntegrationEvent : IntegrationEvent
 public sealed record NoteDeletedIntegrationEvent : IntegrationEvent
 {
     public required Guid NoteId { get; init; }
+
+    /// <summary>Quién la borró (aditivo, Work Profile).</summary>
+    public Guid? ActorUserId { get; init; }
 }
 
 /// <summary><c>notes.attachment_detached.v1</c> — publicado al desvincular un adjunto (el byte lo recoge la retención de CloudStorage, ADR-07).</summary>

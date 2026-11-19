@@ -26,13 +26,13 @@ namespace TaxVision.Notes.Tests.Api;
 /// </summary>
 public sealed class NotesControllerOwnershipTests
 {
-    private static Note NewNote(Guid tenantId, Guid authorUserId) =>
+    private static Note NewNote(Guid tenantId, Guid authorUserId, NoteVisibility visibility = NoteVisibility.Private) =>
         Note.Create(
             tenantId,
             authorUserId,
             NoteContent.Create("<p>x</p>").Value,
             NoteReference.Create(NoteTargetType.None, null).Value,
-            NoteVisibility.Private,
+            visibility,
             null,
             DateTime.UtcNow
         ).Value;
@@ -54,7 +54,7 @@ public sealed class NotesControllerOwnershipTests
     public async Task Con_el_flag_encendido_un_no_autor_recibe_403_antes_de_llegar_al_handler()
     {
         var tenantId = Guid.NewGuid();
-        var note = NewNote(tenantId, Guid.NewGuid());
+        var note = NewNote(tenantId, Guid.NewGuid(), NoteVisibility.Team);
         var controller = BuildController(note, actingUserId: Guid.NewGuid(), flagEnabled: true);
 
         // No lanza: el controller corta ANTES de invocar el handler de Application.
@@ -66,6 +66,19 @@ public sealed class NotesControllerOwnershipTests
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status403Forbidden, objectResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task Con_el_flag_encendido_la_privada_ajena_no_recibe_403_y_el_handler_responde_404()
+    {
+        // N3: un 403 delataría que la nota existe; el handler la trata como no encontrada.
+        var tenantId = Guid.NewGuid();
+        var note = NewNote(tenantId, Guid.NewGuid(), NoteVisibility.Private);
+        var controller = BuildController(note, actingUserId: Guid.NewGuid(), flagEnabled: true);
+
+        await Assert.ThrowsAsync<ReachedApplicationHandlerException>(() =>
+            controller.SetColor(note.Id, new SetNoteColorRequest(NoteColorKind.Important), CancellationToken.None)
+        );
     }
 
     [Fact]
@@ -116,7 +129,7 @@ public sealed class NotesControllerOwnershipTests
         return new NotesController(
             new StubMessageBus(),
             new JwtEmbeddedPermissionsSource(),
-            repo,
+            TestNoteReaders.For(repo),
             new RealAuthorizationService(
                 new IsOwnerOrHasManageHandler<Note>(
                     null,

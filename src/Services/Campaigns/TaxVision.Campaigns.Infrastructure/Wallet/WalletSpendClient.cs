@@ -37,6 +37,8 @@ public sealed class WalletSpendClient(
         Guid referenceId,
         WalletUnitCounts units,
         string? callerBearerToken,
+        string? description = null,
+        Guid? requestedByUserId = null,
         CancellationToken ct = default
     )
     {
@@ -60,7 +62,9 @@ public sealed class WalletSpendClient(
             units.Email,
             units.Sms,
             units.Push,
-            units.WhatsApp
+            units.WhatsApp,
+            Cut(description),
+            requestedByUserId
         );
         try
         {
@@ -163,13 +167,32 @@ public sealed class WalletSpendClient(
                 or HttpStatusCode.Conflict
                 or HttpStatusCode.TooManyRequests;
 
+    // El Wallet acepta hasta 200 caracteres; sin cortar un par sustituto.
+    private const int MaxDescriptionLength = 200;
+
+    private static string? Cut(string? description)
+    {
+        var trimmed = description?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+        if (trimmed.Length <= MaxDescriptionLength)
+            return trimmed;
+        var length = char.IsHighSurrogate(trimmed[MaxDescriptionLength - 1])
+            ? MaxDescriptionLength - 1
+            : MaxDescriptionLength;
+        return trimmed[..length];
+    }
+
+    // Description y RequestedByUserId son opcionales: un Wallet viejo los ignora.
     private sealed record ReservePayload(
         string ReferenceType,
         Guid ReferenceId,
         long Email,
         long Sms,
         long Push,
-        long WhatsApp
+        long WhatsApp,
+        string? Description,
+        Guid? RequestedByUserId
     );
 
     private sealed record SettlePayload(string ReferenceType, Guid ReferenceId, int ConsumedUnits);

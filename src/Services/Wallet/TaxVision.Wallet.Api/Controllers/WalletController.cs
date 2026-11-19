@@ -7,6 +7,9 @@ using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Wallet.Application.Activity;
+using TaxVision.Wallet.Application.Activity.Abstractions;
+using TaxVision.Wallet.Application.Activity.Queries;
 using TaxVision.Wallet.Application.Pricing;
 using TaxVision.Wallet.Application.Wallet;
 using TaxVision.Wallet.Application.Wallet.Commands;
@@ -41,21 +44,72 @@ public sealed class WalletController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
-    /// <summary>Historial del ledger (dos deltas), más recientes primero.</summary>
+    /// <summary>
+    /// Historial del ledger, más recientes primero. <c>kind</c>: all | topups | charges | reserved. <c>from</c>/<c>to</c>:
+    /// rango [desde, hasta): instante ISO (hasta no entra) o "yyyy-MM-dd" (día de la oficina; hasta lo incluye).
+    /// </summary>
     [HttpGet("transactions")]
     [HasPermission(WalletPermissions.View)]
     [RateLimit("wallet.f.list")]
     [ProducesResponseType<PagedResult<LedgerEntryView>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Transactions([FromQuery] int page, [FromQuery] int size, CancellationToken ct)
+    public async Task<IActionResult> Transactions(
+        [FromQuery] int page,
+        [FromQuery] int size,
+        [FromQuery] TransactionKind? kind,
+        [FromQuery] string? from,
+        [FromQuery] string? to,
+        CancellationToken ct
+    )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out _))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<PagedResult<LedgerEntryView>>(
-            new ListLedgerQuery(tenantId, NormalizePage(page), NormalizeSize(size)),
+        var query = new ListLedgerQuery(
+            tenantId,
+            NormalizePage(page),
+            NormalizeSize(size),
+            kind ?? TransactionKind.All,
+            from,
+            to
+        );
+        var result = await bus.InvokeAsync<Result<PagedResult<LedgerEntryView>>>(query, ct);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Detalle de un movimiento: origen, canales con su tarifa, pasos de la misma referencia y recarga.</summary>
+    [HttpGet("transactions/{id:guid}")]
+    [HasPermission(WalletPermissions.View)]
+    [RateLimit("wallet.f.get")]
+    [ProducesResponseType<TransactionDetailView>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Transaction(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<TransactionDetailView>>(new GetTransactionQuery(tenantId, id), ct);
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        return result.Error == WalletActivityErrors.TransactionNotFound
+            ? NotFound(result.Error)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Gasto del rango (por defecto, el mes de la oficina) contra el periodo anterior, por día y por canal.</summary>
+    [HttpGet("summary")]
+    [HasPermission(WalletPermissions.View)]
+    [RateLimit("wallet.f.get")]
+    [ProducesResponseType<WalletSummaryView>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Summary([FromQuery] string? from, [FromQuery] string? to, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<WalletSummaryView>>(
+            new GetWalletSummaryQuery(tenantId, from, to),
             ct
         );
-        return Ok(result);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>

@@ -22,12 +22,12 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var walletDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Wallet.Infrastructure.Persistence.WalletDbContext>(serviceScope.ServiceProvider);
             var walletRepository = new TaxVision.Wallet.Infrastructure.Persistence.Repositories.WalletRepository(walletDbContext);
             var priceBookRepository = new TaxVision.Wallet.Infrastructure.Persistence.Repositories.PriceBookRepository(walletDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var estimateQuery = (TaxVision.Wallet.Application.Pricing.EstimateQuery)context.Envelope.Message;
 

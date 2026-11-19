@@ -21,4 +21,5 @@ public static class NoteErrors
     public static readonly Error InvalidTransition = new("Note.InvalidTransition", "Transición de estado inválida.");
     public static readonly Error NotFound = new("Note.NotFound", "Nota no encontrada.");
     public static readonly Error Forbidden = new("Note.Forbidden", "No autorizado sobre esta nota.");
+    public static readonly Error InvalidFeedFilter = new("Note.InvalidFeedFilter", "Filtro del feed inválido.");
 }

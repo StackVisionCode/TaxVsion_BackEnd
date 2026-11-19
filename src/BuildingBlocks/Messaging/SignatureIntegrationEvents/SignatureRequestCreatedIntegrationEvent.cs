@@ -20,4 +20,7 @@ public sealed record SignatureRequestCreatedIntegrationEvent : IntegrationEvent
     public required bool RequiresSequentialSigning { get; init; }
     public required int SignerCount { get; init; }
     public required DateTime? ExpiresAtUtc { get; init; }
+
+    /// <summary>Cliente de la solicitud (aditivo, Work Profile).</summary>
+    public Guid? CustomerId { get; init; }
 }

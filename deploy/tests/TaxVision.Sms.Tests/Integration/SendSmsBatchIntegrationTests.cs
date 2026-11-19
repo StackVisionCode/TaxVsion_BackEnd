@@ -160,6 +160,19 @@ public sealed class SendSmsBatchIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task StaffSend_PersistsTheSenderAndTheDetailReturnsIt()
+    {
+        var sender = Guid.NewGuid();
+
+        var result = await RunAsync(Command() with { ActorUserId = sender, CanViewAll = true });
+
+        var messageId = Assert.Single(result.Value.Results).MessageId!.Value;
+        await using var db = NewContext();
+        var detail = await new SmsReadService(db).GetMessageByIdAsync(_tenant, messageId);
+        Assert.Equal(sender, detail!.SentByUserId);
+    }
+
+    [Fact]
     public async Task ConcurrentSameIdempotencyKey_SendsOnce()
     {
         var command = Command();
@@ -185,6 +198,8 @@ public sealed class SendSmsBatchIntegrationTests : IAsyncLifetime
             Guid referenceId,
             WalletUnitCounts units,
             string? callerBearerToken,
+            string? description = null,
+            Guid? requestedByUserId = null,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
