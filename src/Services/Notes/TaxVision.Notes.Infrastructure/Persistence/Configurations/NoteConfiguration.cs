@@ -33,6 +33,8 @@ public sealed class NoteConfiguration : IEntityTypeConfiguration<Note>
                     .HasColumnName("ContentPreview")
                     .HasMaxLength(NoteContent.PreviewLength)
                     .IsRequired();
+                // N2: texto completo para buscar; null en notas viejas hasta el backfill.
+                content.Property(c => c.PlainText).HasColumnName("ContentPlainText").HasColumnType("nvarchar(max)");
             }
         );
         builder.Navigation(n => n.Content).IsRequired();
@@ -81,5 +83,7 @@ public sealed class NoteConfiguration : IEntityTypeConfiguration<Note>
             .HasIndex(n => new { n.TenantId, n.CreatedByUserId })
             .HasDatabaseName("IX_Notes_TenantId_CreatedByUserId");
         builder.HasIndex(n => new { n.TenantId, n.Status }).HasDatabaseName("IX_Notes_TenantId_Status");
+        // Central de notas: el feed ordena y filtra por fecha de actualización dentro del tenant.
+        builder.HasIndex(n => new { n.TenantId, n.UpdatedAtUtc }).HasDatabaseName("IX_Notes_TenantId_UpdatedAtUtc");
     }
 }

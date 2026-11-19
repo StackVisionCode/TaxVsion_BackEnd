@@ -56,7 +56,7 @@ namespace TaxVision.Notes.Api.Controllers;
 public sealed class NotesController(
     IMessageBus bus,
     IUserPermissionsSource permissions,
-    INoteRepository notes,
+    VisibleNoteReader notes,
     IAuthorizationService authorizationService,
     IOptionsMonitor<ResourceOwnershipOptions> ownershipOptions
 ) : ControllerBase
@@ -72,6 +72,8 @@ public sealed class NotesController(
     private async Task<IActionResult?> CheckOwnershipAsync(
         Guid tenantId,
         Guid noteId,
+        Guid userId,
+        (bool HasViewAll, bool CanViewAllCustomers) visibility,
         Microsoft.AspNetCore.Authorization.Infrastructure.OperationAuthorizationRequirement operation,
         CancellationToken ct
     )
@@ -79,13 +81,28 @@ public sealed class NotesController(
         if (!ownershipOptions.CurrentValue.Enabled)
             return null;
 
-        var existing = await notes.GetByIdAsync(tenantId, noteId, ct);
+        // N3: si el actor no ve la nota no se responde 403 (delataría que existe); el handler da 404.
+        var existing = await notes.FindAsync(
+            tenantId,
+            noteId,
+            userId,
+            visibility.HasViewAll,
+            visibility.CanViewAllCustomers,
+            ct
+        );
         if (existing is null)
             return null;
 
         var authorized = await authorizationService.AuthorizeAsync(User, existing, operation);
         return authorized.Succeeded ? null : StatusCode(StatusCodes.Status403Forbidden, NoteErrors.Forbidden);
     }
+
+    // notes.view_all y customers.view_all del actor: alimentan el gate de visibilidad (N3).
+    private async Task<(bool HasViewAll, bool CanViewAllCustomers)> ReadVisibilityAsync(CancellationToken ct) =>
+        (
+            await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct),
+            await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct)
+        );
 
     [HttpPost]
     [HasPermission(NotesPermissions.Manage)]
@@ -127,6 +144,33 @@ public sealed class NotesController(
             ct
         );
         return Ok(result);
+    }
+
+    [HttpGet("feed")]
+    [HasPermission(NotesPermissions.Read)]
+    [RateLimit("notes.f.list")]
+    [ProducesResponseType<PagedResult<NoteFeedItem>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Feed([FromQuery] NoteFeedRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+        if (!request.HasValidEnums())
+            return BadRequest(NoteErrors.InvalidFeedFilter);
+
+        var (hasViewAll, canViewAllCustomers) = await ReadVisibilityAsync(ct);
+        var result = await bus.InvokeAsync<Result<PagedResult<NoteFeedItem>>>(
+            new ListNotesFeedQuery(
+                tenantId,
+                userId,
+                hasViewAll,
+                canViewAllCustomers,
+                request.ToCriteria(),
+                NormalizePage(request.Page),
+                NormalizeSize(request.Size)
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpGet("search")]
@@ -220,13 +264,14 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        var visibility = await ReadVisibilityAsync(ct);
+        var forbidden = await CheckOwnershipAsync(tenantId, id, userId, visibility, Operations.Update, ct);
         if (forbidden is not null)
             return forbidden;
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var (hasViewAll, canViewAllCustomers) = visibility;
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new UpdateNoteContentCommand(tenantId, id, userId, request.Html, hasViewAll),
+            new UpdateNoteContentCommand(tenantId, id, userId, request.Html, hasViewAll, canViewAllCustomers),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -245,13 +290,14 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        var visibility = await ReadVisibilityAsync(ct);
+        var forbidden = await CheckOwnershipAsync(tenantId, id, userId, visibility, Operations.Update, ct);
         if (forbidden is not null)
             return forbidden;
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var (hasViewAll, canViewAllCustomers) = visibility;
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new ChangeNoteVisibilityCommand(tenantId, id, userId, request.Visibility, hasViewAll),
+            new ChangeNoteVisibilityCommand(tenantId, id, userId, request.Visibility, hasViewAll, canViewAllCustomers),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -266,13 +312,14 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        var visibility = await ReadVisibilityAsync(ct);
+        var forbidden = await CheckOwnershipAsync(tenantId, id, userId, visibility, Operations.Update, ct);
         if (forbidden is not null)
             return forbidden;
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var (hasViewAll, canViewAllCustomers) = visibility;
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new PinNoteCommand(tenantId, id, userId, hasViewAll),
+            new PinNoteCommand(tenantId, id, userId, hasViewAll, canViewAllCustomers),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -287,13 +334,14 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        var visibility = await ReadVisibilityAsync(ct);
+        var forbidden = await CheckOwnershipAsync(tenantId, id, userId, visibility, Operations.Update, ct);
         if (forbidden is not null)
             return forbidden;
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var (hasViewAll, canViewAllCustomers) = visibility;
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new UnpinNoteCommand(tenantId, id, userId, hasViewAll),
+            new UnpinNoteCommand(tenantId, id, userId, hasViewAll, canViewAllCustomers),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -308,13 +356,14 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        var visibility = await ReadVisibilityAsync(ct);
+        var forbidden = await CheckOwnershipAsync(tenantId, id, userId, visibility, Operations.Update, ct);
         if (forbidden is not null)
             return forbidden;
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var (hasViewAll, canViewAllCustomers) = visibility;
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new SetNoteColorCommand(tenantId, id, userId, request.ColorKind, hasViewAll),
+            new SetNoteColorCommand(tenantId, id, userId, request.ColorKind, hasViewAll, canViewAllCustomers),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -329,9 +378,9 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var (hasViewAll, canViewAllCustomers) = await ReadVisibilityAsync(ct);
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new ArchiveNoteCommand(tenantId, id, userId, hasViewAll),
+            new ArchiveNoteCommand(tenantId, id, userId, hasViewAll, canViewAllCustomers),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -346,9 +395,9 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var (hasViewAll, canViewAllCustomers) = await ReadVisibilityAsync(ct);
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new RestoreNoteCommand(tenantId, id, userId, hasViewAll),
+            new RestoreNoteCommand(tenantId, id, userId, hasViewAll, canViewAllCustomers),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -363,8 +412,11 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
-        var result = await bus.InvokeAsync<Result>(new DeleteNoteCommand(tenantId, id, userId, hasViewAll), ct);
+        var (hasViewAll, canViewAllCustomers) = await ReadVisibilityAsync(ct);
+        var result = await bus.InvokeAsync<Result>(
+            new DeleteNoteCommand(tenantId, id, userId, hasViewAll, canViewAllCustomers),
+            ct
+        );
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
@@ -377,11 +429,12 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        var visibility = await ReadVisibilityAsync(ct);
+        var forbidden = await CheckOwnershipAsync(tenantId, id, userId, visibility, Operations.Update, ct);
         if (forbidden is not null)
             return forbidden;
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var (hasViewAll, canViewAllCustomers) = visibility;
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
             new AttachFileToNoteCommand(
                 tenantId,
@@ -391,7 +444,8 @@ public sealed class NotesController(
                 request.DisplayName,
                 request.ContentType,
                 request.SizeBytes,
-                hasViewAll
+                hasViewAll,
+                canViewAllCustomers
             ),
             ct
         );
@@ -407,13 +461,14 @@ public sealed class NotesController(
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Update, ct);
+        var visibility = await ReadVisibilityAsync(ct);
+        var forbidden = await CheckOwnershipAsync(tenantId, id, userId, visibility, Operations.Update, ct);
         if (forbidden is not null)
             return forbidden;
 
-        var hasViewAll = await permissions.HasPermissionAsync(User, NotesPermissions.ViewAll, ct);
+        var (hasViewAll, canViewAllCustomers) = visibility;
         var result = await bus.InvokeAsync<Result<NoteResponse>>(
-            new DetachFileFromNoteCommand(tenantId, id, userId, fileId, hasViewAll),
+            new DetachFileFromNoteCommand(tenantId, id, userId, fileId, hasViewAll, canViewAllCustomers),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

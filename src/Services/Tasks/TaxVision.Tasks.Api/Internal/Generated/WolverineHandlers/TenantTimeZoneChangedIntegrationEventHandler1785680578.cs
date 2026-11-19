@@ -22,18 +22,18 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             
             /*
-            * The service registration for TaxVision.Tasks.ClientForms.Application.Requests.TimeZones.IFormRequestRezoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            */
-            var formRequestRezoneStore = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.TimeZones.IFormRequestRezoneStore>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            
-            /*
             * The service registration for TaxVision.Tasks.Application.Tasks.TimeZones.ICivilDueRezoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var civilDueRezoneStore = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Tasks.TimeZones.ICivilDueRezoneStore>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for TaxVision.Tasks.ClientForms.Application.Requests.TimeZones.IFormRequestRezoneStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var formRequestRezoneStore = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.TimeZones.IFormRequestRezoneStore>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var tenantTimeZoneChangedIntegrationEvent = (BuildingBlocks.Messaging.TenantIntegrationEvents.TenantTimeZoneChangedIntegrationEvent)context.Envelope.Message;
 

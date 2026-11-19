@@ -31,7 +31,7 @@ namespace Internal.Generated.WolverineHandlers
             // The actual message body
             var getOutboundEmailsQuery = (TaxVision.Notification.Application.Email.Sending.Queries.GetOutboundEmailsQuery)context.Envelope.Message;
 
-            
+
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
             var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(notificationDbContext, context, _domainEventScraperIEnumerable);
             await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
@@ -47,15 +47,15 @@ namespace Internal.Generated.WolverineHandlers
                 TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
                 System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Notification.Application.Email.Sending.Queries.GetOutboundEmailsHandler");
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Email.Sending.Queries.GetOutboundEmailsHandler");
-                
+
                 // The actual message execution
                 var outgoing1 = await TaxVision.Notification.Application.Email.Sending.Queries.GetOutboundEmailsHandler.Handle(getOutboundEmailsQuery, outboundEmailRepository, cancellation).ConfigureAwait(false);
 
-                
+
                 // Outgoing, cascaded message
                 await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
 
-                
+
                 // Added by EF Core Transaction Middleware
                 var result_of_SaveChangesAsync = await notificationDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);
 
@@ -74,7 +74,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: GetOutboundEmailsQueryHandler1831808861
-    
-    
+
+
 }
 

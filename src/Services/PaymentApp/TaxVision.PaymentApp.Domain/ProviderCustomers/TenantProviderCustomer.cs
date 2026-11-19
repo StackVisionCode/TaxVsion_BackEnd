@@ -199,6 +199,25 @@ public sealed class TenantProviderCustomer : TenantEntity
         return null;
     }
 
+    /// <summary>Código de fallo cuando el método autorizado ya no se puede cobrar.</summary>
+    public const string MethodUnavailableCode = "MethodUnavailable";
+
+    public static Error MethodUnavailable() =>
+        new(MethodUnavailableCode, "The authorized payment method is no longer available.");
+
+    /// <summary>El método que autorizó la oficina, por su Id interno (el que ve el CRM, no la referencia del
+    /// proveedor): solo si es de <paramref name="tenantId"/>, está activo y no venció. Nunca devuelve otro.</summary>
+    public Result<TenantSavedPaymentMethod> FindChargeableMethod(Guid tenantId, string? methodId, DateTime nowUtc)
+    {
+        var method =
+            TenantId == tenantId && Guid.TryParse(methodId, out var id) && id != Guid.Empty ? FindActiveById(id) : null;
+
+        if (method is null || method.TenantId != tenantId || method.IsExpiredAt(nowUtc))
+            return Result.Failure<TenantSavedPaymentMethod>(MethodUnavailable());
+
+        return Result.Success(method);
+    }
+
     private void PromoteNextAsDefault(DateTime nowUtc)
     {
         foreach (var method in _savedMethods)

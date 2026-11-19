@@ -25,6 +25,7 @@ public static class OffboardingParticipants
     public static IReadOnlyList<OffboardingParticipant> All { get; } =
     [
         new("Auth", "Seats", ["RecomputeTenantSeatSlotsConsumer"]),
+        new("Mobile", "Mobile", ["UserLifecyclePermissionsProjectionConsumer"]),
         new("Billing", "Billing", ["UserLifecyclePermissionsProjectionConsumer"]),
         new(
             "Calendar",

@@ -51,6 +51,7 @@ public static class SendInvoiceToCustomerHandler
                 PaymentLink = invoice.ActivePaymentLink?.CheckoutUrl,
                 PdfFileId = invoice.PdfFileId,
                 CustomerId = invoice.Customer.CustomerId,
+                SentByUserId = command.ActorUserId,
             }
         );
 

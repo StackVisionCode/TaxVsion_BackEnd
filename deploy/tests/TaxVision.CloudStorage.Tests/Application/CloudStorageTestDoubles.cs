@@ -336,6 +336,17 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                 .Values.Where(f => f.TenantId == tenantId && ids.Contains(f.Id))
                 .ToDictionary(f => f.Id, f => f.OriginalName)
         );
+
+    public Task<IReadOnlyList<FileObject>> ListLiveByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct
+    ) =>
+        Task.FromResult<IReadOnlyList<FileObject>>(
+            _byId
+                .Values.Where(f => f.TenantId == tenantId && ids.Contains(f.Id) && f.Status != FileStatus.SoftDeleted)
+                .ToList()
+        );
 }
 
 internal sealed class FakeFolderRepository : IFolderRepository

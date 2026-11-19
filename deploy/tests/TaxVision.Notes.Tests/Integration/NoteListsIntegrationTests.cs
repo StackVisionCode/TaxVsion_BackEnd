@@ -59,6 +59,24 @@ public sealed class NoteListsIntegrationTests : IClassFixture<NotesApiFactory>
         Assert.Contains(search, item => item.GetProperty("id").GetGuid() == noteId);
     }
 
+    [Fact]
+    public async Task Search_finds_a_word_written_after_the_preview_limit()
+    {
+        // N2: la búsqueda mira el texto completo, no solo los 280 caracteres del preview.
+        var client = CreateAuthenticatedClient(Guid.NewGuid(), Guid.NewGuid());
+        var html = $"<p>{new string('a', 300)} zanahoriaprofunda</p>";
+        var createResponse = await client.PostAsJsonAsync(
+            "/notes",
+            new CreateNoteRequest(html, NoteTargetType.None, null, NoteVisibility.Team, null)
+        );
+        createResponse.EnsureSuccessStatusCode();
+        var noteId = (await createResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        var search = await GetPagedItems(client, "/notes/search?q=zanahoriaprofunda&page=1&size=20");
+
+        Assert.Contains(search, item => item.GetProperty("id").GetGuid() == noteId);
+    }
+
     private static async Task<List<JsonElement>> GetPagedItems(HttpClient client, string url)
     {
         var response = await client.GetAsync(url);

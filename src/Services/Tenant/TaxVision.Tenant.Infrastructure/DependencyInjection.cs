@@ -1,3 +1,4 @@
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -14,6 +15,7 @@ using TaxVision.Tenant.Application.Compliance.Abstractions;
 using TaxVision.Tenant.Application.Platform.Abstractions;
 using TaxVision.Tenant.Application.Profiles.Abstractions;
 using TaxVision.Tenant.Application.RateLimiting.Abstractions;
+using TaxVision.Tenant.Application.Team.Abstractions;
 using TaxVision.Tenant.Application.Tenants.Abstractions;
 using TaxVision.Tenant.Infrastructure.Billing;
 using TaxVision.Tenant.Infrastructure.Branding;
@@ -24,6 +26,7 @@ using TaxVision.Tenant.Infrastructure.Persistence.Repositories;
 using TaxVision.Tenant.Infrastructure.RateLimiting;
 using TaxVision.Tenant.Infrastructure.Scheduling;
 using TaxVision.Tenant.Infrastructure.Security;
+using TaxVision.Tenant.Infrastructure.Team;
 
 namespace TaxVision.Tenant.Infrastructure;
 
@@ -44,6 +47,7 @@ public static class InfrastructureRegistration
 
         AddBranding(services, config);
         AddOfficeProfile(services, config);
+        AddTeam(services, config);
 
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
         // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma
@@ -185,6 +189,26 @@ public static class InfrastructureRegistration
                 http.Timeout = TimeSpan.FromSeconds(30);
             }
         );
+    }
+
+    /// <summary>
+    /// Módulo Team: historial de actividad, su purga diaria (lock de Redis entre réplicas) y la proyección de
+    /// asignaciones de Customer para el ABAC, con su reconciliación por M2M de la PlatformTenant.
+    /// </summary>
+    private static void AddTeam(IServiceCollection services, IConfiguration config)
+    {
+        services.AddScoped<IActivityEntryRepository, ActivityEntryRepository>();
+        services.AddScoped<ActivityRetentionPurger>();
+        services
+            .AddOptions<ActivityRetentionOptions>()
+            .Bind(config.GetSection(ActivityRetentionOptions.SectionName))
+            .Validate(o => o.IsValid(), "Tenant:ActivityRetention has out-of-range values.")
+            .ValidateOnStart();
+        services.TryAddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
+        services.AddHostedService<ActivityRetentionJob>();
+
+        services.AddCustomerVisibilityProjection<TenantDbContext>();
+        services.AddCustomerVisibilityReconciliation<TenantPlatformTokenProvider>(config);
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

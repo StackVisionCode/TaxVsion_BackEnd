@@ -20,7 +20,6 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Tasks.ClientForms.Application.Participants.Abstractions.IFormExternalUploadClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
@@ -31,6 +30,7 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormRequestRepository is not public, so requires service location
             */
             var formRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.Abstractions.IFormRequestRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var completeExternalFormAttachmentUploadCommand = (TaxVision.Tasks.ClientForms.Application.Participants.Commands.CompleteExternalFormAttachmentUploadCommand)context.Envelope.Message;
 

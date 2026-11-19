@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddDbContext<CalendarDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<CalendarDbContext>());
         services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+        services.AddScoped<IAppointmentTitleReader, AppointmentRepository>();
         services.AddScoped<IOrganizerScheduleLock, SqlOrganizerScheduleLock>();
         services
             .AddOptions<OrganizerScheduleLockOptions>()

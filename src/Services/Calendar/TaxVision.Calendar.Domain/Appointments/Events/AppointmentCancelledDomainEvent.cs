@@ -10,5 +10,7 @@ public sealed record AppointmentCancelledDomainEvent(
     string? Reason,
     DateTime CancelledAtUtc,
     EditScope? Scope,
-    DateTime? OriginalStartUtc
+    DateTime? OriginalStartUtc,
+    // Empleado que la canceló; null si fue el cliente o un proceso.
+    Guid? ChangedByUserId = null
 ) : IDomainEvent;

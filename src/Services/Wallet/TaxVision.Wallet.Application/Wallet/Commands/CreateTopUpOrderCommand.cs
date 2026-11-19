@@ -7,7 +7,14 @@ namespace TaxVision.Wallet.Application.Wallet.Commands;
 
 /// <summary>Crea la orden de recarga en <see cref="WalletTopUpStatus.Pending"/> y la confirma, antes de llamar a
 /// PaymentApp: la intención queda guardada con su clave <c>wallet-topup:{id:N}</c>.</summary>
-public sealed record CreateTopUpOrderCommand(Guid TenantId, Guid RequestedByUserId, long AmountCents, string Currency);
+public sealed record CreateTopUpOrderCommand(
+    Guid TenantId,
+    Guid RequestedByUserId,
+    long AmountCents,
+    string Currency,
+    string? Provider = null,
+    string? Method = null
+);
 
 public static class CreateTopUpOrderHandler
 {
@@ -22,7 +29,9 @@ public static class CreateTopUpOrderHandler
             command.TenantId,
             command.AmountCents,
             string.IsNullOrWhiteSpace(command.Currency) ? Domain.Wallet.Wallet.DefaultCurrency : command.Currency,
-            command.RequestedByUserId
+            command.RequestedByUserId,
+            command.Provider,
+            command.Method
         );
         if (created.IsFailure)
             return Result.Failure<TopUpView>(created.Error);

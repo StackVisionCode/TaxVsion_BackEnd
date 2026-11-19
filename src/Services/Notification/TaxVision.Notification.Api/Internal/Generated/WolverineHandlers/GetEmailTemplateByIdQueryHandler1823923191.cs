@@ -22,8 +22,8 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
             var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
+            var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var notificationDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext>(serviceScope.ServiceProvider);

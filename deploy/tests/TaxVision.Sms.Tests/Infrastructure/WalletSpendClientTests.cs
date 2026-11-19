@@ -74,6 +74,73 @@ public sealed class WalletSpendClientTests
         );
     }
 
+    /// <summary>Anota el cuerpo de la reserva y responde como el Wallet.</summary>
+    private sealed class CapturingWallet : HttpMessageHandler
+    {
+        public string? Body { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Body = await request.Content!.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = System.Net.Http.Json.JsonContent.Create(
+                    new
+                    {
+                        authorized = true,
+                        priceBookVersion = 1,
+                        costMicros = 0,
+                        availableMicros = 0,
+                        deficitMicros = 0,
+                        currency = "USD",
+                    }
+                ),
+            };
+        }
+    }
+
+    private static async Task<System.Text.Json.JsonElement> ReservedBodyAsync(string? description, Guid? requestedBy)
+    {
+        var wallet = new CapturingWallet();
+        var client = new WalletSpendClient(
+            new HttpClient(wallet) { BaseAddress = new Uri("http://wallet/") },
+            new FixedToken(),
+            NullLogger<WalletSpendClient>.Instance
+        );
+
+        await client.ReserveAsync(
+            Guid.NewGuid(),
+            WalletReferenceTypes.IndividualSms,
+            Guid.NewGuid(),
+            new WalletUnitCounts(0, 1, 0, 0),
+            "token",
+            description,
+            requestedBy
+        );
+
+        return System.Text.Json.JsonDocument.Parse(wallet.Body!).RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task Reserve_sends_the_description_and_who_requested_it()
+    {
+        var user = Guid.NewGuid();
+
+        var body = await ReservedBodyAsync("SMS to Ana Pérez", user);
+
+        Assert.Equal("SMS to Ana Pérez", body.GetProperty("description").GetString());
+        Assert.Equal(user, body.GetProperty("requestedByUserId").GetGuid());
+    }
+
+    [Fact]
+    public async Task Reserve_cuts_the_description_to_200_characters()
+    {
+        var body = await ReservedBodyAsync("SMS to " + new string('a', 250), null);
+
+        Assert.Equal(200, body.GetProperty("description").GetString()!.Length);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, body.GetProperty("requestedByUserId").ValueKind);
+    }
+
     [Fact]
     public async Task Reserve_Conflict_BlocksTheSend()
     {

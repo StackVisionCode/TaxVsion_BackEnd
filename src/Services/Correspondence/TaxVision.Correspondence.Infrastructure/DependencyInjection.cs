@@ -60,6 +60,7 @@ public static class DependencyInjection
         // Fase 10 — compose/reply.
         services.AddScoped<IDraftRepository, DraftRepository>();
         services.AddScoped<IMailSearchRepository, MailSearchRepository>();
+        services.AddScoped<IMailTitleReader, MailTitleReader>();
         services.AddScoped<IDeliveryNoticeRepository, DeliveryNoticeRepository>();
 
         // Visibilidad por cliente (kit compartido): proyección de asignaciones + reconciliación desde Customer.
@@ -181,6 +182,7 @@ public static class DependencyInjection
 
         // Fase 16 — job de hardening final: DraftCleanupJob (plan §30, deshabilitado por default).
         services.AddHostedService<DraftCleanupJob>();
+        services.AddScoped<IOutboxUnit, OutboxUnit>();
         services.AddScoped<DraftSendReconciler>();
         services.AddSingleton<DraftSendReconciliationJob>();
         services.AddHostedService(sp => sp.GetRequiredService<DraftSendReconciliationJob>());

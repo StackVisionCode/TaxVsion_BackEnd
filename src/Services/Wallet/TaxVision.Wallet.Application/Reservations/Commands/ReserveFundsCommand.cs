@@ -17,7 +17,14 @@ namespace TaxVision.Wallet.Application.Reservations.Commands;
 /// por referencia</b>: un reintento no vuelve a apartar. El consumo/liberación definitivos ocurren cuando el
 /// consumidor liquida (<see cref="SettleReservationCommand"/>).
 /// </summary>
-public sealed record ReserveFundsCommand(Guid TenantId, string ReferenceType, Guid ReferenceId, PerChannelUnits Units);
+public sealed record ReserveFundsCommand(
+    Guid TenantId,
+    string ReferenceType,
+    Guid ReferenceId,
+    PerChannelUnits Units,
+    string? Description = null,
+    Guid? RequestedByUserId = null
+);
 
 public static class ReserveFundsHandler
 {
@@ -95,14 +102,24 @@ public static class ReserveFundsHandler
             reference,
             amount.Value,
             units,
-            active.Version
+            active.Version,
+            new ReservationTrace(
+                command.Description,
+                ReservationChannelUnits.From(
+                    command.Units.Email,
+                    command.Units.Sms,
+                    command.Units.Push,
+                    command.Units.WhatsApp
+                ),
+                command.RequestedByUserId
+            )
         );
         if (reservationResult.IsFailure)
             return Result.Failure<ReservationView>(reservationResult.Error);
 
         // Reserva atómica: el aggregate rechaza si Available < cost. No se persiste reserva en ese caso.
         var opKey = $"wallet-reserve:{reference.Type}:{reference.Id:N}";
-        var reserved = wallet.Reserve(amount.Value, opKey, referenceId: reference.Id);
+        var reserved = wallet.Reserve(amount.Value, opKey, reference.Id, reference.Type);
         if (reserved.IsFailure)
             return Result.Success(
                 new ReservationView(

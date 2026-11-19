@@ -30,6 +30,7 @@ public static class InvoicePaidEventFactory
             PaidPdfFileId = paid.PaidPdfFileId,
             CustomerName = paid.CustomerName,
             PaymentSource = paid.PaymentSource?.ToString(),
+            RecordedByUserId = paid.RecordedByUserId,
         };
     }
 }

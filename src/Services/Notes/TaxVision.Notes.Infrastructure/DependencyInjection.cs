@@ -48,6 +48,10 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddScoped<INoteRepository, NoteRepository>();
+        // N3: lectura con el gate de visibilidad, compartida por lecturas y escrituras de una nota.
+        services.AddScoped<Application.Notes.VisibleNoteReader>();
+        // N2: rellena una sola vez el texto plano de las notas viejas.
+        services.AddHostedService<NotePlainTextBackfillJob>();
         // Fase 5 — un solo HtmlSanitizer reusado (thread-safe, caro de reconstruir), ver comentario de la clase.
         services.AddSingleton<IHtmlSanitizer, GanssHtmlSanitizer>();
 

@@ -109,6 +109,31 @@ public sealed class TaskItemTests
         Assert.Equal(Now, task.CompletedAtUtc);
     }
 
+    // ── Quién completó (P4) ───────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Complete_records_who_completed_it()
+    {
+        var task = NewTask();
+        var completer = Guid.NewGuid();
+
+        Assert.True(task.Complete(completer, Now).IsSuccess);
+
+        Assert.Equal(completer, task.CompletedByUserId);
+    }
+
+    [Fact]
+    public void Reopen_clears_who_completed_it()
+    {
+        var task = NewTask();
+        Assert.True(task.Complete(UserId, Now).IsSuccess);
+
+        Assert.True(task.Reopen(UserId, Now.AddMinutes(1)).IsSuccess);
+
+        Assert.Null(task.CompletedByUserId);
+        Assert.Null(task.CompletedAtUtc);
+    }
+
     // ── Tabla de transiciones ─────────────────────────────────────────────────────────────
 
     [Fact]

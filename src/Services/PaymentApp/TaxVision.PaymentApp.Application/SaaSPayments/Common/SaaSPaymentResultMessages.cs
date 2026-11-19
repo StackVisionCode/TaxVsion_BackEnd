@@ -5,6 +5,7 @@ using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.AddOnCheckouts;
 using TaxVision.PaymentApp.Application.SeatsCheckouts;
 using TaxVision.PaymentApp.Application.SubscriptionRenewalCheckouts;
+using TaxVision.PaymentApp.Domain.ProviderCustomers;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.SaaSPayments.Events;
 using TaxVision.PaymentApp.Domain.Tenants;
@@ -403,7 +404,11 @@ public static class SaaSPaymentResultMessages
                 TopUpId = payment.TargetAggregateId,
                 SaaSPaymentId = payment.SaaSPaymentId,
                 IdempotencyKey = payment.IdempotencyKey,
-                Reason = FailureReason(payment),
+                // El evento no tiene campo de código: MethodUnavailable viaja tal cual en Reason para que Wallet pause.
+                Reason =
+                    payment.FailureCode == TenantProviderCustomer.MethodUnavailableCode
+                        ? TenantProviderCustomer.MethodUnavailableCode
+                        : FailureReason(payment),
                 RequestedByUserId = payment.CreatedBy,
                 CorrelationId = correlationId,
             };

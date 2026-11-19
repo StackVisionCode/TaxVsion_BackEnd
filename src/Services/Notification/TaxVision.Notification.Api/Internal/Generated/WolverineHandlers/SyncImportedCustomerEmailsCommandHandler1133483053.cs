@@ -23,7 +23,7 @@ namespace Internal.Generated.WolverineHandlers
             var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var customerEmailDirectoryRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Directory.Abstractions.ICustomerEmailDirectoryRepository>(serviceScope.ServiceProvider);
-            
+
             /*
             * The service registration for TaxVision.Notification.Application.Directory.Abstractions.INotificationCustomerClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
@@ -37,7 +37,7 @@ namespace Internal.Generated.WolverineHandlers
             TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
             System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Notification.Application.Directory.Consumers.SyncImportedCustomerEmailsHandler");
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Directory.Consumers.SyncImportedCustomerEmailsHandler");
-            
+
             // The actual message execution
             await TaxVision.Notification.Application.Directory.Consumers.SyncImportedCustomerEmailsHandler.Handle(syncImportedCustomerEmailsCommand, notificationCustomerClient, customerEmailDirectoryRepository, unitOfWork, context, cancellation).ConfigureAwait(false);
 
@@ -46,7 +46,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: SyncImportedCustomerEmailsCommandHandler1133483053
-    
-    
+
+
 }
 

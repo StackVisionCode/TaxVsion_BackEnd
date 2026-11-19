@@ -550,6 +550,33 @@ public sealed class PermissionCatalogTests
             Assert.DoesNotContain(code, PermissionCatalog.SystemTenantAdminRootPermissions());
     }
 
+    /// <summary>Work Profile: ver el trabajo de otros es supervisión del admin; el empleado lo recibe por rol.</summary>
+    [Fact]
+    public void Users_work_view_is_a_staff_permission_in_the_admin_bundle_but_not_the_employee_one()
+    {
+        var definition = PermissionCatalog.All.Single(d => d.Code == UserManagementPermissions.UsersWorkView);
+
+        Assert.Equal("users.work.view", PermissionCatalog.UsersWorkView);
+        Assert.Equal("users", definition.Module);
+        Assert.Equal("View team members' work and activity", definition.Description);
+        Assert.True(definition.IsAssignableByTenant);
+        Assert.False(definition.IsCustomerPortal);
+        Assert.False(definition.PlatformOnly);
+        Assert.False(definition.IsDangerous);
+        Assert.False(definition.IsReserved);
+        Assert.Null(definition.GatedModule);
+        Assert.Equal(
+            new[] { UserActorType.TenantAdmin, UserActorType.TenantEmployee },
+            definition.EffectiveAllowedActorTypes
+        );
+        Assert.Contains(PermissionCatalog.UsersWorkView, PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin));
+        Assert.Contains(PermissionCatalog.UsersWorkView, PermissionCatalog.SystemTenantAdminRootPermissions());
+        Assert.DoesNotContain(
+            PermissionCatalog.UsersWorkView,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee)
+        );
+    }
+
     [Fact]
     public void The_catalog_has_no_duplicate_codes_or_ids()
     {

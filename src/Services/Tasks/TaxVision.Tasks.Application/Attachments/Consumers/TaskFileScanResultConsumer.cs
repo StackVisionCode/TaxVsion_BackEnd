@@ -123,7 +123,7 @@ public static class TaskFileScanResultConsumer
 
             await unitOfWork.SaveChangesAsync(ct);
             await bus.PublishAsync(
-                AttachmentEvents.Detached(task, attachment, correlation.CorrelationId, deletedAtSource: true)
+                AttachmentEvents.Detached(task, attachment, correlation.CorrelationId, deletedAtSource: true, null)
             );
         }
     }

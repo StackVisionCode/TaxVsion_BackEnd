@@ -186,6 +186,10 @@ public static partial class NotificationTemplateSeedSource
             PublicDemoCancelled,
             PublicDemoReminder,
             PublicDemoAlreadyBooked,
+            WalletLowBalance,
+            WalletAutoRechargeSucceeded,
+            WalletAutoRechargePaused,
+            WalletAutoRechargeDailyLimit,
         ];
 
     // v2: tildes en el español de los push.
@@ -325,6 +329,11 @@ public static partial class NotificationTemplateSeedSource
             "Your payment didn't go through. See what happens next and how to keep your access.",
         ["subscription.billing_mode_changed"] = "Your billing preference was updated.",
         ["subscription.mandate_created"] = "Automatic renewal is now enabled on your subscription.",
+        ["wallet.low_balance"] = "Your Wallet is below your alert threshold — add funds to keep messages sending.",
+        ["wallet.auto_recharge_succeeded"] = "We recharged your Wallet automatically. Here's your receipt.",
+        ["wallet.auto_recharge_paused"] =
+            "Automatic recharge is paused and won't retry on its own. Review it in Settings.",
+        ["wallet.auto_recharge_daily_limit"] = "Today's automatic recharge limit was reached. It continues tomorrow.",
         ["seats.user_gated.v1"] = "A team member lost access because the office is over its active seat limit.",
         ["seats.user_unlocked.v1"] = "A team member can access the office again.",
         ["tenant.wisp_review_due.v1"] =

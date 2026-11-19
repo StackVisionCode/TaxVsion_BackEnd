@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using TaxVision.PaymentApp.Application.Abstractions;
 using TaxVision.PaymentApp.Application.Abstractions.Payments;
 using TaxVision.PaymentApp.Domain.Audit;
+using TaxVision.PaymentApp.Domain.ProviderCustomers;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
@@ -19,14 +20,27 @@ public static class SaaSPaymentChargeOutcome
     /// posible: se devuelve <see cref="DunningPolicy.MissingPaymentMethodCode"/> y no se llama al provider (antes se
     /// creaba un PaymentIntent sin tarjeta que quedaba "Incomplete" para siempre).
     /// </summary>
+    public static Task<Result<(ProviderCustomerToken Customer, PaymentMethodToken Method)>> ResolvePayerAsync(
+        Guid tenantId,
+        ITenantProviderCustomerRepository customers,
+        IPaymentProvider adapter,
+        CancellationToken ct
+    ) => ResolvePayerAsync(tenantId, authorizedMethodId: null, customers, adapter, ct);
+
+    /// <summary>Con <paramref name="authorizedMethodId"/> se cobra solo ese método; si no está disponible,
+    /// falla con <see cref="TenantProviderCustomer.MethodUnavailableCode"/>. Sin él, el método por defecto.</summary>
     public static async Task<Result<(ProviderCustomerToken Customer, PaymentMethodToken Method)>> ResolvePayerAsync(
         Guid tenantId,
+        string? authorizedMethodId,
         ITenantProviderCustomerRepository customers,
         IPaymentProvider adapter,
         CancellationToken ct
     )
     {
         var savedCustomer = await customers.GetByTenantAndProviderAsync(tenantId, adapter.Code, ct);
+        if (authorizedMethodId is not null)
+            return AuthorizedPayer(tenantId, authorizedMethodId, savedCustomer);
+
         var defaultMethod = savedCustomer?.GetDefaultMethod();
         if (savedCustomer is null || defaultMethod is null)
             return Result.Failure<(ProviderCustomerToken, PaymentMethodToken)>(
@@ -38,6 +52,22 @@ public static class SaaSPaymentChargeOutcome
 
         var token = new ProviderCustomerToken(savedCustomer.CustomerReference.Value, savedCustomer.ProviderCode);
         return Result.Success((token, new PaymentMethodToken(defaultMethod.MethodReference)));
+    }
+
+    private static Result<(ProviderCustomerToken Customer, PaymentMethodToken Method)> AuthorizedPayer(
+        Guid tenantId,
+        string methodId,
+        TenantProviderCustomer? savedCustomer
+    )
+    {
+        var method = savedCustomer is null
+            ? Result.Failure<TenantSavedPaymentMethod>(TenantProviderCustomer.MethodUnavailable())
+            : savedCustomer.FindChargeableMethod(tenantId, methodId, DateTime.UtcNow);
+        if (method.IsFailure)
+            return Result.Failure<(ProviderCustomerToken, PaymentMethodToken)>(method.Error);
+
+        var token = new ProviderCustomerToken(savedCustomer!.CustomerReference.Value, savedCustomer.ProviderCode);
+        return Result.Success((token, new PaymentMethodToken(method.Value.MethodReference)));
     }
 
     public static void ApplyChargeOutcome(

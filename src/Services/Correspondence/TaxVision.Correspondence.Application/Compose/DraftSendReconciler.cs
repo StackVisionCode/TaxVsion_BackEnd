@@ -1,4 +1,3 @@
-using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -17,7 +16,7 @@ public sealed class DraftSendReconciler(
     IDraftRepository drafts,
     IPostmasterClient postmaster,
     ICorrespondenceAuditLogRepository auditLogs,
-    IUnitOfWork unitOfWork,
+    IOutboxUnit outboxUnit,
     IOptions<DraftSendReconciliationOptions> options,
     ILogger<DraftSendReconciler> logger
 )
@@ -59,13 +58,14 @@ public sealed class DraftSendReconciler(
             return;
         }
 
+        var correlationId = Guid.NewGuid().ToString("N");
         var audit = CorrespondenceAuditLog.Record(
             tenantId,
             "Send",
             "Draft",
             draftId,
             draft.CreatedByUserId,
-            Guid.NewGuid().ToString("N"),
+            correlationId,
             detail
         );
         if (audit.IsSuccess)
@@ -77,6 +77,15 @@ public sealed class DraftSendReconciler(
                 audit.Error.Code
             );
 
-        await unitOfWork.SaveChangesAsync(ct);
+        await outboxUnit.RunAsync(
+            async (bus, _) =>
+            {
+                // Lo cerró el job: el autor del borrador es quien apretó Enviar.
+                if (draft.Status == DraftStatus.Sent)
+                    await SendDraftHandler.PublishEmailSentAsync(bus, draft, draft.CreatedByUserId, correlationId);
+                return true;
+            },
+            ct
+        );
     }
 }

@@ -121,6 +121,11 @@ class MemoryTickets implements SupportTicketRepository {
     const t = this.rows.get(id);
     return t ? SupportTicket.rehydrate(t.toSnapshot()) : null;
   }
+  async findManyForAgentTenant(agentTenantId: string, ids: readonly string[]): Promise<SupportTicket[]> {
+    return this.snapshots()
+      .filter((s) => s.agentTenantId === agentTenantId && ids.includes(s.id))
+      .map((s) => SupportTicket.rehydrate(s));
+  }
   async listForCustomer(input: { tenantId: string; openedByUserId: string; take: number; skip: number }): Promise<SupportTicketSnapshot[]> {
     return this.snapshots()
       .filter((s) => s.tenantId === input.tenantId && s.openedByUserId === input.openedByUserId && s.status !== 'Closed')

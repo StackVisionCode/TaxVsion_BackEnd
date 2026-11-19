@@ -176,4 +176,10 @@ if [ -n "${FINANCIAL_INSIGHTS_DB_CONNECTION:-}" ]; then
     "$FINANCIAL_INSIGHTS_DB_CONNECTION"
 fi
 
+apply_migration \
+  "Mobile" \
+  "src/Services/Mobile/TaxVision.Mobile.Infrastructure/TaxVision.Mobile.Infrastructure.csproj" \
+  "src/Services/Mobile/TaxVision.Mobile.Api/TaxVision.Mobile.Api.csproj" \
+  "$MOBILE_DB_CONNECTION"
+
 echo "All TaxVision migrations were applied successfully."

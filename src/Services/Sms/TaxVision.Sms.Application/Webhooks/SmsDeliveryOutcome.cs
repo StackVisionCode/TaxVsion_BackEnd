@@ -70,7 +70,8 @@ internal static class SmsDeliveryOutcome
             );
     }
 
-    public static async Task PublishAcceptedAsync(IMessageBus bus, SmsMessage message) =>
+    public static async Task PublishAcceptedAsync(IMessageBus bus, SmsMessage message)
+    {
         await bus.PublishAsync(
             new SmsMessageAcceptedIntegrationEvent
             {
@@ -82,4 +83,18 @@ internal static class SmsDeliveryOutcome
                 ProviderMessageId = message.ProviderMessageId,
             }
         );
+
+        // Aceptado = enviado. Solo se avisa si lo envió una persona del staff.
+        if (message.SentByUserId is { } sentByUserId)
+            await bus.PublishAsync(
+                new SmsMessageSentIntegrationEvent
+                {
+                    TenantId = message.TenantId,
+                    CorrelationId = message.CorrelationId,
+                    MessageId = message.Id,
+                    CustomerId = message.CustomerId,
+                    SentByUserId = sentByUserId,
+                }
+            );
+    }
 }

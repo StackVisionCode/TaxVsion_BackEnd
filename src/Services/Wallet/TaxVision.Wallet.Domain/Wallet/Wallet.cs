@@ -62,23 +62,37 @@ public sealed class Wallet : AggregateRoot
     // ------------------------------------------------------------------ movimientos (dos deltas)
 
     /// <summary>TopUp (+a, 0): acredita un pago confirmado. Permitido aun en <see cref="WalletStatus.Frozen"/>.</summary>
-    public Result<LedgerEntry> Credit(WalletMoney amount, string opKey, Guid? referenceId = null) =>
-        Apply(MovementType.TopUp, deltaPosted: amount.Micros, deltaHeld: 0, amount, opKey, referenceId);
+    public Result<LedgerEntry> Credit(
+        WalletMoney amount,
+        string opKey,
+        Guid? referenceId = null,
+        string? referenceType = null
+    ) => Apply(MovementType.TopUp, deltaPosted: amount.Micros, deltaHeld: 0, amount, opKey, referenceId, referenceType);
 
     /// <summary>
     /// Reward (+a, 0): acredita un premio. Igual que <see cref="Credit"/> pero con movimiento propio para que el
     /// ledger distinga el dinero que entra por un pago (TopUp) del que entra por un premio. Permitido aun en
     /// <see cref="WalletStatus.Frozen"/>: acreditar nunca saca dinero.
     /// </summary>
-    public Result<LedgerEntry> CreditReward(WalletMoney amount, string opKey, Guid? referenceId = null) =>
-        Apply(MovementType.Reward, deltaPosted: amount.Micros, deltaHeld: 0, amount, opKey, referenceId);
+    public Result<LedgerEntry> CreditReward(
+        WalletMoney amount,
+        string opKey,
+        Guid? referenceId = null,
+        string? referenceType = null
+    ) =>
+        Apply(MovementType.Reward, deltaPosted: amount.Micros, deltaHeld: 0, amount, opKey, referenceId, referenceType);
 
     /// <summary>
     /// RewardReversal (−a, 0): revierte un premio ya acreditado (reembolso/contracargo dentro de la ventana). Solo
     /// procede si hay saldo DISPONIBLE (no retenido) que cubra el monto: el monedero nunca queda por debajo de lo
     /// retenido ni en negativo; si no alcanza, el consumidor lo reintenta o lo manda a revisión.
     /// </summary>
-    public Result<LedgerEntry> ReverseReward(WalletMoney amount, string opKey, Guid? referenceId = null)
+    public Result<LedgerEntry> ReverseReward(
+        WalletMoney amount,
+        string opKey,
+        Guid? referenceId = null,
+        string? referenceType = null
+    )
     {
         if (amount.Currency == Currency && amount.Micros > AvailableMicros)
             return Result.Failure<LedgerEntry>(WalletErrors.InsufficientFunds);
@@ -89,12 +103,18 @@ public sealed class Wallet : AggregateRoot
             deltaHeld: 0,
             amount,
             opKey,
-            referenceId
+            referenceId,
+            referenceType
         );
     }
 
     /// <summary>Reserve (0, +a): aparta disponible. Requiere <see cref="AvailableMicros"/> ≥ a y wallet no congelada.</summary>
-    public Result<LedgerEntry> Reserve(WalletMoney amount, string opKey, Guid? referenceId = null)
+    public Result<LedgerEntry> Reserve(
+        WalletMoney amount,
+        string opKey,
+        Guid? referenceId = null,
+        string? referenceType = null
+    )
     {
         if (amount.Currency != Currency)
             return Result.Failure<LedgerEntry>(WalletErrors.CurrencyMismatch);
@@ -102,11 +122,24 @@ public sealed class Wallet : AggregateRoot
             return Result.Failure<LedgerEntry>(WalletErrors.Frozen);
         if (AvailableMicros < amount.Micros)
             return Result.Failure<LedgerEntry>(WalletErrors.InsufficientFunds);
-        return Apply(MovementType.Reserve, deltaPosted: 0, deltaHeld: amount.Micros, amount, opKey, referenceId);
+        return Apply(
+            MovementType.Reserve,
+            deltaPosted: 0,
+            deltaHeld: amount.Micros,
+            amount,
+            opKey,
+            referenceId,
+            referenceType
+        );
     }
 
     /// <summary>Consume (−a, −a): cobra parte de una reserva. Requiere Held ≥ a (y por invariante Posted ≥ a).</summary>
-    public Result<LedgerEntry> Consume(WalletMoney amount, string opKey, Guid? referenceId = null)
+    public Result<LedgerEntry> Consume(
+        WalletMoney amount,
+        string opKey,
+        Guid? referenceId = null,
+        string? referenceType = null
+    )
     {
         var covered = EnsureHoldCovers(amount);
         if (covered.IsFailure)
@@ -117,17 +150,31 @@ public sealed class Wallet : AggregateRoot
             deltaHeld: -amount.Micros,
             amount,
             opKey,
-            referenceId
+            referenceId,
+            referenceType
         );
     }
 
     /// <summary>Release (0, −a): libera reserva no usada (NO es un refund). Requiere Held ≥ a.</summary>
-    public Result<LedgerEntry> Release(WalletMoney amount, string opKey, Guid? referenceId = null)
+    public Result<LedgerEntry> Release(
+        WalletMoney amount,
+        string opKey,
+        Guid? referenceId = null,
+        string? referenceType = null
+    )
     {
         var covered = EnsureHoldCovers(amount);
         if (covered.IsFailure)
             return Result.Failure<LedgerEntry>(covered.Error);
-        return Apply(MovementType.Release, deltaPosted: 0, deltaHeld: -amount.Micros, amount, opKey, referenceId);
+        return Apply(
+            MovementType.Release,
+            deltaPosted: 0,
+            deltaHeld: -amount.Micros,
+            amount,
+            opKey,
+            referenceId,
+            referenceType
+        );
     }
 
     /// <summary>Comprueba sin mutar que lo reservado cubre el monto, para validar antes de tocar otro agregado.</summary>
@@ -139,11 +186,29 @@ public sealed class Wallet : AggregateRoot
     }
 
     /// <summary>UsageRefund (+a, 0): devuelve un consumo ya cobrado.</summary>
-    public Result<LedgerEntry> Refund(WalletMoney amount, string opKey, Guid? referenceId = null) =>
-        Apply(MovementType.UsageRefund, deltaPosted: amount.Micros, deltaHeld: 0, amount, opKey, referenceId);
+    public Result<LedgerEntry> Refund(
+        WalletMoney amount,
+        string opKey,
+        Guid? referenceId = null,
+        string? referenceType = null
+    ) =>
+        Apply(
+            MovementType.UsageRefund,
+            deltaPosted: amount.Micros,
+            deltaHeld: 0,
+            amount,
+            opKey,
+            referenceId,
+            referenceType
+        );
 
     /// <summary>Adjustment (±a, 0): corrección económica autorizada. <paramref name="delta"/> puede ser negativo.</summary>
-    public Result<LedgerEntry> Adjust(WalletMoney delta, string opKey, Guid? referenceId = null)
+    public Result<LedgerEntry> Adjust(
+        WalletMoney delta,
+        string opKey,
+        Guid? referenceId = null,
+        string? referenceType = null
+    )
     {
         if (delta.Currency != Currency)
             return Result.Failure<LedgerEntry>(WalletErrors.CurrencyMismatch);
@@ -167,7 +232,8 @@ public sealed class Wallet : AggregateRoot
                 PostedMicros,
                 HeldMicros,
                 opKey,
-                referenceId
+                referenceId,
+                referenceType
             )
         );
     }
@@ -183,7 +249,8 @@ public sealed class Wallet : AggregateRoot
         long deltaHeld,
         WalletMoney amount,
         string opKey,
-        Guid? referenceId
+        Guid? referenceId,
+        string? referenceType
     )
     {
         if (amount.Currency != Currency)
@@ -199,7 +266,17 @@ public sealed class Wallet : AggregateRoot
         RaiseBalanceChanged(movement);
 
         return Result.Success(
-            LedgerEntry.Create(TenantId, movement, deltaPosted, deltaHeld, PostedMicros, HeldMicros, opKey, referenceId)
+            LedgerEntry.Create(
+                TenantId,
+                movement,
+                deltaPosted,
+                deltaHeld,
+                PostedMicros,
+                HeldMicros,
+                opKey,
+                referenceId,
+                referenceType
+            )
         );
     }
 

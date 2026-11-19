@@ -8,7 +8,8 @@ namespace TaxVision.Wallet.Tests;
 
 /// <summary>
 /// Lo que Wolverine hace con UseTaxVisionDomainEvents(), en memoria: saca los eventos de dominio pendientes de
-/// los monederos, corre sus handlers de Wallet.Application y junta lo que devuelven.
+/// los monederos, corre sus handlers de Wallet.Application y junta lo que devuelven. Solo los handlers puros (evento
+/// + sobre); los que leen la base (saldo bajo, recarga automática) tienen sus propias pruebas.
 /// </summary>
 internal static class DomainEventReplay
 {
@@ -22,6 +23,7 @@ internal static class DomainEventReplay
             m.Name == "Handle"
             && m.GetParameters().FirstOrDefault()?.ParameterType is { } p
             && typeof(IDomainEvent).IsAssignableFrom(p)
+            && m.GetParameters().Skip(1).All(x => x.ParameterType == typeof(Envelope))
         )
         .ToArray();
 

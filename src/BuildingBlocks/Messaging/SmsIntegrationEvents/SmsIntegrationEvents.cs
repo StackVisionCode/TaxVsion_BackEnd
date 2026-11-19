@@ -44,3 +44,15 @@ public sealed record SmsMessageSuppressedIntegrationEvent : IntegrationEvent
     public required Guid CustomerId { get; init; }
     public string? SourceContext { get; init; }
 }
+
+/// <summary>
+/// Un miembro del staff envió un SMS a un cliente (Work Profile). Solo ids, sin texto ni teléfono;
+/// el instante es <see cref="IntegrationEvent.OccurredOn"/>.
+/// </summary>
+[MessageIdentity("sms.message.sent.v1")]
+public sealed record SmsMessageSentIntegrationEvent : IntegrationEvent
+{
+    public required Guid MessageId { get; init; }
+    public required Guid CustomerId { get; init; }
+    public required Guid SentByUserId { get; init; }
+}

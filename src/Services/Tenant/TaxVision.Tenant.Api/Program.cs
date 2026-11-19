@@ -153,6 +153,8 @@ builder.Host.UseWolverine(options =>
 {
     options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(CreateTenantHandler).Assembly);
+    // Consumer compartido (vive fuera de .Application): asignaciones de Customer para el ABAC de Team.
+    options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var rabbitUri =

@@ -23,7 +23,8 @@ public sealed record ReserveSmsMessageCommand(
     string? RecipientName,
     bool WalletCharged,
     // El cliente apagó los SMS en su política de contacto: la fila nace Suppressed y no se envía.
-    bool BlockedByContactPolicy = false
+    bool BlockedByContactPolicy = false,
+    Guid? SentByUserId = null
 );
 
 public enum SmsReservationOutcome
@@ -83,7 +84,8 @@ public static class ReserveSmsMessageHandler
             command.Media,
             nowUtc,
             command.RecipientName,
-            command.WalletCharged
+            command.WalletCharged,
+            command.SentByUserId
         );
         if (created.IsFailure)
             return Result.Failure<ReserveSmsMessageResponse>(created.Error);

@@ -405,6 +405,8 @@ services:
       Encryption__MasterKey: ${ENCRYPTION_MASTER_KEY:-}
       Encryption__MasterKeyVersion: "1"
       BillingClient__BaseUrl: http://billing-api:8080
+      # Team (Work Profile): reconciliación de asignaciones cliente/preparador contra Customer.
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
       # Fase D1 — credenciales MinIO propias para subir el logo (IAM scoped a
       # taxvision-temp/tenant-branding/*, ver deploy/docker/minio/policies/tenant-source.json
       # + el servicio "minio-provision" de este mismo compose). NUNCA MINIO_ROOT_USER/PASSWORD.
@@ -706,6 +708,8 @@ services:
       ServiceAuth__Clients__30__ClientId: ${WALLET_SERVICE_CLIENT_ID:-wallet-worker}
       ServiceAuth__Clients__30__Secret: ${WALLET_SERVICE_CLIENT_SECRET:-}
       # FinancialInsights recupera permisos desde Auth y lee las cuotas por plan en Subscription.
+      ServiceAuth__Clients__32__ClientId: ${MOBILE_SERVICE_CLIENT_ID:-mobile-worker}
+      ServiceAuth__Clients__32__Secret: ${MOBILE_SERVICE_CLIENT_SECRET:?Set MOBILE_SERVICE_CLIENT_SECRET in .env}
       ServiceAuth__Clients__31__ClientId: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_ID:-financial-insights-worker}
       ServiceAuth__Clients__31__Secret: ${FINANCIAL_INSIGHTS_SERVICE_CLIENT_SECRET:-}
       ServiceAuth__Clients__31__Permissions__0: cloudstorage.file.view
@@ -1620,6 +1624,48 @@ services:
     networks:
       - taxvision-network
 
+  mobile-api:
+    image: taxvision/mobile-api:dev
+    container_name: taxvision-mobile-api
+    restart: unless-stopped
+    build:
+      context: ../..
+      dockerfile: src/Services/Mobile/TaxVision.Mobile.Api/Dockerfile
+    expose:
+      - "8080"
+    environment:
+      TZ: Etc/UTC
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Default: ${MOBILE_DB_CONNECTION:?Set MOBILE_DB_CONNECTION in .env}
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__Uri: ${RABBITMQ_CONNECTION:?Set RABBITMQ_CONNECTION in .env}
+      Jwt__PublicKeyPath: /run/secrets/jwt-public.pem
+      Jwt__Issuer: TaxVision.Auth
+      Jwt__Audience: TaxVision.Services
+      ServiceAuthClient__AuthBaseUrl: http://auth-api:8080/
+      ServiceAuthClient__ClientId: ${MOBILE_SERVICE_CLIENT_ID:-mobile-worker}
+      ServiceAuthClient__ClientSecret: ${MOBILE_SERVICE_CLIENT_SECRET:?Set MOBILE_SERVICE_CLIENT_SECRET in .env}
+      RateLimit__EnforceTierQuotas: "false"
+      Authorization__PermissionsSource: Projection
+      OpenTelemetry__OtlpEndpoint: http://otel-collector:4317
+    volumes:
+      - taxvision-logs:/app/Logs
+      - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro
+    depends_on:
+      db-ready:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-api:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    networks:
+      - taxvision-network
+
   financial-insights-api:
     image: taxvision/financial-insights-api:dev
     container_name: taxvision-financial-insights-api
@@ -1688,6 +1734,8 @@ services:
       - "8080"
     environment:
       TZ: Etc/UTC
+      # Marca de la plataforma (texto del permiso de recarga) y zona horaria de la oficina desde Tenant.
+      <<: *platform-settings-env
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Default: ${WALLET_DB_CONNECTION:?Set WALLET_DB_CONNECTION in .env}
@@ -2902,6 +2950,7 @@ services:
       INVENTORY_DB_CONNECTION: ${INVENTORY_DB_CONNECTION:?Set INVENTORY_DB_CONNECTION in .env}
       CAMPAIGNS_DB_CONNECTION: ${CAMPAIGNS_DB_CONNECTION:?Set CAMPAIGNS_DB_CONNECTION in .env}
       WALLET_DB_CONNECTION: ${WALLET_DB_CONNECTION:?Set WALLET_DB_CONNECTION in .env}
+      MOBILE_DB_CONNECTION: ${MOBILE_DB_CONNECTION:?Set MOBILE_DB_CONNECTION in .env}
       FINANCIAL_INSIGHTS_DB_CONNECTION: ${FINANCIAL_INSIGHTS_DB_CONNECTION:-}
     depends_on:
       db-ready:
@@ -2964,6 +3013,7 @@ services:
       ReverseProxy__Clusters__auth__Destinations__auth1__Address: http://auth-api:8080/
       ReverseProxy__Clusters__tenant__Destinations__tenant1__Address: http://tenant-api:8080/
       ReverseProxy__Clusters__customer__Destinations__customer1__Address: http://customer-api:8080/
+      ReverseProxy__Clusters__mobile__Destinations__mobile1__Address: http://mobile-api:8080/
       ReverseProxy__Clusters__financial__Destinations__financial1__Address: http://financial-insights-api:8080/
       ReverseProxy__Clusters__subscription__Destinations__subscription1__Address: http://subscription-api:8080/
       ReverseProxy__Clusters__notification__Destinations__notification1__Address: http://notification-api:8080/
@@ -3017,6 +3067,7 @@ services:
       - catalog-api
       - campaigns-api
       - wallet-api
+      - mobile-api
       - financial-insights-api
       - inventory-api
       - otel-collector

@@ -53,7 +53,7 @@ public interface INoteRepository
         CancellationToken ct = default
     );
 
-    /// <summary>Búsqueda simple sobre <c>ContentPreview</c> (categoría H — sin full-text en v1). Mismo filtro de visibilidad SQL que <see cref="ListByReferenceAsync"/>.</summary>
+    /// <summary>Búsqueda simple sobre el texto plano completo (cae al preview si aún es null). Mismo filtro de visibilidad SQL que <see cref="ListByReferenceAsync"/>.</summary>
     Task<PagedResult<Note>> SearchAsync(
         Guid tenantId,
         string term,
@@ -63,6 +63,34 @@ public interface INoteRepository
         int size,
         // Visibilidad por asignación (P2): ver ListByReferenceAsync.
         Guid? assignedToUserId = null,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Feed de la central de notas: mismo predicado de visibilidad y asignación que <see cref="ListByReferenceAsync"/>,
+    /// más los filtros de <paramref name="criteria"/>. El nombre del cliente sale del directorio local en la misma consulta.
+    /// </summary>
+    Task<PagedResult<NoteFeedRow>> ListFeedAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
+        NoteFeedCriteria criteria,
+        int page,
+        int size,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Títulos en vivo del historial: de las notas pedidas, solo las que el feed le mostraría al actor (mismo
+    /// predicado de visibilidad y asignación). Inexistentes, borradas o de otro tenant se omiten.
+    /// </summary>
+    Task<IReadOnlyList<NoteTitleRow>> ListTitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
         CancellationToken ct = default
     );
 
@@ -94,3 +122,6 @@ public interface INoteRepository
 
     Task AddAsync(Note note, CancellationToken ct = default);
 }
+
+/// <summary>Id y texto plano visible (preview) de una nota, para derivar su título.</summary>
+public sealed record NoteTitleRow(Guid Id, string Text);

@@ -882,6 +882,48 @@ public static class NotificationCatalog
             NotificationAction.Open
         ),
         Entry(
+            NotificationKinds.WalletLowBalance,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmail,
+            false,
+            "wallet",
+            NotificationAction.Open
+        ),
+        // Recibo de un cobro a la tarjeta: obligatorio (D4).
+        Entry(
+            NotificationKinds.WalletAutoRechargeSucceeded,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmail,
+            true,
+            "wallet",
+            NotificationAction.Open
+        ),
+        // La pausa no se reintenta sola: la oficina no puede dejar de enterarse.
+        Entry(
+            NotificationKinds.WalletAutoRechargePaused,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmail,
+            true,
+            "wallet_settings",
+            NotificationAction.Review
+        ),
+        Entry(
+            NotificationKinds.WalletAutoRechargeDailyLimitReached,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ByPermission,
+            InAppEmail,
+            false,
+            "wallet_settings",
+            NotificationAction.Open
+        ),
+        Entry(
             NotificationKinds.PaymentClientPayoutFailed,
             NotificationCatalogCategory.Billing,
             NotificationPriority.Urgent,
@@ -1074,6 +1116,26 @@ public static class NotificationCatalog
             false,
             "financial_import_batch",
             NotificationAction.Review
+        ),
+        Entry(
+            NotificationKinds.CommunicationCallIncoming,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Urgent,
+            NotificationRecipientPolicy.ExplicitUser,
+            Channels(NotificationChannel.Push),
+            false,
+            "conversation",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationChatMessage,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.Participants,
+            Channels(NotificationChannel.Push),
+            false,
+            "conversation",
+            NotificationAction.Open
         ),
     }.ToFrozenDictionary(entry => entry.Kind, StringComparer.Ordinal);
 

@@ -583,14 +583,14 @@ public sealed class SignatureRequestsController(
     [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Send([FromRoute] Guid id, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var forbidden = await CheckOwnershipAsync(tenantId, id, Operations.Send, ct);
         if (forbidden is not null)
             return forbidden;
 
-        var result = await bus.InvokeAsync<Result>(new SendSignatureRequestCommand(tenantId, id), ct);
+        var result = await bus.InvokeAsync<Result>(new SendSignatureRequestCommand(tenantId, id, userId), ct);
         return result.IsSuccess ? Accepted() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

@@ -723,6 +723,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000228"),
+                            AllowedActorTypes = "TenantAdmin,TenantEmployee",
+                            Code = "users.work.view",
+                            Description = "View team members' work and activity",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "users",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000004"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "roles.manage",
@@ -907,6 +920,97 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsDangerous = false,
                             IsReserved = false,
                             Module = "financial_insights",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a01"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "mobile.trips.read",
+                            Description = "Read own trips and statistics",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "mobile",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a02"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "mobile.trips.manage",
+                            Description = "Maintain own trips",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "mobile",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a03"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "mobile.trips.sync",
+                            Description = "Synchronize own GPS trips",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "mobile",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a04"),
+                            AllowedActorTypes = "CustomerPortal,TenantAdmin,PlatformAdmin",
+                            Code = "mobile.configuration.read",
+                            Description = "Read mileage configuration",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "mobile",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a05"),
+                            AllowedActorTypes = "TenantAdmin,PlatformAdmin",
+                            Code = "mobile.rates.manage",
+                            Description = "Configure office mileage estimates",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "mobile",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("d73691a8-90ae-47e1-b776-118b87cc86bd"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "mobile.vehicles.read",
+                            Description = "Read own vehicles",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "mobile",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("3d708b3c-41cb-433e-b0b1-dd7a5cece728"),
+                            AllowedActorTypes = "CustomerPortal",
+                            Code = "mobile.vehicles.manage",
+                            Description = "Maintain own vehicles",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "mobile",
                             PlatformOnly = false
                         },
                         new

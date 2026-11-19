@@ -12,5 +12,7 @@ public sealed record SearchCustomersRequest(
     int Size = 20,
     CustomerKind? Kind = null,
     CustomerSortField Sort = CustomerSortField.Name,
-    CustomerSortDirection Dir = CustomerSortDirection.Asc
+    CustomerSortDirection Dir = CustomerSortDirection.Asc,
+    Guid? PreparerUserId = null,
+    Guid? AssignedUserId = null
 );

@@ -58,6 +58,7 @@ public static class ChargeSaaSPaymentHandler
         var adapter = providerFactory.Resolve(command.Provider);
         var payerResult = await SaaSPaymentChargeOutcome.ResolvePayerAsync(
             command.TenantId,
+            command.AuthorizedMethodId,
             providerCustomers,
             adapter,
             ct
@@ -70,7 +71,7 @@ public static class ChargeSaaSPaymentHandler
                 new ExecuteSaaSPaymentChargeCommand(
                     command.TenantId,
                     payment.Id,
-                    SaaSPaymentChargeStrategy.Authorize,
+                    command.Strategy,
                     payerResult.Value.Method.Token,
                     payerResult.Value.Customer.Token,
                     command.RequestedByUserId,

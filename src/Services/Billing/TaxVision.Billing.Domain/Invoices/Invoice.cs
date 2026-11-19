@@ -464,6 +464,20 @@ public sealed class Invoice : AggregateRoot
             actorUserId,
             nowUtc
         );
+        // Guid.Empty = la emitió un proceso, no una persona.
+        AddDomainEvent(
+            new InvoiceIssuedDomainEvent(
+                Id,
+                TenantId,
+                invoiceNumber.Value,
+                CustomerId,
+                Total.AmountCents,
+                Currency,
+                dueDateUtc,
+                nowUtc,
+                actorUserId == Guid.Empty ? null : actorUserId
+            )
+        );
         return Result.Success();
     }
 
@@ -601,11 +615,11 @@ public sealed class Invoice : AggregateRoot
         if (from != Status)
             RecordStatusChange(from, Status, auditTrigger, auditReason, actorUserId, paidAtUtc);
         if (Status == InvoiceStatus.Paid && from != InvoiceStatus.Paid)
-            RaisePaid(source);
+            RaisePaid(source, source == InvoicePaymentSource.Manual && actorUserId != Guid.Empty ? actorUserId : null);
         return Result.Success();
     }
 
-    private void RaisePaid(InvoicePaymentSource? source) =>
+    private void RaisePaid(InvoicePaymentSource? source, Guid? recordedByUserId = null) =>
         AddDomainEvent(
             new InvoicePaidDomainEvent(
                 Id,
@@ -618,7 +632,8 @@ public sealed class Invoice : AggregateRoot
                 PaidAtUtc,
                 PaidPdfFileId,
                 source,
-                Customer.Name
+                Customer.Name,
+                recordedByUserId
             )
         );
 

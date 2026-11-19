@@ -20,9 +20,9 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            
+            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
+
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.ICloudStorageClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
             * The service registration for TaxVision.Notification.Application.Abstractions.ICloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
@@ -36,7 +36,7 @@ namespace Internal.Generated.WolverineHandlers
             var createEmailLayoutCommand = (TaxVision.Notification.Application.Email.Layouts.Commands.CreateEmailLayoutCommand)context.Envelope.Message;
 
             if (unitOfWork is not TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext notificationDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext.");
-            
+
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
             var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(notificationDbContext, context, domainEventScraperIEnumerable);
             await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
@@ -52,15 +52,15 @@ namespace Internal.Generated.WolverineHandlers
                 TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
                 System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Notification.Application.Email.Layouts.Commands.CreateEmailLayoutHandler");
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Email.Layouts.Commands.CreateEmailLayoutHandler");
-                
+
                 // The actual message execution
                 var outgoing1 = await TaxVision.Notification.Application.Email.Layouts.Commands.CreateEmailLayoutHandler.Handle(createEmailLayoutCommand, emailLayoutRepository, layoutStorageService, unitOfWork, cancellation).ConfigureAwait(false);
 
-                
+
                 // Outgoing, cascaded message
                 await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
 
-                
+
                 // Added by EF Core Transaction Middleware
                 var result_of_SaveChangesAsync = await notificationDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);
 
@@ -79,7 +79,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: CreateEmailLayoutCommandHandler1348947194
-    
-    
+
+
 }
 

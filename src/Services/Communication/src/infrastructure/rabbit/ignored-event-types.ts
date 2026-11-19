@@ -40,8 +40,9 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserSlotUnlockedIntegrationEvent',
   'auth.user.offboarding_step_completed.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardingIncompleteIntegrationEvent',
-  // Billing — Facturas y cobros aplicados: Notification y PaymentClient.
+  // Billing — Facturas y cobros aplicados: Notification y PaymentClient. Emitida: Tenant (actividad del equipo).
   'BuildingBlocks.Messaging.BillingIntegrationEvents.OnboardingInvoiceRequestedIntegrationEvent',
+  'billing.invoice.issued',
   'billing.invoice.paid',
   'billing.invoice.payment_rejected',
   'billing.invoice.voided',
@@ -111,6 +112,8 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'connectors.mailbox_change_detected.v1',
   'connectors.message_body_fetched.v1',
   'connectors.raw_message_received.v1',
+  // Correspondence — Correo enviado por el staff: Tenant (actividad del equipo).
+  'correspondence.email.sent.v1',
   // Documents — Generación y guardado de documentos: Billing y Notification.
   'BuildingBlocks.Messaging.DocumentsIntegrationEvents.SaaSReceiptReadyIntegrationEvent',
   'documents.generation.completed',
@@ -131,6 +134,11 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   // Wallet — solicitud y respuesta de crédito/reversa por referencia opaca: Growth (premios de referidos) y Wallet.
   'wallet.credit.requested.v1',
   'wallet.credit.applied.v1',
+  // Wallet — saldo bajo y recarga automática: los consume Notification (correo + campanita).
+  'wallet.low-balance.v1',
+  'wallet.auto-recharge.succeeded.v1',
+  'wallet.auto-recharge.paused.v1',
+  'wallet.auto-recharge.daily-limit.v1',
   // Financial Insights — lote terminado: lo consume Notification (avisos); Communication no hace nada con él.
   'financial.import_batch.completed.v1',
   // Giftcards por correo y aviso de referido: los consume Notification; Communication no hace nada con ellos.
@@ -225,8 +233,9 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'signature.signer.verification.challenge_issued.v1',
   'signature.document.sealed.v1',
   'signature.request.sealing_completed.v1',
-  // Sms — Pedido de envío: Sms.
+  // Sms — Pedido de envío: Sms. Enviado por el staff: Tenant (actividad del equipo).
   'BuildingBlocks.Messaging.SmsIntegrationEvents.SmsSendRequestedIntegrationEvent',
+  'sms.message.sent.v1',
   // Subscription — Cobros, renovaciones y asientos: PaymentApp y Notification. Communication toma límites y módulos
   // de entitlements_changed.
   'BuildingBlocks.Messaging.SubscriptionIntegrationEvents.AddOnActivatedIntegrationEvent',

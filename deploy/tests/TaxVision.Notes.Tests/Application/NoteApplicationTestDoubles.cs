@@ -1,5 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using Microsoft.Extensions.Options;
+using TaxVision.Notes.Application.Notes;
 using TaxVision.Notes.Application.Notes.Abstractions;
 using TaxVision.Notes.Application.Projections.Abstractions;
 using TaxVision.Notes.Domain.Notes;
@@ -93,6 +95,54 @@ internal sealed class FakeNoteRepository : INoteRepository
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
+    // Último filtro recibido por el feed (el SQL real se prueba en Integration).
+    public (Guid ActorUserId, bool ActorHasViewAll, Guid? AssignedToUserId, NoteFeedCriteria Criteria)? LastFeed
+    {
+        get;
+        private set;
+    }
+
+    public Task<PagedResult<NoteFeedRow>> ListFeedAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
+        NoteFeedCriteria criteria,
+        int page,
+        int size,
+        CancellationToken ct = default
+    )
+    {
+        LastFeed = (actorUserId, actorHasViewAll, assignedToUserId, criteria);
+        var items = _byId.Values.Where(n => n.TenantId == tenantId).Select(n => new NoteFeedRow(n, null)).ToList();
+        return Task.FromResult(new PagedResult<NoteFeedRow>(items, page, size, items.Count));
+    }
+
+    // Último filtro de títulos recibido (el SQL real se prueba en Integration).
+    public (Guid ActorUserId, bool ActorHasViewAll, Guid? AssignedToUserId)? LastTitles { get; private set; }
+
+    public Task<IReadOnlyList<NoteTitleRow>> ListTitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        LastTitles = (actorUserId, actorHasViewAll, assignedToUserId);
+        IReadOnlyList<NoteTitleRow> rows = _byId
+            .Values.Where(n =>
+                n.TenantId == tenantId
+                && ids.Contains(n.Id)
+                && n.Status != NoteStatus.Deleted
+                && (n.Visibility != NoteVisibility.Private || n.CreatedByUserId == actorUserId || actorHasViewAll)
+            )
+            .Select(n => new NoteTitleRow(n.Id, n.Content.PlainTextPreview))
+            .ToList();
+        return Task.FromResult(rows);
+    }
+
     public Task<PagedResult<Note>> ListClientVisibleAsync(
         Guid tenantId,
         NoteTargetType targetType,
@@ -177,6 +227,13 @@ internal sealed class FakeOffboardedStaffRepository : IOffboardedStaffRepository
         AddCount++;
         return Task.CompletedTask;
     }
+}
+
+/// <summary>Lector con el gate de visibilidad sobre el repo falso; asignación apagada por defecto.</summary>
+internal static class TestNoteReaders
+{
+    public static VisibleNoteReader For(FakeNoteRepository repo, bool assignmentEnabled = false) =>
+        new(repo, Options.Create(new NotesVisibilityOptions { Enabled = assignmentEnabled }));
 }
 
 internal sealed class PassThroughHtmlSanitizer : IHtmlSanitizer

@@ -25,7 +25,8 @@ public static class AppointmentCancelledDomainEventHandler
             (cancelled.Scope ?? EditScope.EntireSeries).ToString(),
             cancelled.OriginalStartUtc,
             cancelled.Reason,
-            envelope.CorrelationId ?? string.Empty
+            envelope.CorrelationId ?? string.Empty,
+            cancelled.ChangedByUserId
         );
     }
 }

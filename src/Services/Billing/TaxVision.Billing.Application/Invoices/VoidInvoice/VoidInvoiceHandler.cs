@@ -56,6 +56,8 @@ public static class VoidInvoiceHandler
                 InvoiceId = invoice.Id,
                 InvoiceNumber = invoice.InvoiceNumber ?? string.Empty,
                 Reason = command.Reason,
+                VoidedByUserId = command.ActorUserId,
+                CustomerId = invoice.CustomerId,
             }
         );
 

@@ -188,6 +188,9 @@ namespace TaxVision.Sms.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("SendAttemptedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("SentByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("SourceContext")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");

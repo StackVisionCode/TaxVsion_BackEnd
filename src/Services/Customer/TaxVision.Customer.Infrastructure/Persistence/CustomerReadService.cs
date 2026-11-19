@@ -34,6 +34,7 @@ public sealed class CustomerReadService(
         CustomerKind? kind = null,
         CustomerSortField sort = CustomerSortField.Name,
         CustomerSortDirection direction = CustomerSortDirection.Asc,
+        CustomerStaffFilter? staff = null,
         CancellationToken ct = default
     )
     {
@@ -85,6 +86,8 @@ public sealed class CustomerReadService(
                 db.CustomerAssignments.IgnoreQueryFilters()
                     .Any(a => a.TenantId == tenantId && a.CustomerId == c.Id && a.UserId == assignee)
             );
+
+        query = query.ForStaff(db, tenantId, staff);
 
         var totalCount = await query.CountAsync(ct);
 
