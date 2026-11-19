@@ -5,6 +5,7 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\EfCore\BuildingBlocks.EfCore.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Messaging\BuildingBlocks.Messaging.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Jobs\BuildingBlocks.Jobs.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\CustomerVisibility\BuildingBlocks.CustomerVisibility.csproj" />
   </ItemGroup>
 
   <ItemGroup>

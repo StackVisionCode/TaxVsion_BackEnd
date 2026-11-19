@@ -57,7 +57,7 @@ public static class ChangeTaskDueHandler
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        await bus.PublishAsync(BuildEvent(task, previousDueAtUtc, correlation.CorrelationId));
+        await bus.PublishAsync(BuildEvent(task, previousDueAtUtc, command.ByUserId, correlation.CorrelationId));
 
         // Quitar el vencimiento no mueve nada: el contrato de Reminder recalcula sobre un ancla, y sin
         // fecha no hay ancla a la que anclarse.
@@ -81,6 +81,7 @@ public static class ChangeTaskDueHandler
     private static TaskDueChangedIntegrationEvent BuildEvent(
         TaskItem task,
         DateTime? previousDueAtUtc,
+        Guid changedByUserId,
         string correlationId
     ) =>
         new()
@@ -92,5 +93,6 @@ public static class ChangeTaskDueHandler
             NewDueAtUtc = task.Due?.DueAtUtc,
             TimeZoneId = task.Due?.TimeZoneId,
             NewDueOn = task.Due?.DueOn,
+            ChangedByUserId = changedByUserId,
         };
 }

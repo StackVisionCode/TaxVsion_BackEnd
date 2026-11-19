@@ -72,6 +72,9 @@ public sealed record AppointmentRescheduledIntegrationEvent : IntegrationEvent
     public Guid? OrganizerUserId { get; init; }
 
     public IReadOnlyList<AppointmentRecipient> Recipients { get; init; } = [];
+
+    /// <summary>Quién la reprogramó (aditivo, Work Profile); null si fue el cliente o el sistema.</summary>
+    public Guid? ChangedByUserId { get; init; }
 }
 
 [MessageIdentity("BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentCancelledIntegrationEvent")]
@@ -95,6 +98,9 @@ public sealed record AppointmentCancelledIntegrationEvent : IntegrationEvent
     public Guid? OrganizerUserId { get; init; }
 
     public IReadOnlyList<AppointmentRecipient> Recipients { get; init; } = [];
+
+    /// <summary>Quién la canceló (aditivo, Work Profile); null si fue el cliente o el sistema.</summary>
+    public Guid? ChangedByUserId { get; init; }
 }
 
 /// <summary>

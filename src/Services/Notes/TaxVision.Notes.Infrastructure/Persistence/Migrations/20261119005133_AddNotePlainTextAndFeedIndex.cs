@@ -14,24 +14,22 @@ namespace TaxVision.Notes.Infrastructure.Persistence.Migrations
                 name: "ContentPlainText",
                 table: "Notes",
                 type: "nvarchar(max)",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_Notes_TenantId_UpdatedAtUtc",
                 table: "Notes",
-                columns: new[] { "TenantId", "UpdatedAtUtc" });
+                columns: new[] { "TenantId", "UpdatedAtUtc" }
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_Notes_TenantId_UpdatedAtUtc",
-                table: "Notes");
+            migrationBuilder.DropIndex(name: "IX_Notes_TenantId_UpdatedAtUtc", table: "Notes");
 
-            migrationBuilder.DropColumn(
-                name: "ContentPlainText",
-                table: "Notes");
+            migrationBuilder.DropColumn(name: "ContentPlainText", table: "Notes");
         }
     }
 }

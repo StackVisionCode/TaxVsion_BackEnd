@@ -48,7 +48,13 @@ public static class DetachTaskAttachmentHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(
-            AttachmentEvents.Detached(found.Value, attachment!, correlation.CorrelationId, deletedAtSource: false)
+            AttachmentEvents.Detached(
+                found.Value,
+                attachment!,
+                correlation.CorrelationId,
+                deletedAtSource: false,
+                command.ByUserId == Guid.Empty ? null : command.ByUserId
+            )
         );
 
         return Result.Success();

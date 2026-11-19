@@ -21,6 +21,7 @@ public interface ICustomerReadService
     /// <param name="includeAssignees">Solo si es true se devuelven los AssigneeUserIds (roster de asignados,
     /// solo para admin/view_all). Un no-admin NO recibe el roster (need-to-know).</param>
     /// <param name="kind">Solo individuos o solo empresas; null = ambos.</param>
+    /// <param name="staff">Solo los clientes de esa persona (preparador o asignado); null = sin filtro.</param>
     Task<PagedResult<CustomerSummaryResponse>> SearchAsync(
         Guid tenantId,
         string? term,
@@ -32,6 +33,7 @@ public interface ICustomerReadService
         CustomerKind? kind = null,
         CustomerSortField sort = CustomerSortField.Name,
         CustomerSortDirection direction = CustomerSortDirection.Asc,
+        CustomerStaffFilter? staff = null,
         CancellationToken ct = default
     );
 

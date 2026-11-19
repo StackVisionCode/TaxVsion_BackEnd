@@ -30,6 +30,9 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
     public DateTime? StartedAtUtc { get; private set; }
     public DateTime? CompletedAtUtc { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance)]
+    public Guid? CompletedByUserId { get; private set; }
+
     /// <summary>
     /// Cuándo se avisó de que venció. El barrido pasa cada hora y la tarea sigue vencida mañana: sin
     /// esta marca, el asignado recibiría el mismo aviso indefinidamente hasta silenciar el canal.
@@ -258,6 +261,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
 
         Status = TaskItemStatus.Completed;
         CompletedAtUtc = nowUtc;
+        CompletedByUserId = byUserId;
 
         AddDomainEvent(new TaskCompletedDomainEvent(Id, TenantId, ParentTaskId, SeriesId, byUserId, nowUtc));
         return Result.Success();
@@ -275,6 +279,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
 
         Status = StartedAtUtc is null ? TaskItemStatus.NotStarted : TaskItemStatus.InProgress;
         CompletedAtUtc = null;
+        CompletedByUserId = null;
         ReopenCount++;
 
         AddDomainEvent(new TaskReopenedDomainEvent(Id, TenantId, ParentTaskId, Status, byUserId, nowUtc, ReopenCount));

@@ -213,7 +213,8 @@ public sealed class SmsReadService(SmsDbContext db) : ISmsReadService
                 m.AcceptedAtUtc,
                 m.DeliveredAtUtc,
                 m.FailedAtUtc,
-                m.Media.Select(x => new SmsMediaResponse(x.Url, x.ContentType, x.FileName, x.SizeBytes)).ToList()
+                m.Media.Select(x => new SmsMediaResponse(x.Url, x.ContentType, x.FileName, x.SizeBytes)).ToList(),
+                m.SentByUserId
             ))
             .FirstOrDefaultAsync(ct);
 

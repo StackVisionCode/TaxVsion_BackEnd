@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -6,6 +7,7 @@ using TaxVision.Correspondence.Application.Compose;
 using TaxVision.Correspondence.Domain.Compose;
 using TaxVision.Correspondence.Domain.Inbox;
 using TaxVision.Correspondence.Domain.ValueObjects;
+using TaxVision.Correspondence.Tests.Ingest;
 using TaxVision.Correspondence.Tests.Projections;
 
 namespace TaxVision.Correspondence.Tests.Compose;
@@ -17,6 +19,7 @@ public sealed class DraftSendReconcilerTests
     private readonly FakePostmasterClient _postmaster = new();
     private readonly FakeCorrespondenceAuditLogRepository _auditLogs = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly FakeMessageBus _bus = new();
 
     private Draft SeedSending()
     {
@@ -37,7 +40,7 @@ public sealed class DraftSendReconcilerTests
             _drafts,
             _postmaster,
             _auditLogs,
-            _unitOfWork,
+            new FakeOutboxUnit(_unitOfWork, _bus),
             Options.Create(new DraftSendReconciliationOptions { GiveUpAfter = giveUpAfter ?? TimeSpan.FromHours(2) }),
             NullLogger<DraftSendReconciler>.Instance
         ).ReconcileAsync(_tenantId, draft.Id);
@@ -114,5 +117,34 @@ public sealed class DraftSendReconcilerTests
         await ReconcileAsync(draft);
 
         Assert.Equal(0, _postmaster.CallCount);
+    }
+
+    [Fact]
+    public async Task Reconcile_PostmasterConfirms_PublishesEmailSentOnce_ByTheAuthor()
+    {
+        var draft = SeedSending();
+        _postmaster.Response = Result.Success(new SendDraftPostmasterResult(Guid.NewGuid(), null));
+
+        await ReconcileAsync(draft);
+        await ReconcileAsync(draft);
+
+        var sent = Assert.IsType<CorrespondenceEmailSentIntegrationEvent>(Assert.Single(_bus.Published));
+        Assert.Equal(draft.Id, sent.DraftId);
+        Assert.Equal(draft.CreatedByUserId, sent.SentByUserId);
+        Assert.Equal(draft.CustomerId, sent.CustomerId);
+        Assert.Null(sent.ThreadId);
+    }
+
+    [Fact]
+    public async Task Reconcile_ClosedAsFailed_DoesNotPublish()
+    {
+        var draft = SeedSending();
+        _postmaster.Response = Result.Failure<SendDraftPostmasterResult>(
+            new Error("SendCorrespondenceMessageHandler.AllRecipientsSuppressed", "Suppressed.")
+        );
+
+        await ReconcileAsync(draft);
+
+        Assert.Empty(_bus.Published);
     }
 }

@@ -22,4 +22,7 @@ public sealed record SignatureRequestCompletedIntegrationEvent : IntegrationEven
 
     /// <summary>P-18: correlación de negocio con el origen. Nulo para solicitudes creadas fuera de un formulario.</summary>
     public SignatureExternalReference? ExternalReference { get; init; }
+
+    /// <summary>Cliente de la solicitud (aditivo, Work Profile).</summary>
+    public Guid? CustomerId { get; init; }
 }

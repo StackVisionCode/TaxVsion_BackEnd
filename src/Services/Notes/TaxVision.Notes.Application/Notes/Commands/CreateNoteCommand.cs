@@ -84,6 +84,7 @@ public static class CreateNoteHandler
                 TargetId = note.Reference.TargetId,
                 Visibility = note.Visibility.ToString(),
                 CreatedAtUtc = note.CreatedAtUtc,
+                CustomerId = note.Reference.TargetType == NoteTargetType.Customer ? note.Reference.TargetId : null,
             }
         );
 

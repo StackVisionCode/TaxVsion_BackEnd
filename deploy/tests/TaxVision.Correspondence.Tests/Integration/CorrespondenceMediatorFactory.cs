@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Tests.Ingest;
 using Wolverine;
 
 namespace TaxVision.Correspondence.Tests.Integration;
@@ -20,6 +21,11 @@ public sealed class CorrespondenceMediatorFactory : WebApplicationFactory<Progra
 {
     public IdempotentPostmaster Postmaster { get; } = new();
     public FlakyAuditLogRepository AuditLogs { get; } = new();
+
+    // MediatorOnly no deja publicar fuera de un handler (el job): lo publicado queda acá.
+    internal FakeMessageBus Published { get; private set; } = new();
+
+    internal void ResetPublished() => Published = new FakeMessageBus();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -57,6 +63,22 @@ public sealed class CorrespondenceMediatorFactory : WebApplicationFactory<Progra
             services.AddSingleton<IPostmasterClient>(Postmaster);
             services.RemoveAll<ICorrespondenceAuditLogRepository>();
             services.AddSingleton<ICorrespondenceAuditLogRepository>(AuditLogs);
+            services.RemoveAll<IOutboxUnit>();
+            services.AddScoped<IOutboxUnit>(sp => new SavingOutboxUnit(
+                sp.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(),
+                Published
+            ));
         });
+    }
+}
+
+/// <summary>Guarda de verdad y deja lo publicado en memoria.</summary>
+internal sealed class SavingOutboxUnit(BuildingBlocks.Persistence.IUnitOfWork unitOfWork, FakeMessageBus bus)
+    : IOutboxUnit
+{
+    public async Task RunAsync(Func<IMessageBus, CancellationToken, Task<bool>> work, CancellationToken ct = default)
+    {
+        if (await work(bus, ct))
+            await unitOfWork.SaveChangesAsync(ct);
     }
 }

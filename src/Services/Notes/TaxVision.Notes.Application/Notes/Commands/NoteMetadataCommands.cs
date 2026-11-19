@@ -57,7 +57,7 @@ public static class ChangeNoteVisibilityHandler
             return Result.Failure<NoteResponse>(result.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await UpdateNoteContentHandler.PublishUpdatedAsync(note, correlation, bus);
+        await UpdateNoteContentHandler.PublishUpdatedAsync(note, command.ActorUserId, correlation, bus);
         return Result.Success(NoteResponse.From(note));
     }
 }
@@ -102,7 +102,7 @@ public static class PinNoteHandler
             return Result.Failure<NoteResponse>(result.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await UpdateNoteContentHandler.PublishUpdatedAsync(note, correlation, bus);
+        await UpdateNoteContentHandler.PublishUpdatedAsync(note, command.ActorUserId, correlation, bus);
         return Result.Success(NoteResponse.From(note));
     }
 }
@@ -147,7 +147,7 @@ public static class UnpinNoteHandler
             return Result.Failure<NoteResponse>(result.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await UpdateNoteContentHandler.PublishUpdatedAsync(note, correlation, bus);
+        await UpdateNoteContentHandler.PublishUpdatedAsync(note, command.ActorUserId, correlation, bus);
         return Result.Success(NoteResponse.From(note));
     }
 }
@@ -202,7 +202,7 @@ public static class SetNoteColorHandler
             return Result.Failure<NoteResponse>(result.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await UpdateNoteContentHandler.PublishUpdatedAsync(note, correlation, bus);
+        await UpdateNoteContentHandler.PublishUpdatedAsync(note, command.ActorUserId, correlation, bus);
         return Result.Success(NoteResponse.From(note));
     }
 }

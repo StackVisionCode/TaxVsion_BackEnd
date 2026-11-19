@@ -13,6 +13,9 @@ public sealed record InvoiceIssuedIntegrationEvent : BillingIntegrationEvent
     public required long TotalAmountCents { get; init; }
     public required string Currency { get; init; }
     public required DateTime DueDateUtc { get; init; }
+
+    /// <summary>Quién la emitió (aditivo, Work Profile).</summary>
+    public Guid? IssuedByUserId { get; init; }
 }
 
 /// <summary>Publicado cuando una factura queda totalmente pagada.</summary>
@@ -29,6 +32,9 @@ public sealed record InvoicePaidIntegrationEvent : BillingIntegrationEvent
     public required DateTime PaidAtUtc { get; init; }
     public Guid? ReceiptId { get; init; }
     public Guid? PaidPdfFileId { get; init; }
+
+    /// <summary>Quién registró el pago manual (aditivo, Work Profile); null en cobros en línea.</summary>
+    public Guid? RecordedByUserId { get; init; }
 }
 
 /// <summary>Publicado cuando se aplica un pago parcial.</summary>
@@ -104,6 +110,9 @@ public sealed record InvoiceSentToCustomerIntegrationEvent : BillingIntegrationE
     /// enviar email. Nullable + default null para zero-break con publicaciones previas a 2026-10-19.
     /// </summary>
     public Guid? CustomerId { get; init; }
+
+    /// <summary>Quién la envió (aditivo, Work Profile).</summary>
+    public Guid? SentByUserId { get; init; }
 }
 
 /// <summary>Publicado cuando una factura se anula.</summary>
@@ -114,6 +123,10 @@ public sealed record InvoiceVoidedIntegrationEvent : BillingIntegrationEvent
     public required Guid InvoiceId { get; init; }
     public required string InvoiceNumber { get; init; }
     public string? Reason { get; init; }
+
+    /// <summary>Quién la anuló y de qué cliente (aditivo, Work Profile).</summary>
+    public Guid? VoidedByUserId { get; init; }
+    public Guid? CustomerId { get; init; }
 }
 
 /// <summary>Un cobro confirmado no se pudo aplicar a una factura; queda como UnappliedPayment para la oficina.</summary>

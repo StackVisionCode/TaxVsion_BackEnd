@@ -58,12 +58,17 @@ public static class UpdateNoteContentHandler
             return Result.Failure<NoteResponse>(updateResult.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishUpdatedAsync(note, correlation, bus);
+        await PublishUpdatedAsync(note, command.ActorUserId, correlation, bus);
 
         return Result.Success(NoteResponse.From(note));
     }
 
-    internal static ValueTask PublishUpdatedAsync(Note note, ICorrelationContext correlation, IMessageBus bus) =>
+    internal static ValueTask PublishUpdatedAsync(
+        Note note,
+        Guid actorUserId,
+        ICorrelationContext correlation,
+        IMessageBus bus
+    ) =>
         bus.PublishAsync(
             new NoteUpdatedIntegrationEvent
             {
@@ -73,6 +78,7 @@ public static class UpdateNoteContentHandler
                 Visibility = note.Visibility.ToString(),
                 IsPinned = note.IsPinned,
                 UpdatedAtUtc = note.UpdatedAtUtc,
+                ActorUserId = actorUserId,
             }
         );
 }

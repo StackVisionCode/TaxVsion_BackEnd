@@ -134,6 +134,7 @@ public static class SendSmsBatchHandler
                 batchId,
                 chargeWallet,
                 gate.BlockedByContactPolicy(item.CustomerId),
+                command.ActorUserId,
                 providers,
                 bus,
                 options.Value.ConflictRetryAttempts,
@@ -236,6 +237,7 @@ public static class SendSmsBatchHandler
         Guid batchId,
         bool walletCharged,
         bool blockedByContactPolicy,
+        Guid? sentByUserId,
         IReadOnlyList<ISmsProvider> providers,
         IMessageBus bus,
         int conflictRetryAttempts,
@@ -267,7 +269,8 @@ public static class SendSmsBatchHandler
                 [.. outgoing.Media.Select(m => new SmsMediaInput(m.Url, m.ContentType, m.FileName, m.SizeBytes))],
                 item.RecipientName,
                 walletCharged,
-                blockedByContactPolicy
+                blockedByContactPolicy,
+                sentByUserId
             ),
             ct
         );

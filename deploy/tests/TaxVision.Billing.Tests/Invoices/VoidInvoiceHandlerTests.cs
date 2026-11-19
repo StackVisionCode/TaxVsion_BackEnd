@@ -46,6 +46,19 @@ public sealed class VoidInvoiceHandlerTests
         );
     }
 
+    [Fact]
+    public async Task Void_CarriesActorAndCustomer()
+    {
+        var invoice = IssuedInvoice();
+        var bus = new FakeMessageBus();
+
+        await RunAsync(invoice, new CountingUnitOfWork(), bus);
+
+        var voided = Assert.Single(bus.Published.OfType<InvoiceVoidedIntegrationEvent>());
+        Assert.Equal(ActorUserId, voided.VoidedByUserId);
+        Assert.Equal(invoice.CustomerId, voided.CustomerId);
+    }
+
     private static Task<Result> RunAsync(Invoice invoice, IUnitOfWork unitOfWork, FakeMessageBus bus) =>
         VoidInvoiceHandler.Handle(
             new VoidInvoiceCommand(TenantId, invoice.Id, ActorUserId, "wrong client", CanViewAll: true),

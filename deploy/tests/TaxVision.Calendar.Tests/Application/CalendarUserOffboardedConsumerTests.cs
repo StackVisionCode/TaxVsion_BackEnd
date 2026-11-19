@@ -136,6 +136,8 @@ public sealed class CalendarUserOffboardedConsumerTests
         Assert.Equal(AppointmentStatus.Cancelled, appt.Status);
         var cancelled = Assert.Single(bus.Published.OfType<AppointmentCancelledIntegrationEvent>());
         Assert.Contains(cancelled.Recipients, r => r.Email == "client@example.com");
+        // Lo canceló un proceso, no una persona.
+        Assert.Null(cancelled.ChangedByUserId);
         Assert.False(token.IsActive);
     }
 

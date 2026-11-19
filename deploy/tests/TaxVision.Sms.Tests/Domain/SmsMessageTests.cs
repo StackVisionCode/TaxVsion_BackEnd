@@ -45,6 +45,38 @@ public sealed class SmsMessageTests
     }
 
     [Fact]
+    public void Create_stores_the_sender_and_an_empty_sender_is_null()
+    {
+        var sender = Guid.NewGuid();
+
+        var sent = Create(sender);
+        var empty = Create(Guid.Empty);
+        var none = Create(null);
+
+        Assert.Equal(sender, sent.SentByUserId);
+        Assert.Null(empty.SentByUserId);
+        Assert.Null(none.SentByUserId);
+
+        static SmsMessage Create(Guid? sentByUserId) =>
+            SmsMessage
+                .Create(
+                    Guid.NewGuid(),
+                    Guid.NewGuid(),
+                    PhoneE164.Create("+18095551234").Value,
+                    SmsBody.Create("hi").Value,
+                    "idem",
+                    "corr",
+                    Guid.NewGuid(),
+                    "fake",
+                    null,
+                    [],
+                    Now,
+                    sentByUserId: sentByUserId
+                )
+                .Value;
+    }
+
+    [Fact]
     public void Create_generates_correlation_when_blank()
     {
         var msg = NewPending(correlationId: "   ");

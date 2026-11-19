@@ -155,6 +155,8 @@ public sealed class ReissueInvoiceHandlerTests
                 Assert.Equal(original.Id, voided.InvoiceId);
                 Assert.Equal("INV-2026-00001", voided.InvoiceNumber);
                 Assert.Equal("typo", voided.Reason);
+                Assert.Equal(ActorUserId, voided.VoidedByUserId);
+                Assert.Equal(original.CustomerId, voided.CustomerId);
             },
             message => Assert.Equal(original.Id, Assert.IsType<GenerateInvoicePdfCommand>(message).InvoiceId),
             message => Assert.Equal(original.Id, Assert.IsType<SyncInvoiceStockCommand>(message).InvoiceId)

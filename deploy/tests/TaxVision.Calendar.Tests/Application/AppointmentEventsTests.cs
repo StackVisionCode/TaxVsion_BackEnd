@@ -141,6 +141,124 @@ public sealed class AppointmentEventsTests
         Assert.Equal(NewYork, cancelled.TimeZoneId);
     }
 
+    [Fact]
+    public async Task Cancelling_says_which_staff_member_did_it()
+    {
+        var single = SingleOn(November.AddDays(8));
+        Assert.True(single.Cancel(Organizer, canManageAll: false, null, November).IsSuccess);
+
+        var cancelled = await Publish(single);
+
+        Assert.Equal(Organizer, cancelled.ChangedByUserId);
+    }
+
+    [Fact]
+    public async Task Cancelling_an_occurrence_says_which_staff_member_did_it()
+    {
+        var series = MondaysAtNine();
+        Assert.True(series.CancelOccurrence(NextMonday, Organizer, canManageAll: false, November).IsSuccess);
+        var domainEvent = series.DomainEvents.OfType<AppointmentOccurrenceCancelledDomainEvent>().Last();
+
+        var messages = await AppointmentOccurrenceCancelledDomainEventHandler.Handle(
+            domainEvent,
+            new InMemoryAppointments(series),
+            new Envelope(),
+            default
+        );
+
+        var cancelled = Assert.Single(
+            messages.OfType<BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentCancelledIntegrationEvent>()
+        );
+        Assert.Equal(Organizer, cancelled.ChangedByUserId);
+    }
+
+    [Fact]
+    public async Task Rescheduling_says_which_staff_member_did_it()
+    {
+        var start = November.AddDays(8);
+        var single = SingleOn(start);
+        var later = EventTiming.PointInTimeOf(start.AddHours(2), start.AddHours(3), NewYork).Value;
+        Assert.True(single.Reschedule(later, Organizer, canManageAll: false, November).IsSuccess);
+        var domainEvent = single.DomainEvents.OfType<AppointmentRescheduledDomainEvent>().Last();
+
+        var moved = await AppointmentRescheduledDomainEventHandler.Handle(
+            domainEvent,
+            new InMemoryAppointments(single),
+            new Envelope(),
+            default
+        );
+
+        Assert.Equal(Organizer, moved!.ChangedByUserId);
+    }
+
+    [Fact]
+    public async Task Moving_an_occurrence_says_which_staff_member_did_it()
+    {
+        var series = MondaysAtNine();
+        Assert.True(
+            series
+                .OverrideOccurrence(
+                    NextMonday,
+                    NextMonday.AddHours(2),
+                    NextMonday.AddHours(3),
+                    null,
+                    null,
+                    Organizer,
+                    canManageAll: false,
+                    November
+                )
+                .IsSuccess
+        );
+        var domainEvent = series.DomainEvents.OfType<AppointmentOccurrenceOverriddenDomainEvent>().Last();
+
+        var messages = await AppointmentOccurrenceOverriddenDomainEventHandler.Handle(
+            domainEvent,
+            new InMemoryAppointments(series),
+            new Envelope(),
+            default
+        );
+
+        var moved = Assert.Single(
+            messages.OfType<BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentRescheduledIntegrationEvent>()
+        );
+        Assert.Equal(Organizer, moved.ChangedByUserId);
+    }
+
+    [Fact]
+    public async Task A_customer_cancelling_from_the_portal_is_not_a_staff_actor()
+    {
+        var customer = Guid.NewGuid();
+        var start = November.AddDays(8);
+        var single = Appointment
+            .Schedule(
+                Guid.NewGuid(),
+                AppointmentTitle.Create("Consulta").Value,
+                EventTiming.PointInTimeOf(start, start.AddHours(1), NewYork).Value,
+                Guid.NewGuid(),
+                Organizer,
+                January,
+                customerId: customer
+            )
+            .Value;
+        Assert.True(single.CancelByCustomer(customer, Guid.NewGuid(), null, November).IsSuccess);
+
+        var cancelled = await Publish(single);
+
+        Assert.Null(cancelled.ChangedByUserId);
+    }
+
+    private static Appointment SingleOn(DateTime startUtc) =>
+        Appointment
+            .Schedule(
+                Guid.NewGuid(),
+                AppointmentTitle.Create("Consulta").Value,
+                EventTiming.PointInTimeOf(startUtc, startUtc.AddHours(1), NewYork).Value,
+                Guid.NewGuid(),
+                Organizer,
+                January
+            )
+            .Value;
+
     private static async Task<BuildingBlocks.Messaging.CalendarIntegrationEvents.AppointmentCancelledIntegrationEvent> Publish(
         Appointment appointment
     )

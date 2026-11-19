@@ -51,7 +51,8 @@ public static class AppointmentSeriesSplitDomainEventHandler
                 follower.Timing.TimeZone.Id,
                 nameof(EditScope.ThisAndFollowing),
                 cut,
-                correlationId
+                correlationId,
+                changedByUserId: split.SplitByUserId
             )
         );
 

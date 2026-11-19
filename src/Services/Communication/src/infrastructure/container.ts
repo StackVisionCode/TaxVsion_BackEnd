@@ -128,6 +128,8 @@ import type { ConversationContentRepository } from '../application/ports/convers
 import type { ConversationActivityReader } from '../application/ports/conversation-activity-reader.js';
 import { PrismaConversationContentRepository } from './persistence/prisma-conversation-content-repository.js';
 import { PrismaConversationActivityReader } from './persistence/prisma-conversation-activity-reader.js';
+import type { MemberWorkReader } from '../application/ports/member-work-reader.js';
+import { PrismaMemberWorkReader } from './persistence/prisma-member-work-reader.js';
 import type { ConversationAuditRepository } from '../application/ports/conversation-audit-repository.js';
 import { PrismaConversationAuditRepository } from './persistence/prisma-conversation-audit-repository.js';
 import type { SocketSessionTerminator } from '../application/ports/socket-session-terminator.js';
@@ -206,6 +208,8 @@ export interface AppContainer {
   readonly conversationContent: ConversationContentRepository;
   /** Bandeja de Support: no leídos y último mensaje por ticket. */
   readonly conversationActivity: ConversationActivityReader;
+  /** Work Profile: tickets asignados y reuniones próximas por persona. */
+  readonly memberWork: MemberWorkReader;
   readonly supportTickets: SupportTicketRepository;
   readonly platform: PlatformTenantProvider;
   readonly tenantSettings: SettingsRepository;
@@ -367,6 +371,7 @@ export function buildContainer(): AppContainer {
     attachmentTracking: new PrismaAttachmentTrackingRepository(prisma),
     conversationContent: new PrismaConversationContentRepository(prisma),
     conversationActivity: new PrismaConversationActivityReader(prisma),
+    memberWork: new PrismaMemberWorkReader(prisma),
     supportTickets: new PrismaSupportTicketRepository(prisma),
     platform: new ConfigPlatformTenantProvider(),
     tenantSettings: tenantSettingsRepository,

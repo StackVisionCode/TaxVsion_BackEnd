@@ -37,6 +37,7 @@ public sealed class SendInvoiceToCustomerHandlerTests
         Assert.Equal("client@example.com", evt.CustomerEmail);
         Assert.Equal("https://manfer.taxproffice.com/payments-client/invoices/abc", evt.PaymentLink);
         Assert.Equal(10000, evt.AmountDueCents);
+        Assert.Equal(Actor, evt.SentByUserId);
     }
 
     /// <summary>P6: el correo dice el vencimiento congelado (fecha civil de la oficina).</summary>

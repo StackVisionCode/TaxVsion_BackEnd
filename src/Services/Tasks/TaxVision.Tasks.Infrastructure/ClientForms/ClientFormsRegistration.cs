@@ -56,6 +56,10 @@ public static class ClientFormsRegistration
         });
         services.AddScoped<IFormAuditLog, FormAuditLog>();
         services.AddScoped<IFormRequestRepository, FormRequestRepository>();
+        services.AddScoped<
+            TaxVision.Tasks.ClientForms.Application.Requests.Work.IFormRequestWorkReader,
+            FormRequestWorkReader
+        >();
         services.AddScoped<IFormRequestStaffReadRepository, FormRequestStaffReadRepository>();
         services.AddScoped<IFormFileScanVerdictRepository, FormFileScanVerdictRepository>();
         services.AddScoped<IFormParticipantRepository, FormParticipantRepository>();

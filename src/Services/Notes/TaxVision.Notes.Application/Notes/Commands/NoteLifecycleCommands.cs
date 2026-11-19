@@ -116,6 +116,7 @@ public static class DeleteNoteHandler
                 TenantId = note.TenantId,
                 CorrelationId = correlation.CorrelationId,
                 NoteId = note.Id,
+                ActorUserId = command.ActorUserId,
             }
         );
         return Result.Success();

@@ -84,6 +84,7 @@ public static class DependencyInjection
         );
         services.AddScoped<ITaskTemplateRepository, TaskTemplateRepository>();
         services.AddScoped<IClientRequestRepository, ClientRequestRepository>();
+        services.AddScoped<Application.Work.ITaskWorkReader, TaskWorkReader>();
         services.AddOptions<ClientReminderOptions>().Bind(configuration.GetSection(ClientReminderOptions.SectionName));
         services.AddSingleton<ITaskMetrics, TaskMetrics>();
         services.AddScoped<ITaskTimerRepository, TaskTimerRepository>();

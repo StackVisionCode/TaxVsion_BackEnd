@@ -27,6 +27,7 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(t => t.CreatedAtUtc).IsRequired();
         builder.Property(t => t.StartedAtUtc);
         builder.Property(t => t.CompletedAtUtc);
+        builder.Property(t => t.CompletedByUserId);
 
         builder.Property(t => t.ParentTaskId);
         builder.Property(t => t.Depth).IsRequired();

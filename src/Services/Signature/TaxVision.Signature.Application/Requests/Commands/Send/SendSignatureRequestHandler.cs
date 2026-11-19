@@ -46,7 +46,7 @@ public static class SendSignatureRequestHandler
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
 
-        await PublishSentEventAsync(request, sentAt, correlation, bus);
+        await PublishSentEventAsync(request, sentAt, cmd.SentByUserId, correlation, bus);
         await PublishInvitationsAsync(request, invitations, correlation, bus);
         return Result.Success();
     }
@@ -83,6 +83,7 @@ public static class SendSignatureRequestHandler
     private static Task PublishSentEventAsync(
         SignatureRequest request,
         DateTime sentAtUtc,
+        Guid? sentByUserId,
         ICorrelationContext correlation,
         IMessageBus bus
     ) =>
@@ -95,6 +96,8 @@ public static class SendSignatureRequestHandler
                     CreatedByUserId = request.CreatedByUserId,
                     SentAtUtc = sentAtUtc,
                     SignerIds = request.Signers.Select(s => s.Id).ToList(),
+                    SentByUserId = sentByUserId,
+                    CustomerId = request.PrimaryCustomerId,
                 }
             )
             .AsTask();

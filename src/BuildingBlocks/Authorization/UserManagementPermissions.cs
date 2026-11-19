@@ -9,4 +9,7 @@ namespace BuildingBlocks.Authorization;
 public static class UserManagementPermissions
 {
     public const string UsersManage = "users.manage";
+
+    /// <summary>Ver el trabajo y la actividad de otro miembro (Work Profile); lo propio no lo exige.</summary>
+    public const string UsersWorkView = "users.work.view";
 }
