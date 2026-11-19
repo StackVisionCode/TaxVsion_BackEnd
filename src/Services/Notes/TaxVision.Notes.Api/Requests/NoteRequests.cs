@@ -1,3 +1,4 @@
+using TaxVision.Notes.Application.Notes.Abstractions;
 using TaxVision.Notes.Domain.Notes;
 using TaxVision.Notes.Domain.ValueObjects;
 
@@ -28,3 +29,29 @@ public sealed record AttachFileToNoteRequest(
     string ContentType,
     long SizeBytes
 );
+
+/// <summary>Query string de <c>GET /notes/feed</c> (contrato §3). Fechas UTC, rango [From, To) sobre UpdatedAtUtc.</summary>
+public sealed record NoteFeedRequest
+{
+    public string? Q { get; init; }
+    public NoteFeedScope Scope { get; init; } = NoteFeedScope.All;
+    public Guid? CustomerId { get; init; }
+    public Guid? AuthorUserId { get; init; }
+    public NoteTargetType? TargetType { get; init; }
+    public NoteFeedStatus Status { get; init; } = NoteFeedStatus.Active;
+    public DateTimeOffset? From { get; init; }
+    public DateTimeOffset? To { get; init; }
+    public NoteFeedSort Sort { get; init; } = NoteFeedSort.Updated;
+    public int Page { get; init; }
+    public int Size { get; init; }
+
+    // Valores numéricos fuera del enum también se rechazan.
+    public bool HasValidEnums() =>
+        Enum.IsDefined(Scope)
+        && Enum.IsDefined(Status)
+        && Enum.IsDefined(Sort)
+        && (TargetType is null || Enum.IsDefined(TargetType.Value));
+
+    public NoteFeedCriteria ToCriteria() =>
+        new(Q, Scope, CustomerId, AuthorUserId, TargetType, Status, From?.UtcDateTime, To?.UtcDateTime, Sort);
+}

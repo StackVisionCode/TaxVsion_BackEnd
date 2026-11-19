@@ -22,6 +22,27 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BuildingBlocks.TenantTimeZones.TenantTimeZoneProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("SourceVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantTimeZoneProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Wallet.Domain.Permissions.RolePermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -227,6 +248,9 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     b.Property<long>("ConsumedMicros")
                         .HasColumnType("bigint");
 
+                    b.Property<int?>("ConsumedUnits")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -235,7 +259,17 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
 
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("EmailUnits")
+                        .HasColumnType("int");
+
                     b.Property<int>("PriceBookVersion")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PushUnits")
                         .HasColumnType("int");
 
                     b.Property<Guid>("ReferenceId")
@@ -249,6 +283,9 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     b.Property<long>("ReleasedMicros")
                         .HasColumnType("bigint");
 
+                    b.Property<Guid?>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<long>("ReservedMicros")
                         .HasColumnType("bigint");
 
@@ -258,6 +295,9 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     b.Property<DateTime?>("SettledAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("SmsUnits")
+                        .HasColumnType("int");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -266,12 +306,143 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("WhatsAppUnits")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "ReferenceType", "ReferenceId")
                         .IsUnique();
 
                     b.ToTable("WalletReservations", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Wallet.Domain.Settings.WalletSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("AutoRechargeAmountCents")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AutoRechargeMethodLabel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("AutoRechargeMethodReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("AutoRechargePausedReason")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("AutoRechargeProvider")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("AutoRechargeStatus")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<long>("AutoRechargeThresholdMicros")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("ConsentAcceptedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ConsentAcceptedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConsentIpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ConsentText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ConsentTextVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateOnly?>("DailyLimitNoticeDay")
+                        .HasColumnType("date");
+
+                    b.Property<bool>("LowBalanceAlertSent")
+                        .HasColumnType("bit");
+
+                    b.Property<long>("LowBalanceThresholdMicros")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateOnly?>("RechargesDay")
+                        .HasColumnType("date");
+
+                    b.Property<int>("RechargesOnDay")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("WalletSettings", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Wallet.Domain.Settings.WalletSettingsChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("nvarchar(48)");
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ConsentText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("ConsentTextVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "AtUtc");
+
+                    b.ToTable("WalletSettingsChanges", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Wallet.Domain.Wallet.FundingCredit", b =>
@@ -337,6 +508,10 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     b.Property<Guid?>("ReferenceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ReferenceType")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -346,6 +521,8 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "OperationKey")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "ReferenceId");
 
                     b.ToTable("LedgerEntries", (string)null);
                 });
@@ -402,6 +579,9 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                     b.Property<long>("AmountCents")
                         .HasColumnType("bigint");
 
+                    b.Property<bool>("Automatic")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -418,6 +598,22 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Method")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("MethodLabel")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PaymentMethodReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
 
                     b.Property<Guid>("RequestedByUserId")
                         .HasColumnType("uniqueidentifier");
@@ -440,6 +636,8 @@ namespace TaxVision.Wallet.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "IdempotencyKey")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "Automatic", "Status");
 
                     b.ToTable("WalletTopUps", (string)null);
                 });

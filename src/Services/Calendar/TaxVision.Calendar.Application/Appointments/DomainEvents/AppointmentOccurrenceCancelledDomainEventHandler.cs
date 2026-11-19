@@ -31,7 +31,8 @@ public static class AppointmentOccurrenceCancelledDomainEventHandler
                 nameof(EditScope.ThisOccurrence),
                 cancelled.OriginalStartUtc,
                 cancelled.Reason,
-                correlationId
+                correlationId,
+                cancelled.CancelledByUserId
             )
         );
         messages.Add(

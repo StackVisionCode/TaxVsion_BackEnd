@@ -5,6 +5,7 @@ using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Wallet.Domain.Permissions;
@@ -37,10 +38,15 @@ public sealed class WalletDbContext(DbContextOptions<WalletDbContext> options, I
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
     public DbSet<TenantPlanCodeProjection> TenantPlanCodeProjections => Set<TenantPlanCodeProjection>();
+    public DbSet<Domain.Settings.WalletSettings> WalletSettings => Set<Domain.Settings.WalletSettings>();
+    public DbSet<Domain.Settings.WalletSettingsChange> WalletSettingsChanges =>
+        Set<Domain.Settings.WalletSettingsChange>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        // Zona de cada oficina (proyección compartida de Tenant).
+        modelBuilder.ApplyTenantTimeZoneProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
         // Al final: también cubre las proyecciones y tipos agregados arriba.

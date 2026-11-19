@@ -104,6 +104,9 @@ namespace TaxVision.Notes.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("IX_Notes_TenantId_Status");
 
+                    b.HasIndex("TenantId", "UpdatedAtUtc")
+                        .HasDatabaseName("IX_Notes_TenantId_UpdatedAtUtc");
+
                     b.ToTable("Notes", (string)null);
                 });
 
@@ -344,6 +347,10 @@ namespace TaxVision.Notes.Infrastructure.Persistence.Migrations
                                 .IsRequired()
                                 .HasColumnType("nvarchar(max)")
                                 .HasColumnName("ContentHtml");
+
+                            b1.Property<string>("PlainText")
+                                .HasColumnType("nvarchar(max)")
+                                .HasColumnName("ContentPlainText");
 
                             b1.Property<string>("PlainTextPreview")
                                 .IsRequired()

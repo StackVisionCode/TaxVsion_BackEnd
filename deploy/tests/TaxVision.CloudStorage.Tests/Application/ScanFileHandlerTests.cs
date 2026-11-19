@@ -67,6 +67,8 @@ public sealed class ScanFileHandlerTests
         Assert.Equal(fixture.CustomerId, uploaded.CustomerId);
         Assert.Equal(fixture.File.Id, uploaded.FileId);
         Assert.Equal("corr-scan", uploaded.CorrelationId);
+        Assert.Equal(fixture.File.CreatedBy, uploaded.UploadedByUserId);
+        Assert.Equal("CustomerPortal", uploaded.UploadedByActorType);
     }
 
     [Theory]

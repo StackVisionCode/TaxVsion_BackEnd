@@ -1,3 +1,4 @@
+using TaxVision.PaymentApp.Application.SaaSPayments.Commands.ExecuteSaaSPaymentCharge;
 using TaxVision.PaymentApp.Domain.SaaSPayments;
 using TaxVision.PaymentApp.Domain.ValueObjects;
 
@@ -31,5 +32,8 @@ public sealed record ChargeSaaSPaymentCommand(
     string? PromotionSnapshotHash = null,
     // Fuente del descuento vigente de la suscripción (Code | Admin); null si el cobro no lleva.
     string? DiscountSource = null,
-    string? DiscountLabel = null
+    string? DiscountLabel = null,
+    SaaSPaymentChargeStrategy Strategy = SaaSPaymentChargeStrategy.Authorize,
+    // Id interno del método guardado (no la referencia del proveedor): no null = solo ese, o falla con MethodUnavailable.
+    string? AuthorizedMethodId = null
 );

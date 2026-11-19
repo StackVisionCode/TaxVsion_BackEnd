@@ -41,13 +41,19 @@ public sealed record WalletReserveResult(
 /// </summary>
 public interface IWalletSpendClient
 {
-    /// <summary>Reserva fondos ANTES del fan-out. Fail-closed: si el Wallet no responde → <see cref="WalletReserveResult.Unreachable"/>.</summary>
+    /// <summary>
+    /// Reserva fondos ANTES del fan-out. Fail-closed: si el Wallet no responde → <see cref="WalletReserveResult.Unreachable"/>.
+    /// <paramref name="description"/> es el texto legible del movimiento (≤ 200); <paramref name="requestedByUserId"/>
+    /// es quien lo disparó (null = programado o automático).
+    /// </summary>
     Task<WalletReserveResult> ReserveAsync(
         Guid tenantId,
         string referenceType,
         Guid referenceId,
         WalletUnitCounts units,
         string? callerBearerToken,
+        string? description = null,
+        Guid? requestedByUserId = null,
         CancellationToken ct = default
     );
 

@@ -253,7 +253,12 @@ public sealed class CampaignRunCommandEventCountTests
                 new FakeSenderProfileRepository(),
                 new FakeUnitOfWork(),
                 new FakeCorrelationContext(),
-                new CampaignRunStarter(Wallet, new FakeCorrelationContext(), NullLogger<CampaignRunStarter>.Instance),
+                new CampaignRunStarter(
+                    Wallet,
+                    Campaigns,
+                    new FakeCorrelationContext(),
+                    NullLogger<CampaignRunStarter>.Instance
+                ),
                 new CampaignRunDispatcher(Campaigns, new FakeSenderProfileRepository()),
             };
             var method = handler
@@ -290,6 +295,8 @@ public sealed class CampaignRunCommandEventCountTests
             Guid referenceId,
             WalletUnitCounts units,
             string? callerBearerToken,
+            string? description = null,
+            Guid? requestedByUserId = null,
             CancellationToken ct = default
         ) => Task.FromResult(new WalletReserveResult(false, true, 100, 0, 0, "USD"));
 

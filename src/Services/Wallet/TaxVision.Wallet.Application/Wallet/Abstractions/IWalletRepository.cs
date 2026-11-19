@@ -44,4 +44,7 @@ public interface IWalletRepository
     Task<bool> FundingCreditExistsAsync(string sourceService, Guid saaSPaymentId, CancellationToken ct = default);
 
     Task AddFundingCreditAsync(FundingCredit credit, CancellationToken ct = default);
+
+    /// <summary>¿Hay una recarga automática del tenant esperando el cobro? Solo una en curso a la vez.</summary>
+    Task<bool> HasPendingAutomaticTopUpAsync(Guid tenantId, CancellationToken ct = default);
 }

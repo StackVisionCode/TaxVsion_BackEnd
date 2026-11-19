@@ -238,7 +238,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (allowed.IsFailure)
             return allowed;
 
-        ApplyReschedule(timing, actingUserId, nowUtc, keepGoingCustomerId: null);
+        ApplyReschedule(timing, actingUserId, nowUtc, keepGoingCustomerId: null, changedByUserId: actingUserId);
         return Result.Success();
     }
 
@@ -329,7 +329,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (allowed.IsFailure)
             return allowed;
 
-        ApplyCancel(portalUserId, reason, nowUtc, null, null);
+        ApplyCancel(portalUserId, reason, nowUtc, null, null, changedByUserId: null);
         return Result.Success();
     }
 
@@ -343,7 +343,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (allowed.IsFailure)
             return allowed;
 
-        ApplyReschedule(timing, portalUserId, nowUtc, keepGoingCustomerId: customerId);
+        ApplyReschedule(timing, portalUserId, nowUtc, keepGoingCustomerId: customerId, changedByUserId: null);
         return Result.Success();
     }
 
@@ -353,19 +353,22 @@ public sealed class Appointment : AggregateRoot, IHasOwner
     public Result CancelByExternalRequester(string? reason, DateTime nowUtc) =>
         CancelFromPublicPage(Guid.Empty, reason, nowUtc);
 
-    /// <summary>El equipo de la plataforma cancela la demo desde su reserva; queda quién fue.</summary>
-    public Result CancelByPublicPageStaff(Guid actingUserId, string? reason, DateTime nowUtc) =>
+    /// <summary>
+    /// El equipo de la plataforma cancela la demo desde su reserva; queda quién fue. <paramref name="bySystem"/>:
+    /// lo hace un proceso (offboarding) y el evento sale sin actor.
+    /// </summary>
+    public Result CancelByPublicPageStaff(Guid actingUserId, string? reason, DateTime nowUtc, bool bySystem = false) =>
         actingUserId == Guid.Empty
             ? Result.Failure(AppointmentErrors.OrganizerRequired)
-            : CancelFromPublicPage(actingUserId, reason, nowUtc);
+            : CancelFromPublicPage(actingUserId, reason, nowUtc, bySystem);
 
-    private Result CancelFromPublicPage(Guid actingUserId, string? reason, DateTime nowUtc)
+    private Result CancelFromPublicPage(Guid actingUserId, string? reason, DateTime nowUtc, bool bySystem = false)
     {
         var allowed = EnsureExternalRequesterCanChange();
         if (allowed.IsFailure)
             return allowed;
 
-        ApplyCancel(actingUserId, reason, nowUtc, null, null);
+        ApplyCancel(actingUserId, reason, nowUtc, null, null, StaffActor(actingUserId, bySystem));
         return Result.Success();
     }
 
@@ -389,18 +392,20 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         Guid actingUserId,
         DateTime nowUtc,
         Guid? organizerUserId = null,
-        Location? location = null
+        Location? location = null,
+        bool bySystem = false
     ) =>
         actingUserId == Guid.Empty
             ? Result.Failure(AppointmentErrors.OrganizerRequired)
-            : RescheduleFromPublicPage(timing, actingUserId, nowUtc, organizerUserId, location);
+            : RescheduleFromPublicPage(timing, actingUserId, nowUtc, organizerUserId, location, bySystem);
 
     private Result RescheduleFromPublicPage(
         EventTiming timing,
         Guid actingUserId,
         DateTime nowUtc,
         Guid? organizerUserId,
-        Location? location
+        Location? location,
+        bool bySystem = false
     )
     {
         var allowed = EnsureExternalRequesterCanChange();
@@ -412,7 +417,14 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (location is not null)
             Location = location;
 
-        ApplyReschedule(timing, actingUserId, nowUtc, keepGoingCustomerId: null, keepGoingExternals: true);
+        ApplyReschedule(
+            timing,
+            actingUserId,
+            nowUtc,
+            keepGoingCustomerId: null,
+            StaffActor(actingUserId, bySystem),
+            keepGoingExternals: true
+        );
         return Result.Success();
     }
 
@@ -478,11 +490,16 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         return IsRecurring ? Result.Failure(AppointmentErrors.SeriesChangedByOffice) : Result.Success();
     }
 
+    /// <summary>El empleado que actuó, para los eventos; un proceso o un visitante sin usuario no cuentan.</summary>
+    private static Guid? StaffActor(Guid actingUserId, bool bySystem) =>
+        bySystem || actingUserId == Guid.Empty ? null : actingUserId;
+
     private void ApplyReschedule(
         EventTiming timing,
         Guid actingUserId,
         DateTime nowUtc,
         Guid? keepGoingCustomerId,
+        Guid? changedByUserId,
         bool keepGoingExternals = false
     )
     {
@@ -519,12 +536,14 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 timing.TimeZone.Id,
                 actingUserId,
                 nowUtc,
-                rsvpTokens
+                rsvpTokens,
+                changedByUserId
             )
         );
     }
 
     /// <param name="scope">Alcance que se anuncia; null es la cita entera.</param>
+    /// <param name="bySystem">La cancela un proceso (offboarding): el evento sale sin actor.</param>
     /// <param name="originalStartUtc">Ocurrencia que venía en el pedido, si la hubo.</param>
     public Result Cancel(
         Guid actingUserId,
@@ -532,7 +551,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         string? reason,
         DateTime nowUtc,
         EditScope? scope = null,
-        DateTime? originalStartUtc = null
+        DateTime? originalStartUtc = null,
+        bool bySystem = false
     )
     {
         if (Status == AppointmentStatus.Cancelled)
@@ -545,7 +565,7 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         if (!canManageAll && actingUserId != OrganizerUserId)
             return Result.Failure(AppointmentErrors.NotTheOrganizer);
 
-        ApplyCancel(actingUserId, reason, nowUtc, scope, originalStartUtc);
+        ApplyCancel(actingUserId, reason, nowUtc, scope, originalStartUtc, StaffActor(actingUserId, bySystem));
         return Result.Success();
     }
 
@@ -554,7 +574,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
         string? reason,
         DateTime nowUtc,
         EditScope? scope,
-        DateTime? originalStartUtc
+        DateTime? originalStartUtc,
+        Guid? changedByUserId
     )
     {
         Status = AppointmentStatus.Cancelled;
@@ -569,7 +590,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 CancellationReason,
                 nowUtc,
                 scope,
-                originalStartUtc
+                originalStartUtc,
+                changedByUserId
             )
         );
     }
@@ -991,7 +1013,8 @@ public sealed class Appointment : AggregateRoot, IHasOwner
                 timing.TimeZone.Id,
                 actingUserId,
                 nowUtc,
-                rsvpTokens
+                rsvpTokens,
+                actingUserId
             )
         );
 

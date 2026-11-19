@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +23,7 @@ public sealed class SendDraftIntegrationTests(CorrespondenceMediatorFactory fact
     {
         factory.Postmaster.Reset();
         factory.AuditLogs.Reset();
+        factory.ResetPublished();
         return Task.CompletedTask;
     }
 
@@ -122,6 +124,9 @@ public sealed class SendDraftIntegrationTests(CorrespondenceMediatorFactory fact
         var closed = await check.Drafts.AsNoTracking().FirstAsync(d => d.Id == draft.Id);
         Assert.Equal(DraftStatus.Sent, closed.Status);
         Assert.NotNull(closed.SentMessageId);
+        var sent = Assert.IsType<CorrespondenceEmailSentIntegrationEvent>(Assert.Single(factory.Published.Published));
+        Assert.Equal(draft.Id, sent.DraftId);
+        Assert.Equal(draft.CreatedByUserId, sent.SentByUserId);
     }
 }
 

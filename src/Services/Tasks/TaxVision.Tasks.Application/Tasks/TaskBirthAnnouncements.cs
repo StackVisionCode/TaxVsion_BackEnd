@@ -15,7 +15,9 @@ public static class TaskBirthAnnouncements
 {
     public static OutgoingMessages For(TaskItem task, TaskCreatedDomainEvent born, string correlationId)
     {
-        var messages = new OutgoingMessages { TaskCreatedEventFactory.From(task, correlationId) };
+        // Una ocurrencia de serie la crea el sistema: sin actor.
+        var createdBy = born.RecurringOccurrence ? (Guid?)null : born.CreatedByUserId;
+        var messages = new OutgoingMessages { TaskCreatedEventFactory.From(task, correlationId, createdBy) };
 
         if (TaskDueReminder.RequestFor(task, born.AssigneeUserId, lifecycle: 0, correlationId) is { } reminder)
             messages.Add(reminder);

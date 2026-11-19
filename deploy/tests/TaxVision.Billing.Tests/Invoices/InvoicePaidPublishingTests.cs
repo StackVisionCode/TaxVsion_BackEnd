@@ -69,6 +69,7 @@ public sealed class InvoicePaidPublishingTests
         Assert.Equal(invoice.Id, published.InvoiceId);
         Assert.Equal(DomainEventReplay.CorrelationId, published.CorrelationId);
         Assert.Null(published.ReceiptId);
+        Assert.Equal(ActorUserId, published.RecordedByUserId);
         Assert.Single(emitted.OfType<GenerateInvoicePdfCommand>());
     }
 
@@ -119,6 +120,7 @@ public sealed class InvoicePaidPublishingTests
         var published = Assert.Single(emitted.OfType<InvoicePaidIntegrationEvent>());
         Assert.Equal(PaymentMethod.Online.ToString(), published.PaymentMethod);
         Assert.Equal(invoice.AmountPaid.AmountCents, published.AmountPaidCents);
+        Assert.Null(published.RecordedByUserId);
         Assert.Single(emitted.OfType<GenerateInvoicePdfCommand>());
     }
 
@@ -148,6 +150,7 @@ public sealed class InvoicePaidPublishingTests
         var published = Assert.Single(emitted.OfType<InvoicePaidIntegrationEvent>());
         Assert.Equal(invoice.AmountPaid.AmountCents, published.AmountPaidCents);
         Assert.Equal(invoice.InvoiceNumber, published.InvoiceNumber);
+        Assert.Null(published.RecordedByUserId);
         // El PDF de la emisión lo encadena EnsureInvoicePaymentLink; no se pide otro.
         Assert.Single(emitted.OfType<EnsureInvoicePaymentLinkCommand>());
         Assert.Empty(emitted.OfType<GenerateInvoicePdfCommand>());

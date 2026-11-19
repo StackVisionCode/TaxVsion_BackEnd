@@ -46,12 +46,60 @@ public sealed class WalletTopUp : TenantEntity
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Tipo de origen con que el ledger guarda la acreditación de una recarga.</summary>
+    public const string ReferenceType = "topup";
+
+    /// <summary>true = la disparó el saldo bajo con el consentimiento guardado, no una persona en el checkout.</summary>
+    public bool Automatic { get; private set; }
+
+    /// <summary>Proveedor del cobro (Stripe, PayPal). Null en órdenes anteriores al dato.</summary>
+    public string? Provider { get; private set; }
+
+    /// <summary>Medio del checkout (Card…). Null en recargas automáticas y órdenes anteriores.</summary>
+    public string? Method { get; private set; }
+
+    /// <summary>Método guardado autorizado (solo automáticas).</summary>
+    public string? PaymentMethodReference { get; private set; }
+
+    /// <summary>Etiqueta del método autorizado ("Visa •••• 4242"), solo automáticas.</summary>
+    public string? MethodLabel { get; private set; }
+
     public long AmountMicros => AmountCents * 10_000;
+
+    /// <summary>Cómo se pagó, para mostrar: la etiqueta guardada, "PayPal" o el medio del checkout.</summary>
+    public string? PaymentLabel =>
+        MethodLabel
+        ?? (string.Equals(Provider, "PayPal", StringComparison.OrdinalIgnoreCase) ? "PayPal" : Method ?? Provider);
 
     /// <summary>Lo que se acredita al monedero: el importe de la orden en micros, con su moneda.</summary>
     public Result<WalletMoney> CreditAmount() => WalletMoney.Create(AmountMicros, Currency);
 
-    public static Result<WalletTopUp> Create(Guid tenantId, long amountCents, string currency, Guid requestedByUserId)
+    /// <summary>Recarga automática por saldo bajo, sobre el método que la oficina autorizó.</summary>
+    public static Result<WalletTopUp> CreateAutomatic(
+        Guid tenantId,
+        long amountCents,
+        string currency,
+        Guid consentUserId,
+        Settings.AutoRechargeMethod method
+    )
+    {
+        var created = Create(tenantId, amountCents, currency, consentUserId, method.Provider, null);
+        if (created.IsFailure)
+            return created;
+        created.Value.Automatic = true;
+        created.Value.PaymentMethodReference = method.Reference;
+        created.Value.MethodLabel = method.Label;
+        return created;
+    }
+
+    public static Result<WalletTopUp> Create(
+        Guid tenantId,
+        long amountCents,
+        string currency,
+        Guid requestedByUserId,
+        string? provider = null,
+        string? method = null
+    )
     {
         if (tenantId == Guid.Empty)
             return Result.Failure<WalletTopUp>(WalletErrors.TenantRequired);
@@ -75,11 +123,21 @@ public sealed class WalletTopUp : TenantEntity
             // Clave idempotente estable por orden: un reintento continúa la misma operación, no re-cobra.
             IdempotencyKey = $"wallet-topup:{id:N}",
             RequestedByUserId = requestedByUserId,
+            Provider = Clean(provider, 32),
+            Method = Clean(method, 32),
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow,
         };
         topUp.SetTenant(tenantId);
         return Result.Success(topUp);
+    }
+
+    private static string? Clean(string? value, int maxLength)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
     public void MarkCredited(Guid saaSPaymentId)

@@ -169,6 +169,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SmsMessageDeliveredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SmsMessageFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SmsMessageSuppressedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<SmsMessageSentIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Canal SMS del orquestador Campaigns (ADR-CAMP-001 D3) — el consumer publica el result del dispatch.
     options
         .PublishMessage<BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchResultIntegrationEvent>()

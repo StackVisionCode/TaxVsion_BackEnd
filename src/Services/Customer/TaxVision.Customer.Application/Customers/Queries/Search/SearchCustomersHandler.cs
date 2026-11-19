@@ -27,6 +27,7 @@ public static class SearchCustomersHandler
             query.Kind,
             query.Sort,
             query.Direction,
+            query.Staff,
             ct
         );
     }

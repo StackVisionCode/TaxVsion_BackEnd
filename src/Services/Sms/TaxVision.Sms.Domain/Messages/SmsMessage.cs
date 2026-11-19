@@ -27,6 +27,10 @@ public sealed class SmsMessage : TenantEntity
     /// Lo aporta el caller (el CRM lo tiene del picker); null para envíos de sistema/M2M. No se usa
     /// para lógica — solo para mostrar en el log sin depender de Customer al leer.</summary>
     public string? RecipientName { get; private set; }
+
+    /// <summary>Empleado que envió el SMS. Null si lo pidió otro servicio o un proceso (campañas).</summary>
+    [UserReference(UserReferenceKind.Provenance)]
+    public Guid? SentByUserId { get; private set; }
     public string Body { get; private set; } = default!;
 
     public string IdempotencyKey { get; private set; } = default!;
@@ -75,7 +79,8 @@ public sealed class SmsMessage : TenantEntity
         IReadOnlyList<SmsMediaInput> media,
         DateTime nowUtc,
         string? recipientName = null,
-        bool walletCharged = false
+        bool walletCharged = false,
+        Guid? sentByUserId = null
     )
     {
         if (tenantId == Guid.Empty)
@@ -102,6 +107,7 @@ public sealed class SmsMessage : TenantEntity
             CreatedAtUtc = nowUtc,
             UpdatedAtUtc = nowUtc,
             WalletCharged = walletCharged,
+            SentByUserId = sentByUserId == Guid.Empty ? null : sentByUserId,
         };
         message.SetTenant(tenantId);
 

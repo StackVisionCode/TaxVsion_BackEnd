@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.CloudStorage.Domain.Files.Events;
 using Wolverine;
@@ -31,6 +32,9 @@ public static class FileBecameAvailableDomainEventHandler
         };
 
         if (available.PortalCustomerId is { } customerId)
+        {
+            // Solo hay cliente de portal si lo subió un usuario del portal: CreatedBy es ese usuario.
+            Guid? uploader = available.CreatedBy == Guid.Empty ? null : available.CreatedBy;
             messages.Add(
                 new CustomerDocumentUploadedIntegrationEvent
                 {
@@ -39,8 +43,11 @@ public static class FileBecameAvailableDomainEventHandler
                     FileId = available.FileId,
                     FolderId = available.FolderId,
                     CorrelationId = available.CorrelationId,
+                    UploadedByUserId = uploader,
+                    UploadedByActorType = uploader is null ? null : nameof(ActorType.CustomerPortal),
                 }
             );
+        }
 
         return messages;
     }

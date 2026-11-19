@@ -111,7 +111,12 @@ public sealed class FireCampaignScheduleHandlerTests
                     SmsWindows
                 ),
                 Microsoft.Extensions.Options.Options.Create(Options),
-                new CampaignRunStarter(Wallet, new FakeCorrelationContext(), NullLogger<CampaignRunStarter>.Instance),
+                new CampaignRunStarter(
+                    Wallet,
+                    Campaigns,
+                    new FakeCorrelationContext(),
+                    NullLogger<CampaignRunStarter>.Instance
+                ),
                 Bus,
                 NullLogger<CampaignSchedule>.Instance,
                 CancellationToken.None
@@ -219,6 +224,22 @@ public sealed class FireCampaignScheduleHandlerTests
         Assert.Equal(2, h.Bus.OfType<CampaignDispatchRequestedIntegrationEvent>().Count());
         // La reserva usa el Id determinista del run: estable entre reintentos del mismo slot.
         Assert.Equal([run.Id], h.Wallet.ReservedReferences);
+    }
+
+    // Un agendado es automático: la reserva lleva el nombre de la campaña y ningún usuario.
+    [Fact]
+    public async Task Fire_reserves_with_the_campaign_name_and_no_user()
+    {
+        var h = new Harness();
+        h.AddContact("ana@x.com");
+        var slot = DateTime.UtcNow.AddMinutes(-1);
+        var schedule = h.AddRecurring(slot);
+
+        await h.FireAsync(schedule, ScheduleLease.Take(schedule, DateTime.UtcNow.AddMinutes(2)), slot);
+
+        Assert.Single(h.Wallet.ReservedReferences);
+        Assert.Equal("Newsletter", h.Wallet.LastDescription);
+        Assert.Null(h.Wallet.LastRequestedByUserId);
     }
 
     [Fact]

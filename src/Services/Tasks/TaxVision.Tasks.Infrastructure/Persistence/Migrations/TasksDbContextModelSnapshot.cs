@@ -2188,6 +2188,9 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CompletedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("CompletedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 

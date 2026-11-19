@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
+using TaxVision.Campaigns.Application.Campaigns.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Runs;
@@ -14,6 +15,7 @@ namespace TaxVision.Campaigns.Application.Runs.Commands;
 /// </summary>
 public sealed class CampaignRunStarter(
     IWalletSpendClient wallet,
+    ICampaignRepository campaigns,
     ICorrelationContext correlation,
     ILogger<CampaignRunStarter> logger
 )
@@ -44,7 +46,17 @@ public sealed class CampaignRunStarter(
         var run = opened.Value.Run;
         try
         {
-            var funding = await ReserveAsync(campaign.TenantId, run.Id, opened.Value.Billable, callerBearerToken, ct);
+            // Inicio manual: el Wallet muestra la campaña y quién la envió.
+            var funding = await CampaignRunFunding.ReserveAsync(
+                wallet,
+                campaign.TenantId,
+                run.Id,
+                opened.Value.Billable,
+                callerBearerToken,
+                campaign.Name,
+                triggeredByUserId,
+                ct
+            );
             return await ApplyFundingAsync(campaign.TenantId, run.Id, funding, slot: null, bus, ct);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -54,13 +66,27 @@ public sealed class CampaignRunStarter(
         }
     }
 
-    public Task<RunFunding> ReserveAsync(
+    /// <summary>Reserva de un run sin persona (agendado o retomado por el barrido): con la campaña y sin usuario.</summary>
+    public async Task<RunFunding> ReserveAutomaticAsync(
         Guid tenantId,
+        Guid campaignId,
         Guid runId,
         WalletUnitCounts units,
-        string? callerBearerToken,
         CancellationToken ct
-    ) => CampaignRunFunding.ReserveAsync(wallet, tenantId, runId, units, callerBearerToken, ct);
+    )
+    {
+        var campaign = await campaigns.GetByIdAsync(tenantId, campaignId, ct);
+        return await CampaignRunFunding.ReserveAsync(
+            wallet,
+            tenantId,
+            runId,
+            units,
+            callerBearerToken: null,
+            campaign?.Name,
+            requestedByUserId: null,
+            ct
+        );
+    }
 
     public Task<Result<CampaignRunResponse>> ApplyFundingAsync(
         Guid tenantId,

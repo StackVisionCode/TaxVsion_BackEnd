@@ -1,3 +1,5 @@
+using TaxVision.Wallet.Application.Activity;
+using TaxVision.Wallet.Application.Activity.Abstractions;
 using TaxVision.Wallet.Domain.Wallet;
 
 namespace TaxVision.Wallet.Application.Wallet;
@@ -53,7 +55,12 @@ public sealed record LedgerEntryView(
     long HeldAfterMicros,
     string OperationKey,
     Guid? ReferenceId,
-    DateTime CreatedAtUtc
+    DateTime CreatedAtUtc,
+    string? ReferenceType = null,
+    string? Description = null,
+    int? Units = null,
+    Guid? RequestedByUserId = null,
+    bool Automatic = false
 )
 {
     public static LedgerEntryView From(LedgerEntry e) =>
@@ -66,6 +73,17 @@ public sealed record LedgerEntryView(
             e.HeldAfterMicros,
             e.OperationKey,
             e.ReferenceId,
-            e.CreatedAtUtc
+            e.CreatedAtUtc,
+            e.ReferenceType
         );
+
+    /// <summary>Con la foto de su reserva o su recarga: la fila dice qué fue sin otra llamada.</summary>
+    public static LedgerEntryView From(LedgerEntryRow row) =>
+        From(row.Entry) with
+        {
+            Description = TransactionDescriptions.For(row),
+            Units = TransactionDescriptions.UnitsFor(row.Entry, row.Reservation),
+            RequestedByUserId = row.Reservation?.RequestedByUserId ?? row.TopUp?.RequestedByUserId,
+            Automatic = row.TopUp?.Automatic ?? false,
+        };
 }

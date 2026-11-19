@@ -28,4 +28,6 @@ public enum NotificationResourceType
     UserManagement,
     Referral,
     FinancialImportBatch,
+    Wallet,
+    WalletSettings,
 }

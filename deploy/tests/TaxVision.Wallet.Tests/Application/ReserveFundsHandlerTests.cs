@@ -152,6 +152,35 @@ public sealed class ReserveFundsHandlerTests
         Assert.Empty(reservations.Reservations);
     }
 
+    [Fact]
+    public async Task Handle_WithDescriptionAndRequester_KeepsTheTraceAndTheLedgerReferenceType()
+    {
+        var (tenantId, wallets, reservations, _) = Seed();
+        var userId = Guid.NewGuid();
+
+        await ReserveFundsHandler.Handle(
+            new ReserveFundsCommand(
+                tenantId,
+                "campaign-run",
+                Guid.NewGuid(),
+                new PerChannelUnits(Sms: 3),
+                Description: "Missing W-2",
+                RequestedByUserId: userId
+            ),
+            new FakePriceBookRepository(),
+            reservations,
+            wallets,
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        var reservation = Assert.Single(reservations.Reservations);
+        Assert.Equal("Missing W-2", reservation.Description);
+        Assert.Equal(3, reservation.SmsUnits);
+        Assert.Equal(userId, reservation.RequestedByUserId);
+        Assert.Equal("campaign-run", Assert.Single(wallets.LedgerEntries).ReferenceType);
+    }
+
     private static (Guid, FakeWalletRepository, FakeReservationRepository, WalletAggregate) Seed()
     {
         var tenantId = Guid.NewGuid();

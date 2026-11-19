@@ -134,6 +134,7 @@ public static class SendSmsBatchHandler
                 batchId,
                 chargeWallet,
                 gate.BlockedByContactPolicy(item.CustomerId),
+                command.ActorUserId,
                 providers,
                 bus,
                 options.Value.ConflictRetryAttempts,
@@ -174,12 +175,21 @@ public static class SendSmsBatchHandler
             batchId,
             new WalletUnitCounts(0, chargeableCount, 0, 0),
             command.CallerBearerToken,
+            WalletDescription(command.Items, chargeableCount),
+            command.ActorUserId,
             ct
         );
         if (!reserve.Reachable)
             return SmsErrors.WalletUnavailable;
 
         return reserve.Authorized ? null : SmsErrors.InsufficientFunds(reserve.DeficitMicros, reserve.Currency);
+    }
+
+    // D1: "SMS to {cliente}" si hay un solo destinatario con nombre; si no, "{n} SMS". Nunca el teléfono.
+    private static string WalletDescription(IReadOnlyList<SmsSendItemDto> items, int chargeableCount)
+    {
+        var name = items.Count == 1 && items[0].CustomerId != Guid.Empty ? items[0].RecipientName?.Trim() : null;
+        return !string.IsNullOrEmpty(name) && name.Any(char.IsLetter) ? $"SMS to {name}" : $"{chargeableCount} SMS";
     }
 
     // Liquidación del cobro (F6, D-SMS-3): consume lo que el proveedor aceptó y libera el resto. Si queda un ítem en
@@ -227,6 +237,7 @@ public static class SendSmsBatchHandler
         Guid batchId,
         bool walletCharged,
         bool blockedByContactPolicy,
+        Guid? sentByUserId,
         IReadOnlyList<ISmsProvider> providers,
         IMessageBus bus,
         int conflictRetryAttempts,
@@ -258,7 +269,8 @@ public static class SendSmsBatchHandler
                 [.. outgoing.Media.Select(m => new SmsMediaInput(m.Url, m.ContentType, m.FileName, m.SizeBytes))],
                 item.RecipientName,
                 walletCharged,
-                blockedByContactPolicy
+                blockedByContactPolicy,
+                sentByUserId
             ),
             ct
         );

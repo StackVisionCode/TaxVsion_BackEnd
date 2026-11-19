@@ -25,4 +25,13 @@ public sealed record WalletTopUpDueIntegrationEvent : IntegrationEvent
 
     /// <summary>Usuario que pidió la recarga (para avisarle cuando su cargo se confirme).</summary>
     public required Guid RequestedByUserId { get; init; }
+
+    /// <summary>true = recarga automática por saldo bajo, autorizada por el consentimiento guardado en Wallet.</summary>
+    public bool Automatic { get; init; }
+
+    /// <summary>Proveedor del método autorizado (Stripe, PayPal). Null = el método por defecto del tenant.</summary>
+    public string? Provider { get; init; }
+
+    /// <summary>Método autorizado en el consentimiento. Si deja de ser del tenant o no está activo, el cobro falla.</summary>
+    public string? PaymentMethodReference { get; init; }
 }

@@ -20,9 +20,22 @@ public sealed class WalletTopUpConfiguration : IEntityTypeConfiguration<WalletTo
         builder.Property(t => t.FailureReason).HasMaxLength(500);
         builder.Property(t => t.CreatedAtUtc).IsRequired();
         builder.Property(t => t.UpdatedAtUtc).IsRequired();
+        builder.Property(t => t.Automatic).IsRequired();
+        builder.Property(t => t.Provider).HasMaxLength(32);
+        builder.Property(t => t.Method).HasMaxLength(32);
+        builder.Property(t => t.PaymentMethodReference).HasMaxLength(200);
+        builder.Property(t => t.MethodLabel).HasMaxLength(100);
         builder.Ignore(t => t.AmountMicros); // computada
+        builder.Ignore(t => t.PaymentLabel);
 
         builder.HasIndex(t => new { t.TenantId, t.IdempotencyKey }).IsUnique();
+        // Una automática en curso a la vez: búsqueda por tenant + estado.
+        builder.HasIndex(t => new
+        {
+            t.TenantId,
+            t.Automatic,
+            t.Status,
+        });
     }
 }
 

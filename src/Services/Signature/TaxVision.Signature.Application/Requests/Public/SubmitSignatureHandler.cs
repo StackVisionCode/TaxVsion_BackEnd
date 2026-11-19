@@ -229,6 +229,7 @@ public static class SubmitSignatureHandler
                         ))
                         .ToList(),
                     ExternalReference = request.ExternalReference.ToMessaging(),
+                    CustomerId = request.PrimaryCustomerId,
                 }
             )
             .AsTask();

@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
@@ -13,6 +14,7 @@ using TaxVision.Tenant.Domain.Permissions;
 using TaxVision.Tenant.Domain.Platform;
 using TaxVision.Tenant.Domain.Profiles;
 using TaxVision.Tenant.Domain.RateLimiting;
+using TaxVision.Tenant.Domain.Team;
 using DomainTenant = TaxVision.Tenant.Domain.Tenant;
 
 namespace TaxVision.Tenant.Infrastructure.Persistence;
@@ -45,10 +47,15 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, I
     public DbSet<OfficeProfile> OfficeProfiles => Set<OfficeProfile>();
     public DbSet<OfficeCompliance> OfficeCompliances => Set<OfficeCompliance>();
     public DbSet<EfinRevealRecord> EfinRevealRecords => Set<EfinRevealRecord>();
+    public DbSet<ActivityEntry> ActivityEntries => Set<ActivityEntry>();
+
+    // Asignaciones cliente↔staff (kit compartido de Customer): ABAC de la actividad del equipo.
+    public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+        modelBuilder.ApplyCustomerAssignmentProjection();
         ApplyFailClosedTenantFilters(modelBuilder);
         base.OnModelCreating(modelBuilder);
         // Al final: también cubre las proyecciones y tipos agregados arriba.

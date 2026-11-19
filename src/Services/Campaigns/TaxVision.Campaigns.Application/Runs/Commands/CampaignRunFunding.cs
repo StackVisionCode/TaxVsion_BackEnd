@@ -21,13 +21,18 @@ public sealed record RunFunding(RunFundingOutcome Outcome, long DeficitMicros = 
 /// <summary>Paso 2 del patrón BB-8: la reserva, sin transacción abierta y con el run ya persistido.</summary>
 internal static class CampaignRunFunding
 {
-    /// <summary>El Id del run ya está guardado: repetir la llamada devuelve la misma reserva.</summary>
+    /// <summary>
+    /// El Id del run ya está guardado: repetir la llamada devuelve la misma reserva. El Wallet muestra
+    /// <paramref name="campaignName"/>; <paramref name="requestedByUserId"/> es null si no la inició una persona.
+    /// </summary>
     public static async Task<RunFunding> ReserveAsync(
         IWalletSpendClient wallet,
         Guid tenantId,
         Guid runId,
         WalletUnitCounts units,
         string? callerBearerToken,
+        string? campaignName,
+        Guid? requestedByUserId,
         CancellationToken ct
     )
     {
@@ -40,6 +45,8 @@ internal static class CampaignRunFunding
             runId,
             units,
             callerBearerToken,
+            campaignName,
+            requestedByUserId,
             ct
         );
         if (!auth.Reachable)

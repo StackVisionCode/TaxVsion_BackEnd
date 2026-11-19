@@ -67,6 +67,7 @@ public static class CancelSignatureRequestHandler
                     Reason = cmd.Reason,
                     PendingSignerIds = pendingSignerIds,
                     ExternalReference = request.ExternalReference.ToMessaging(),
+                    CustomerId = request.PrimaryCustomerId,
                 }
             )
             .AsTask();

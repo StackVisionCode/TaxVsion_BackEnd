@@ -31,7 +31,7 @@ namespace Internal.Generated.WolverineHandlers
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var offboardedStaffRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notes.Application.Projections.Abstractions.IOffboardedStaffRepository>(serviceScope.ServiceProvider);
-            var noteRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notes.Application.Notes.Abstractions.INoteRepository>(serviceScope.ServiceProvider);
+            var visibleNoteReader = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notes.Application.Notes.VisibleNoteReader>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
@@ -55,7 +55,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notes.Application.Notes.Commands.DetachFileFromNoteHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Notes.Application.Notes.Commands.DetachFileFromNoteHandler.Handle(detachFileFromNoteCommand, noteRepository, offboardedStaffRepository, unitOfWork, context, correlationContext, _timeProvider, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Notes.Application.Notes.Commands.DetachFileFromNoteHandler.Handle(detachFileFromNoteCommand, visibleNoteReader, offboardedStaffRepository, unitOfWork, context, correlationContext, _timeProvider, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

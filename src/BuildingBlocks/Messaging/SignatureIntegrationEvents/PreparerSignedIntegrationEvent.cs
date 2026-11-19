@@ -16,4 +16,7 @@ public sealed record PreparerSignedIntegrationEvent : IntegrationEvent
     public required string PtinOrEfin { get; init; }
     public required string PreparerDisplayName { get; init; }
     public required DateTime SignedAtUtc { get; init; }
+
+    /// <summary>Cliente de la solicitud (aditivo, Work Profile).</summary>
+    public Guid? CustomerId { get; init; }
 }

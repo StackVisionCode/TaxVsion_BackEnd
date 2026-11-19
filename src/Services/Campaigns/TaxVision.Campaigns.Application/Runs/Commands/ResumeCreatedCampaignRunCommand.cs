@@ -26,7 +26,7 @@ public static class ResumeCreatedCampaignRunHandler
         ICampaignRunRepository runs,
         ICampaignScheduleRepository schedules,
         IOptions<CampaignSchedulerOptions> schedulerOptions,
-        IWalletSpendClient wallet,
+        CampaignRunStarter starter,
         IMessageBus bus,
         ILogger<CampaignRun> logger,
         CancellationToken ct
@@ -46,12 +46,12 @@ public static class ResumeCreatedCampaignRunHandler
             return;
         }
 
-        var funding = await CampaignRunFunding.ReserveAsync(
-            wallet,
+        // Lo retoma el barrido, no una persona.
+        var funding = await starter.ReserveAutomaticAsync(
             run.TenantId,
+            run.CampaignId,
             run.Id,
             CampaignRunFunding.CountBillableUnits(run),
-            callerBearerToken: null,
             ct
         );
 

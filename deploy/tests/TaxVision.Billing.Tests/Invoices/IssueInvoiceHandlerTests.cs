@@ -1,3 +1,4 @@
+using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
@@ -93,6 +94,49 @@ public sealed class IssueInvoiceHandlerTests
         Assert.Equal(2, sequences.Last!.Next);
     }
 
+    [Fact]
+    public async Task Issuing_publishes_InvoiceIssued_once_with_actor_and_customer()
+    {
+        var draft = Draft(null);
+        var actor = Guid.NewGuid();
+        var bus = new FakeMessageBus();
+
+        Assert.True((await HandleAsync(draft, new NewSequence(), actor: actor, bus: bus)).IsSuccess);
+        Assert.True((await HandleAsync(draft, new NewSequence(), actor: actor, bus: bus)).IsFailure);
+
+        // Sale del evento de dominio (outbox con el commit), nunca a mano por el bus.
+        Assert.Empty(bus.Published.OfType<InvoiceIssuedIntegrationEvent>());
+        var issued = Assert.Single(DomainEventReplay.Dispatch([draft]).OfType<InvoiceIssuedIntegrationEvent>());
+        Assert.Equal(actor, issued.IssuedByUserId);
+        Assert.Equal(draft.CustomerId, issued.CustomerId);
+        Assert.Equal(draft.Id, issued.InvoiceId);
+        Assert.Equal(draft.Id, issued.AggregateId);
+        Assert.Equal(Tenant, issued.TenantId);
+        Assert.Equal(draft.InvoiceNumber, issued.InvoiceNumber);
+        Assert.Equal(10_000, issued.TotalAmountCents);
+        Assert.Equal(draft.DueDateUtc, issued.DueDateUtc);
+        Assert.Equal(DomainEventReplay.CorrelationId, issued.CorrelationId);
+        Assert.NotEqual(string.Empty, issued.CausationId);
+    }
+
+    [Fact]
+    public void Issuing_by_a_process_carries_no_actor()
+    {
+        var draft = Draft(null);
+
+        var result = draft.Issue(
+            InvoiceNumber.Create("INV-2026-00009").Value,
+            Now,
+            BuildingBlocks.TimeZones.ResolvedTimeZone.Utc,
+            Guid.Empty
+        );
+
+        Assert.True(result.IsSuccess);
+        var issued = Assert.Single(DomainEventReplay.Dispatch([draft]).OfType<InvoiceIssuedIntegrationEvent>());
+        Assert.Null(issued.IssuedByUserId);
+        Assert.Equal(draft.CustomerId, issued.CustomerId);
+    }
+
     private static Invoice Draft(InvoiceTermsSnapshot? terms, DraftInvoiceLine? line = null) =>
         Invoice
             .CreateDraft(
@@ -121,16 +165,18 @@ public sealed class IssueInvoiceHandlerTests
         NewSequence sequences,
         NoStock? stock = null,
         FixedClock? clock = null,
-        string zone = "Etc/UTC"
+        string zone = "Etc/UTC",
+        Guid? actor = null,
+        FakeMessageBus? bus = null
     ) =>
         IssueInvoiceHandler.Handle(
-            new IssueInvoiceCommand(Tenant, invoice.Id, Guid.NewGuid(), CanViewAll: true),
+            new IssueInvoiceCommand(Tenant, invoice.Id, actor ?? Guid.NewGuid(), CanViewAll: true),
             new SingleInvoice(invoice),
             Options.Create(new BillingVisibilityOptions()),
             sequences,
             stock ?? new NoStock(),
             new CountingUnitOfWork(),
-            new FakeMessageBus(),
+            bus ?? new FakeMessageBus(),
             clock ?? new FixedClock(Now),
             new OfficeZone(zone),
             CancellationToken.None

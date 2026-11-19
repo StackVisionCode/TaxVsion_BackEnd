@@ -13,6 +13,7 @@ public static class PermissionCatalog
     public const string UsersView = "users.view";
     public const string UsersInvite = "users.invite";
     public const string UsersManage = UserManagementPermissions.UsersManage;
+    public const string UsersWorkView = UserManagementPermissions.UsersWorkView;
     public const string RolesManage = "roles.manage";
     public const string AuditView = "audit.view";
     public const string SettingsManage = "settings.manage";
@@ -445,6 +446,15 @@ public static class PermissionCatalog
             "users",
             "Activate, deactivate and edit users",
             false
+        ),
+        new(
+            // Work Profile: supervisión del admin; el empleado solo lo recibe por un rol que lo incluya.
+            new Guid("a1000000-0000-0000-0000-000000000228"),
+            UsersWorkView,
+            "users",
+            "View team members' work and activity",
+            false,
+            AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.TenantEmployee]
         ),
         new(
             // Reservado: quien controla roles.manage puede asignar CUALQUIER rol (incluido

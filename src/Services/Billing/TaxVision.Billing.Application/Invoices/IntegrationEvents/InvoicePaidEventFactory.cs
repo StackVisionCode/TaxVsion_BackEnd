@@ -28,6 +28,7 @@ public static class InvoicePaidEventFactory
             PaidAtUtc = paidAtUtc,
             ReceiptId = null,
             PaidPdfFileId = paid.PaidPdfFileId,
+            RecordedByUserId = paid.RecordedByUserId,
         };
     }
 }

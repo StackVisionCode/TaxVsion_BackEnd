@@ -9,7 +9,7 @@ namespace TaxVision.Tasks.Application.Tasks;
 /// </summary>
 public static class TaskCreatedEventFactory
 {
-    public static TaskCreatedIntegrationEvent From(TaskItem task, string correlationId) =>
+    public static TaskCreatedIntegrationEvent From(TaskItem task, string correlationId, Guid? createdByUserId) =>
         new()
         {
             TenantId = task.TenantId,
@@ -24,5 +24,6 @@ public static class TaskCreatedEventFactory
             DueOn = task.Due?.DueOn,
             DueTimeZoneId = task.Due?.TimeZoneId,
             ParentTaskId = task.ParentTaskId,
+            CreatedByUserId = createdByUserId,
         };
 }

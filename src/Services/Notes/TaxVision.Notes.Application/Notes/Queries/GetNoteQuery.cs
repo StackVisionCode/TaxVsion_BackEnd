@@ -24,21 +24,17 @@ public static class GetNoteHandler
         CancellationToken ct
     )
     {
-        var note = await notes.GetByIdAsync(query.TenantId, query.NoteId, ct);
-        if (note is null || !NoteVisibilityPolicy.CanStaffView(note, query.ActorUserId, query.ActorHasViewAll))
+        var note = await VisibleNoteReader.FindAsync(
+            notes,
+            visibility.Value.Enabled && !query.CanViewAllCustomers,
+            query.TenantId,
+            query.NoteId,
+            query.ActorUserId,
+            query.ActorHasViewAll,
+            ct
+        );
+        if (note is null)
             return Result.Failure<NoteResponse>(NoteErrors.NotFound);
-
-        // Gate por asignación: notas cuyo target es un Customer no asignado al actor no se revelan.
-        var restrict = visibility.Value.Enabled && !query.CanViewAllCustomers;
-        if (
-            restrict
-            && note.Reference.TargetType == NoteTargetType.Customer
-            && note.Reference.TargetId is { } customerId
-            && !await notes.IsCustomerAssignedAsync(query.TenantId, customerId, query.ActorUserId, ct)
-        )
-        {
-            return Result.Failure<NoteResponse>(NoteErrors.NotFound);
-        }
 
         return Result.Success(NoteResponse.From(note));
     }

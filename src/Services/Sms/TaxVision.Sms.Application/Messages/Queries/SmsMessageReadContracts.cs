@@ -65,7 +65,9 @@ public sealed record SmsMessageDetailResponse(
     DateTime? AcceptedAtUtc,
     DateTime? DeliveredAtUtc,
     DateTime? FailedAtUtc,
-    IReadOnlyList<SmsMediaResponse> Media
+    IReadOnlyList<SmsMediaResponse> Media,
+    // Empleado que lo envió; null si lo envió un servicio o un proceso.
+    Guid? SentByUserId = null
 );
 
 /// <summary>Conteos agregados por estado en una ventana (por <c>CreatedAtUtc</c>). El front deriva la

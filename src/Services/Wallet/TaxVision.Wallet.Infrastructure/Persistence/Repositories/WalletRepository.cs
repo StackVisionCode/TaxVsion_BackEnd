@@ -116,6 +116,11 @@ public sealed class WalletRepository(WalletDbContext db) : IWalletRepository
             .FundingCredits.IgnoreQueryFilters()
             .AnyAsync(c => c.SourceService == sourceService && c.SaaSPaymentId == saaSPaymentId, ct);
 
+    public Task<bool> HasPendingAutomaticTopUpAsync(Guid tenantId, CancellationToken ct = default) =>
+        db
+            .WalletTopUps.IgnoreQueryFilters()
+            .AnyAsync(t => t.TenantId == tenantId && t.Automatic && t.Status == WalletTopUpStatus.Pending, ct);
+
     public async Task AddFundingCreditAsync(FundingCredit credit, CancellationToken ct = default) =>
         await db.FundingCredits.AddAsync(credit, ct);
 }

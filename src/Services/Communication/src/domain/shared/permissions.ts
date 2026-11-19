@@ -69,6 +69,8 @@ export type CommunicationPermission =
  */
 export const AuthPermissions = {
   UsersManage: 'users.manage',
+  /** Work Profile: ver el trabajo a cargo de otra persona (UserManagementPermissions.UsersWorkView). */
+  UsersWorkView: 'users.work.view',
 } as const;
 
 export type AuthPermission = (typeof AuthPermissions)[keyof typeof AuthPermissions];

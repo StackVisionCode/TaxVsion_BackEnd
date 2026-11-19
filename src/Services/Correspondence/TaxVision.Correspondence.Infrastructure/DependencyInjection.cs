@@ -181,6 +181,7 @@ public static class DependencyInjection
 
         // Fase 16 — job de hardening final: DraftCleanupJob (plan §30, deshabilitado por default).
         services.AddHostedService<DraftCleanupJob>();
+        services.AddScoped<IOutboxUnit, OutboxUnit>();
         services.AddScoped<DraftSendReconciler>();
         services.AddSingleton<DraftSendReconciliationJob>();
         services.AddHostedService(sp => sp.GetRequiredService<DraftSendReconciliationJob>());

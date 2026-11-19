@@ -73,7 +73,7 @@ public static class ReverseWalletCreditHandler
         if (wallet is null)
             return Result.Failure<WalletCreditView>(WalletErrors.NotFound);
 
-        var reversed = wallet.ReverseReward(money.Value, reversalKey, command.ReferenceId);
+        var reversed = wallet.ReverseReward(money.Value, reversalKey, command.ReferenceId, referenceType);
         if (reversed.IsFailure)
             return Result.Failure<WalletCreditView>(reversed.Error);
 

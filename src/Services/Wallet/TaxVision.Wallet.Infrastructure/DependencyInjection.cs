@@ -3,9 +3,11 @@ using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.PurchaseIntentAmount;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using TaxVision.Wallet.Application.Permissions.Abstractions;
 using TaxVision.Wallet.Application.RateLimiting.Abstractions;
@@ -48,6 +50,25 @@ public static class DependencyInjection
         services.AddScoped<
             TaxVision.Wallet.Application.Reservations.Abstractions.IReservationRepository,
             Persistence.Repositories.ReservationRepository
+        >();
+
+        // Ajustes del monedero (saldo bajo + recarga automática) y lecturas del historial.
+        services.AddScoped<
+            TaxVision.Wallet.Application.Settings.Abstractions.IWalletSettingsRepository,
+            Persistence.Repositories.WalletSettingsRepository
+        >();
+        services.AddScoped<
+            TaxVision.Wallet.Application.Activity.Abstractions.IWalletActivityReader,
+            Persistence.Repositories.WalletActivityReader
+        >();
+        services.TryAddSingleton(TimeProvider.System);
+
+        // Zona de cada oficina: proyección compartida de Tenant + reconciliación contra su directorio.
+        services.AddTenantTimeZoneProjection<WalletDbContext>();
+        services.AddTenantTimeZoneReconciliation<TimeZones.WalletTenantTimeZoneTokenProvider>(configuration);
+        services.AddScoped<
+            TaxVision.Wallet.Application.Settings.Abstractions.IOfficeTimeZone,
+            TimeZones.OfficeTimeZone
         >();
 
         // WAL-4 — vencimiento de reservas abiertas (TTL por tipo, apagado por defecto).

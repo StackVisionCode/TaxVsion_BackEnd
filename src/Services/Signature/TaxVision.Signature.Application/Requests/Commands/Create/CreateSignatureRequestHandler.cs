@@ -294,6 +294,7 @@ public static class CreateSignatureRequestHandler
                     RequiresSequentialSigning = request.RequiresSequentialSigning,
                     SignerCount = request.Signers.Count,
                     ExpiresAtUtc = request.ExpiresAtUtc,
+                    CustomerId = request.PrimaryCustomerId,
                 }
             )
             .AsTask();

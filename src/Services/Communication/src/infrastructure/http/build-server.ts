@@ -24,6 +24,7 @@ import { registerPreferencesRoutes } from '../../api/http/routes/preferences.rou
 import { registerMediaPolicyRoutes } from '../../api/http/routes/media-policy.route.js';
 import { registerAnalyticsRoutes } from '../../api/http/routes/analytics.route.js';
 import { registerAdminAnalyticsRoutes } from '../../api/http/routes/admin-analytics.route.js';
+import { registerWorkRoutes } from '../../api/http/routes/work.route.js';
 import type { AppContainer } from '../container.js';
 import { isAllowedOrigin } from './cors-origins.js';
 
@@ -121,6 +122,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   await registerDirectoryRoutes(app, container);
   await registerNotificationRoutes(app, container);
   await registerSupportRoutes(app, container);
+  await registerWorkRoutes(app, container);
   await registerSettingsRoutes(app, container);
   await registerAdminSettingsRoutes(app, container);
   await registerPreferencesRoutes(app, container);

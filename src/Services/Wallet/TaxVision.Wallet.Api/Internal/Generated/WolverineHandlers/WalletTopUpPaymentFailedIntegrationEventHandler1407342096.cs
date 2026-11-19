@@ -29,6 +29,7 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            var walletSettingsRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Wallet.Application.Settings.Abstractions.IWalletSettingsRepository>(serviceScope.ServiceProvider);
             var walletRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Wallet.Application.Wallet.Abstractions.IWalletRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
@@ -55,7 +56,11 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Wallet.Application.Wallet.Consumers.WalletTopUpResultConsumer");
                 
                 // The actual message execution
-                await TaxVision.Wallet.Application.Wallet.Consumers.WalletTopUpResultConsumer.Handle(walletTopUpPaymentFailedIntegrationEvent, walletRepository, unitOfWork, correlationContext, _loggerOfWalletTopUp, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Wallet.Application.Wallet.Consumers.WalletTopUpResultConsumer.Handle(walletTopUpPaymentFailedIntegrationEvent, walletRepository, walletSettingsRepository, unitOfWork, correlationContext, _loggerOfWalletTopUp, cancellation).ConfigureAwait(false);
+
+                
+                // Outgoing, cascaded message
+                await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

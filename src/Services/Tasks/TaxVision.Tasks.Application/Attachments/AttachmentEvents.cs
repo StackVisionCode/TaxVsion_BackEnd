@@ -28,7 +28,8 @@ internal static class AttachmentEvents
         TaskItem task,
         TaskAttachment attachment,
         string correlationId,
-        bool deletedAtSource
+        bool deletedAtSource,
+        Guid? detachedByUserId
     ) =>
         new()
         {
@@ -38,6 +39,7 @@ internal static class AttachmentEvents
             AttachmentId = attachment.Id,
             FileId = attachment.FileId,
             DeletedAtSource = deletedAtSource,
+            DetachedByUserId = detachedByUserId,
         };
 
     public static TaskAttachmentRejectedIntegrationEvent Rejected(
