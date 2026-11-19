@@ -35,11 +35,11 @@ namespace Internal.Generated.WolverineHandlers
             BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(platformSettingsChangedIntegrationEvent, tenantContext, context);
             BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
             TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
-            
+
             // The actual message execution
             TaxVision.Notification.Application.Consumers.TenantHostCacheInvalidationConsumer.Handle(platformSettingsChangedIntegrationEvent, _tenantHostCache, _loggerOfTenantHostCache);
 
-            
+
             // The actual message execution
             BuildingBlocks.Web.Platform.PlatformSettingsChangedHandler.Handle(platformSettingsChangedIntegrationEvent, _platformSettingsProvider, _loggerOfPlatformSettingsProvider);
 
@@ -49,7 +49,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: PlatformSettingsChangedIntegrationEventHandler706513628
-    
-    
+
+
 }
 

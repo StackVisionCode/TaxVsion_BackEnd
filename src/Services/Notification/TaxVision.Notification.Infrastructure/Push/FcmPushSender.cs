@@ -102,6 +102,11 @@ public sealed class FcmPushSender : IPushSender
             Notification = new FcmNotification { Title = message.Title, Body = message.Body },
             Data = message.Data,
             Webpush = BuildWebpush(message),
+            Android = message.Platform == TaxVision.Notification.Domain.Notifications.PushPlatform.Fcm
+                ? new AndroidConfig { Priority = Priority.High,
+                    TimeToLive = TimeSpan.FromSeconds(message.Data?.ContainsKey("callId") == true ? 45 : 3600),
+                    Notification = new AndroidNotification { ChannelId = "taxvision-communication", Tag = message.Tag } }
+                : null,
         };
 
         try

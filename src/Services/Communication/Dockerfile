@@ -32,13 +32,13 @@ ENV LOG_LEVEL=info
 ENV COMMUNICATION_HTTP_HOST=0.0.0.0
 ENV COMMUNICATION_HTTP_PORT=5350
 
-COPY package.json ./
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-
 RUN groupadd -r taxvision && useradd -r -g taxvision taxvision \
-    && chown -R taxvision:taxvision /app
+    && chown taxvision:taxvision /app
+COPY --chown=taxvision:taxvision package.json ./
+COPY --chown=taxvision:taxvision --from=build /app/node_modules ./node_modules
+COPY --chown=taxvision:taxvision --from=build /app/dist ./dist
+COPY --chown=taxvision:taxvision --from=build /app/prisma ./prisma
+
 # useradd -r no crea /home/taxvision — cualquier herramienta que escriba en
 # $HOME (ej. npx en el paso de "prisma migrate deploy" del deploy, que corre
 # este mismo runtime con el CMD overrideado) revienta con EACCES al no poder

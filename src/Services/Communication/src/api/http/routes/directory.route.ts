@@ -1,3 +1,4 @@
+import { getMyOfficeContact } from '../../../application/use-cases/get-my-office-contact.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
@@ -38,6 +39,10 @@ const INVALID_SEARCH = {
  * conversacion ya sembrada), no por este autocomplete abierto.
  */
 export async function registerDirectoryRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
+ app.get('/communication/directory/my-office',{preHandler:[app.authenticate,requirePermission(container,CommunicationPermissions.ChatStart)]},async(request,reply)=>{
+   if(request.principal!.actorType!=='CustomerPortal')return reply.code(403).send(STAFF_ONLY);
+   return reply.send(await getMyOfficeContact(request.principal!,container));
+ });
   app.get(
     '/communication/directory/employees',
     {

@@ -30,59 +30,59 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
+
+            /*
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.SmsDispatch Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.SmsDispatch
+            *
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.ISmsSender Lifetime: Scoped ImplementationType: TaxVision.Notification.Infrastructure.Sms.IntegrationEventSmsSender
+            *
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.Tenancy.ITenantContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_0
+            * The service registration for BuildingBlocks.Tenancy.ITenantContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            *
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
+            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            *
+            *
+            *
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.PushDispatch Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.PushDispatch
+            *
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IPushAttemptRecorder Lifetime: Scoped ImplementationType: TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder
+            * Concrete type TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder is not public, so requires service location
+            */
+            var notificationDispatcher = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Common.NotificationDispatcher>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var campaignDispatchSendRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignDispatchSendRepository>(serviceScope.ServiceProvider);
-            
+
             /*
             * The service registration for TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var customerContactPolicyRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository>(serviceScope.ServiceProvider);
-            
+
             /*
             * The service registration for TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailProvider is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var campaignEmailProvider = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailProvider>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            
-            /*
-            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.SmsDispatch Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.SmsDispatch
-            * 
-            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.ISmsSender Lifetime: Scoped ImplementationType: TaxVision.Notification.Infrastructure.Sms.IntegrationEventSmsSender
-            * 
-            * Dependency: Descriptor: ServiceType: BuildingBlocks.Tenancy.ITenantContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_0
-            * The service registration for BuildingBlocks.Tenancy.ITenantContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            * 
-            * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
-            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            * 
-            * 
-            * 
-            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.PushDispatch Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.PushDispatch
-            * 
-            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IPushAttemptRecorder Lifetime: Scoped ImplementationType: TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder
-            * Concrete type TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder is not public, so requires service location
-            */
-            var notificationDispatcher = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Common.NotificationDispatcher>(serviceScope.ServiceProvider);
             // The actual message body
             var campaignDispatchRequestedIntegrationEvent = (BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchRequestedIntegrationEvent)context.Envelope.Message;
 
             BuildingBlocks.Web.Tenancy.IntegrationEventTenantMiddleware.Before(campaignDispatchRequestedIntegrationEvent, tenantContext, context);
             BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
             TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
-            
+
             // The actual message execution
             var outgoing1 = await TaxVision.Notification.Application.Push.Consumers.CampaignPushDispatchConsumer.Handle(campaignDispatchRequestedIntegrationEvent, notificationDispatcher, _platformSettings, cancellation).ConfigureAwait(false);
 
-            
+
             // The actual message execution
             var outgoing2 = await TaxVision.Notification.Application.Email.Sending.Consumers.CampaignEmailDispatchConsumer.Handle(campaignDispatchRequestedIntegrationEvent, campaignEmailProvider, customerContactPolicyRepository, campaignDispatchSendRepository, unitOfWork, _optionsOfCampaignDispatchOptions, _loggerOfCampaignEmailMessage, cancellation).ConfigureAwait(false);
 
-            
+
             // Outgoing, cascaded message
             await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
 
-            
+
             // Outgoing, cascaded message
             await context.EnqueueCascadingAsync(outgoing2).ConfigureAwait(false);
 
@@ -91,7 +91,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: CampaignDispatchRequestedIntegrationEventHandler1324538814
-    
-    
+
+
 }
 

@@ -25,7 +25,8 @@ public sealed record DiscoverLoginCommand(
     string? DeviceName = null,
     UserAccountKind? AccountKind = null,
     string? DeviceToken = null,
-    SessionSurface Surface = SessionSurface.Workspace
+    SessionSurface Surface = SessionSurface.Workspace,
+    bool ForceSelection = false
 );
 
 /// <summary>
@@ -124,7 +125,7 @@ public static class DiscoverLoginHandler
 
         // 3. Optimización: una sola oficina que no pide código (sin MFA, o MFA sin método enrolado)
         //    → el vale viaja directo, arrastrando el flag de "debe enrolar" si aplica.
-        if (matches is [{ ChallengeRequired: false } only])
+        if (!command.ForceSelection && matches is [{ ChallengeRequired: false } only])
         {
             var ticket = await tickets.IssueAsync(
                 new HandoffTicketPayload(only.TenantId, only.UserId, only.MustEnroll),
