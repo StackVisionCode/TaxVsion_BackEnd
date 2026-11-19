@@ -72,6 +72,7 @@ public sealed class GatewayPublicBookingRouteTests
     [InlineData("/calendar/public/booking-pages/demo/slots", "GET", false)]
     [InlineData("/calendar/appointments", "POST", false)]
     [InlineData("/auth/login", "POST", true)]
+    [InlineData("/auth/mobile/login", "POST", true)]
     [InlineData("/tenants", "POST", true)]
     public void Reads_and_staff_routes_stay_out_of_the_gate(string path, string method, bool gated)
     {

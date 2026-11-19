@@ -1,4 +1,4 @@
-﻿using BuildingBlocks.Authorization;
+using BuildingBlocks.Authorization;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Domain.Roles;
@@ -39,6 +39,13 @@ public static class PermissionCatalog
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
     public const string CustomersImport = CustomersPermissions.Import;
+    public const string MobileTripsRead = MobilePermissions.TripsRead;
+    public const string MobileTripsManage = MobilePermissions.TripsManage;
+    public const string MobileTripsSync = MobilePermissions.TripsSync;
+    public const string MobileConfigurationRead = MobilePermissions.ConfigurationRead;
+    public const string MobileRatesManage = MobilePermissions.RatesManage;
+    public const string MobileVehiclesRead = MobilePermissions.VehiclesRead;
+    public const string MobileVehiclesManage = MobilePermissions.VehiclesManage;
     public const string FinancialImport = FinancialInsightsPermissions.Import;
     public const string FinancialView = FinancialInsightsPermissions.View;
     public const string FinancialPortalImport = FinancialInsightsPermissions.PortalImport;
@@ -549,6 +556,45 @@ public static class PermissionCatalog
             "financial_insights",
             "View client Financial Insights imports and movements",
             false
+        ),
+        new(
+            new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a01"),
+            MobileTripsRead,
+            "mobile",
+            "Read own trips and statistics",
+            true
+        ),
+        new(new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a02"), MobileTripsManage, "mobile", "Maintain own trips", true),
+        new(
+            new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a03"),
+            MobileTripsSync,
+            "mobile",
+            "Synchronize own GPS trips",
+            true
+        ),
+        new(
+            new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a04"),
+            MobileConfigurationRead,
+            "mobile",
+            "Read mileage configuration",
+            false,
+            AllowedActorTypes: [UserActorType.CustomerPortal, UserActorType.TenantAdmin, UserActorType.PlatformAdmin]
+        ),
+        new(
+            new Guid("bf063f60-2bed-46f7-8c97-e2381b6f4a05"),
+            MobileRatesManage,
+            "mobile",
+            "Configure office mileage estimates",
+            false,
+            AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.PlatformAdmin]
+        ),
+        new(new Guid("d73691a8-90ae-47e1-b776-118b87cc86bd"), MobileVehiclesRead, "mobile", "Read own vehicles", true),
+        new(
+            new Guid("3d708b3c-41cb-433e-b0b1-dd7a5cece728"),
+            MobileVehiclesManage,
+            "mobile",
+            "Maintain own vehicles",
+            true
         ),
         new(
             new Guid("a1000000-0000-0000-0000-0000000001a2"),
@@ -2498,6 +2544,12 @@ public static class PermissionCatalog
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 FinancialPortalImport,
+                MobileTripsRead,
+                MobileTripsManage,
+                MobileTripsSync,
+                MobileConfigurationRead,
+                MobileVehiclesRead,
+                MobileVehiclesManage,
                 CloudStorageFileDownload,
                 // Communication: mismo set que sembró la migración AddCommunicationPermissions
                 // para el rol "Customer Portal" — nunca moderate/host/record/settings.
