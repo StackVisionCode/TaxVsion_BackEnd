@@ -23,7 +23,6 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
@@ -50,6 +49,7 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormRequestRepository is not public, so requires service location
             */
             var formRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Requests.Abstractions.IFormRequestRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var getPortalFormRequestQuery = (TaxVision.Tasks.ClientForms.Application.Requests.Queries.GetPortalFormRequestQuery)context.Envelope.Message;
 

@@ -31,6 +31,7 @@ function setup(inAppSource: 'Communication' | 'Notification' = 'Communication') 
   const supportTickets: SupportTicketRepository = {
     save: vi.fn(),
     findById: vi.fn(),
+    findManyForAgentTenant: vi.fn(),
     listForCustomer: vi.fn(),
     countForCustomer: vi.fn(),
     listForAgentTenant: vi.fn(),

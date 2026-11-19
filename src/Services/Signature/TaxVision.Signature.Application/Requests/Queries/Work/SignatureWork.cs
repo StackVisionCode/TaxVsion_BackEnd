@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Contracts.Work;
 using BuildingBlocks.TimeZones;
 using TaxVision.Signature.Domain.Requests;
@@ -15,6 +16,9 @@ public sealed record SignatureWorkRow(
     DateTime? ExpiresAtUtc,
     Guid? CustomerId
 );
+
+/// <summary>Id y título de una solicitud visible para quien mira (títulos en vivo del historial).</summary>
+public sealed record SignatureTitleRow(Guid Id, string Title);
 
 /// <summary>Instantes de corte con la zona de la oficina: ahora, fin de "dueSoon" y desde cuándo cuenta una expirada.</summary>
 public sealed record SignatureWorkWindow(DateTime NowUtc, DateTime DueSoonEndUtc, DateTime ExpiredSinceUtc)
@@ -69,16 +73,52 @@ public static class SignatureWork
             Waiting: mine.Count(item => item.Role == Role.Waiting)
         );
 
-        // Más urgentes primero: vencidas, próximas, el resto por expiración; sin expiración al final.
-        var top = mine.OrderBy(item => Urgency(item.Row, item.Role, window))
-            .ThenBy(item => item.Row.ExpiresAtUtc ?? DateTime.MaxValue)
-            .ThenBy(item => item.Row.Id)
-            .Take(WorkLimits.TopItems)
-            .Select(item => ToItem(item.Row, item.Role))
-            .ToList();
+        var top = Ordered(mine, window).Take(WorkLimits.TopItems).Select(item => ToItem(item.Row, item.Role)).ToList();
 
         return new WorkSummaryResponse(Provider, Module, [count], top);
     }
+
+    /// <summary>
+    /// Página del mismo universo y orden que el top (abiertas, en espera y expiradas hace poco): la lista expandida
+    /// siempre contiene lo que muestra el top. <c>TotalCount</c> = tamaño de ese universo.
+    /// </summary>
+    public static PagedResult<WorkItem> Items(
+        Guid userId,
+        IReadOnlyList<SignatureWorkRow> rows,
+        SignatureWorkWindow window,
+        int page,
+        int size
+    )
+    {
+        var mine = rows.Select(row => (Row: row, Role: RoleOf(row, userId)))
+            .Where(item => item.Role != Role.None)
+            .ToList();
+        var items = Ordered(mine, window)
+            .Skip((page - 1) * size)
+            .Take(size)
+            .Select(item => ToItem(item.Row, item.Role))
+            .ToList();
+        return new PagedResult<WorkItem>(items, page, size, mine.Count);
+    }
+
+    /// <summary>Títulos de una línea y recortados; los vacíos se omiten.</summary>
+    public static WorkTitlesResponse Titles(IReadOnlyList<SignatureTitleRow> rows) =>
+        new(
+            rows.Select(row => (row.Id, Title: WorkLimits.ClipTitle(row.Title)))
+                .Where(row => row.Title is not null)
+                .Select(row => new WorkTitle(WorkResourceTypes.SignatureRequest, row.Id, row.Title!))
+                .ToList()
+        );
+
+    // Más urgentes primero: vencidas, próximas, el resto por expiración; sin expiración al final.
+    private static IOrderedEnumerable<(SignatureWorkRow Row, Role Role)> Ordered(
+        IEnumerable<(SignatureWorkRow Row, Role Role)> items,
+        SignatureWorkWindow window
+    ) =>
+        items
+            .OrderBy(item => Urgency(item.Row, item.Role, window))
+            .ThenBy(item => item.Row.ExpiresAtUtc ?? DateTime.MaxValue)
+            .ThenBy(item => item.Row.Id);
 
     public static WorkBatchResponse Batch(
         IReadOnlyList<Guid> userIds,

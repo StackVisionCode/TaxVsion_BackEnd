@@ -9,6 +9,16 @@ public static class WorkErrors
         "Calendar.Work.InvalidUserIds",
         "Send between 1 and 100 valid user ids separated by commas."
     );
+
+    public static readonly Error InvalidTitles = new(
+        "Calendar.Work.InvalidTitles",
+        $"Send a list of at most {WorkLimits.TitleBatch} items."
+    );
+
+    public static readonly Error InvalidKind = new(
+        "Calendar.Work.InvalidKind",
+        $"kind must be {WorkKinds.Appointments}."
+    );
 }
 
 /// <summary>Lee <c>userIds=a,b,c</c> del lote: sin repetidos y con el tope del contrato.</summary>

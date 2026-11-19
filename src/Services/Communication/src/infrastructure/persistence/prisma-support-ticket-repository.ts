@@ -50,6 +50,14 @@ export class PrismaSupportTicketRepository implements SupportTicketRepository {
     return row ? SupportTicket.rehydrate(this.toSnapshot(row)) : null;
   }
 
+  async findManyForAgentTenant(agentTenantId: string, ids: readonly string[]): Promise<SupportTicket[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.supportTicket.findMany({
+      where: { AgentTenantId: agentTenantId, Id: { in: [...ids] } },
+    });
+    return rows.map((row) => SupportTicket.rehydrate(this.toSnapshot(row)));
+  }
+
   async listForCustomer(input: {
     tenantId: string;
     openedByUserId: string;

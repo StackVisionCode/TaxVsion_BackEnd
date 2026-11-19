@@ -20,7 +20,28 @@ export type WorkKind = (typeof WorkKinds)[keyof typeof WorkKinds];
 export const WorkLimits = {
   TopItems: 5,
   BatchUsers: 100,
+  ItemsPageSize: 20,
+  ItemsMaxPageSize: 50,
+  TitleBatch: 100,
+  TitleMaxLength: 120,
 } as const;
+
+/** Tipos de recurso del historial (contrato con el CRM, no se renombran). Este servicio resuelve `support_ticket`. */
+export const WorkResourceTypes = {
+  SupportTicket: 'support_ticket',
+} as const;
+
+/** Igual que `WorkLimits.ClipTitle` (C#): una línea, espacios colapsados, máximo 120 con "…"; vacío → null. */
+export function clipWorkTitle(title: string | null | undefined): string | null {
+  const clean = (title ?? '')
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
+    .join(' ');
+  if (clean.length === 0) return null;
+  return clean.length <= WorkLimits.TitleMaxLength
+    ? clean
+    : `${clean.slice(0, WorkLimits.TitleMaxLength - 1)}…`;
+}
 
 /** Ventana "dueSoon": hoy y los 6 días siguientes de la oficina (WorkDue.DueSoonDays). */
 export const WORK_DUE_SOON_DAYS = 7;
@@ -60,4 +81,30 @@ export interface WorkBatchRow {
 
 export interface WorkBatchResponse {
   readonly rows: readonly WorkBatchRow[];
+}
+
+/** Página de un tipo de trabajo (`GET /communication/work/:userId/items`), misma forma que `PagedResult<WorkItem>`. */
+export interface WorkItemsPage {
+  readonly items: readonly WorkItem[];
+  readonly page: number;
+  readonly size: number;
+  readonly totalCount: number;
+  readonly totalPages: number;
+  readonly hasMore: boolean;
+  readonly hasPrevious: boolean;
+}
+
+export interface WorkTitleRef {
+  readonly resourceType: string;
+  readonly id: string;
+}
+
+export interface WorkTitle {
+  readonly resourceType: string;
+  readonly id: string;
+  readonly title: string;
+}
+
+export interface WorkTitlesResponse {
+  readonly items: readonly WorkTitle[];
 }

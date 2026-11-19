@@ -118,6 +118,31 @@ internal sealed class FakeNoteRepository : INoteRepository
         return Task.FromResult(new PagedResult<NoteFeedRow>(items, page, size, items.Count));
     }
 
+    // Último filtro de títulos recibido (el SQL real se prueba en Integration).
+    public (Guid ActorUserId, bool ActorHasViewAll, Guid? AssignedToUserId)? LastTitles { get; private set; }
+
+    public Task<IReadOnlyList<NoteTitleRow>> ListTitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        LastTitles = (actorUserId, actorHasViewAll, assignedToUserId);
+        IReadOnlyList<NoteTitleRow> rows = _byId
+            .Values.Where(n =>
+                n.TenantId == tenantId
+                && ids.Contains(n.Id)
+                && n.Status != NoteStatus.Deleted
+                && (n.Visibility != NoteVisibility.Private || n.CreatedByUserId == actorUserId || actorHasViewAll)
+            )
+            .Select(n => new NoteTitleRow(n.Id, n.Content.PlainTextPreview))
+            .ToList();
+        return Task.FromResult(rows);
+    }
+
     public Task<PagedResult<Note>> ListClientVisibleAsync(
         Guid tenantId,
         NoteTargetType targetType,

@@ -1,4 +1,5 @@
 using System.Globalization;
+using BuildingBlocks.Contracts.Work;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
@@ -12,8 +13,26 @@ namespace TaxVision.Calendar.Infrastructure.Persistence.Repositories;
 /// global es fail-closed y en el scope de un job o de un consumer de Wolverine no hay tenant en
 /// contexto: devolveria <b>0 filas siempre</b>, y el job pareceria sano.
 /// </summary>
-public sealed class AppointmentRepository(CalendarDbContext context) : IAppointmentRepository
+public sealed class AppointmentRepository(CalendarDbContext context) : IAppointmentRepository, IAppointmentTitleReader
 {
+    // Un WHERE Id IN (...) con la misma visibilidad que el detalle, en cualquier estado.
+    public async Task<IReadOnlyList<WorkTitle>> ListTitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> appointmentIds,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        var rows = await ApplyVisibility(
+                Scoped(tenantId).Where(a => appointmentIds.Contains(a.Id)),
+                tenantId,
+                assignedToUserId
+            )
+            .Select(a => new { a.Id, a.Title })
+            .ToListAsync(ct);
+        return [.. rows.Select(a => new WorkTitle(WorkResourceTypes.Appointment, a.Id, a.Title.Value))];
+    }
+
     public async Task<Result<Appointment>> GetByIdAsync(
         Guid tenantId,
         Guid appointmentId,

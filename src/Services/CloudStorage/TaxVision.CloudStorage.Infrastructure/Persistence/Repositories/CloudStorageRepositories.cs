@@ -440,6 +440,21 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .ToListAsync(ct);
         return rows.ToDictionary(r => r.Id, r => r.OriginalName);
     }
+
+    public async Task<IReadOnlyList<FileObject>> ListLiveByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken ct
+    )
+    {
+        if (ids.Count == 0)
+            return [];
+        return await db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file => file.TenantId == tenantId && ids.Contains(file.Id) && file.Status != FileStatus.SoftDeleted)
+            .ToListAsync(ct);
+    }
 }
 
 public sealed class FolderRepository(CloudStorageDbContext db) : IFolderRepository

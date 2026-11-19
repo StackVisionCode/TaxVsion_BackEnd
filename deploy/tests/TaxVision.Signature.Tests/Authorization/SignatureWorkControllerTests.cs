@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Security.Claims;
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Contracts.Work;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Http;
@@ -109,6 +110,113 @@ public sealed class SignatureWorkControllerTests
             [SignaturePermissions.RequestRead, UserManagementPermissions.UsersWorkView],
             Permissions(nameof(SignatureWorkController.Summary))
         );
+        Assert.Equal([SignaturePermissions.RequestRead], Permissions(nameof(SignatureWorkController.Items)));
+        Assert.Equal([SignaturePermissions.RequestRead], Permissions(nameof(SignatureWorkController.Titles)));
+    }
+
+    [Fact]
+    public async Task Own_items_use_the_defaults_and_the_viewer_visibility()
+    {
+        var (controller, bus) = Build();
+
+        var result = await controller.Items(Actor, WorkKinds.Signatures, null, null, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(
+            new GetSignatureWorkItemsQuery(Tenant, Actor, Actor, CanViewAll: false, 1, WorkLimits.ItemsPageSize),
+            bus.LastMessage
+        );
+    }
+
+    [Fact]
+    public async Task Items_of_another_member_without_users_work_view_are_forbidden()
+    {
+        var (controller, bus) = Build();
+
+        var result = await controller.Items(Guid.NewGuid(), WorkKinds.Signatures, 1, 20, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Null(bus.LastMessage);
+    }
+
+    [Fact]
+    public async Task Items_of_another_member_with_users_work_view_are_allowed()
+    {
+        var member = Guid.NewGuid();
+        var (controller, bus) = Build(UserManagementPermissions.UsersWorkView);
+
+        var result = await controller.Items(member, WorkKinds.Signatures, 2, 50, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(new GetSignatureWorkItemsQuery(Tenant, member, Actor, CanViewAll: false, 2, 50), bus.LastMessage);
+    }
+
+    [Theory]
+    [InlineData(null, 1, 20)]
+    [InlineData("tasks", 1, 20)]
+    [InlineData("signatures", 0, 20)]
+    [InlineData("signatures", 1, 0)]
+    [InlineData("signatures", 1, 51)]
+    public async Task Items_reject_an_unknown_kind_or_paging_out_of_range(string? kind, int page, int size)
+    {
+        var (controller, bus) = Build();
+
+        var result = await controller.Items(Actor, kind, page, size, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.Null(bus.LastMessage);
+    }
+
+    [Fact]
+    public async Task Titles_keep_only_signature_requests_without_repeats()
+    {
+        var (a, b) = (Guid.NewGuid(), Guid.NewGuid());
+        var (controller, bus) = Build(CustomersPermissions.ViewAll);
+        var request = new WorkTitlesRequest([
+            new WorkTitleRef(WorkResourceTypes.SignatureRequest, a),
+            new WorkTitleRef(WorkResourceTypes.Task, Guid.NewGuid()),
+            new WorkTitleRef(WorkResourceTypes.SignatureRequest, b),
+            new WorkTitleRef(WorkResourceTypes.SignatureRequest, a),
+        ]);
+
+        var result = await controller.Titles(request, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result);
+        var query = Assert.IsType<GetSignatureWorkTitlesQuery>(bus.LastMessage);
+        Assert.Equal((Tenant, Actor, true), (query.TenantId, query.ActorUserId, query.CanViewAll));
+        Assert.Equal([a, b], query.Ids);
+    }
+
+    [Fact]
+    public async Task Titles_with_only_foreign_types_answer_empty_without_reading()
+    {
+        var (controller, bus) = Build();
+        var request = new WorkTitlesRequest([new WorkTitleRef(WorkResourceTypes.Note, Guid.NewGuid())]);
+
+        var result = await controller.Titles(request, CancellationToken.None);
+
+        var body = Assert.IsType<WorkTitlesResponse>(Assert.IsType<OkObjectResult>(result).Value);
+        Assert.Empty(body.Items);
+        Assert.Null(bus.LastMessage);
+    }
+
+    [Fact]
+    public async Task Titles_reject_more_than_the_contract_limit_or_a_missing_body()
+    {
+        var (controller, bus) = Build();
+        var tooMany = new WorkTitlesRequest(
+            Enumerable
+                .Range(0, WorkLimits.TitleBatch + 1)
+                .Select(_ => new WorkTitleRef(WorkResourceTypes.SignatureRequest, Guid.NewGuid()))
+                .ToList()
+        );
+
+        var overLimit = await controller.Titles(tooMany, CancellationToken.None);
+        var missing = await controller.Titles(null, CancellationToken.None);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, Assert.IsType<ObjectResult>(overLimit).StatusCode);
+        Assert.Equal(StatusCodes.Status400BadRequest, Assert.IsType<ObjectResult>(missing).StatusCode);
+        Assert.Null(bus.LastMessage);
     }
 
     // ----- helpers -----
@@ -156,9 +264,10 @@ public sealed class SignatureWorkControllerTests
             LastMessage = args![0];
             var responseType = targetMethod.GetGenericArguments()[0];
             object response =
-                responseType == typeof(WorkBatchResponse)
-                    ? new WorkBatchResponse([])
-                    : new WorkSummaryResponse("signature", "signatures", [], []);
+                responseType == typeof(WorkBatchResponse) ? new WorkBatchResponse([])
+                : responseType == typeof(PagedResult<WorkItem>) ? new PagedResult<WorkItem>([], 1, 20, 0)
+                : responseType == typeof(WorkTitlesResponse) ? new WorkTitlesResponse([])
+                : new WorkSummaryResponse("signature", "signatures", [], []);
             return typeof(Task)
                 .GetMethod(nameof(Task.FromResult))!
                 .MakeGenericMethod(responseType)

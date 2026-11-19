@@ -73,6 +73,54 @@ public sealed class FormRequestWorkReaderIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Titles_only_come_back_for_the_inbox_the_viewer_can_see()
+    {
+        await using var db = _database.NewContext(Guid.Empty);
+        var rows = await db
+            .FormRequests.IgnoreQueryFilters()
+            .Select(r => new
+            {
+                r.Id,
+                r.TenantId,
+                r.CustomerId,
+            })
+            .ToListAsync();
+        var ids = rows.Select(r => r.Id).Append(Guid.NewGuid()).ToArray();
+        var reader = Reader(db);
+
+        var restricted = await reader.TitlesAsync(_tenantId, ids, _boss, false, default);
+        var full = await reader.TitlesAsync(_tenantId, ids, _boss, true, default);
+
+        var title = Assert.Single(restricted);
+        Assert.Equal(rows.Single(r => r.TenantId == _tenantId && r.CustomerId == _bossClient).Id, title.Id);
+        Assert.Equal((WorkResourceTypes.FormRequest, "Organizer"), (title.ResourceType, title.Title));
+        Assert.Equal(
+            rows.Where(r => r.TenantId == _tenantId).Select(r => r.Id).Order(),
+            full.Select(t => t.Id).Order()
+        );
+    }
+
+    [Fact]
+    public async Task Items_page_the_open_universe_most_urgent_first()
+    {
+        await using var db = _database.NewContext(Guid.Empty);
+        var reader = Reader(db);
+        var count = await reader.CountAsync(_tenantId, _ana, _ana, true, Today, default);
+
+        var first = await reader.ItemsAsync(_tenantId, _ana, _ana, true, 1, 1, default);
+        var second = await reader.ItemsAsync(_tenantId, _ana, _ana, true, 2, 1, default);
+        var restricted = await reader.ItemsAsync(_tenantId, _ana, _boss, false, 1, 20, default);
+
+        Assert.Equal((count.Open, count.Open), (first.TotalCount, second.TotalCount));
+        Assert.Equal(
+            [Today.AddDays(-8), Today.AddDays(1)],
+            first.Items.Concat(second.Items).Select(i => i.DueDate!.Value).ToArray()
+        );
+        Assert.Equal(1, restricted.TotalCount);
+        Assert.Equal(_bossClient, Assert.Single(restricted.Items).CustomerId);
+    }
+
+    [Fact]
     public async Task Batch_groups_by_person_and_never_crosses_tenants()
     {
         await using var db = _database.NewContext(Guid.Empty);

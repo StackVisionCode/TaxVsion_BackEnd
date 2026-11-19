@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Contracts.Work;
 
 namespace TaxVision.Tasks.Application.Work;
@@ -26,6 +27,26 @@ public interface ITaskWorkReader
         IReadOnlyCollection<Guid> userIds,
         Guid? visibleTo,
         WorkWindow window,
+        CancellationToken ct
+    );
+
+    /// <summary>Una página de un tipo (tasks o client-requests): el mismo universo que el conteo y el orden del top.</summary>
+    Task<PagedResult<WorkItem>> ItemsAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid? visibleTo,
+        string kind,
+        int page,
+        int size,
+        CancellationToken ct
+    );
+
+    /// <summary>Títulos sin recortar de lo que existe en el tenant y quien mira puede leer, en estado cualquiera.</summary>
+    Task<IReadOnlyList<WorkTitle>> TitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> taskIds,
+        IReadOnlyCollection<Guid> clientRequestIds,
+        Guid? visibleTo,
         CancellationToken ct
     );
 }

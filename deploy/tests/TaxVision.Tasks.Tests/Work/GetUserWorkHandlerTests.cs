@@ -143,4 +143,48 @@ internal sealed class RecordingTaskWorkReader : ITaskWorkReader
         CountVisibleTo = visibleTo;
         return Task.FromResult(BatchRows);
     }
+
+    public IReadOnlyList<WorkTitle> Titles { get; init; } = [];
+    public IReadOnlyCollection<Guid>? TitleTaskIds { get; private set; }
+    public IReadOnlyCollection<Guid>? TitleRequestIds { get; private set; }
+    public Guid? TitlesVisibleTo { get; private set; }
+
+    public Task<IReadOnlyList<WorkTitle>> TitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> taskIds,
+        IReadOnlyCollection<Guid> clientRequestIds,
+        Guid? visibleTo,
+        CancellationToken ct
+    )
+    {
+        WasCalled = true;
+        TitleTaskIds = taskIds;
+        TitleRequestIds = clientRequestIds;
+        TitlesVisibleTo = visibleTo;
+        return Task.FromResult(Titles);
+    }
+
+    public string? ItemsKind { get; private set; }
+    public int ItemsPage { get; private set; }
+    public int ItemsSize { get; private set; }
+    public Guid? ItemsVisibleTo { get; private set; }
+
+    public Task<BuildingBlocks.Common.PagedResult<WorkItem>> ItemsAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid? visibleTo,
+        string kind,
+        int page,
+        int size,
+        CancellationToken ct
+    )
+    {
+        WasCalled = true;
+        UserId = userId;
+        ItemsKind = kind;
+        ItemsPage = page;
+        ItemsSize = size;
+        ItemsVisibleTo = visibleTo;
+        return Task.FromResult(new BuildingBlocks.Common.PagedResult<WorkItem>([], page, size, 0));
+    }
 }

@@ -31,9 +31,9 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Calendar.Infrastructure.Persistence.Repositories.CalendarFeedTokenRepository is not public, so requires service location
             */
             var calendarFeedTokenRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Feeds.Abstractions.ICalendarFeedTokenRepository>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var revokeFeedTokenCommand = (TaxVision.Calendar.Application.Feeds.Commands.RevokeFeedTokenCommand)context.Envelope.Message;
 

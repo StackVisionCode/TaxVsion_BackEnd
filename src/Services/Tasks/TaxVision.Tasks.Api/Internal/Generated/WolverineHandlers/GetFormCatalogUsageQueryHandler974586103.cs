@@ -20,12 +20,12 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormCatalogUsageReader is not public, so requires service location
             */
             var formCatalogUsageReader = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Mapping.Abstractions.IFormCatalogUsageReader>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var getFormCatalogUsageQuery = (TaxVision.Tasks.ClientForms.Application.Mapping.Queries.GetFormCatalogUsageQuery)context.Envelope.Message;
 

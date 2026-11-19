@@ -1,3 +1,4 @@
+using BuildingBlocks.Contracts.Work;
 using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.TimeZones;
 using Microsoft.Extensions.Options;
@@ -53,6 +54,28 @@ public sealed class AppointmentWorkIntegrationTests : IAsyncLifetime
         Assert.Equal(3, full.Counts[0].Open);
         Assert.Equal([assigned, hidden, internalOne], full.Top.Select(i => i.Id));
         Assert.Equal(2, Assert.Single(batch.Rows).Open);
+    }
+
+    [Fact]
+    public async Task Titles_only_come_back_for_what_the_viewer_can_read_in_one_query()
+    {
+        var assigned = await SeedAsync(_tenant, Now.AddDays(1), _clientA);
+        var hidden = await SeedAsync(_tenant, Now.AddDays(2), _clientB);
+        var internalOne = await SeedAsync(_tenant, Now.AddDays(-40), null);
+        var elsewhere = await SeedAsync(_otherTenant, Now.AddDays(1), null);
+        await using var db = _database.NewContext();
+        db.Set<CustomerAssignmentProjection>()
+            .Add(CustomerAssignmentProjection.Create(_tenant, _clientA, _andres, DateTime.UtcNow));
+        await db.SaveChangesAsync();
+        Guid[] ids = [assigned, hidden, internalOne, elsewhere, Guid.NewGuid()];
+        IAppointmentTitleReader reader = new AppointmentRepository(db);
+
+        var restricted = await reader.ListTitlesAsync(_tenant, ids, _andres, default);
+        var full = await reader.ListTitlesAsync(_tenant, ids, null, default);
+
+        Assert.Equal(new[] { assigned, internalOne }.Order(), restricted.Select(t => t.Id).Order());
+        Assert.All(restricted, t => Assert.Equal((WorkResourceTypes.Appointment, "Review"), (t.ResourceType, t.Title)));
+        Assert.Equal(new[] { assigned, hidden, internalOne }.Order(), full.Select(t => t.Id).Order());
     }
 
     private async Task<BuildingBlocks.Contracts.Work.WorkSummaryResponse> SummaryAsync(bool canViewAll)

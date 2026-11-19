@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Contracts.Work;
 using TaxVision.Signature.Application.Abstractions;
 
@@ -14,8 +15,61 @@ public sealed record GetSignatureWorkBatchQuery(
     bool CanViewAll
 );
 
+/// <summary>Página del trabajo de firmas de <paramref name="UserId"/> ("Show all"), con el ABAC de quien mira.</summary>
+public sealed record GetSignatureWorkItemsQuery(
+    Guid TenantId,
+    Guid UserId,
+    Guid ActorUserId,
+    bool CanViewAll,
+    int Page,
+    int Size
+);
+
+/// <summary>Títulos en vivo de las solicitudes que quien mira puede leer.</summary>
+public sealed record GetSignatureWorkTitlesQuery(
+    Guid TenantId,
+    Guid ActorUserId,
+    bool CanViewAll,
+    IReadOnlyList<Guid> Ids
+);
+
 public static class GetSignatureWorkHandler
 {
+    public static async Task<PagedResult<WorkItem>> Handle(
+        GetSignatureWorkItemsQuery query,
+        ISignatureWorkReadService reads,
+        IOfficeTimeZone zones,
+        TimeProvider clock,
+        CancellationToken ct
+    )
+    {
+        var window = await WindowAsync(query.TenantId, zones, clock, ct);
+        var rows = await reads.ListAsync(
+            new SignatureWorkFilter(
+                query.TenantId,
+                [query.UserId],
+                query.ActorUserId,
+                query.CanViewAll,
+                window.ExpiredSinceUtc
+            ),
+            ct
+        );
+        return SignatureWork.Items(query.UserId, rows, window, query.Page, query.Size);
+    }
+
+    public static async Task<WorkTitlesResponse> Handle(
+        GetSignatureWorkTitlesQuery query,
+        ISignatureWorkReadService reads,
+        CancellationToken ct
+    )
+    {
+        var rows = await reads.ListTitlesAsync(
+            new SignatureTitleFilter(query.TenantId, query.Ids, query.ActorUserId, query.CanViewAll),
+            ct
+        );
+        return SignatureWork.Titles(rows);
+    }
+
     public static async Task<WorkSummaryResponse> Handle(
         GetSignatureWorkQuery query,
         ISignatureWorkReadService reads,

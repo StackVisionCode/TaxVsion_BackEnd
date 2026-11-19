@@ -109,7 +109,47 @@ public sealed class SignatureWorkReadServiceIntegrationTests : IAsyncLifetime
         Assert.Empty(rows);
     }
 
+    [Fact]
+    public async Task Titles_follow_the_list_visibility_of_the_viewer()
+    {
+        var assigned = Guid.NewGuid();
+        var visible = Sent(_tenantId, author: _user, preparer: null, customerId: assigned);
+        var hidden = Sent(_tenantId, author: _user, preparer: null, customerId: Guid.NewGuid());
+        var ownDraft = PreparerRequests.Draft(_tenantId, _viewer);
+        var othersDraft = PreparerRequests.Draft(_tenantId, _user);
+        var foreign = Sent(_otherTenantId, author: _viewer, preparer: null);
+        await SeedAsync(_tenantId, visible, hidden, ownDraft, othersDraft);
+        await SeedAsync(_otherTenantId, foreign);
+        await using (var db = NewContext(_tenantId))
+        {
+            db.Set<CustomerAssignmentProjection>()
+                .Add(CustomerAssignmentProjection.Create(_tenantId, assigned, _viewer, _now));
+            await db.SaveChangesAsync();
+        }
+        Guid[] ids = [visible.Id, hidden.Id, ownDraft.Id, othersDraft.Id, foreign.Id, Guid.NewGuid()];
+
+        var restricted = await TitlesAsync(ids, canViewAll: false);
+        var all = await TitlesAsync(ids, canViewAll: true);
+
+        Assert.Equal(new[] { visible.Id, ownDraft.Id }.Order(), restricted.Select(r => r.Id).Order());
+        Assert.Equal(
+            new[] { visible.Id, hidden.Id, ownDraft.Id, othersDraft.Id }.Order(),
+            all.Select(r => r.Id).Order()
+        );
+        Assert.Equal(visible.Title, restricted.Single(r => r.Id == visible.Id).Title);
+    }
+
     // ----- helpers -----
+
+    private async Task<IReadOnlyList<SignatureTitleRow>> TitlesAsync(IReadOnlyList<Guid> ids, bool canViewAll)
+    {
+        await using var db = NewContext(_tenantId);
+        var service = new SignatureWorkReadService(
+            db,
+            Options.Create(new SignatureVisibilityOptions { Enabled = true })
+        );
+        return await service.ListTitlesAsync(new SignatureTitleFilter(_tenantId, ids, _viewer, canViewAll));
+    }
 
     private SignatureWorkWindow Window() => SignatureWorkWindow.For(_now, ResolvedTimeZone.Utc);
 

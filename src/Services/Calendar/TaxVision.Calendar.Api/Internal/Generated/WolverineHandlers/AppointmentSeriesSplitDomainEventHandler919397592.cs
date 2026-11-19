@@ -26,10 +26,10 @@ namespace Internal.Generated.WolverineHandlers
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var appointmentRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Appointments.Abstractions.IAppointmentRepository>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var calendarDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Infrastructure.Persistence.CalendarDbContext>(serviceScope.ServiceProvider);
+            var appointmentRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Calendar.Application.Appointments.Abstractions.IAppointmentRepository>(serviceScope.ServiceProvider);
             // The actual message body
             var appointmentSeriesSplitDomainEvent = (TaxVision.Calendar.Domain.Appointments.Events.AppointmentSeriesSplitDomainEvent)context.Envelope.Message;
 

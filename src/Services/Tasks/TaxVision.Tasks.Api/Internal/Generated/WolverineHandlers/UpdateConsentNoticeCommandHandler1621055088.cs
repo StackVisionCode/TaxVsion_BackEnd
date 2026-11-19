@@ -21,7 +21,6 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Audit.FormAuditLog is not public, so requires service location
@@ -34,6 +33,7 @@ namespace Internal.Generated.WolverineHandlers
             var consentNoticeRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Consents.Abstractions.IConsentNoticeRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var updateConsentNoticeCommand = (TaxVision.Tasks.ClientForms.Application.Consents.UpdateConsentNoticeCommand)context.Envelope.Message;
 

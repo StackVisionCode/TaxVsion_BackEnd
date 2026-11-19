@@ -131,6 +131,88 @@ public sealed class SignatureWorkTests
         Assert.Equal(new WorkBatchRow(third, 0, 0), batch.Rows.Single(r => r.UserId == third));
     }
 
+    [Fact]
+    public void Items_cover_the_top_universe_open_waiting_and_recently_expired()
+    {
+        var rows = new[]
+        {
+            Row(author: Other, preparer: User),
+            Row(author: User, preparer: User),
+            Row(author: User, preparer: Other), // en espera
+            Row(author: User, preparer: null, status: SignatureRequestStatus.Expired),
+            Row(author: Other, preparer: User, preparerSigned: true), // ya firmó: fuera
+            Row(author: Other, preparer: Other), // ajena: fuera
+        };
+
+        var page = SignatureWork.Items(User, rows, Window(NewYork), page: 1, size: 20);
+
+        Assert.Equal(4, page.TotalCount);
+        Assert.Equal(4, page.Items.Count);
+        Assert.Equal(
+            ["awaiting-preparer", "awaiting-preparer", "awaiting-signers", "expired"],
+            page.Items.Select(item => item.Status).Order(StringComparer.Ordinal)
+        );
+    }
+
+    [Fact]
+    public void Every_top_item_appears_on_the_first_page_in_the_same_order()
+    {
+        var rows = new[]
+        {
+            Row(author: User, preparer: null, status: SignatureRequestStatus.Expired, expiresAt: Now.AddDays(-2)),
+            Row(author: User, preparer: Other, expiresAt: Now.AddDays(1)),
+            Row(author: Other, preparer: User, expiresAt: Now.AddDays(3)),
+            Row(author: Other, preparer: User, noExpiry: true),
+            Row(author: User, preparer: Other, expiresAt: Now.AddDays(15)),
+            Row(author: Other, preparer: User, expiresAt: Now.AddHours(-3)),
+            Row(author: User, preparer: Other, noExpiry: true),
+            Row(author: Other, preparer: User, expiresAt: Now.AddDays(25)),
+        };
+
+        var top = Summarize(rows).Top;
+        var page = SignatureWork.Items(User, rows, Window(NewYork), page: 1, size: 20);
+
+        Assert.Equal(WorkLimits.TopItems, top.Count);
+        Assert.Equal(rows.Length, page.TotalCount);
+        Assert.Equal(top, page.Items.Take(top.Count));
+    }
+
+    [Fact]
+    public void Items_follow_the_top_order_and_paginate()
+    {
+        var overdue = Row(author: Other, preparer: User, expiresAt: Now.AddHours(-1));
+        var soon = Row(author: Other, preparer: User, expiresAt: Now.AddDays(2));
+        var later = Row(author: Other, preparer: User, expiresAt: Now.AddDays(20));
+        var noExpiry = Row(author: Other, preparer: User, noExpiry: true);
+        var rows = new[] { noExpiry, later, soon, overdue };
+
+        var first = SignatureWork.Items(User, rows, Window(NewYork), page: 1, size: 3);
+        var second = SignatureWork.Items(User, rows, Window(NewYork), page: 2, size: 3);
+
+        Assert.Equal([overdue.Id, soon.Id, later.Id], first.Items.Select(item => item.Id));
+        Assert.Equal([noExpiry.Id], second.Items.Select(item => item.Id));
+        Assert.Equal((1, 3, 4), (first.Page, first.Size, first.TotalCount));
+        Assert.True(first.HasMore);
+        Assert.Equal($"/signature/requests/{overdue.Id}", first.Items[0].Link);
+    }
+
+    [Fact]
+    public void Titles_are_clipped_and_empty_titles_are_omitted()
+    {
+        var (named, blank, longOne) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
+
+        var titles = SignatureWork.Titles([
+            new SignatureTitleRow(named, "  Form   8879 "),
+            new SignatureTitleRow(blank, "   "),
+            new SignatureTitleRow(longOne, new string('a', 200)),
+        ]);
+
+        Assert.Equal(2, titles.Items.Count);
+        Assert.Equal(new WorkTitle(WorkResourceTypes.SignatureRequest, named, "Form 8879"), titles.Items[0]);
+        Assert.Equal(WorkLimits.TitleMaxLength, titles.Items[1].Title.Length);
+        Assert.DoesNotContain(titles.Items, title => title.Id == blank);
+    }
+
     // ----- helpers -----
 
     private static WorkSummaryResponse Summarize(IReadOnlyList<SignatureWorkRow> rows, ResolvedTimeZone? zone = null) =>

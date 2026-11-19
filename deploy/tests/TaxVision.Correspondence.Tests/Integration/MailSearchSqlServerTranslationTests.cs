@@ -60,6 +60,12 @@ public sealed class MailSearchSqlServerTranslationTests
         Assert.Empty(await search.SearchFilesAsync(criteria));
         Assert.Empty(await search.SearchPeopleAsync(criteria));
 
+        // Títulos del historial (Work Profile): mismas reglas de visibilidad, en lote.
+        var titles = new MailTitleReader(db);
+        Guid[] titleIds = [Guid.NewGuid(), Guid.NewGuid()];
+        Assert.Empty(await titles.GetSentSubjectsAsync(tenantId, titleIds, visible, restrictTo));
+        Assert.Empty(await titles.GetThreadSubjectsAsync(tenantId, titleIds, visible, restrictTo));
+
         // Campos, carpeta y personas en cada carpeta (con y sin remitentes resueltos / buzones propios).
         MailSearchFolder?[] folders = [null, .. Enum.GetValues<MailSearchFolder>()];
         foreach (var folder in folders)

@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using BuildingBlocks.Contracts.Work;
 using TaxVision.Tenant.Application.Team;
 
@@ -11,14 +10,10 @@ namespace TaxVision.Tenant.Tests.Architecture;
 /// </summary>
 public sealed class TeamWorkProvidersTests
 {
-    private static readonly Regex ClassRoute = new(@"\[Route\(\s*""(?<route>[^""]*)""\s*\)\]", RegexOptions.Compiled);
-    private static readonly Regex CSharpGet = new(@"\[HttpGet\(\s*""(?<template>[^""]*)""", RegexOptions.Compiled);
-    private static readonly Regex TsGet = new(@"\.get\(\s*['""`](?<path>/[\w/:-]+)['""`]", RegexOptions.Compiled);
-
     [Fact]
     public void Every_registered_path_exists_as_a_get_route_in_its_service()
     {
-        var problems = PathProblems(TeamWorkProviders.All, LoadRoutes());
+        var problems = PathProblems(TeamWorkProviders.All, ServiceRouteScanner.Load("Get"));
 
         Assert.True(problems.Count == 0, "Registro de proveedores sin ruta real:\n  " + string.Join("\n  ", problems));
     }
@@ -26,10 +21,19 @@ public sealed class TeamWorkProvidersTests
     [Fact]
     public void Every_real_work_endpoint_is_registered()
     {
-        var registered = TeamWorkProviders.All.Select(p => p.WorkPath).ToHashSet(StringComparer.Ordinal);
-        var unregistered = LoadRoutes()
+        var registered = TeamWorkProviders
+            .All.SelectMany(p => new[] { p.WorkPath, p.ItemsPath })
+            .OfType<string>()
+            .ToHashSet(StringComparer.Ordinal);
+        var unregistered = ServiceRouteScanner
+            .Load("Get")
             .SelectMany(s => s.Value.Select(path => (Service: s.Key, Path: path)))
-            .Where(r => r.Path.EndsWith("/work/{userId}", StringComparison.Ordinal) && !registered.Contains(r.Path))
+            .Where(r =>
+                (
+                    r.Path.EndsWith("/work/{userId}", StringComparison.Ordinal)
+                    || r.Path.EndsWith("/work/{userId}/items", StringComparison.Ordinal)
+                ) && !registered.Contains(r.Path)
+            )
             .Select(r => $"{r.Service}: {r.Path}")
             .ToList();
 
@@ -42,6 +46,17 @@ public sealed class TeamWorkProvidersTests
         Assert.Equal(TeamWorkProviders.All.Count, TeamWorkProviders.All.Select(p => p.Service).Distinct().Count());
         Assert.All(TeamWorkProviders.All, p => Assert.EndsWith("/work/{userId}", p.WorkPath));
         Assert.All(TeamWorkProviders.All, p => Assert.EndsWith("/work/summary", p.BatchPath));
+        Assert.All(
+            TeamWorkProviders.All.Where(p => p.ItemsPath is not null),
+            p => Assert.Equal(p.WorkPath + "/items", p.ItemsPath)
+        );
+    }
+
+    // Clients ya tiene su propia pestaña paginada; el resto ofrece "Show all" dentro del bloque.
+    [Fact]
+    public void Every_provider_but_customer_offers_the_paged_list()
+    {
+        Assert.All(TeamWorkProviders.All, p => Assert.Equal(p.Service != "customer", p.ItemsPath is not null));
     }
 
     [Fact]
@@ -49,7 +64,7 @@ public sealed class TeamWorkProvidersTests
     {
         var routes = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase)
         {
-            ["Tasks"] = RoutesOf(
+            ["Tasks"] = ServiceRouteScanner.RoutesOf(
                 "Tasks/WorkController.cs",
                 """
                 [Route("tasks/work")]
@@ -58,11 +73,13 @@ public sealed class TeamWorkProvidersTests
                     [HttpGet("{userId:guid}")] public void Work() { }
                     [HttpGet("summary")] public void Summary() { }
                 }
-                """
+                """,
+                "Get"
             ),
-            ["Communication"] = RoutesOf(
+            ["Communication"] = ServiceRouteScanner.RoutesOf(
                 "Communication/src/api/work.route.ts",
-                "app.get('/communication/work/:userId', handler); app.get('/communication/work/summary', h);"
+                "app.get('/communication/work/:userId', handler); app.get('/communication/work/summary', h);",
+                "Get"
             ),
         };
 
@@ -71,13 +88,15 @@ public sealed class TeamWorkProvidersTests
                 new("tasks", "planner", "/tasks/work/{userId}", "/tasks/work/summary"),
                 new("communication", "comms", "/communication/work/{userId}", "/communication/work/summary"),
                 new("tasks", "planner", "/tasks/work/{userId}", "/tasks/work/batch"),
+                new("tasks", "planner", "/tasks/work/{userId}", "/tasks/work/summary", "/tasks/work/{userId}/items"),
                 new("ghost", "x", "/ghost/work/{userId}", "/ghost/work/summary"),
             ],
             routes
         );
 
-        Assert.Equal(2, problems.Count);
+        Assert.Equal(3, problems.Count);
         Assert.Contains(problems, p => p.Contains("/tasks/work/batch"));
+        Assert.Contains(problems, p => p.Contains("/tasks/work/{userId}/items"));
         Assert.Contains(problems, p => p.Contains("ghost"));
     }
 
@@ -95,73 +114,11 @@ public sealed class TeamWorkProvidersTests
                 continue;
             }
 
-            foreach (var path in new[] { provider.WorkPath, provider.BatchPath }.Where(p => !paths.Contains(p)))
+            var declared = new[] { provider.WorkPath, provider.BatchPath, provider.ItemsPath }.OfType<string>();
+            foreach (var path in declared.Where(p => !paths.Contains(p)))
                 problems.Add($"{provider.Service}: {path} no existe como GET");
         }
 
         return problems;
-    }
-
-    private static Dictionary<string, HashSet<string>> LoadRoutes()
-    {
-        var services = Path.Combine(RepositoryRoot(), "src", "Services");
-        var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var serviceDir in Directory.EnumerateDirectories(services))
-        {
-            var paths = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var file in Directory.EnumerateFiles(serviceDir, "*.*", SearchOption.AllDirectories))
-            {
-                if (IsSource(file))
-                    paths.UnionWith(RoutesOf(file, File.ReadAllText(file)));
-            }
-
-            result[Path.GetFileName(serviceDir)] = paths;
-        }
-
-        return result;
-    }
-
-    private static HashSet<string> RoutesOf(string file, string text)
-    {
-        var paths = new HashSet<string>(StringComparer.Ordinal);
-        if (file.EndsWith(".cs", StringComparison.Ordinal))
-        {
-            foreach (Match get in CSharpGet.Matches(text))
-            {
-                var template = get.Groups["template"].Value;
-                var classRoute = ClassRoute.Matches(text[..get.Index]).LastOrDefault()?.Groups["route"].Value;
-                paths.Add(Normalize(template.StartsWith('/') ? template : $"/{classRoute?.Trim('/')}/{template}"));
-            }
-        }
-        else
-        {
-            foreach (Match get in TsGet.Matches(text))
-                paths.Add(Normalize(get.Groups["path"].Value));
-        }
-
-        return paths;
-    }
-
-    private static string Normalize(string path) =>
-        Regex
-            .Replace(Regex.Replace(path, @"\{userId(?::\w+)?\}", "{userId}"), ":userId", "{userId}")
-            .Replace("//", "/");
-
-    private static bool IsSource(string path)
-    {
-        var sep = Path.DirectorySeparatorChar;
-        var excluded = new[] { "bin", "obj", "node_modules", "Migrations", "Generated", "tests", "dist" };
-        return (path.EndsWith(".cs", StringComparison.Ordinal) || path.EndsWith(".ts", StringComparison.Ordinal))
-            && !excluded.Any(dir => path.Contains($"{sep}{dir}{sep}", StringComparison.Ordinal));
-    }
-
-    private static string RepositoryRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "TaxVision.slnx")))
-            dir = dir.Parent;
-
-        Assert.NotNull(dir);
-        return dir!.FullName;
     }
 }

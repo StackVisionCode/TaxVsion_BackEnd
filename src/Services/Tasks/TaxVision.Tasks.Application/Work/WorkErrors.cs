@@ -15,4 +15,19 @@ public static class WorkErrors
         "Task.Work.TooManyUsers",
         $"Ask for at most {WorkLimits.BatchUsers} people at a time."
     );
+
+    public static readonly Error InvalidTitles = new(
+        "Task.Work.InvalidTitles",
+        $"Send a list of at most {WorkLimits.TitleBatch} items."
+    );
+
+    public static readonly Error InvalidKind = new(
+        "Task.Work.InvalidKind",
+        $"kind must be {WorkKinds.Tasks}, {WorkKinds.ClientRequests} or {WorkKinds.FormRequests}."
+    );
+
+    public static readonly Error FormRequestsUnavailable = new(
+        "Task.Forbidden",
+        "Client forms are not available to you."
+    );
 }

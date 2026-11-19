@@ -1,5 +1,6 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Contracts.Work;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -82,6 +83,92 @@ public sealed class WorkController(
             )
             : [];
         return Ok(WorkSummaryComposer.Combine(ids, tasks.Value, forms));
+    }
+
+    /// <summary>Títulos en vivo para Activity: solo lo que quien mira puede leer; lo demás se omite.</summary>
+    [HttpPost("titles")]
+    [HasPermission(TasksPermissions.Read)]
+    [RateLimit("task.f.read")]
+    [ProducesResponseType<WorkTitlesResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Titles([FromBody] WorkTitlesRequest? request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
+            return Unauthorized();
+        var refs = WorkTitleRefs.Validate(request);
+        if (refs.IsFailure)
+            return StatusCode(StatusCodes.Status400BadRequest, refs.Error);
+
+        var taskIds = WorkTitleRefs.IdsOf(refs.Value, WorkResourceTypes.Task);
+        var requestIds = WorkTitleRefs.IdsOf(refs.Value, WorkResourceTypes.ClientRequest);
+        var formIds = WorkTitleRefs.IdsOf(refs.Value, WorkResourceTypes.FormRequest);
+        if (taskIds.Count + requestIds.Count + formIds.Count == 0)
+            return Ok(new WorkTitlesResponse([]));
+
+        var canViewAll = await HasAsync(CustomersPermissions.ViewAll, ct);
+        var titles =
+            taskIds.Count + requestIds.Count == 0
+                ? []
+                : await bus.InvokeAsync<IReadOnlyList<WorkTitle>>(
+                    new GetWorkTitlesQuery(tenantId, actorId, canViewAll, taskIds, requestIds),
+                    ct
+                );
+        var forms =
+            formIds.Count > 0 && await IncludesClientFormsAsync(tenantId, ct)
+                ? await bus.InvokeAsync<IReadOnlyList<WorkTitle>>(
+                    new GetFormRequestWorkTitlesQuery(tenantId, actorId, canViewAll, formIds),
+                    ct
+                )
+                : [];
+        return Ok(new WorkTitlesResponse([.. titles, .. forms]));
+    }
+
+    /// <summary>"Show all" de un bloque: misma autorización, universo y orden que el top de <c>/work/{userId}</c>.</summary>
+    [HttpGet("{userId:guid}/items")]
+    [HasPermission(TasksPermissions.Read)]
+    [RateLimit("task.f.read")]
+    [ProducesResponseType<PagedResult<WorkItem>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Items(
+        Guid userId,
+        [FromQuery] string? kind,
+        [FromQuery] int? page,
+        [FromQuery] int? size,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
+            return Unauthorized();
+
+        var paging = WorkPaging.Normalize(page, size);
+        var canViewOthers = await CanViewOthersAsync(ct);
+        var canViewAll = await HasAsync(CustomersPermissions.ViewAll, ct);
+        if (kind != WorkKinds.FormRequests)
+        {
+            var result = await bus.InvokeAsync<Result<PagedResult<WorkItem>>>(
+                new GetWorkItemsQuery(
+                    tenantId,
+                    actorId,
+                    userId,
+                    canViewOthers,
+                    canViewAll,
+                    kind,
+                    paging.Page,
+                    paging.Size
+                ),
+                ct
+            );
+            return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+        }
+
+        if (!WorkAccess.CanView(actorId, userId, canViewOthers))
+            return StatusCode(StatusCodes.Status403Forbidden, WorkErrors.Forbidden);
+        if (!await IncludesClientFormsAsync(tenantId, ct))
+            return StatusCode(StatusCodes.Status403Forbidden, WorkErrors.FormRequestsUnavailable);
+        return Ok(
+            await bus.InvokeAsync<PagedResult<WorkItem>>(
+                new GetFormRequestWorkItemsQuery(tenantId, actorId, userId, canViewAll, paging.Page, paging.Size),
+                ct
+            )
+        );
     }
 
     private Task<bool> CanViewOthersAsync(CancellationToken ct) =>

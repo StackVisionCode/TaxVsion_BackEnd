@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using BuildingBlocks.Common;
 using BuildingBlocks.Contracts.Work;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Work;
@@ -61,23 +62,84 @@ public sealed class TaskWorkReader(TasksDbContext context) : ITaskWorkReader
         CancellationToken ct
     )
     {
-        var tasks = await OpenTasks(tenantId, visibleTo)
+        var tasks = await AssignedTasks(tenantId, userId, visibleTo).Take(take).AsNoTracking().ToListAsync(ct);
+        var requests = await AssignedRequests(tenantId, userId, visibleTo).Take(take).AsNoTracking().ToListAsync(ct);
+        return [.. tasks.Select(ToItem), .. requests.Select(ToItem)];
+    }
+
+    public Task<PagedResult<WorkItem>> ItemsAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid? visibleTo,
+        string kind,
+        int page,
+        int size,
+        CancellationToken ct
+    ) =>
+        kind == WorkKinds.ClientRequests
+            ? PageAsync(AssignedRequests(tenantId, userId, visibleTo), ToItem, page, size, ct)
+            : PageAsync(AssignedTasks(tenantId, userId, visibleTo), ToItem, page, size, ct);
+
+    public async Task<IReadOnlyList<WorkTitle>> TitlesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> taskIds,
+        IReadOnlyCollection<Guid> clientRequestIds,
+        Guid? visibleTo,
+        CancellationToken ct
+    )
+    {
+        // Un WHERE Id IN (...) por tipo, con la regla de lectura del detalle.
+        var tasks =
+            taskIds.Count == 0
+                ? []
+                : await context
+                    .Tasks.IgnoreQueryFilters()
+                    .Where(t => t.TenantId == tenantId && taskIds.Contains(t.Id))
+                    .VisibleTo(context, tenantId, visibleTo)
+                    .Select(t => new WorkTitle(WorkResourceTypes.Task, t.Id, t.Title.Value))
+                    .ToListAsync(ct);
+        var requests =
+            clientRequestIds.Count == 0
+                ? []
+                : await VisibleRequests(
+                        context
+                            .ClientRequests.IgnoreQueryFilters()
+                            .Where(r => r.TenantId == tenantId && clientRequestIds.Contains(r.Id)),
+                        tenantId,
+                        visibleTo
+                    )
+                    .Select(r => new WorkTitle(WorkResourceTypes.ClientRequest, r.Id, r.Title))
+                    .ToListAsync(ct);
+        return [.. tasks, .. requests];
+    }
+
+    // Universo y orden del top y de la lista: el vencimiento más viejo primero, sin vencimiento al final.
+    private IQueryable<TaskItem> AssignedTasks(Guid tenantId, Guid userId, Guid? visibleTo) =>
+        OpenTasks(tenantId, visibleTo)
             .Where(t => t.AssigneeUserId == userId)
             .OrderBy(t => t.Due == null)
             .ThenBy(t => t.Due!.DueAtUtc)
-            .ThenBy(t => t.Id)
-            .Take(take)
-            .AsNoTracking()
-            .ToListAsync(ct);
-        var requests = await OpenRequests(tenantId, visibleTo)
+            .ThenBy(t => t.Id);
+
+    private IQueryable<ClientRequest> AssignedRequests(Guid tenantId, Guid userId, Guid? visibleTo) =>
+        OpenRequests(tenantId, visibleTo)
             .Where(r => (r.FollowUpUserId ?? r.RequestedByUserId) == userId)
             .OrderBy(r => r.DueAtUtc == null)
             .ThenBy(r => r.DueAtUtc)
-            .ThenBy(r => r.Id)
-            .Take(take)
-            .AsNoTracking()
-            .ToListAsync(ct);
-        return [.. tasks.Select(ToItem), .. requests.Select(ToItem)];
+            .ThenBy(r => r.Id);
+
+    private static async Task<PagedResult<WorkItem>> PageAsync<T>(
+        IQueryable<T> ordered,
+        Func<T, WorkItem> toItem,
+        int page,
+        int size,
+        CancellationToken ct
+    )
+        where T : class
+    {
+        var total = await ordered.CountAsync(ct);
+        var rows = await ordered.Skip((page - 1) * size).Take(size).AsNoTracking().ToListAsync(ct);
+        return new PagedResult<WorkItem>([.. rows.Select(toItem)], page, size, total);
     }
 
     // Una consulta agrupada por métrica: el vencimiento es un owned type y EF no lo proyecta dentro de un GroupBy.
@@ -171,22 +233,32 @@ public sealed class TaskWorkReader(TasksDbContext context) : ITaskWorkReader
             .Where(t => t.TenantId == tenantId && OpenStatuses.Contains(t.Status))
             .VisibleTo(context, tenantId, visibleTo);
 
+    private IQueryable<ClientRequest> OpenRequests(Guid tenantId, Guid? visibleTo) =>
+        VisibleRequests(
+            context
+                .ClientRequests.IgnoreQueryFilters()
+                .Where(r =>
+                    r.TenantId == tenantId
+                    && (r.Status == ClientRequestStatus.Pending || r.Status == ClientRequestStatus.Submitted)
+                ),
+            tenantId,
+            visibleTo
+        );
+
     // Mismo criterio que el listado de tareas: lo propio (lo pidió o lo sigue) o un cliente asignado a quien mira.
-    private IQueryable<ClientRequest> OpenRequests(Guid tenantId, Guid? visibleTo)
+    private IQueryable<ClientRequest> VisibleRequests(
+        IQueryable<ClientRequest> requests,
+        Guid tenantId,
+        Guid? visibleTo
+    )
     {
-        var open = context
-            .ClientRequests.IgnoreQueryFilters()
-            .Where(r =>
-                r.TenantId == tenantId
-                && (r.Status == ClientRequestStatus.Pending || r.Status == ClientRequestStatus.Submitted)
-            );
         if (visibleTo is not { } me)
-            return open;
+            return requests;
 
         var myClients = context
             .CustomerAssignmentProjections.IgnoreQueryFilters()
             .Where(a => a.TenantId == tenantId && a.UserId == me);
-        return open.Where(r =>
+        return requests.Where(r =>
             r.RequestedByUserId == me || r.FollowUpUserId == me || myClients.Any(a => a.CustomerId == r.CustomerId)
         );
     }

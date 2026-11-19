@@ -21,9 +21,6 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var cloudStorageDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.CloudStorage.Infrastructure.Persistence.CloudStorageDbContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.CustomerVisibility.ICustomerAssignmentProjectionStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -32,6 +29,9 @@ namespace Internal.Generated.WolverineHandlers
             var fileObjectRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.CloudStorage.Application.Abstractions.IFileObjectRepository>(serviceScope.ServiceProvider);
             var folderRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.CloudStorage.Application.Abstractions.IFolderRepository>(serviceScope.ServiceProvider);
             var customerAccessRuleRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.CloudStorage.Application.CustomerAccess.ICustomerAccessRuleRepository>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var cloudStorageDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.CloudStorage.Infrastructure.Persistence.CloudStorageDbContext>(serviceScope.ServiceProvider);
             // The actual message body
             var getRulesByCustomerQuery = (TaxVision.CloudStorage.Application.CustomerAccess.Queries.GetRulesByCustomer.GetRulesByCustomerQuery)context.Envelope.Message;
 
