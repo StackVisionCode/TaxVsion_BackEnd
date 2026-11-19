@@ -20,6 +20,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -30,7 +31,6 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Auth.Onboarding.Application.Abstractions.ISubscriptionActivationClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var subscriptionActivationClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Onboarding.Application.Abstractions.ISubscriptionActivationClient>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var activateSubscriptionCommand = (TaxVision.Auth.Onboarding.Application.Sagas.Commands.ActivateSubscriptionCommand)context.Envelope.Message;
 

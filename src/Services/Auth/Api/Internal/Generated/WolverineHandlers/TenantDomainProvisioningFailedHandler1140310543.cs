@@ -21,17 +21,17 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var requestContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.IRequestContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Auth.Application.Abstractions.IAuthAuditWriter is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var authAuditWriter = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.IAuthAuditWriter>(serviceScope.ServiceProvider);
-            
-            /*
-            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            */
-            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             // The actual message body
             var tenantDomainProvisioningFailed = (TaxVision.Auth.Domain.TenantDomains.Events.TenantDomainProvisioningFailed)context.Envelope.Message;
 

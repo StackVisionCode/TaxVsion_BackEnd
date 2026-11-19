@@ -14,7 +14,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.InsertData(
                 table: "Permissions",
                 columns: new[] { "Id", "AllowedActorTypes", "Code", "Description", "GatedModule", "IsAssignableByTenant", "IsCustomerPortal", "IsDangerous", "IsReserved", "Module", "PlatformOnly" },
-                values: new object[] { new Guid("a1000000-0000-0000-0000-000000000228"), "TenantEmployee,TenantAdmin,PlatformAdmin", "invoicing.status.override", "Change an invoice's status freely (reverses payments when reopening a paid invoice)", null, true, false, false, false, "billing", false });
+                values: new object[] { new Guid("a1000000-0000-0000-0000-000000000229"), "TenantEmployee,TenantAdmin,PlatformAdmin", "invoicing.status.override", "Change an invoice's status freely (reverses payments when reopening a paid invoice)", null, true, false, false, false, "billing", false });
         }
 
         /// <inheritdoc />
@@ -23,7 +23,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000228"));
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000229"));
         }
     }
 }

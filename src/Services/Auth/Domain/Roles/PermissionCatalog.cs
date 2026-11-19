@@ -635,7 +635,7 @@ public static class PermissionCatalog
             // Corregir el estado de una factura a gusto de la oficina (incluso pagada → borrador) revierte pagos y toca
             // stock y cobro: no es trabajo diario del preparador. Administrativo — el TenantAdmin lo recibe por su bundle,
             // queda fuera del bundle del empleado y se puede delegar. No es IsDangerous: la oficina decide sobre SU facturación.
-            new Guid("a1000000-0000-0000-0000-000000000228"),
+            new Guid("a1000000-0000-0000-0000-000000000229"),
             InvoicingStatusOverride,
             "billing",
             "Change an invoice's status freely (reverses payments when reopening a paid invoice)",

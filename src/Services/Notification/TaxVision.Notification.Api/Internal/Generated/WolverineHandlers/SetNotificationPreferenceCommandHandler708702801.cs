@@ -22,17 +22,17 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
             var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext notificationDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext.");
             var userNotificationPreferenceRepository = new TaxVision.Notification.Infrastructure.Persistence.Repositories.UserNotificationPreferenceRepository(notificationDbContext);
-            var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
             // The actual message body
             var setNotificationPreferenceCommand = (TaxVision.Notification.Application.Notifications.Preferences.SetNotificationPreferenceCommand)context.Envelope.Message;
 
-
+            
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
             var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(notificationDbContext, context, _domainEventScraperIEnumerable);
             await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
@@ -48,15 +48,15 @@ namespace Internal.Generated.WolverineHandlers
                 TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
                 System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Notification.Application.Notifications.Preferences.SetNotificationPreferenceHandler");
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Notifications.Preferences.SetNotificationPreferenceHandler");
-
+                
                 // The actual message execution
                 var outgoing1 = await TaxVision.Notification.Application.Notifications.Preferences.SetNotificationPreferenceHandler.Handle(setNotificationPreferenceCommand, userNotificationPreferenceRepository, unitOfWork, cancellation).ConfigureAwait(false);
 
-
+                
                 // Outgoing, cascaded message
                 await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
 
-
+                
                 // Added by EF Core Transaction Middleware
                 var result_of_SaveChangesAsync = await notificationDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);
 
@@ -75,7 +75,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: SetNotificationPreferenceCommandHandler708702801
-
-
+    
+    
 }
 

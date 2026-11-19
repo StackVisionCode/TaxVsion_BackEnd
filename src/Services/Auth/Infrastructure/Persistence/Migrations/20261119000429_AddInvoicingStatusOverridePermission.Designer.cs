@@ -956,7 +956,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000228"),
+                            Id = new Guid("a1000000-0000-0000-0000-000000000229"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "invoicing.status.override",
                             Description = "Change an invoice's status freely (reverses payments when reopening a paid invoice)",

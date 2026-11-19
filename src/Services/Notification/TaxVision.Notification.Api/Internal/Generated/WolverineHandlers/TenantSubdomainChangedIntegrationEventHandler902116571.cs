@@ -32,7 +32,7 @@ namespace Internal.Generated.WolverineHandlers
             TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
             System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Notification.Application.Consumers.TenantHostCacheInvalidationConsumer");
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Consumers.TenantHostCacheInvalidationConsumer");
-
+            
             // The actual message execution
             TaxVision.Notification.Application.Consumers.TenantHostCacheInvalidationConsumer.Handle(tenantSubdomainChangedIntegrationEvent, _tenantHostCache, _loggerOfTenantHostCache);
 
@@ -42,7 +42,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: TenantSubdomainChangedIntegrationEventHandler902116571
-
-
+    
+    
 }
 
