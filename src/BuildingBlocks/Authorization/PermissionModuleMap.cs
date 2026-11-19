@@ -66,6 +66,8 @@ public static class PermissionModuleMap
         ("comms.", "comms"),
         ("campaigns.", "campaigns"),
         ("wallet.", "wallet"),
+        ("mobile.", "mileage"),
+        ("mileage.", "mileage"),
     ];
 
     /// <summary>

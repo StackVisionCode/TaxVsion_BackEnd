@@ -17,6 +17,7 @@ public sealed class MobileDbContext(DbContextOptions<MobileDbContext> options, I
         IUnitOfWork
 {
     public DbSet<Trip> Trips => Set<Trip>();
+    public DbSet<MileageRetentionPolicy> MileageRetentionPolicies => Set<MileageRetentionPolicy>();
     public DbSet<TripPoint> TripPoints => Set<TripPoint>();
     public DbSet<TripOperation> TripOperations => Set<TripOperation>();
     public DbSet<MileageRate> MileageRates => Set<MileageRate>();
