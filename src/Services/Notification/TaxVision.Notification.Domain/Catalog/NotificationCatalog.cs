@@ -1097,12 +1097,26 @@ public static class NotificationCatalog
             "financial_import_batch",
             NotificationAction.Review
         ),
-        Entry(NotificationKinds.CommunicationCallIncoming, NotificationCatalogCategory.CalendarMeetings,
-            NotificationPriority.Urgent, NotificationRecipientPolicy.ExplicitUser,
-            Channels(NotificationChannel.Push), false, "conversation", NotificationAction.Open),
-        Entry(NotificationKinds.CommunicationChatMessage, NotificationCatalogCategory.CalendarMeetings,
-            NotificationPriority.Normal, NotificationRecipientPolicy.Participants,
-            Channels(NotificationChannel.Push), false, "conversation", NotificationAction.Open),
+        Entry(
+            NotificationKinds.CommunicationCallIncoming,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Urgent,
+            NotificationRecipientPolicy.ExplicitUser,
+            Channels(NotificationChannel.Push),
+            false,
+            "conversation",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationChatMessage,
+            NotificationCatalogCategory.CalendarMeetings,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.Participants,
+            Channels(NotificationChannel.Push),
+            false,
+            "conversation",
+            NotificationAction.Open
+        ),
     }.ToFrozenDictionary(entry => entry.Kind, StringComparer.Ordinal);
 
     public static IReadOnlyCollection<NotificationCatalogEntry> All { get; } = Entries.Values.ToArray();

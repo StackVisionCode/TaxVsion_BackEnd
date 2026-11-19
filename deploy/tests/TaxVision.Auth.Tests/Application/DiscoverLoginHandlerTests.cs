@@ -116,12 +116,7 @@ public sealed class DiscoverLoginHandlerTests
             bool forceSelection = false
         ) =>
             DiscoverLoginHandler.Handle(
-                new DiscoverLoginCommand(
-                    Email,
-                    "same-pass",
-                    AccountKind: accountKind,
-                    ForceSelection: forceSelection
-                ),
+                new DiscoverLoginCommand(Email, "same-pass", AccountKind: accountKind, ForceSelection: forceSelection),
                 World.Users,
                 World.Tenants,
                 new PrefixedPasswordHasher(),

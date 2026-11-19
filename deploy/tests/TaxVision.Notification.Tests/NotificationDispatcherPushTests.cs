@@ -1,10 +1,10 @@
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
-using TaxVision.Notification.Application.Consumers.Communication;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Consumers.Communication;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 using TaxVision.Notification.Tests.TestDoubles;
@@ -23,40 +23,87 @@ public sealed class NotificationDispatcherPushTests
     [Fact]
     public async Task Mobile_call_push_is_generic_owner_scoped_and_deduplicated()
     {
-        var sender=new RecordingPushSender();var devices=new FakePushDeviceTokenRepository();
-        devices.AddActiveDevice(TenantId,UserId,"callee-token");
-        devices.AddActiveDevice(Guid.NewGuid(),UserId,"other-office-token");
-        var dispatcher=BuildDispatcher(sender,devices,new RecordingNotificationLogRepository(),new NoOpUnitOfWork());
-        var evt=new CallStartedIntegrationEvent {TenantId=TenantId,CallId=Guid.NewGuid(),CallerUserId=Guid.NewGuid(),CalleeUserId=UserId,Kind="Video",RingingAtUtc=DateTime.UtcNow};
-        await MobileCommunicationPushConsumer.Handle(evt,dispatcher,TimeProvider.System,default);
-        await MobileCommunicationPushConsumer.Handle(evt,dispatcher,TimeProvider.System,default);
-        var sent=Assert.Single(sender.Sent);
-        Assert.Equal("callee-token",sent.Token);
-        Assert.Equal(evt.CallId.ToString(),sent.Data!["callId"]);
-        Assert.Equal(TenantId.ToString(),sent.Data["tenantId"]);
-        Assert.Equal(UserId.ToString(),sent.Data["recipientUserId"]);
-        Assert.DoesNotContain("callerUserId",sent.Data.Keys);
+        var sender = new RecordingPushSender();
+        var devices = new FakePushDeviceTokenRepository();
+        devices.AddActiveDevice(TenantId, UserId, "callee-token");
+        devices.AddActiveDevice(Guid.NewGuid(), UserId, "other-office-token");
+        var dispatcher = BuildDispatcher(
+            sender,
+            devices,
+            new RecordingNotificationLogRepository(),
+            new NoOpUnitOfWork()
+        );
+        var evt = new CallStartedIntegrationEvent
+        {
+            TenantId = TenantId,
+            CallId = Guid.NewGuid(),
+            CallerUserId = Guid.NewGuid(),
+            CalleeUserId = UserId,
+            Kind = "Video",
+            RingingAtUtc = DateTime.UtcNow,
+        };
+        await MobileCommunicationPushConsumer.Handle(evt, dispatcher, TimeProvider.System, default);
+        await MobileCommunicationPushConsumer.Handle(evt, dispatcher, TimeProvider.System, default);
+        var sent = Assert.Single(sender.Sent);
+        Assert.Equal("callee-token", sent.Token);
+        Assert.Equal(evt.CallId.ToString(), sent.Data!["callId"]);
+        Assert.Equal(TenantId.ToString(), sent.Data["tenantId"]);
+        Assert.Equal(UserId.ToString(), sent.Data["recipientUserId"]);
+        Assert.DoesNotContain("callerUserId", sent.Data.Keys);
     }
 
     [Fact]
     public async Task Mobile_chat_push_skips_sender_duplicates_and_system_messages()
     {
-        var sender=new RecordingPushSender();var devices=new FakePushDeviceTokenRepository();var author=Guid.NewGuid();
-        devices.AddActiveDevice(TenantId,UserId,"recipient-token");devices.AddActiveDevice(TenantId,author,"sender-token");
-        var dispatcher=BuildDispatcher(sender,devices,new RecordingNotificationLogRepository(),new NoOpUnitOfWork());
-        var evt=new ChatMessageSentIntegrationEvent {TenantId=TenantId,ConversationId=Guid.NewGuid(),MessageId=Guid.NewGuid(),SenderId=author,Kind="Text",RecipientUserIds=[UserId,UserId,author],SentAtUtc=DateTime.UtcNow};
-        await MobileCommunicationPushConsumer.Handle(evt,dispatcher,default);
-        Assert.Equal("recipient-token",Assert.Single(sender.Sent).Token);
-        Assert.Equal("You have a new message.",sender.Sent[0].Body);
-        await MobileCommunicationPushConsumer.Handle(evt with {Kind="System",EventId=Guid.NewGuid()},dispatcher,default);
+        var sender = new RecordingPushSender();
+        var devices = new FakePushDeviceTokenRepository();
+        var author = Guid.NewGuid();
+        devices.AddActiveDevice(TenantId, UserId, "recipient-token");
+        devices.AddActiveDevice(TenantId, author, "sender-token");
+        var dispatcher = BuildDispatcher(
+            sender,
+            devices,
+            new RecordingNotificationLogRepository(),
+            new NoOpUnitOfWork()
+        );
+        var evt = new ChatMessageSentIntegrationEvent
+        {
+            TenantId = TenantId,
+            ConversationId = Guid.NewGuid(),
+            MessageId = Guid.NewGuid(),
+            SenderId = author,
+            Kind = "Text",
+            RecipientUserIds = [UserId, UserId, author],
+            SentAtUtc = DateTime.UtcNow,
+        };
+        await MobileCommunicationPushConsumer.Handle(evt, dispatcher, default);
+        Assert.Equal("recipient-token", Assert.Single(sender.Sent).Token);
+        Assert.Equal("You have a new message.", sender.Sent[0].Body);
+        await MobileCommunicationPushConsumer.Handle(
+            evt with
+            {
+                Kind = "System",
+                EventId = Guid.NewGuid(),
+            },
+            dispatcher,
+            default
+        );
         Assert.Single(sender.Sent);
     }
 
     [Fact]
     public async Task Mobile_call_push_does_not_ring_after_expiry()
     {
-        var evt=new CallStartedIntegrationEvent {TenantId=TenantId,CallId=Guid.NewGuid(),CallerUserId=Guid.NewGuid(),CalleeUserId=UserId,Kind="Audio",RingingAtUtc=DateTime.UtcNow.AddMinutes(-2)};
-        await MobileCommunicationPushConsumer.Handle(evt,null!,TimeProvider.System,default);
+        var evt = new CallStartedIntegrationEvent
+        {
+            TenantId = TenantId,
+            CallId = Guid.NewGuid(),
+            CallerUserId = Guid.NewGuid(),
+            CalleeUserId = UserId,
+            Kind = "Audio",
+            RingingAtUtc = DateTime.UtcNow.AddMinutes(-2),
+        };
+        await MobileCommunicationPushConsumer.Handle(evt, null!, TimeProvider.System, default);
     }
 
     [Fact]

@@ -49,17 +49,17 @@ public sealed class MobileAuthController(IMessageBus bus) : ControllerBase
         string? DeviceToken
     )
     {
-        public static MobileLoginResponse ForSelection(
-            Guid sessionRef,
-            IReadOnlyList<DiscoverOfficeView> offices
-        ) =>
+        public static MobileLoginResponse ForSelection(Guid sessionRef, IReadOnlyList<DiscoverOfficeView> offices) =>
             new(
                 true,
                 sessionRef,
                 offices
-                    .Select(office =>
-                        new MobileOfficeView(office.TenantId, office.TenantName, office.Subdomain, office.MfaRequired)
-                    )
+                    .Select(office => new MobileOfficeView(
+                        office.TenantId,
+                        office.TenantName,
+                        office.Subdomain,
+                        office.MfaRequired
+                    ))
                     .ToList(),
                 null,
                 null,
