@@ -139,6 +139,20 @@ public sealed class PayableReference : TenantEntity
         return Result.Success();
     }
 
+    /// <summary>Billing volvió a declarar cobrable una factura que había anulado o regresado a borrador (corrección
+    /// de estado por la oficina): el payable revocado vuelve a vigente con el saldo nuevo y la MISMA URL estable.
+    /// Solo lo llama Billing por la vía de "asegurar payable", que ya descarta las facturas anuladas.</summary>
+    public Result Reinstate(Money amount, DateTime nowUtc)
+    {
+        if (amount.AmountCents <= 0)
+            return Result.Failure(new Error("PayableReference.InvalidAmount", "Amount must be greater than zero."));
+        RevokedAtUtc = null;
+        SettledAtUtc = null;
+        Amount = amount;
+        AmountUpdatedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
     /// <summary>Marca el payable como cobrado. Idempotente: el evento puede reentregarse.</summary>
     public void Settle(DateTime nowUtc)
     {

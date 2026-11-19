@@ -1,4 +1,5 @@
-﻿using BuildingBlocks.Common;
+﻿using System.Diagnostics;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -6,6 +7,7 @@ using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
+using Microsoft.Extensions.Logging;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -37,11 +39,16 @@ public static class InvoiceSentConsumer
         NotificationDispatcher dispatcher,
         IRecipientResolver recipientResolver,
         ICorrelationContext correlation,
+        ILogger<InvoiceSentToCustomerIntegrationEvent> logger,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            // Diagnóstico de latencia: cuánto pasó desde que Billing publicó (cola + otros eventos) y cuánto tarda cada paso propio.
+            var consumedLag = DateTime.UtcNow - evt.OccurredOn;
+            var timer = Stopwatch.StartNew();
+
             // T7.3: respeta ContactPolicy.Email del cliente si viene mapeado. Publicaciones
             // viejas sin CustomerId pasan directo (null → true), igual que un cliente sin fila.
             var emailAllowed = await CustomerContactPolicyFilter.AllowsForOptionalCustomerAsync(
@@ -73,6 +80,7 @@ public static class InvoiceSentConsumer
                         ct
                     )
                 ).EnsureRendered(EventKey);
+                var renderedMs = timer.ElapsedMilliseconds;
 
                 await gateway.QueueEmailAsync(
                     render.ToDispatchRequest(
@@ -86,6 +94,14 @@ public static class InvoiceSentConsumer
                         AttachmentFileIds = evt.PdfFileId is { } pdf ? [pdf] : null,
                     },
                     ct
+                );
+
+                logger.LogInformation(
+                    "Invoice email {InvoiceNumber} handed to Postmaster: Billing→Notification lag {LagMs} ms, Scribe render {RenderMs} ms, total in Notification {TotalMs} ms.",
+                    evt.InvoiceNumber,
+                    (long)consumedLag.TotalMilliseconds,
+                    renderedMs,
+                    timer.ElapsedMilliseconds
                 );
             }
 

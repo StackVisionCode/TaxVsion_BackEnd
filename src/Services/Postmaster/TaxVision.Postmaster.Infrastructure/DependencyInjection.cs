@@ -312,13 +312,15 @@ public static class DependencyInjection
             .AddOptions<ConnectorsClientOptions>()
             .Bind(configuration.GetSection(ConnectorsClientOptions.SectionName));
 
-        // Fase 13 (hardening) — mismo timeout 30s fijo que los clientes de CloudStorage/Auth arriba.
+        // El tope NO es el de los otros clientes (30 s): Connectors espera hasta 30 s al proveedor del buzón y Postmaster
+        // tiene que aguantar más que eso, o se rinde antes de que llegue el error que dispara el respaldo por el correo
+        // del sistema (ver ConnectorsClientOptions.TimeoutSeconds).
         services.AddHttpClient<IConnectedMailboxSender, ConnectorsSendClient>(
             (sp, http) =>
             {
                 var opt = sp.GetRequiredService<IOptions<ConnectorsClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
-                http.Timeout = TimeSpan.FromSeconds(30);
+                http.Timeout = opt.EffectiveTimeout;
             }
         );
     }

@@ -152,6 +152,12 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaidIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
+    // Cualquier cambio de estado de la factura → Communication lo relaya por socket para que la lista de la oficina se
+    // actualice sin recargar (billing.invoice.status_changed.v1).
+    options
+        .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceStatusChangedIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
     // Cobro que no se pudo aplicar (factura anulada, desconocida, otra moneda) → UnappliedPayment.
     options
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoicePaymentRejectedIntegrationEvent>()

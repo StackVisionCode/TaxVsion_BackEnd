@@ -922,6 +922,26 @@ public static class NotificationCatalog
             NotificationAction.Pay
         ),
         Entry(
+            NotificationKinds.BillingInvoicePaid,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ByPermission,
+            InApp,
+            false,
+            "invoice",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.BillingInvoicePaymentRejected,
+            NotificationCatalogCategory.Billing,
+            NotificationPriority.High,
+            NotificationRecipientPolicy.ByPermission,
+            InApp,
+            false,
+            "invoice",
+            NotificationAction.Review
+        ),
+        Entry(
             NotificationKinds.DocumentsGenerationFailed,
             NotificationCatalogCategory.DocumentsStorage,
             NotificationPriority.High,

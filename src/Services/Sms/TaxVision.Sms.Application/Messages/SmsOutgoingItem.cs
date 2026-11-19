@@ -24,12 +24,14 @@ public sealed record SmsOutgoingItem(
     /// <summary>Un ítem inválido falla solo: no aborta el lote.</summary>
     public static Result<SmsOutgoingItem> Prepare(SmsSendItemDto item, Guid tenantId, DateTime nowUtc)
     {
-        if (item.CustomerId == Guid.Empty)
-            return Result.Failure<SmsOutgoingItem>(SmsErrors.InvalidCustomer);
-
+        // El destino se valida primero: un ítem sin cliente es un número escrito a mano (el handler ya le derivó un id);
+        // si llega vacío aquí es porque el número no es válido y eso es lo que hay que reportar.
         var phone = PhoneE164.Create(item.To);
         if (phone.IsFailure)
             return Result.Failure<SmsOutgoingItem>(SmsErrors.InvalidDestination);
+
+        if (item.CustomerId == Guid.Empty)
+            return Result.Failure<SmsOutgoingItem>(SmsErrors.InvalidCustomer);
 
         var body = SmsBody.Create(item.Message);
         if (body.IsFailure)

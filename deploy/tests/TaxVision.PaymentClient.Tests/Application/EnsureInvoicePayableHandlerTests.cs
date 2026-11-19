@@ -103,14 +103,43 @@ public sealed class EnsureInvoicePayableHandlerTests
         Assert.True(payable.IsSettled);
     }
 
+    [Fact]
+    public async Task Ensure_WhenRevokedAndTheOfficeAsksToReinstate_ReopensWithTheNewBalance()
+    {
+        // La oficina corrigió el estado (anulada o devuelta a borrador → cobrable otra vez): Billing lo pide a propósito.
+        var payable = CreatePayable(150000L);
+        payable.Settle(DateTime.UtcNow.AddHours(-2));
+        payable.Revoke(DateTime.UtcNow.AddHours(-1));
+
+        var result = await Ensure(payable, null, new FakePayments(), amountCents: 90000L, reinstate: true);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(payable.IsRevoked);
+        Assert.False(payable.IsSettled);
+        Assert.Equal(90000L, payable.Amount.AmountCents);
+    }
+
+    [Fact]
+    public async Task Ensure_WhenRevokedWithoutTheExplicitFlag_NeverResurrectsAVoidedInvoice()
+    {
+        // Una orden tardía del pipeline (no pedida por la oficina) no puede reabrir un cobro de una factura anulada.
+        var payable = CreatePayable(150000L);
+        payable.Revoke(DateTime.UtcNow.AddHours(-1));
+
+        await Ensure(payable, null, new FakePayments(), amountCents: 90000L, reinstate: false);
+
+        Assert.True(payable.IsRevoked);
+    }
+
     private static Task<BuildingBlocks.Results.Result<EnsureInvoicePayableResponse>> Ensure(
         PayableReference payable,
         PaymentLink? link,
         FakePayments payments,
-        long amountCents
+        long amountCents,
+        bool reinstate = false
     ) =>
         EnsureInvoicePayableHandler.Handle(
-            new EnsureInvoicePayableCommand(TenantId, amountCents, "USD", InvoiceId),
+            new EnsureInvoicePayableCommand(TenantId, amountCents, "USD", InvoiceId, null, reinstate),
             new FakePayables(payable),
             new FakeLinks { Active = link },
             payments,

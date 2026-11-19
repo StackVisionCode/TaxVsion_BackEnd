@@ -25,26 +25,26 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var userEmailDirectoryRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IUserEmailDirectoryRepository>(serviceScope.ServiceProvider);
             var customerPortalAccountProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.ICustomerPortalAccountProjectionRepository>(serviceScope.ServiceProvider);
             var tenantOwnerProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.ITenantOwnerProjectionRepository>(serviceScope.ServiceProvider);
-            var userEmailDirectoryRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IUserEmailDirectoryRepository>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var notificationRecipientPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.INotificationRecipientPermissionsProjectionRepository>(serviceScope.ServiceProvider);
             var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Notification.Application.Authorization.Abstractions.IAuthzUserPermissionsProjectionRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var authzUserPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Authorization.Abstractions.IAuthzUserPermissionsProjectionRepository>(serviceScope.ServiceProvider);
+            var pushDeviceTokenRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IPushDeviceTokenRepository>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
-            var pushDeviceTokenRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IPushDeviceTokenRepository>(serviceScope.ServiceProvider);
+            var notificationRecipientPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.INotificationRecipientPermissionsProjectionRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var userOffboardedIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardedIntegrationEvent)context.Envelope.Message;
 

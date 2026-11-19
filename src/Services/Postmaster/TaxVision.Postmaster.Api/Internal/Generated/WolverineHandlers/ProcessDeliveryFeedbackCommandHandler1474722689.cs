@@ -24,7 +24,6 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var suppressionListRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Suppression.ISuppressionListRepository>(serviceScope.ServiceProvider);
             var unmatchedDeliveryFeedbackRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Feedback.IUnmatchedDeliveryFeedbackRepository>(serviceScope.ServiceProvider);
             var deliveryFeedbackReceiptRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackReceiptRepository>(serviceScope.ServiceProvider);
@@ -45,6 +44,7 @@ namespace Internal.Generated.WolverineHandlers
             var deliveryFeedbackCapabilities = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackCapabilities>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var processDeliveryFeedbackCommand = (TaxVision.Postmaster.Application.Feedback.Commands.ProcessDeliveryFeedback.ProcessDeliveryFeedbackCommand)context.Envelope.Message;
 

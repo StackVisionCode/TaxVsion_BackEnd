@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
@@ -126,6 +127,7 @@ internal static class MailboxLaneSender
         CancellationToken ct
     )
     {
+        var mailboxTimer = Stopwatch.StartNew();
         var sendResult = await mailboxSender.SendAsync(
             send.Message,
             send.Content,
@@ -136,6 +138,16 @@ internal static class MailboxLaneSender
             send.Attachments,
             send.InlineAssets,
             ct
+        );
+        // Diagnóstico de latencia: lo que tarda el buzón de la oficina (Connectors → Gmail/Microsoft), con adjuntos y todo.
+        logger.LogInformation(
+            "Office mailbox call for SentMessage {SentMessageId} took {ElapsedMs} ms (success={Success}, failure={Failure}, attachments={Attachments}, queued {QueuedAgoMs} ms ago).",
+            send.Message.Id,
+            mailboxTimer.ElapsedMilliseconds,
+            sendResult.Success,
+            sendResult.MailboxFailure,
+            send.Attachments.Count,
+            (long)(DateTime.UtcNow - send.Message.QueuedAtUtc).TotalMilliseconds
         );
 
         // Connectors rechazó por su cupo por cuenta (429): no salió, se difiere igual que en SMTP.

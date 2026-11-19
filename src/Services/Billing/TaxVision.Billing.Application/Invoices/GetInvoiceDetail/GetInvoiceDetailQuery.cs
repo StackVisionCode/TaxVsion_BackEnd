@@ -36,7 +36,12 @@ public sealed record InvoicePaymentEntry(
     string Method,
     DateTime PaidAtUtc,
     Guid RecordedByUserId,
-    long ExceedsDueCents
+    long ExceedsDueCents,
+    // Pago revertido por una corrección de estado: sigue en el historial pero ya no cuenta para lo pagado.
+    DateTime? ReversedAtUtc = null,
+    string? ReversalReason = null,
+    // Era un cobro online: revertirlo no lo devuelve al cliente, hay que reembolsarlo en el proveedor.
+    bool NeedsProviderRefund = false
 );
 
 public sealed record InvoiceDetailResponse(
@@ -72,7 +77,10 @@ public sealed record InvoiceDetailResponse(
     /// <summary>Pagos aplicados, más reciente primero.</summary>
     IReadOnlyList<InvoicePaymentEntry>? Payments = null,
     /// <summary>Lo pagado por encima del total (0 si no hay sobrepago).</summary>
-    long OverpaidCents = 0
+    long OverpaidCents = 0,
+    /// <summary>Estados a los que la oficina puede CORREGIR esta factura a mano (cualquiera menos el actual; ninguno si
+    /// nunca se emitió). El frontend los ofrece solo con el permiso <c>invoicing.status.override</c>.</summary>
+    IReadOnlyList<string>? OverridableStatuses = null
 );
 
 public static class GetInvoiceDetailHandler
@@ -134,7 +142,10 @@ public static class GetInvoiceDetailHandler
                 p.Method.ToString(),
                 p.PaidAtUtc,
                 p.RecordedByUserId,
-                p.ExceedsDueCents
+                p.ExceedsDueCents,
+                p.ReversedAtUtc,
+                p.ReversalReason,
+                p.ReversedAtUtc is not null && p.NeedsProviderRefund
             ))
             .ToList();
 
@@ -177,8 +188,22 @@ public static class GetInvoiceDetailHandler
                 invoice.PaymentInstructions,
                 invoice.InvoiceFooter,
                 payments,
-                Math.Max(0, invoice.AmountPaid.AmountCents - invoice.Total.AmountCents)
+                Math.Max(0, invoice.AmountPaid.AmountCents - invoice.Total.AmountCents),
+                OverridableStatusesFor(invoice)
             )
         );
+    }
+
+    /// <summary>Destinos de una corrección de estado: cualquiera de los elegibles menos el actual. Una factura que nunca
+    /// se emitió no tiene número y se emite, no se corrige.</summary>
+    internal static IReadOnlyList<string> OverridableStatusesFor(Domain.Invoices.Invoice invoice)
+    {
+        if (invoice.DeletedAtUtc is not null || invoice.InvoiceNumber is null)
+            return [];
+
+        return Enum.GetValues<Domain.ValueObjects.InvoiceStatus>()
+            .Where(status => status != invoice.Status && Domain.Invoices.Invoice.IsOverridableTarget(status))
+            .Select(status => status.ToString())
+            .ToList();
     }
 }

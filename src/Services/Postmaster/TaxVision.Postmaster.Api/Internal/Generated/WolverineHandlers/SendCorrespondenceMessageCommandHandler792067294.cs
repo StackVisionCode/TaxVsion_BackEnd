@@ -23,6 +23,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for TaxVision.Postmaster.Application.Abstractions.IConnectedMailboxSender is an 'opaque' lambda factory with the Transient lifetime and requires service location
@@ -33,7 +34,6 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Postmaster.Application.Sending.IOutboundAttachmentFetcher is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var outboundAttachmentFetcher = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Sending.IOutboundAttachmentFetcher>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var sendCorrespondenceMessageCommand = (TaxVision.Postmaster.Application.Sending.Commands.SendCorrespondenceMessage.SendCorrespondenceMessageCommand)context.Envelope.Message;
 

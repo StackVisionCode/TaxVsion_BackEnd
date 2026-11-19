@@ -16,7 +16,9 @@ public interface IInvoicePaymentLinkClient
         Guid invoiceId,
         Guid tenantId,
         string? invoiceNumber = null,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        // Solo la corrección manual de estado lo pide: reinstala un payable revocado (anulada o devuelta a borrador).
+        bool reinstate = false
     );
 }
 

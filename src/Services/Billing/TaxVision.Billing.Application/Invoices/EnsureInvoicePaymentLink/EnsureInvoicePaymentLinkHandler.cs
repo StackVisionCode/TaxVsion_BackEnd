@@ -41,7 +41,8 @@ public static class EnsureInvoicePaymentLinkHandler
                 invoice.Id,
                 command.TenantId,
                 invoice.InvoiceNumber,
-                ct
+                ct,
+                command.Reinstate
             );
             if (ensured.IsFailure)
                 throw new InvalidOperationException(

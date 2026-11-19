@@ -247,7 +247,7 @@
                 "messages"
               ]
             },
-            "description": "Requiere sms.send. El proveedor activo lo define Sms:DefaultProvider (fake/infobip/twilio…).",
+            "description": "Requiere sms.send. El proveedor activo lo define Sms:DefaultProvider (fake/infobip/twilio…). customerId es OPCIONAL: si se omite (o va null) el destinatario es un número escrito a mano (to en E.164) y el backend le deriva un id estable del teléfono; con customerId se aplica la cartera/política de contacto del cliente.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"messages\": [\n    {\n      \"customerId\": \"22222222-2222-2222-2222-222222222222\",\n      \"to\": \"+18095551234\",\n      \"message\": \"Hola desde TaxVision\",\n      \"idempotencyKey\": \"pm-sms-1\",\n      \"sourceContext\": \"postman\"\n    }\n  ]\n}",
@@ -1296,6 +1296,79 @@
                 "{{invoiceId}}"
               ]
             }
+          },
+          "response": []
+        },
+        {
+          "name": "Change invoice status (manual, matriz legal: Issued <-> Sent)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toStatus\": \"Sent\",\n  \"reason\": \"Enviada por correo aparte\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{gateway}}/billing/invoices/{{invoiceId}}/status",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoices",
+                "{{invoiceId}}",
+                "status"
+              ]
+            },
+            "description": "Cambio de estado MANUAL normal (permiso invoicing.manage): solo las transiciones legales de la matriz del dominio (hoy Issued <-> Sent). Cada cambio queda en el historial de la factura."
+          },
+          "response": []
+        },
+        {
+          "name": "Override invoice status (cualquier estado, con motivo)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"toStatus\": \"Draft\",\n  \"reason\": \"Cobrada por error, se devuelve a borrador\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{gateway}}/billing/invoices/{{invoiceId}}/status/override",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoices",
+                "{{invoiceId}}",
+                "status",
+                "override"
+              ]
+            },
+            "description": "CORRECCION de estado a gusto de la oficina (permiso invoicing.status.override: TenantAdmin por su bundle, delegable, fuera del bundle del empleado). Cualquier estado -> Draft | Issued | Sent | Paid | Voided, con motivo obligatorio (minimo 3 caracteres). PartiallyPaid no se elige: sale de los pagos. Volver a sin cobrar (Draft/Issued/Sent) REVIERTE los pagos vigentes (quedan en el historial con quien y por que, el saldo vuelve al total y el recibo se anula); la respuesta lista en reversedPayments los cobros ONLINE, que hay que reembolsar en el proveedor (needsProviderRefund=true). Draft conserva el numero de factura y retira el enlace de cobro; Paid registra un pago manual por el saldo; Voided conserva los pagos. Mismo estado = no-op (changed=false). Una factura que nunca se emitio (sin numero) devuelve 409/400 Billing.Invoice.NeverIssued: se emite, no se corrige."
           },
           "response": []
         },

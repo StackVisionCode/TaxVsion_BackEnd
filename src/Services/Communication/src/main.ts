@@ -46,6 +46,7 @@ import { bindConnectorsConsumers } from './application/event-handlers/connectors
 import { bindCorrespondenceConsumers } from './application/event-handlers/correspondence-consumers.js';
 import { bindCampaignConsumers } from './application/event-handlers/campaign-consumers.js';
 import { bindWalletConsumers } from './application/event-handlers/wallet-consumers.js';
+import { bindBillingConsumers } from './application/event-handlers/billing-consumers.js';
 import { bindSmsConsumers } from './application/event-handlers/sms-consumers.js';
 import { bindTranscriptConsumers } from './application/event-handlers/transcript-consumers.js';
 import { bindSubscriptionConsumers } from './application/event-handlers/subscription-consumers.js';
@@ -451,6 +452,7 @@ async function main(): Promise<void> {
   });
   bindCampaignConsumers(consumers.register.bind(consumers), { emitter });
   bindWalletConsumers(consumers.register.bind(consumers), { emitter });
+  bindBillingConsumers(consumers.register.bind(consumers), { emitter });
   bindSmsConsumers(consumers.register.bind(consumers), { emitter });
   bindCalendarConsumers(consumers.register.bind(consumers), {
     meetings: container.meetings,

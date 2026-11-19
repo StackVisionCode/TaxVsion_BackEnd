@@ -126,6 +126,12 @@ public sealed class InvoicePaymentConfiguration : IEntityTypeConfiguration<Invoi
         b.Property(p => p.PaidAtUtc).IsRequired();
         b.Property(p => p.RecordedByUserId);
         b.Property(p => p.ExceedsDueCents).IsRequired();
+        // Corrección de estado: un pago revertido no se borra, queda en el historial con quién y por qué.
+        b.Property(p => p.ReversedAtUtc);
+        b.Property(p => p.ReversedByUserId);
+        b.Property(p => p.ReversalReason).HasMaxLength(500);
+        b.Ignore(p => p.IsActive);
+        b.Ignore(p => p.NeedsProviderRefund);
         b.HasIndex(p => new
             {
                 p.InvoiceId,

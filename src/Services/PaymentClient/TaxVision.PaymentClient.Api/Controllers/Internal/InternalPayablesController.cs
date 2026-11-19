@@ -34,7 +34,8 @@ public sealed class InternalPayablesController(
         long AmountCents,
         string Currency,
         string InvoiceId,
-        string? Description = null
+        string? Description = null,
+        bool Reinstate = false
     );
 
     public sealed record EnsureInvoicePayableApiResponse(Guid PayableId, string Reference, string CheckoutUrl);
@@ -56,7 +57,8 @@ public sealed class InternalPayablesController(
                 request.AmountCents,
                 request.Currency,
                 request.InvoiceId,
-                request.Description
+                request.Description,
+                request.Reinstate
             ),
             ct
         );

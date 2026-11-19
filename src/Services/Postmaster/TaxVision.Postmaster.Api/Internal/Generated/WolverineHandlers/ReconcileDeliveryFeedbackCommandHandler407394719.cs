@@ -23,6 +23,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var sentMessageRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Sending.ISentMessageRepository>(serviceScope.ServiceProvider);
             
             /*
@@ -38,7 +39,6 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Postmaster.Application.Feedback.IEngagementFeedbackPoller is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var deliveryFeedbackCapabilities = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Postmaster.Application.Feedback.IDeliveryFeedbackCapabilities>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var reconcileDeliveryFeedbackCommand = (TaxVision.Postmaster.Application.Feedback.Commands.ReconcileDeliveryFeedback.ReconcileDeliveryFeedbackCommand)context.Envelope.Message;
 
