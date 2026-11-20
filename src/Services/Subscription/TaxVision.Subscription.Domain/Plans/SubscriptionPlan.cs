@@ -317,6 +317,12 @@ public sealed class SubscriptionPlan : TenantlessAggregateRoot
         return added.IsFailure ? Result.Failure<SubscriptionPlanVersion>(added.Error) : Result.Success(version);
     }
 
+    /// <summary>
+    /// Número de la próxima edición: la mayor existente + 1, no la publicada + 1. Por encima de la publicada puede
+    /// haber ediciones heredadas o borradores, y repetir su número rompe el índice único (PlanId, VersionNumber).
+    /// </summary>
+    private int NextVersionNumber() => _versions.Count == 0 ? 1 : _versions.Max(version => version.VersionNumber) + 1;
+
     public Result ReviseModules(IReadOnlyCollection<string> modules, Guid actorUserId, DateTime nowUtc)
     {
         var published = FindPublishedVersion();
@@ -325,7 +331,7 @@ public sealed class SubscriptionPlan : TenantlessAggregateRoot
 
         var draft = SubscriptionPlanVersion.Create(
             Id,
-            published.VersionNumber + 1,
+            NextVersionNumber(),
             published.TrialDaysDefault,
             published.SupportedBillingCycles.ToArray()
         );
@@ -528,7 +534,7 @@ public sealed class SubscriptionPlan : TenantlessAggregateRoot
 
         var draft = SubscriptionPlanVersion.Create(
             Id,
-            published.VersionNumber + 1,
+            NextVersionNumber(),
             published.TrialDaysDefault,
             published.SupportedBillingCycles.ToArray()
         );
@@ -596,7 +602,7 @@ public sealed class SubscriptionPlan : TenantlessAggregateRoot
 
         var draft = SubscriptionPlanVersion.Create(
             Id,
-            published.VersionNumber + 1,
+            NextVersionNumber(),
             published.TrialDaysDefault,
             published.SupportedBillingCycles.ToArray()
         );
@@ -697,7 +703,7 @@ public sealed class SubscriptionPlan : TenantlessAggregateRoot
 
         var draft = SubscriptionPlanVersion.Create(
             Id,
-            published.VersionNumber + 1,
+            NextVersionNumber(),
             published.TrialDaysDefault,
             target.Prices.Keys.Order().ToArray()
         );

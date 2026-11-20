@@ -17,40 +17,34 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                 table: "InvoicePayments",
                 type: "nvarchar(500)",
                 maxLength: 500,
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "ReversedAtUtc",
                 schema: "billing",
                 table: "InvoicePayments",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<Guid>(
                 name: "ReversedByUserId",
                 schema: "billing",
                 table: "InvoicePayments",
                 type: "uniqueidentifier",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "ReversalReason",
-                schema: "billing",
-                table: "InvoicePayments");
+            migrationBuilder.DropColumn(name: "ReversalReason", schema: "billing", table: "InvoicePayments");
 
-            migrationBuilder.DropColumn(
-                name: "ReversedAtUtc",
-                schema: "billing",
-                table: "InvoicePayments");
+            migrationBuilder.DropColumn(name: "ReversedAtUtc", schema: "billing", table: "InvoicePayments");
 
-            migrationBuilder.DropColumn(
-                name: "ReversedByUserId",
-                schema: "billing",
-                table: "InvoicePayments");
+            migrationBuilder.DropColumn(name: "ReversedByUserId", schema: "billing", table: "InvoicePayments");
         }
     }
 }

@@ -198,7 +198,8 @@ public sealed class Trip : TenantEntity
 
     public bool PurgeCoordinates(DateTime nowUtc)
     {
-        if (CoordinatesPurgedAtUtc.HasValue) return false;
+        if (CoordinatesPurgedAtUtc.HasValue)
+            return false;
         LastLatitude = 0;
         LastLongitude = 0;
         HasDistanceAnchor = false;

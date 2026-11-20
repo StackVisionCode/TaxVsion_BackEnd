@@ -22,6 +22,59 @@ namespace TaxVision.Mobile.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BuildingBlocks.TenantTimeZones.TenantTimeZoneProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("SourceVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantTimeZoneProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Mobile.Domain.Projections.RolePermissionsProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PermissionCodesJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("PermissionsVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RoleName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Id")
+                        .IsUnique();
+
+                    b.ToTable("RolePermissionsProjections", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Mobile.Domain.Projections.UserPermissionsProjection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -64,6 +117,40 @@ namespace TaxVision.Mobile.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("UserPermissionsProjections", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Mobile.Domain.RateLimiting.TenantPlanCodeProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EnabledModulesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("nvarchar(max)")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<long>("RevisionNumber")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .IsUnique();
+
+                    b.ToTable("TenantPlanCodeProjections", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Mobile.Domain.Trips.MileageRate", b =>

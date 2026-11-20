@@ -100,7 +100,8 @@ public static class InvoicePaidStaffConsumer
             : $"{who} pagó la factura {evt.InvoiceNumber} ({amount}) {how}.";
     }
 
-    internal static string FormatAmount(long cents, string currency) => $"{cents / 100m:N2} {currency.ToUpperInvariant()}";
+    internal static string FormatAmount(long cents, string currency) =>
+        $"{cents / 100m:N2} {currency.ToUpperInvariant()}";
 }
 
 /// <summary>
@@ -133,7 +134,8 @@ public static class InvoicePaymentRejectedStaffConsumer
 
             var amount = InvoicePaidStaffConsumer.FormatAmount(evt.AmountCents, evt.Currency);
             var title = $"Cobro de {amount} sin aplicar";
-            var body = $"Se cobró {amount} pero no se pudo aplicar a su factura ({evt.Reason}). Resuélvelo en Facturación.";
+            var body =
+                $"Se cobró {amount} pero no se pudo aplicar a su factura ({evt.Reason}). Resuélvelo en Facturación.";
 
             foreach (var userId in recipients)
             {

@@ -51,5 +51,7 @@ public static class CatalogRevisionCatalog
         new R3PlanDescriptionsRevision(),
         new FinancialInsightsModuleRevision(),
         new FinancialInsightsLegacyEditionsRevision(),
+        new MileageModuleRevision(),
+        new MileageLegacyEditionsRevision(),
     ];
 }

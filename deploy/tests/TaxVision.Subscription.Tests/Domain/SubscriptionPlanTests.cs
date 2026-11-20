@@ -278,6 +278,51 @@ public sealed class SubscriptionPlanTests
         Assert.Equal("Plan.NoPublishedVersion", result.Error.Code);
     }
 
+    // Enterprise local: v10 publicada y v11 heredada (Financial Insights). Revisar no puede volver a usar el 11.
+    [Theory]
+    [InlineData("modules")]
+    [InlineData("prices")]
+    [InlineData("entitlements")]
+    [InlineData("terms")]
+    public void A_revision_after_a_legacy_edition_takes_the_next_free_version_number(string operation)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var plan = PlanTestData.PublishedPlan("enterprise-legacy");
+        var old = plan.GetPublishedVersion()!;
+        PlanTestData.PublishNewEdition(plan, 99m, seatsMax: 3);
+        var legacy = plan.AddLegacyEditionWithModules(old.Id, ["mileage"], Guid.Empty, nowUtc);
+        Assert.True(legacy.IsSuccess, legacy.IsFailure ? legacy.Error.Code : null);
+        var highest = plan.Versions.Max(version => version.VersionNumber);
+
+        var result = operation switch
+        {
+            "modules" => plan.ReviseModules(["documents"], Guid.Empty, nowUtc),
+            "prices" => plan.RevisePrices(109m, 1090m, Guid.Empty, nowUtc),
+            "entitlements" => plan.AddMissingEntitlements(
+                [new EntitlementSeed("test.new_key", EntitlementValueType.Int, "1")],
+                Guid.Empty,
+                nowUtc
+            )
+                is { IsSuccess: true }
+                ? BuildingBlocks.Results.Result.Success()
+                : BuildingBlocks.Results.Result.Failure(new BuildingBlocks.Results.Error("test", "failed")),
+            _ => plan.ReviseCommercialTerms(
+                CommercialTerms
+                    .Of(plan.GetPublishedVersion()!)
+                    .WithPrices(Money.Create(119m, "USD").Value, Money.Create(1190m, "USD").Value),
+                Guid.Empty,
+                nowUtc
+            )
+                is { IsSuccess: true }
+                ? BuildingBlocks.Results.Result.Success()
+                : BuildingBlocks.Results.Result.Failure(new BuildingBlocks.Results.Error("test", "failed")),
+        };
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        Assert.Equal(highest + 1, plan.GetPublishedVersion()!.VersionNumber);
+        Assert.Equal(plan.Versions.Count, plan.Versions.Select(version => version.VersionNumber).Distinct().Count());
+    }
+
     private static SubscriptionPlan CreatePlan(string code) =>
         SubscriptionPlan
             .Create(PlanCode.Create(code).Value, code, $"{code} plan", PlanTier.Starter, Guid.Empty, DateTime.UtcNow)

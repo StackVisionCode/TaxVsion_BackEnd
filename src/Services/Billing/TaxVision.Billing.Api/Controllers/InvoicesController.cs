@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Billing.Api.Authorization;
 using TaxVision.Billing.Application.Invoices.ChangeInvoiceStatus;
-using TaxVision.Billing.Application.Invoices.OverrideInvoiceStatus;
 using TaxVision.Billing.Application.Invoices.CreateInvoiceDraft;
 using TaxVision.Billing.Application.Invoices.DeleteInvoice;
 using TaxVision.Billing.Application.Invoices.EditInvoice;
@@ -16,6 +15,7 @@ using TaxVision.Billing.Application.Invoices.GetInvoice;
 using TaxVision.Billing.Application.Invoices.GetInvoiceDetail;
 using TaxVision.Billing.Application.Invoices.IssueInvoice;
 using TaxVision.Billing.Application.Invoices.ListInvoices;
+using TaxVision.Billing.Application.Invoices.OverrideInvoiceStatus;
 using TaxVision.Billing.Application.Invoices.RecordManualPayment;
 using TaxVision.Billing.Application.Invoices.ReissueInvoice;
 using TaxVision.Billing.Application.Invoices.SendInvoiceToCustomer;
@@ -311,7 +311,14 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
 
         var result = await bus.InvokeAsync<Result<OverrideInvoiceStatusResult>>(
-            new OverrideInvoiceStatusCommand(tenantId, invoiceId, request.ToStatus, request.Reason, actorId, canViewAll),
+            new OverrideInvoiceStatusCommand(
+                tenantId,
+                invoiceId,
+                request.ToStatus,
+                request.Reason,
+                actorId,
+                canViewAll
+            ),
             ct
         );
 

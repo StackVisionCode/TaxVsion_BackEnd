@@ -71,7 +71,12 @@ public static class OverrideInvoiceStatusHandler
                 new Error("Billing.Invoice.NotFound", "Invoice does not exist.")
             );
 
-        var overridden = invoice.OverrideStatus(target, command.Reason, clock.GetUtcNow().UtcDateTime, command.ActorUserId);
+        var overridden = invoice.OverrideStatus(
+            target,
+            command.Reason,
+            clock.GetUtcNow().UtcDateTime,
+            command.ActorUserId
+        );
         if (overridden.IsFailure)
             return Result.Failure<OverrideInvoiceStatusResult>(overridden.Error);
 
@@ -89,19 +94,35 @@ public static class OverrideInvoiceStatusHandler
         switch (invoice.Status)
         {
             case InvoiceStatus.Voided:
-                await PublishPayableRevokedAsync(bus, correlation, command.TenantId, invoice.Id, invoice.InvoiceNumber, command.Reason);
+                await PublishPayableRevokedAsync(
+                    bus,
+                    correlation,
+                    command.TenantId,
+                    invoice.Id,
+                    invoice.InvoiceNumber,
+                    command.Reason
+                );
                 // El PDF sale con la marca de agua "Void".
                 await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, invoice.Id));
                 break;
             case InvoiceStatus.Draft:
                 // Un borrador no se puede pagar: se retira el cobro (la reemisión lo reinstala con la misma URL).
-                await PublishPayableRevokedAsync(bus, correlation, command.TenantId, invoice.Id, invoice.InvoiceNumber, ReopenedAsDraftReason);
+                await PublishPayableRevokedAsync(
+                    bus,
+                    correlation,
+                    command.TenantId,
+                    invoice.Id,
+                    invoice.InvoiceNumber,
+                    ReopenedAsDraftReason
+                );
                 break;
             default:
                 // Cobrable otra vez (o pagada): asegura el cobro con el saldo vigente y, a continuación, regenera el PDF.
                 // Reinstate: la oficina la volvió a dejar cobrable a propósito; si su cobro estaba revocado (anulada o
                 // devuelta a borrador) se reinstala con la misma URL estable.
-                await bus.PublishAsync(new EnsureInvoicePaymentLinkCommand(command.TenantId, invoice.Id, Reinstate: true));
+                await bus.PublishAsync(
+                    new EnsureInvoicePaymentLinkCommand(command.TenantId, invoice.Id, Reinstate: true)
+                );
                 break;
         }
 
@@ -119,7 +140,13 @@ public static class OverrideInvoiceStatusHandler
             .ToList();
 
         return Result.Success(
-            new OverrideInvoiceStatusResult(invoice.Id, invoice.Status.ToString(), true, reversed, outcome.PaymentRecorded)
+            new OverrideInvoiceStatusResult(
+                invoice.Id,
+                invoice.Status.ToString(),
+                true,
+                reversed,
+                outcome.PaymentRecorded
+            )
         );
     }
 

@@ -94,8 +94,15 @@ public static class SubscriptionModuleCatalogSeeder
         CancellationToken ct
     )
     {
-        // Upsert catalog definitions even when the catalog is already populated so newly
-        // introduced commercial modules become available to existing installations.
+        var existingCount = await db.Modules.CountAsync(ct);
+        if (existingCount > 0 && options.ModuleCatalog.SeedOnlyIfEmpty)
+        {
+            logger.LogInformation(
+                "Module catalog already present ({ModuleCount} modules); seeder is passive.",
+                existingCount
+            );
+            return;
+        }
 
         foreach (var definition in Definitions)
         {

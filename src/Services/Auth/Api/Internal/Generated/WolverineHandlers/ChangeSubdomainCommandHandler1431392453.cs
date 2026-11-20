@@ -29,8 +29,8 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
-            var tenantResolutionCache = new TaxVision.Auth.Infrastructure.Tenancy.TenantResolutionCache(_cacheService);
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantResolutionCache = new TaxVision.Auth.Infrastructure.Tenancy.TenantResolutionCache(_cacheService);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Auth.Infrastructure.Persistence.AuthDbContext authDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Auth.Infrastructure.Persistence.AuthDbContext.");

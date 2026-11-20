@@ -1,13 +1,13 @@
 ﻿using System.Diagnostics;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.BillingIntegrationEvents;
+using Microsoft.Extensions.Logging;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
-using Microsoft.Extensions.Logging;
 
 namespace TaxVision.Notification.Application.Consumers;
 

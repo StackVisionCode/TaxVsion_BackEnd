@@ -43,9 +43,16 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
     // Explicit ownership predicates protect tenant data even when called without a scoped tenant context.
     public async Task DeletePointsAsync(Guid tenant, Guid customer, Guid trip, CancellationToken ct)
     {
-        var points = await db.TripPoints.IgnoreQueryFilters()
-            .Where(x => tenant != Guid.Empty && customer != Guid.Empty && trip != Guid.Empty &&
-                x.TenantId == tenant && x.CustomerId == customer && x.TripId == trip)
+        var points = await db
+            .TripPoints.IgnoreQueryFilters()
+            .Where(x =>
+                tenant != Guid.Empty
+                && customer != Guid.Empty
+                && trip != Guid.Empty
+                && x.TenantId == tenant
+                && x.CustomerId == customer
+                && x.TripId == trip
+            )
             .ToListAsync(ct);
         db.TripPoints.RemoveRange(points);
     }

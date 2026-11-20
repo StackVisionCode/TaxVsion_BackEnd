@@ -39,6 +39,28 @@ public sealed class SubscriptionModuleCatalogSeederTests
     }
 
     [Fact]
+    public async Task A_new_install_sells_mileage_inside_enterprise_only()
+    {
+        await using var db = CreateContext();
+        await SeedAsync(db, seedOnlyIfEmpty: true);
+
+        await SubscriptionPlanCatalogSeeder.SeedAsync(db, CancellationToken.None);
+
+        var plans = await db
+            .Plans.Include(plan => plan.Versions)
+                .ThenInclude(version => version.Features)
+            .ToListAsync();
+        bool HasMileage(string code) =>
+            plans
+                .Single(plan => plan.Code.Value == code)
+                .GetPublishedVersion()!
+                .Features.Any(feature => feature.FeatureKey.Value == "module.mileage");
+        Assert.True(HasMileage("enterprise"));
+        Assert.False(HasMileage("pro"));
+        Assert.False(HasMileage("starter"));
+    }
+
+    [Fact]
     public async Task Explicit_reconciliation_restores_seeded_configuration()
     {
         await using var db = CreateContext();

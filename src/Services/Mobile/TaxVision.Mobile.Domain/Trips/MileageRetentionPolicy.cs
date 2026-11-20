@@ -6,6 +6,7 @@ namespace TaxVision.Mobile.Domain.Trips;
 public sealed class MileageRetentionPolicy : TenantEntity
 {
     private MileageRetentionPolicy() { }
+
     public int? RetentionDays { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
@@ -13,14 +14,20 @@ public sealed class MileageRetentionPolicy : TenantEntity
     {
         if (tenantId == Guid.Empty || retentionDays is <= 0 or > 3650)
             throw new ArgumentOutOfRangeException(nameof(retentionDays));
-        var policy = new MileageRetentionPolicy { Id = tenantId, RetentionDays = retentionDays, UpdatedAtUtc = nowUtc };
+        var policy = new MileageRetentionPolicy
+        {
+            Id = tenantId,
+            RetentionDays = retentionDays,
+            UpdatedAtUtc = nowUtc,
+        };
         policy.SetTenant(tenantId);
         return policy;
     }
 
     public void Update(int? retentionDays, DateTime nowUtc)
     {
-        if (retentionDays is <= 0 or > 3650) throw new ArgumentOutOfRangeException(nameof(retentionDays));
+        if (retentionDays is <= 0 or > 3650)
+            throw new ArgumentOutOfRangeException(nameof(retentionDays));
         RetentionDays = retentionDays;
         UpdatedAtUtc = nowUtc;
     }

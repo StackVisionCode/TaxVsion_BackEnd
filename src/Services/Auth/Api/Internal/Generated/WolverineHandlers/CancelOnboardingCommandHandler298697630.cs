@@ -24,7 +24,6 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Auth.Onboarding.Application.Abstractions.IGrowthOnboardingClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
@@ -34,6 +33,7 @@ namespace Internal.Generated.WolverineHandlers
             var tenantOnboardingRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Onboarding.Application.Abstractions.ITenantOnboardingRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var cancelOnboardingCommand = (TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands.CancelOnboardingCommand)context.Envelope.Message;
 

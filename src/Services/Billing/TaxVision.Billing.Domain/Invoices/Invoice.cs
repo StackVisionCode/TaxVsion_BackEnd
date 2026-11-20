@@ -672,11 +672,12 @@ public sealed class Invoice : AggregateRoot
     /// <summary>Estados a los que la oficina puede llevar una factura a mano. <c>PartiallyPaid</c> no: es consecuencia de
     /// los pagos, no una etiqueta que se elija.</summary>
     public static bool IsOverridableTarget(InvoiceStatus target) =>
-        target is InvoiceStatus.Draft
-            or InvoiceStatus.Issued
-            or InvoiceStatus.Sent
-            or InvoiceStatus.Paid
-            or InvoiceStatus.Voided;
+        target
+            is InvoiceStatus.Draft
+                or InvoiceStatus.Issued
+                or InvoiceStatus.Sent
+                or InvoiceStatus.Paid
+                or InvoiceStatus.Voided;
 
     /// <summary>
     /// CORRECCIÓN de estado a gusto de la oficina (cualquier estado → Draft/Issued/Sent/Paid/Voided), con motivo
@@ -779,7 +780,14 @@ public sealed class Invoice : AggregateRoot
             if (from is InvoiceStatus.Draft or InvoiceStatus.Voided)
             {
                 Status = InvoiceStatus.Issued;
-                RecordStatusChange(from, InvoiceStatus.Issued, StatusChangeTrigger.StatusOverride, why, actorUserId, nowUtc);
+                RecordStatusChange(
+                    from,
+                    InvoiceStatus.Issued,
+                    StatusChangeTrigger.StatusOverride,
+                    why,
+                    actorUserId,
+                    nowUtc
+                );
                 from = InvoiceStatus.Issued;
             }
 
@@ -811,7 +819,14 @@ public sealed class Invoice : AggregateRoot
                     last?.Method ?? PaymentMethod ?? ValueObjects.PaymentMethod.Other,
                     last?.PaidAtUtc ?? nowUtc
                 );
-                RecordStatusChange(from, InvoiceStatus.Paid, StatusChangeTrigger.StatusOverride, why, actorUserId, nowUtc);
+                RecordStatusChange(
+                    from,
+                    InvoiceStatus.Paid,
+                    StatusChangeTrigger.StatusOverride,
+                    why,
+                    actorUserId,
+                    nowUtc
+                );
                 RaisePaid(last?.Source);
             }
         }

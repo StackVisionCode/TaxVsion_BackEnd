@@ -22,8 +22,8 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var redisTokenReferenceStore = new TaxVision.Auth.Infrastructure.Security.RedisTokenReferenceStore(_connectionMultiplexer);
             var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
+            var redisTokenReferenceStore = new TaxVision.Auth.Infrastructure.Security.RedisTokenReferenceStore(_connectionMultiplexer);
             // The actual message body
             var resolveRegistrationTokenReferenceQuery = (TaxVision.Auth.Onboarding.Application.TokenReferences.Queries.ResolveRegistrationTokenReferenceQuery)context.Envelope.Message;
 

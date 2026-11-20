@@ -10,4 +10,11 @@ public interface IMobileProjectionRepository
         CancellationToken ct = default
     );
     void AddUserPermissions(UserPermissionsProjection projection);
+
+    Task<RolePermissionsProjection?> FindRolePermissionsAsync(
+        Guid tenantId,
+        Guid roleId,
+        CancellationToken ct = default
+    );
+    void AddRolePermissions(RolePermissionsProjection projection);
 }

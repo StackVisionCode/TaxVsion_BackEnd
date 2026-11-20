@@ -106,7 +106,9 @@ public sealed class OverrideInvoiceStatusHandlerTests
     {
         var bus = new FakeMessageBus();
 
-        await Assert.ThrowsAsync<TimeoutException>(() => RunAsync(PaidInvoice(InvoicePaymentSource.Manual), "Draft", bus, new FailingUnitOfWork()));
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            RunAsync(PaidInvoice(InvoicePaymentSource.Manual), "Draft", bus, new FailingUnitOfWork())
+        );
 
         Assert.Empty(bus.Published);
     }

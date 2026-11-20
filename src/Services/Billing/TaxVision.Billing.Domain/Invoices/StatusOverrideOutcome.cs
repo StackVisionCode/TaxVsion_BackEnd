@@ -13,5 +13,6 @@ public sealed record StatusOverrideOutcome(
     public static readonly StatusOverrideOutcome NoChange = new(false, [], false);
 
     /// <summary>Pagos revertidos que movieron dinero real por un proveedor: la oficina debe devolverlos allí.</summary>
-    public IReadOnlyList<InvoicePayment> RefundsDueAtProvider => [.. ReversedPayments.Where(p => p.NeedsProviderRefund)];
+    public IReadOnlyList<InvoicePayment> RefundsDueAtProvider =>
+        [.. ReversedPayments.Where(p => p.NeedsProviderRefund)];
 }

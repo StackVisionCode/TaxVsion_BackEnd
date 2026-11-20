@@ -45,6 +45,9 @@ builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "mobile-service");
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
+// Gate de módulo: mobile.* y mileage.* exigen el módulo mileage del plan (escalón por configuración).
+ModuleGateRegistration.AddModuleGate(builder.Services, builder.Configuration);
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 builder.Services.AddTaxVisionRedis(
     builder.Configuration.GetConnectionString("Redis")
@@ -64,6 +67,7 @@ builder.Host.UseWolverine(options =>
 {
     options.UseTaxVisionCodeGeneration(builder.Environment, builder.Configuration, typeof(Program).Assembly);
     options.Discovery.IncludeAssembly(typeof(AssemblyMarker).Assembly);
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 
     var sqlConn =

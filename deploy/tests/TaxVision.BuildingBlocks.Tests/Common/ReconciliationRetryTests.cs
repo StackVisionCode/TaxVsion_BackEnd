@@ -33,6 +33,9 @@ public sealed class ReconciliationRetryTests
     [InlineData("src/Services/Calendar/TaxVision.Calendar.Infrastructure/Jobs/TenantCustomerFullReconciliationJob.cs")]
     [InlineData("src/Services/Tasks/TaxVision.Tasks.Infrastructure/Jobs/TenantCustomerFullReconciliationJob.cs")]
     [InlineData("src/Services/Notes/TaxVision.Notes.Infrastructure/Jobs/TenantCustomerFullReconciliationJob.cs")]
+    [InlineData(
+        "src/Services/Mobile/TaxVision.Mobile.Infrastructure/RateLimiting/TenantEntitlementsReconciliationJob.cs"
+    )]
     public void Startup_reconciliation_jobs_retry_soon_after_a_failed_pass(string relativePath)
     {
         var source = File.ReadAllText(Path.Combine(RepositoryRoot(), relativePath));

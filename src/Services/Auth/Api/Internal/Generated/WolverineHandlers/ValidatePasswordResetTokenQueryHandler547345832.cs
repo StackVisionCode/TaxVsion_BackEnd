@@ -25,13 +25,13 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var authDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Infrastructure.Persistence.AuthDbContext>(serviceScope.ServiceProvider);
             var tenantRegistry = new TaxVision.Auth.Infrastructure.Persistence.Repositories.TenantRegistry(authDbContext);
             var userRepository = new TaxVision.Auth.Infrastructure.Persistence.Repositories.UserRepository(authDbContext);
             var credentialTokenRepository = new TaxVision.Auth.Infrastructure.Persistence.Repositories.CredentialTokenRepository(authDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var validatePasswordResetTokenQuery = (TaxVision.Auth.Application.Credentials.Queries.ValidatePasswordResetTokenQuery)context.Envelope.Message;
 

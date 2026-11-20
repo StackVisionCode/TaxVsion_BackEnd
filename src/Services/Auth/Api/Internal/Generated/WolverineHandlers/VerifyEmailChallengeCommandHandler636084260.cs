@@ -31,6 +31,7 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             var redisOnboardingSessionStore = new TaxVision.Auth.Onboarding.Infrastructure.Sessions.RedisOnboardingSessionStore(_cacheService);
             var onboardingSessionService = new TaxVision.Auth.Onboarding.Application.Sessions.OnboardingSessionService(_secureTokenService, redisOnboardingSessionStore, _optionsOfOnboardingOptions);
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
@@ -38,7 +39,6 @@ namespace Internal.Generated.WolverineHandlers
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Auth.Infrastructure.Persistence.AuthDbContext authDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Auth.Infrastructure.Persistence.AuthDbContext.");
             var emailVerificationChallengeRepository = new TaxVision.Auth.Onboarding.Infrastructure.Persistence.Repositories.EmailVerificationChallengeRepository(authDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var verifyEmailChallengeCommand = (TaxVision.Auth.Onboarding.Application.EmailVerification.Commands.VerifyEmailChallengeCommand)context.Envelope.Message;
 
