@@ -209,13 +209,38 @@ public sealed partial class SendSmsBatchHandlerTests
                 new SmsSendItemDto(OtherCustomer, OtherPhone, "hi", null, "not-mine", "docs"),
             ],
             ActorUserId: Guid.NewGuid(),
-            CanViewAll: false
+            CanViewAll: false,
+            CanSendToAnyNumber: true
         );
 
         var result = await h.Run(command);
 
         Assert.Equal("Accepted", result.Value.Results[0].Status);
         Assert.Equal(SmsErrors.CustomerNotAssigned.Code, result.Value.Results[1].ErrorCode);
+    }
+
+    // Responder en la conversación de un número escrito a mano manda el id de esa conversación (el derivado del
+    // teléfono): es el mismo destinatario manual, no un cliente fuera de la cartera.
+    [Fact]
+    public async Task Replying_with_the_id_of_a_typed_number_conversation_is_still_a_typed_number()
+    {
+        var h = new Harness();
+        h.Visibility.Enabled = true;
+        var conversationId = SmsRecipientId.ForPhone(PhoneE164.Create(OtherPhone).Value);
+        var command = new SendSmsBatchCommand(
+            Tenant,
+            "corr-1",
+            [new SmsSendItemDto(conversationId, OtherPhone, "hi", null, "reply", "docs")],
+            ActorUserId: Guid.NewGuid(),
+            CanViewAll: false,
+            CanSendToAnyNumber: true
+        );
+
+        var result = await h.Run(command);
+
+        var sent = Assert.Single(result.Value.Results);
+        Assert.Equal("Accepted", sent.Status);
+        Assert.Equal(conversationId, sent.CustomerId);
     }
 
     [Fact]

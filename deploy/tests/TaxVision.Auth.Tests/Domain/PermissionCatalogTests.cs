@@ -1037,4 +1037,48 @@ public sealed class PermissionCatalogTests
         Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee));
         Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal));
     }
+
+    /// <summary>Escribirle a un número que no es cliente se salta la cartera y la política de contacto: es
+    /// administrativo. El admin lo recibe por su bundle, el empleado no, y se puede delegar.</summary>
+    [Fact]
+    public void Sms_send_any_number_reaches_the_admin_and_stays_out_of_the_employee_bundle()
+    {
+        const string code = PermissionCatalog.SmsSendAnyNumber;
+        var definition = PermissionCatalog.All.Single(d => d.Code == code);
+
+        Assert.Equal("sms.send_any_number", code);
+        Assert.Equal("sms", definition.Module);
+        Assert.Null(definition.GatedModule);
+        Assert.False(definition.IsDangerous);
+        Assert.True(definition.IsAssignableByTenant);
+        Assert.Contains(code, PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin));
+        Assert.Contains(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+        Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee));
+        Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemCustomerPortal));
+    }
+
+    [Fact]
+    public void Every_permission_has_a_unique_code_and_id()
+    {
+        var all = PermissionCatalog.All;
+
+        Assert.Equal(all.Count, all.Select(d => d.Code).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(all.Count, all.Select(d => d.Id).Distinct().Count());
+    }
+
+    /// <summary>La oficina decide sobre SU facturación: el permiso se puede delegar a un rol propio. Por eso no es
+    /// peligroso (un permiso peligroso nunca es delegable); el freno al reabrir una factura pagada en línea es el
+    /// aviso fijo de reembolso del CRM.</summary>
+    [Fact]
+    public void Invoicing_status_override_can_be_delegated_and_comes_with_the_admin_bundle()
+    {
+        const string code = PermissionCatalog.InvoicingStatusOverride;
+        var definition = PermissionCatalog.All.Single(d => d.Code == code);
+
+        Assert.False(definition.IsDangerous);
+        Assert.True(definition.IsAssignableByTenant);
+        Assert.Contains(code, PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin));
+        Assert.Contains(code, PermissionCatalog.SystemTenantAdminRootPermissions());
+        Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee));
+    }
 }

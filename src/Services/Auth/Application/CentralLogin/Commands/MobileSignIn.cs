@@ -193,22 +193,20 @@ public static class MobileSignInHandler
     )
     {
         var email = command.Email!.Trim().ToLowerInvariant();
-        if (
-            await CentralLoginAuthentication.CheckThrottleAsync(
-                throttler,
-                request,
-                email,
-                UserAccountKind.Portal,
-                ct
-            ) is
-            { } throttled
-        )
+        var gate = await CentralLoginAuthentication.CheckThrottleAsync(
+            throttler,
+            request,
+            email,
+            UserAccountKind.Portal,
+            ct
+        );
+        if (gate.Throttled is { } throttled)
             return Result.Failure<MobileSignInResponse>(throttled);
 
         var (offices, platformAdminMatched) = await CentralLoginAuthentication.AuthenticateAsync(
             email,
             command.Password!,
-            UserAccountKind.Portal,
+            gate.Kinds,
             command.DeviceToken,
             SessionSurface.Mobile,
             users,
@@ -223,7 +221,7 @@ public static class MobileSignInHandler
             return Result.Failure<MobileSignInResponse>(
                 await CentralLoginAuthentication.FailAsync(
                     email,
-                    UserAccountKind.Portal,
+                    gate.Kinds,
                     platformAdminMatched ? "mobile_platform_admin" : "mobile_no_match",
                     throttler,
                     audit,
@@ -292,11 +290,18 @@ public static class MobileSignInHandler
         if (office is null)
             return Result.Failure<MobileSignInResponse>(HandoffInvalid);
 
+        // El código tiene tope por cuenta: bloqueada, ni el código correcto pasa hasta que venza.
+        var now = DateTime.UtcNow;
+        var challenged = office.ChallengeRequired ? await users.GetByIdAsync(office.UserId, ct) : null;
+        if (CentralMfaAttempts.Blocked(challenged, now) is { } lockedOut)
+            return Result.Failure<MobileSignInResponse>(lockedOut);
+
         MfaCodeCheck? codeCheck = office.ChallengeRequired
             ? await MfaCodeVerifier.VerifyAsync(office.UserId, command.MfaCode, mfa, totp, protector, secureTokens, ct)
             : null;
         if (codeCheck == MfaCodeCheck.Invalid)
         {
+            CentralMfaAttempts.RegisterFailure(challenged, now);
             await audit.AddAsync(
                 Audit(office.TenantId, office.UserId, AuthAuditAction.MfaFailed, false, request, correlation, null),
                 ct
@@ -306,6 +311,8 @@ public static class MobileSignInHandler
                 new Error("Auth.MfaInvalid", "MFA code is invalid or expired.")
             );
         }
+
+        CentralMfaAttempts.RegisterSuccess(challenged);
 
         // La referencia vive 60 s: tenant y usuario se revalidan antes de emitir.
         var tenant = await tenants.GetByIdAsync(office.TenantId, ct);

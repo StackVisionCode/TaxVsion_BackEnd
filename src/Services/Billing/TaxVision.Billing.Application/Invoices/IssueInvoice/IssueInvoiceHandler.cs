@@ -58,6 +58,8 @@ public static class IssueInvoiceHandler
 
         // Un borrador que ya tuvo número (la oficina lo reabrió desde emitida/pagada) conserva el SUYO: reservar otro
         // dejaría un hueco en la secuencia y cambiaría el número que el cliente ya conoce.
+        // Con número previo es un borrador reabierto: su cobro quedó revocado y hay que reinstalarlo.
+        var reissue = invoice.InvoiceNumber is not null;
         Result<InvoiceNumber> invoiceNumber;
         if (invoice.InvoiceNumber is { } existingNumber)
         {
@@ -92,7 +94,9 @@ public static class IssueInvoiceHandler
         // LocalCommandTenantMiddleware lo restaure. Si el crédito la dejó pagada, InvoicePaid sale del
         // evento de dominio (BB-1).
         bus.TenantId = command.TenantId.ToString();
-        await bus.PublishAsync(new EnsureInvoicePaymentLinkCommand(command.TenantId, command.InvoiceId));
+        await bus.PublishAsync(
+            new EnsureInvoicePaymentLinkCommand(command.TenantId, command.InvoiceId, Reinstate: reissue)
+        );
         if (saleLines.Count > 0)
             await bus.PublishAsync(new SyncInvoiceStockCommand(command.TenantId, command.InvoiceId));
 

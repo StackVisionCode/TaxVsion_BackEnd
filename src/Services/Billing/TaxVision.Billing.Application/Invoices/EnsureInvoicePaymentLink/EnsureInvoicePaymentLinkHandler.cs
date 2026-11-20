@@ -31,9 +31,10 @@ public static class EnsureInvoicePaymentLinkHandler
 
         // El enlace cobra el SALDO (AmountDue), no el total: una reemisión con crédito arrastrado o un pago
         // parcial dejan saldo, y cobrar el total sería doble cobro. EnsurePayableAsync es idempotente por
-        // invoice.Id. Sin saldo o anulada ⇒ no se toca el link.
+        // invoice.Id. Sin saldo, anulada o devuelta a borrador ⇒ no se toca el link (una orden tardía no
+        // puede dejar cobrable un borrador).
         var dueCents = invoice.AmountDue.AmountCents;
-        if (dueCents > 0 && invoice.Status != InvoiceStatus.Voided)
+        if (dueCents > 0 && invoice.Status is not (InvoiceStatus.Voided or InvoiceStatus.Draft))
         {
             var ensured = await paymentLinks.EnsurePayableAsync(
                 dueCents,

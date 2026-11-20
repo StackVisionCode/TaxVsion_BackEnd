@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TaxVision.Auth.Domain.Mfa;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Infrastructure.Persistence.Configurations;
@@ -36,6 +37,13 @@ public sealed class MfaChallengeConfiguration : IEntityTypeConfiguration<MfaChal
         builder.Property(challenge => challenge.UserId).IsRequired();
         builder.Property(challenge => challenge.LoginTicketHash).HasMaxLength(64).IsRequired();
         builder.Property(challenge => challenge.OtpHash).HasMaxLength(64);
+        // Los desafíos anteriores a la superficie eran todos del login web.
+        builder
+            .Property(challenge => challenge.Surface)
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .HasDefaultValue(SessionSurface.Workspace)
+            .IsRequired();
         builder.Property(challenge => challenge.CreatedAtUtc).IsRequired();
         builder.Property(challenge => challenge.ExpiresAtUtc).IsRequired();
 

@@ -78,6 +78,24 @@ public sealed class InvoiceSentConsumerTests
         Assert.Empty(gateway.Queued);
     }
 
+    // Tipado con el evento, el log del consumer salía bajo la categoría del mensaje y no se podía filtrar aparte.
+    [Fact]
+    public void The_log_category_belongs_to_the_consumer_not_to_the_event()
+    {
+        var logger = typeof(InvoiceSentConsumer)
+            .GetMethod(nameof(InvoiceSentConsumer.Handle))!
+            .GetParameters()
+            .Single(p =>
+                p.ParameterType.IsGenericType
+                && p.ParameterType.GetGenericTypeDefinition() == typeof(Microsoft.Extensions.Logging.ILogger<>)
+            );
+
+        var category = logger.ParameterType.GetGenericArguments()[0];
+        Assert.NotEqual(typeof(InvoiceSentToCustomerIntegrationEvent), category);
+        Assert.Equal(typeof(InvoiceSentConsumer).Namespace, category.Namespace);
+        Assert.StartsWith("InvoiceSent", category.Name);
+    }
+
     private static Task Handle(
         RecordingRenderClient render,
         RecordingEmailGateway gateway,
@@ -91,12 +109,7 @@ public sealed class InvoiceSentConsumerTests
             new NotificationDispatcherHarness().Dispatcher,
             NoPortalRecipientResolver.Instance,
             new NoOpCorrelationContext(),
-            Microsoft
-                .Extensions
-                .Logging
-                .Abstractions
-                .NullLogger<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent>
-                .Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<InvoiceSentLog>.Instance,
             CancellationToken.None
         );
 

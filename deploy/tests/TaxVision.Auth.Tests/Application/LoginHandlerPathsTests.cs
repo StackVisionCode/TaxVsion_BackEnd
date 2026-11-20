@@ -268,7 +268,46 @@ public sealed class LoginHandlerPathsTests
 
         Assert.Equal(TaxVision.Auth.Application.Users.Login.LoginPasswordCheck.InvalidCredentials, result.Error);
         Assert.Empty(world.Account.Sessions.Sessions);
-        Assert.Equal(0, world.Throttler.Failures);
+    }
+
+    // Igual que un email desconocido: gasta cupo de la IP, pero no bloquea la cuenta del empleado en el CRM.
+    [Fact]
+    public async Task A_door_closed_to_the_account_counts_against_the_ip_and_never_against_the_account()
+    {
+        var world = new LoginWorld(UserActorType.TenantAdmin);
+
+        var result = await world.LoginAsync(
+            password: "wrong",
+            surface: TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Mobile
+        );
+
+        Assert.Equal(TaxVision.Auth.Application.Users.Login.LoginPasswordCheck.InvalidCredentials, result.Error);
+        Assert.Equal(1, world.Throttler.Failures);
+        world.AssertAudit(AuthAuditAction.LoginFailed, false, """{"reason":"surface_not_allowed"}""", world.User.Id);
+        Assert.False(world.User.HasLoginFailures);
+        Assert.Equal(0, world.Lock.Acquired);
+        Assert.Equal(1, world.UnitOfWork.Saves);
+    }
+
+    [Fact]
+    public async Task A_challenge_remembers_the_surface_that_asked_for_it()
+    {
+        var onTheApp = new LoginWorld(UserActorType.PlatformAdmin, mfaEnforced: true);
+        onTheApp.Mfa.Enroll(onTheApp.User);
+        var onTheWeb = new LoginWorld(UserActorType.PlatformAdmin, mfaEnforced: true);
+        onTheWeb.Mfa.Enroll(onTheWeb.User);
+
+        await onTheApp.LoginAsync(surface: TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Mobile);
+        await onTheWeb.LoginAsync();
+
+        Assert.Equal(
+            TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Mobile,
+            Assert.Single(onTheApp.Mfa.Challenges).Surface
+        );
+        Assert.Equal(
+            TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Workspace,
+            Assert.Single(onTheWeb.Mfa.Challenges).Surface
+        );
     }
 
     [Fact]

@@ -19,7 +19,10 @@ public sealed class MobileServiceTokenAcquirer(
         var clientId = configuration["ServiceAuthClient:ClientId"];
         var secret = configuration["ServiceAuthClient:ClientSecret"];
         if (string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(secret))
+        {
+            logger.LogWarning("ServiceAuthClient is not configured; cannot acquire the Mobile service token.");
             return null;
+        }
         try
         {
             return await Cache.GetOrCreateAsync(

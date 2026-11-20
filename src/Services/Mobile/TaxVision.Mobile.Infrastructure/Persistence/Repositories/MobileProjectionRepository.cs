@@ -15,6 +15,7 @@ public sealed class MobileProjectionRepository(MobileDbContext db)
         Guid userId,
         CancellationToken ct = default
     ) =>
+        // Sin filtro global: la usan consumers y el pull de permisos, con la oficina explícita.
         db
             .UserPermissionsProjections.IgnoreQueryFilters()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.UserId == userId, ct);
@@ -26,6 +27,7 @@ public sealed class MobileProjectionRepository(MobileDbContext db)
         Guid roleId,
         CancellationToken ct = default
     ) =>
+        // Sin filtro global: la usan consumers, con la oficina explícita.
         db
             .RolePermissionsProjections.IgnoreQueryFilters()
             .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == roleId, ct);
@@ -38,6 +40,7 @@ public sealed class MobileProjectionRepository(MobileDbContext db)
         CancellationToken ct = default
     )
     {
+        // Sin filtro global: corre antes de fijar la oficina del request; la oficina va explícita.
         var row = await db
             .UserPermissionsProjections.IgnoreQueryFilters()
             .AsNoTracking()

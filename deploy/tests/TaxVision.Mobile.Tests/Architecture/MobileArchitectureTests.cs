@@ -4,6 +4,7 @@ using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using NetArchTest.Rules;
 using TaxVision.Mobile.Api.Controllers;
 
 namespace TaxVision.Mobile.Tests.Architecture;
@@ -29,5 +30,24 @@ public sealed class MobileArchitectureTests
             var rate = Assert.IsType<RateLimitAttribute>(action.GetCustomAttribute<RateLimitAttribute>());
             Assert.NotNull(RateLimitPolicyCatalog.GetByName(rate.PolicyName));
         }
+    }
+
+    // Los controllers hablan con Application por el bus; nunca con el DbContext ni los repositorios.
+    [Fact]
+    public void Controllers_should_not_depend_on_Infrastructure()
+    {
+        var result = Types
+            .InAssembly(typeof(VehiclesController).Assembly)
+            .That()
+            .ResideInNamespace("TaxVision.Mobile.Api.Controllers")
+            .ShouldNot()
+            .HaveDependencyOn("TaxVision.Mobile.Infrastructure")
+            .GetResult();
+
+        Assert.True(
+            result.IsSuccessful,
+            "Controllers must not depend on Infrastructure directly: "
+                + string.Join(", ", result.FailingTypeNames ?? [])
+        );
     }
 }

@@ -26,6 +26,8 @@ public interface ITripRepository
     Task<MileageRate?> EffectiveRateAsync(Guid tenant, string purpose, DateOnly date, CancellationToken ct);
     void AddRate(MileageRate rate);
     Task<PagedResult<MileageRateResponse>> RatesAsync(Guid tenant, int page, int size, CancellationToken ct);
+    Task<MileageRetentionPolicy?> RetentionPolicyAsync(Guid tenant, CancellationToken ct);
+    void AddRetentionPolicy(MileageRetentionPolicy policy);
     Task<TripStatisticsResponse> StatisticsAsync(
         Guid tenant,
         Guid customer,

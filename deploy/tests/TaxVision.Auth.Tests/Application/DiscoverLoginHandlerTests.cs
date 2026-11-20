@@ -51,6 +51,7 @@ public sealed class DiscoverLoginHandlerTests
             context.Sessions,
             context.Tickets,
             context.World.Tenants,
+            context.World.Users,
             new NoMfaRepository(),
             new UnusedTotpService(),
             new UnusedSecretProtector(),

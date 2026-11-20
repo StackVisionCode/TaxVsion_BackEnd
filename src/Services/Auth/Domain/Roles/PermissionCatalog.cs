@@ -166,6 +166,7 @@ public static class PermissionCatalog
     // Lectura del historial/opt-outs (endpoints GET del CRM) y gestión manual de bajas.
     public const string SmsRead = SmsPermissions.Read;
     public const string SmsManage = SmsPermissions.Manage;
+    public const string SmsSendAnyNumber = SmsPermissions.SendAnyNumber;
 
     // Catalog — productos/servicios/categorías (microservicio Catalog). Humano-asignables: TenantAdmin
     // los recibe vía SystemRoleDefaults; los callers M2M los llevan como claim "perm" (ServiceAuth:Clients).
@@ -1082,6 +1083,15 @@ public static class PermissionCatalog
             SmsManage,
             "sms",
             "Manually manage SMS opt-outs and opt-ins",
+            false
+        ),
+        // Un número escrito a mano se salta la cartera y la política de contacto. Administrativo: el TenantAdmin
+        // lo recibe por su bundle, queda fuera del bundle del empleado y se puede delegar.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000230"),
+            SmsSendAnyNumber,
+            "sms",
+            "Send SMS to numbers that are not clients",
             false
         ),
         // Catalog — productos/servicios/categorías. Humano-asignables (TenantAdmin vía defaults).

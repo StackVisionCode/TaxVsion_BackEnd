@@ -99,7 +99,7 @@ Validaciones: proposito business|medical|moving|personal|charity; notas maximo 2
 
 400: payload, fecha, coordenadas o paginacion invalidos. 401: JWT/identidad invalida. 403: actor/permiso incorrecto. 404: recurso ausente o inaccesible. 409: secuencia, reintento alterado, estado incompatible, RowVersion o constraint unico. 413: cuerpo excesivo. 429: rate limit. Los errores de negocio siguen `{code,message}`; autorizacion/model binding siguen las convenciones de BuildingBlocks/MVC. No se registran coordenadas/notas en el ToString de los comandos.
 
-Borrado logico: excluye viaje de listados, puntos, detalle y estadisticas. Conserva el historial y el identificador para impedir resurreccion por reintento. No equivale a purga fisica; la politica de retencion y purga requiere una definicion separada. Un vehiculo con viajes (incluso borrados logicamente) devuelve Vehicle.InUse/409 al intentar eliminarlo; las claves foraneas mantienen esa garantia ante carreras.
+Borrado logico: excluye viaje de listados, puntos, detalle y estadisticas. Conserva el historial y el identificador para impedir resurreccion por reintento. Borrar un viaje elimina tambien sus puntos GPS. Retencion: el recorrido (los puntos) se purga al pasar el plazo de la oficina (1 a 3650 dias; 3 años por defecto), contado desde el fin del viaje o, si nunca se cerro, desde su ultima actividad; el resumen del viaje se conserva. La purga es el job `MileageGpsRetentionJob` (seccion `Mobile:GpsRetention`). Un vehiculo con viajes (incluso borrados logicamente) devuelve Vehicle.InUse/409 al intentar eliminarlo; las claves foraneas mantienen esa garantia ante carreras.
 
 ## Estadisticas y configuracion
 

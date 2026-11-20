@@ -41,7 +41,9 @@ public sealed record InvoicePaymentEntry(
     DateTime? ReversedAtUtc = null,
     string? ReversalReason = null,
     // Era un cobro online: revertirlo no lo devuelve al cliente, hay que reembolsarlo en el proveedor.
-    bool NeedsProviderRefund = false
+    bool NeedsProviderRefund = false,
+    // Crédito arrastrado que se revirtió: ya se cobró en la factura reemplazada y quedó sin aplicar.
+    bool CreditLeftUnapplied = false
 );
 
 public sealed record InvoiceDetailResponse(
@@ -145,7 +147,8 @@ public static class GetInvoiceDetailHandler
                 p.ExceedsDueCents,
                 p.ReversedAtUtc,
                 p.ReversalReason,
-                p.ReversedAtUtc is not null && p.NeedsProviderRefund
+                p.ReversedAtUtc is not null && p.NeedsProviderRefund,
+                p.ReversedAtUtc is not null && p.IsCarriedCredit
             ))
             .ToList();
 
@@ -198,7 +201,11 @@ public static class GetInvoiceDetailHandler
     /// se emitió no tiene número y se emite, no se corrige.</summary>
     internal static IReadOnlyList<string> OverridableStatusesFor(Domain.Invoices.Invoice invoice)
     {
-        if (invoice.DeletedAtUtc is not null || invoice.InvoiceNumber is null)
+        if (
+            invoice.DeletedAtUtc is not null
+            || invoice.InvoiceNumber is null
+            || invoice.ReplacedByInvoiceId is not null
+        )
             return [];
 
         return Enum.GetValues<Domain.ValueObjects.InvoiceStatus>()

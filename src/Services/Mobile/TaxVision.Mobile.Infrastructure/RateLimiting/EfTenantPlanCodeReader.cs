@@ -9,6 +9,7 @@ internal sealed class EfTenantPlanCodeReader(MobileDbContext db) : ITenantPlanCo
 {
     public async Task<string?> GetPlanCodeAsync(Guid tenantId, CancellationToken ct = default)
     {
+        // Sin filtro global: la proyección del plan se lee con la oficina explícita.
         var projection = await db
             .TenantPlanCodeProjections.IgnoreQueryFilters()
             .AsNoTracking()

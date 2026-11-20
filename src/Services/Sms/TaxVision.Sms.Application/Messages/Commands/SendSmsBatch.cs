@@ -49,7 +49,10 @@ public sealed record SendSmsBatchCommand(
     string? BatchKey = null,
     // Respeta la política de contacto del cliente (envío manual y campañas). Los avisos transaccionales
     // (OTP, firma) la dejan en false: Notification ya decide cuáles se filtran.
-    bool EnforceContactPolicy = false
+    bool EnforceContactPolicy = false,
+    // sms.send_any_number del usuario. Solo se le mide a una persona (ActorUserId): sin él, sus números
+    // escritos a mano fallan. Un servicio no tiene usuario y sigue enviando.
+    bool CanSendToAnyNumber = false
 );
 
 /// <summary><paramref name="Reused"/> = el resultado viene de una fila que ya existía (no se volvió a enviar).</summary>
@@ -113,17 +116,25 @@ public static class SendSmsBatchHandler
         for (var i = 0; i < command.Items.Count; i++)
         {
             var current = command.Items[i];
-            if (current.CustomerId == Guid.Empty && PhoneE164.Create(current.To) is { IsSuccess: true } manualPhone)
+            // También es manual quien responde en esa conversación: el CRM manda el id derivado del teléfono.
+            if (
+                PhoneE164.Create(current.To) is { IsSuccess: true } phone
+                && SmsRecipientId.ForPhone(phone.Value) is var derivedId
+                && (current.CustomerId == Guid.Empty || current.CustomerId == derivedId)
+            )
             {
                 manualRecipients.Add(i);
-                current = current with { CustomerId = SmsRecipientId.ForPhone(manualPhone.Value) };
+                current = current with { CustomerId = derivedId };
             }
             normalizedItems.Add(current);
         }
         command = command with { Items = normalizedItems };
 
+        // Sin el permiso, el número escrito a mano de una persona falla solo y no se cobra.
+        var deniedManual = command.ActorUserId is null || command.CanSendToAnyNumber ? [] : manualRecipients;
+
         var gate = await SmsSendGate.ForContactPolicyAsync(command, contactPolicies, ct);
-        var chargeableCount = gate.ChargeableCount(command.Items);
+        var chargeableCount = gate.ChargeableCount(command.Items, deniedManual);
         var chargeWallet = command.ChargeWallet && chargeableCount > 0;
 
         if (chargeWallet)
@@ -139,6 +150,12 @@ public static class SendSmsBatchHandler
         for (var index = 0; index < command.Items.Count; index++)
         {
             var item = command.Items[index];
+            if (deniedManual.Contains(index))
+            {
+                results.Add(Failed(item, SmsErrors.ManualNumberNotAllowed.Code));
+                continue;
+            }
+
             // El alcance por cartera aplica a clientes; un número escrito a mano no pertenece a ninguna cartera.
             if (!manualRecipients.Contains(index) && !gate.IsAssigned(item.CustomerId))
             {

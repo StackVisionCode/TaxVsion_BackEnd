@@ -132,6 +132,7 @@ public sealed class InvoicePaymentConfiguration : IEntityTypeConfiguration<Invoi
         b.Property(p => p.ReversalReason).HasMaxLength(500);
         b.Ignore(p => p.IsActive);
         b.Ignore(p => p.NeedsProviderRefund);
+        b.Ignore(p => p.IsCarriedCredit);
         b.HasIndex(p => new
             {
                 p.InvoiceId,

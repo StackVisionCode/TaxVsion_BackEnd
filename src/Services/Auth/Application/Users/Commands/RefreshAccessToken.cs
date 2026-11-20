@@ -46,8 +46,31 @@ public static class RefreshAccessTokenHandler
             return Result.Failure<AuthTokensResponse>(invalid);
 
         var stored = await sessions.GetTokenByHashAsync(tokens.Hash(command.RefreshToken), ct);
-        if (stored is null || stored.SessionId is null || stored.Surface != command.Surface)
+        if (stored is null || stored.SessionId is null)
             return Result.Failure<AuthTokensResponse>(invalid);
+
+        // Token de otra superficie (web en la ruta móvil o al revés): solo deja rastro. No se revoca nada, para
+        // que un error de configuración de la app no cierre sesiones.
+        if (stored.Surface != command.Surface)
+        {
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    stored.TenantId,
+                    stored.UserId,
+                    AuthAuditAction.RefreshTokenSurfaceMismatch,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    targetType: "Session",
+                    targetId: stored.SessionId,
+                    detailsJson: $$"""{"tokenSurface":"{{stored.Surface}}","route":"{{command.Surface}}"}"""
+                ),
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Failure<AuthTokensResponse>(invalid);
+        }
 
         // Fase 18 — binding de host: un refresh token emitido para tenantA no debe poder canjearse
         // desde el subdominio de tenantB. Solo se puede validar cuando el Host sí resolvió a un

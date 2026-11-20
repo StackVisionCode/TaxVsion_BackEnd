@@ -127,7 +127,7 @@ public sealed class CentralLoginHandlersTests
         Assert.Equal(43, result.Error.RetryAfterSeconds);
     }
 
-    // --- tope por email (decisión del dueño: 10 fallos cada 15 min, por email y tipo de cuenta) ---
+    // --- tope por email (decisión del dueño: 10 fallos cada 5 min, por email y tipo de cuenta) ---
 
     [Fact]
     public async Task Discover_without_matches_counts_a_failure_for_the_email_of_both_account_kinds()
@@ -194,6 +194,61 @@ public sealed class CentralLoginHandlersTests
         var result = await Discover(world, "user@example.com", GoodPassword, accountKind: UserAccountKind.Staff);
 
         Assert.True(result.IsSuccess);
+    }
+
+    // El CRM entra al login central sin decir el tipo de cuenta: un ataque por la puerta del cliente (portal o
+    // app) no puede dejar fuera al empleado que comparte el email.
+    [Fact]
+    public async Task Central_sign_in_without_account_kind_is_not_blocked_by_failures_on_the_client_door()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.TenantEmployee);
+        for (var attempt = 0; attempt < FakeLoginThrottler.MaxEmailFailures; attempt++)
+            await world.Throttler.RegisterEmailFailureAsync("user@example.com", UserAccountKind.Portal);
+
+        var result = await Discover(world, "user@example.com", GoodPassword);
+
+        Assert.True(result.IsSuccess);
+        // Entrar como empleado no limpia el freno del cliente.
+        Assert.Equal(
+            FakeLoginThrottler.MaxEmailFailures,
+            world.Throttler.EmailFailures[("user@example.com", UserAccountKind.Portal)]
+        );
+    }
+
+    // El tipo frenado se salta: su contraseña no se puede seguir probando por la puerta sin tipo.
+    [Fact]
+    public async Task A_throttled_account_kind_is_skipped_instead_of_guessed()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.CustomerPortal);
+        for (var attempt = 0; attempt < FakeLoginThrottler.MaxEmailFailures; attempt++)
+            await world.Throttler.RegisterEmailFailureAsync("user@example.com", UserAccountKind.Portal);
+
+        var result = await Discover(world, "user@example.com", GoodPassword);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.Invalid", result.Error.Code);
+        Assert.Equal(1, world.Throttler.EmailFailures[("user@example.com", UserAccountKind.Staff)]);
+        Assert.Equal(
+            FakeLoginThrottler.MaxEmailFailures,
+            world.Throttler.EmailFailures[("user@example.com", UserAccountKind.Portal)]
+        );
+    }
+
+    [Fact]
+    public async Task With_every_account_kind_throttled_the_central_sign_in_waits()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.TenantEmployee);
+        for (var attempt = 0; attempt < FakeLoginThrottler.MaxEmailFailures; attempt++)
+            await world.Throttler.RegisterEmailFailureAsync("user@example.com", null);
+
+        var result = await Discover(world, "user@example.com", GoodPassword);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.LockedOut", result.Error.Code);
+        Assert.NotNull(result.Error.RetryAfterSeconds);
     }
 
     // --- handoff ---
@@ -575,6 +630,85 @@ public sealed class CentralLoginHandlersTests
         Assert.Empty(world.Issuer.Started);
     }
 
+    // --- tope de intentos del código MFA: por cuenta, porque la contraseña ya se validó para ese usuario ---
+
+    [Fact]
+    public async Task Handoff_wrong_mfa_codes_lock_the_account_and_then_even_the_right_code_waits()
+    {
+        var world = new World();
+        var admin = world.AddOffice("acme", UserActorType.TenantAdmin, enrollTotp: true);
+        var sessionRef = (await Discover(world, "user@example.com", GoodPassword)).Value.DiscoverySessionRef!.Value;
+
+        for (var attempt = 0; attempt < LockoutPolicy.MaxFailedAttempts; attempt++)
+            Assert.Equal("Auth.MfaInvalid", (await Handoff(world, sessionRef, admin, mfaCode: "wrong")).Error.Code);
+
+        var result = await Handoff(world, sessionRef, admin, mfaCode: "valid-totp");
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.LockedOut", result.Error.Code);
+        Assert.NotNull(result.Error.RetryAfterSeconds);
+        Assert.Null(world.Tickets.LastPayload);
+    }
+
+    [Fact]
+    public async Task Handoff_the_right_code_clears_earlier_mfa_failures()
+    {
+        var world = new World();
+        var admin = world.AddOffice("acme", UserActorType.TenantAdmin, enrollTotp: true);
+        var sessionRef = (await Discover(world, "user@example.com", GoodPassword)).Value.DiscoverySessionRef!.Value;
+        await Handoff(world, sessionRef, admin, mfaCode: "wrong");
+        await Handoff(world, sessionRef, admin, mfaCode: "wrong");
+
+        var result = await Handoff(world, sessionRef, admin, mfaCode: "valid-totp");
+
+        Assert.True(result.IsSuccess);
+        Assert.False((await world.Users.GetByIdAsync(world.UserIn(admin)))!.HasLoginFailures);
+    }
+
+    [Fact]
+    public async Task Mobile_wrong_mfa_codes_lock_the_account_and_then_even_the_right_code_waits()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail, enrollTotp: true);
+        world.Mfa.Policy = RequireMfaForClients(tenantId);
+        var reference = (await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword)))
+            .Value
+            .DiscoverySessionRef;
+        MobileSignInCommand WithCode(string code) =>
+            new(TenantId: tenantId, DiscoverySessionRef: reference, MfaCode: code);
+
+        for (var attempt = 0; attempt < LockoutPolicy.MaxFailedAttempts; attempt++)
+            Assert.Equal("Auth.MfaInvalid", (await MobileSignIn(world, WithCode("wrong"))).Error.Code);
+
+        var result = await MobileSignIn(world, WithCode("valid-totp"));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.LockedOut", result.Error.Code);
+        Assert.Empty(world.Issuer.Started);
+    }
+
+    // Bloqueada la cuenta, una nueva vuelta con la contraseña tampoco entra (ni revela por qué).
+    [Fact]
+    public async Task Mobile_a_locked_account_does_not_match_a_new_sign_in()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail, enrollTotp: true);
+        world.Mfa.Policy = RequireMfaForClients(tenantId);
+        var reference = (await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword)))
+            .Value
+            .DiscoverySessionRef;
+        for (var attempt = 0; attempt < LockoutPolicy.MaxFailedAttempts; attempt++)
+            await MobileSignIn(
+                world,
+                new MobileSignInCommand(TenantId: tenantId, DiscoverySessionRef: reference, MfaCode: "wrong")
+            );
+
+        var result = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword));
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.Invalid", result.Error.Code);
+    }
+
     [Fact]
     public async Task Mobile_an_office_asking_for_mfa_without_the_code_keeps_the_reference_to_retry()
     {
@@ -734,6 +868,7 @@ public sealed class CentralLoginHandlersTests
             world.Sessions,
             world.Tickets,
             world.Tenants,
+            world.Users,
             world.Mfa,
             world.Totp,
             world.Protector,

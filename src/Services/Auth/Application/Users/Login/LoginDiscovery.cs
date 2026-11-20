@@ -46,10 +46,11 @@ public sealed class LoginDiscovery(
         if (user is null)
             return (null, await RefuseAnonymousAsync(command, """{"reason":"unknown_email"}""", ct));
 
-        // Sesión de app sin permiso (staff de oficina): igual que un email desconocido, sin verificar la clave ni
-        // sumar fallo. El motivo queda solo en auditoría.
+        // Sesión de app sin permiso (staff de oficina): igual que un email desconocido. Suma el fallo a la IP pero
+        // no a la cuenta, para que esta puerta no bloquee al empleado en el CRM. El motivo queda solo en auditoría.
         if (!MobileSurfacePolicy.Allows(user, command.Surface))
         {
+            await throttler.RegisterFailureAsync(audit.IpAddress, ct);
             await audit.RecordAsync(
                 command.TenantId,
                 user.Id,

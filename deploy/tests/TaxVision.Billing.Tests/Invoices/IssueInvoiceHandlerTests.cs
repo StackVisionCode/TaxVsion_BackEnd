@@ -2,6 +2,7 @@ using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Billing.Application.Abstractions;
+using TaxVision.Billing.Application.Invoices.EnsureInvoicePaymentLink;
 using TaxVision.Billing.Application.Invoices.IssueInvoice;
 using TaxVision.Billing.Domain.Invoices;
 using TaxVision.Billing.Domain.Numbering;
@@ -117,6 +118,29 @@ public sealed class IssueInvoiceHandlerTests
         Assert.Equal(draft.DueDateUtc, issued.DueDateUtc);
         Assert.Equal(DomainEventReplay.CorrelationId, issued.CorrelationId);
         Assert.NotEqual(string.Empty, issued.CausationId);
+    }
+
+    // Su cobro quedó revocado al volver a borrador: la reemisión pide reinstalarlo (misma URL estable).
+    [Fact]
+    public async Task Reissuing_a_reopened_draft_asks_to_reinstate_its_payable()
+    {
+        var invoice = await IssueAsync(null);
+        Assert.True(invoice.OverrideStatus(InvoiceStatus.Draft, "Office correction", Now, Guid.NewGuid()).IsSuccess);
+        var bus = new FakeMessageBus();
+
+        Assert.True((await HandleAsync(invoice, new NewSequence(), bus: bus)).IsSuccess);
+
+        Assert.True(Assert.Single(bus.Published.OfType<EnsureInvoicePaymentLinkCommand>()).Reinstate);
+    }
+
+    [Fact]
+    public async Task A_first_issue_does_not_ask_to_reinstate()
+    {
+        var bus = new FakeMessageBus();
+
+        Assert.True((await HandleAsync(Draft(null), new NewSequence(), bus: bus)).IsSuccess);
+
+        Assert.False(Assert.Single(bus.Published.OfType<EnsureInvoicePaymentLinkCommand>()).Reinstate);
     }
 
     [Fact]

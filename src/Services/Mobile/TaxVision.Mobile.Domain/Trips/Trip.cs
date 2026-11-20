@@ -253,6 +253,9 @@ public sealed class Trip : TenantEntity
 
     private void Append(IReadOnlyList<GpsSample> points)
     {
+        // Con puntos nuevos el viaje vuelve a tener recorrido: deja de estar purgado.
+        if (points.Count > 0)
+            CoordinatesPurgedAtUtc = null;
         foreach (var point in points)
         {
             if (HasDistanceAnchor)

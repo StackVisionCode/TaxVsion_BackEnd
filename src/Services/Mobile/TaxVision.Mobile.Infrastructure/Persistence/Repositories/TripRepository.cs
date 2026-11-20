@@ -8,6 +8,7 @@ namespace TaxVision.Mobile.Infrastructure.Persistence.Repositories;
 
 public sealed class TripRepository(MobileDbContext db) : ITripRepository
 {
+    // Sin filtro global: la oficina y el cliente van explícitos, y vacíos no devuelven nada.
     private IQueryable<Trip> Owned(Guid tenant, Guid customer) =>
         db
             .Trips.IgnoreQueryFilters()
@@ -28,6 +29,7 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
         long sequence,
         CancellationToken ct
     ) =>
+        // Sin filtro global: oficina, cliente y viaje van explícitos.
         db
             .TripOperations.IgnoreQueryFilters()
             .AsNoTracking()
@@ -40,10 +42,11 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
 
     public void AddPoint(TripPoint point) => db.TripPoints.Add(point);
 
-    // Explicit ownership predicates protect tenant data even when called without a scoped tenant context.
+    // Borrado en lote, sin cargar los puntos: corre en la transacción del handler que lo llama.
+    // Sin filtro global: oficina, cliente y viaje van explícitos, y vacíos no borran nada.
     public async Task DeletePointsAsync(Guid tenant, Guid customer, Guid trip, CancellationToken ct)
     {
-        var points = await db
+        var points = db
             .TripPoints.IgnoreQueryFilters()
             .Where(x =>
                 tenant != Guid.Empty
@@ -52,9 +55,12 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
                 && x.TenantId == tenant
                 && x.CustomerId == customer
                 && x.TripId == trip
-            )
-            .ToListAsync(ct);
-        db.TripPoints.RemoveRange(points);
+            );
+        if (db.Database.IsRelational())
+            await points.ExecuteDeleteAsync(ct);
+        else
+            // El proveedor en memoria de las pruebas no tiene borrado en lote.
+            db.TripPoints.RemoveRange(await points.ToListAsync(ct));
     }
 
     public void AddOperation(TripOperation operation) => db.TripOperations.Add(operation);
@@ -123,6 +129,7 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
         CancellationToken ct
     )
     {
+        // Sin filtro global: oficina, cliente y viaje van explícitos.
         var rows = await db
             .TripPoints.IgnoreQueryFilters()
             .AsNoTracking()
@@ -134,6 +141,7 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
         return new(items, items.Length > 0 ? items[^1].Sequence : after, rows.Count > size);
     }
 
+    // Sin filtro global: la oficina va explícita.
     public Task<MileageRate?> EffectiveRateAsync(Guid tenant, string purpose, DateOnly date, CancellationToken ct) =>
         db
             .MileageRates.IgnoreQueryFilters()
@@ -151,6 +159,7 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
         CancellationToken ct
     )
     {
+        // Sin filtro global: la oficina va explícita.
         var query = db.MileageRates.IgnoreQueryFilters().AsNoTracking().Where(x => x.TenantId == tenant);
         var count = await query.CountAsync(ct);
         var rows = await query
@@ -161,6 +170,14 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
             .ToListAsync(ct);
         return new(rows.Select(MileageRateResponse.From).ToArray(), page, size, count);
     }
+
+    // Sin filtro global: la oficina va explícita y una oficina vacía no devuelve nada.
+    public Task<MileageRetentionPolicy?> RetentionPolicyAsync(Guid tenant, CancellationToken ct) =>
+        db
+            .MileageRetentionPolicies.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(x => tenant != Guid.Empty && x.TenantId == tenant, ct);
+
+    public void AddRetentionPolicy(MileageRetentionPolicy policy) => db.MileageRetentionPolicies.Add(policy);
 
     private IQueryable<Trip> Completed(Guid tenant, Guid customer) =>
         Owned(tenant, customer).AsNoTracking().Where(x => x.Status == TripStatus.Completed && x.DeletedAtUtc == null);
@@ -245,11 +262,33 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
     {
         var start = Boundary(from, zone);
         var end = Boundary(to.AddDays(1), zone);
-        // SQL Server usa identificadores Windows para AT TIME ZONE, incluso en Linux.
-        var windows = TimeZoneInfo.TryConvertIanaIdToWindowsId(zone.Id, out var mapped) ? mapped : zone.Id;
-        var rows = await Completed(tenant, customer)
-            .Where(x => x.StartedAtUtc >= start && x.StartedAtUtc < end)
-            .GroupBy(x => EF.Functions.AtTimeZone(EF.Functions.AtTimeZone(x.StartedAtUtc, "UTC"), windows).Date)
+        var inRange = Completed(tenant, customer).Where(x => x.StartedAtUtc >= start && x.StartedAtUtc < end);
+        var byDate = SqlServerZoneId(zone) is { } windows
+            ? await DailyBySqlAsync(inRange, windows, ct)
+            : await DailyInMemoryAsync(inRange, zone, ct);
+        var result = new List<DailyMileageResponse>();
+        for (var date = from; date <= to; date = date.AddDays(1))
+            result.Add(byDate.TryGetValue(date, out var row) ? new(date, row.Miles, row.Count) : new(date, 0, 0));
+        return result;
+    }
+
+    // SQL Server solo entiende ids de Windows en AT TIME ZONE, incluso en Linux. null: la zona no tiene
+    // equivalente y el día local se calcula en .NET; a SQL nunca llega un id que no conoce.
+    private static string? SqlServerZoneId(TimeZoneInfo zone)
+    {
+        if (TimeZoneInfo.TryConvertIanaIdToWindowsId(zone.Id, out var windows))
+            return windows;
+        return TimeZoneInfo.TryConvertWindowsIdToIanaId(zone.Id, out _) ? zone.Id : null;
+    }
+
+    private static async Task<Dictionary<DateOnly, (double Miles, int Count)>> DailyBySqlAsync(
+        IQueryable<Trip> trips,
+        string windowsZoneId,
+        CancellationToken ct
+    )
+    {
+        var rows = await trips
+            .GroupBy(x => EF.Functions.AtTimeZone(EF.Functions.AtTimeZone(x.StartedAtUtc, "UTC"), windowsZoneId).Date)
             .Select(g => new
             {
                 Day = g.Key,
@@ -257,10 +296,17 @@ public sealed class TripRepository(MobileDbContext db) : ITripRepository
                 Count = g.Count(),
             })
             .ToListAsync(ct);
-        var byDate = rows.ToDictionary(x => DateOnly.FromDateTime(x.Day));
-        var result = new List<DailyMileageResponse>();
-        for (var date = from; date <= to; date = date.AddDays(1))
-            result.Add(byDate.TryGetValue(date, out var row) ? new(date, row.Miles, row.Count) : new(date, 0, 0));
-        return result;
+        return rows.ToDictionary(x => DateOnly.FromDateTime(x.Day), x => (x.Miles, x.Count));
+    }
+
+    private static async Task<Dictionary<DateOnly, (double Miles, int Count)>> DailyInMemoryAsync(
+        IQueryable<Trip> trips,
+        TimeZoneInfo zone,
+        CancellationToken ct
+    )
+    {
+        var rows = await trips.Select(x => new { x.StartedAtUtc, x.DistanceMeters }).ToListAsync(ct);
+        return rows.GroupBy(x => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(x.StartedAtUtc, zone)))
+            .ToDictionary(g => g.Key, g => (g.Sum(x => x.DistanceMeters) / 1609.344, g.Count()));
     }
 }

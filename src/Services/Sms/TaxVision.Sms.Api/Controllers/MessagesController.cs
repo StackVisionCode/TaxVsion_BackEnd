@@ -83,6 +83,9 @@ public sealed class MessagesController(
             User.GetActorType() == ActorType.Service || !User.TryGetUserId(out var userId) ? null : userId;
         var canViewAll =
             actorUserId is not null && await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        // Un número escrito a mano exige su propio permiso; a un servicio no se le mide.
+        var canSendToAnyNumber =
+            actorUserId is not null && await permissions.HasPermissionAsync(User, SmsPermissions.SendAnyNumber, ct);
 
         // Cobro money-OUT (F6): todo envío por ESTE endpoint es individual/directo → se cobra al Wallet. El
         // dispatch de campaña NO pasa por acá (usa CampaignSmsDispatchConsumer, que deja ChargeWallet=false).
@@ -96,7 +99,8 @@ public sealed class MessagesController(
                 ChargeWallet: true,
                 CallerBearerToken: ExtractBearerToken(),
                 BatchKey: requestKey,
-                EnforceContactPolicy: true
+                EnforceContactPolicy: true,
+                CanSendToAnyNumber: canSendToAnyNumber
             ),
             ct
         );

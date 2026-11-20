@@ -32,6 +32,7 @@ public sealed class TenantEntitlementsRefreshTargets(MobileDbContext db)
         CancellationToken ct
     )
     {
+        // Job entre oficinas: solo trae ids de oficina; cada reparación va después con la suya explícita.
         var plans = db.TenantPlanCodeProjections.IgnoreQueryFilters();
         return await KnownTenants()
             .Where(tenantId => !plans.Any(p => p.TenantId == tenantId && p.UpdatedAtUtc >= staleBeforeUtc))
@@ -41,6 +42,7 @@ public sealed class TenantEntitlementsRefreshTargets(MobileDbContext db)
     }
 
     // Conocidos = directorio de Tenant (se reconcilia solo), personal proyectado o plan.
+    // Sin filtro global: job entre oficinas que solo lista ids de oficina.
     private IQueryable<Guid> KnownTenants() =>
         db.Set<TenantTimeZoneProjection>()
             .Select(p => p.TenantId)

@@ -5,6 +5,7 @@ using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Application.Users.Commands;
+using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Sessions;
@@ -171,6 +172,65 @@ public sealed class RefreshAccessTokenHandlerTests
 
         Assert.Equal("Auth.InvalidRefreshToken", onWeb.Error.Code);
         Assert.True(onMobile.IsSuccess);
+    }
+
+    // Señal de uso indebido: queda rastro, pero ni la respuesta cambia ni se cierra la sesión.
+    [Fact]
+    public async Task A_web_token_on_the_mobile_route_leaves_a_trace_and_keeps_the_session()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, workspaceRefresh) = await world.StartWorkspaceSessionAsync();
+
+        var result = await RefreshAsync(world, workspaceRefresh, SessionSurface.Mobile);
+
+        Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
+        var log = Assert.Single(world.Audit.Logs);
+        Assert.Equal(AuthAuditAction.RefreshTokenSurfaceMismatch, log.Action);
+        Assert.False(log.Success);
+        Assert.Equal(world.Admin.Id, log.UserId);
+        Assert.Equal(world.Tenant.Id, log.TenantId);
+        Assert.Equal(sessionId, log.TargetId);
+        Assert.Equal("""{"tokenSurface":"Workspace","route":"Mobile"}""", log.DetailsJson);
+        Assert.Equal(1, world.UnitOfWork.SaveChangesCallCount);
+        Assert.True((await world.Sessions.GetSessionByIdAsync(sessionId))!.IsActive);
+        Assert.Empty(world.Denylist.Denied);
+        Assert.True((await RefreshAsync(world, workspaceRefresh, SessionSurface.Workspace)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task A_mobile_token_on_the_web_route_leaves_a_trace_and_keeps_the_session()
+    {
+        var world = new AccountSessionFixture();
+        var mobile = await world.Issuer.StartSessionAsync(
+            world.Admin,
+            "UTC",
+            [],
+            ["pwd"],
+            "iPhone",
+            SessionSurface.Mobile
+        );
+
+        var result = await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Workspace);
+
+        Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
+        var log = Assert.Single(world.Audit.Logs);
+        Assert.Equal(AuthAuditAction.RefreshTokenSurfaceMismatch, log.Action);
+        Assert.Equal("""{"tokenSurface":"Mobile","route":"Workspace"}""", log.DetailsJson);
+        Assert.True((await world.Sessions.GetSessionByIdAsync(mobile.SessionId))!.IsActive);
+        Assert.Empty(world.Denylist.Denied);
+        Assert.True((await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task An_unknown_token_leaves_no_trace()
+    {
+        var world = new AccountSessionFixture();
+
+        var result = await RefreshAsync(world, "never-issued", SessionSurface.Mobile);
+
+        Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
+        Assert.Empty(world.Audit.Logs);
+        Assert.Equal(0, world.UnitOfWork.SaveChangesCallCount);
     }
 
     [Fact]

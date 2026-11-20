@@ -7,6 +7,7 @@ using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using TaxVision.Mobile.Application.Projections.Abstractions;
 using TaxVision.Mobile.Application.RateLimiting;
 using TaxVision.Mobile.Application.RateLimiting.Abstractions;
@@ -17,6 +18,7 @@ using TaxVision.Mobile.Infrastructure.Persistence;
 using TaxVision.Mobile.Infrastructure.Persistence.Repositories;
 using TaxVision.Mobile.Infrastructure.RateLimiting;
 using TaxVision.Mobile.Infrastructure.Retention;
+using TaxVision.Mobile.Infrastructure.Scheduling;
 using TaxVision.Mobile.Infrastructure.Upstream;
 
 namespace TaxVision.Mobile.Infrastructure;
@@ -36,7 +38,7 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IVehicleRepository, VehicleRepository>();
         services.AddScoped<ITripRepository, TripRepository>();
-        services.AddHostedService<MileageGpsRetentionJob>();
+        AddGpsRetention(services, configuration);
         services.AddScoped<MobileProjectionRepository>();
         services.AddScoped<IMobileProjectionRepository>(sp => sp.GetRequiredService<MobileProjectionRepository>());
         services.AddScoped<IUserPermissionsProjectionReader>(sp => sp.GetRequiredService<MobileProjectionRepository>());
@@ -56,6 +58,18 @@ public static class DependencyInjection
         services.AddTenantTimeZoneReconciliation<MobileTenantTimeZoneTokenProvider>(configuration);
         AddTenantPlan(services, configuration);
         return services;
+    }
+
+    // Purga del recorrido GPS: opciones, lock entre réplicas y job. Igual en todos los entornos.
+    private static void AddGpsRetention(IServiceCollection services, IConfiguration configuration)
+    {
+        services
+            .AddOptions<MileageGpsRetentionOptions>()
+            .Bind(configuration.GetSection(MileageGpsRetentionOptions.SectionName))
+            .Validate(o => o.IsValid(), "Mobile:GpsRetention has out-of-range values.")
+            .ValidateOnStart();
+        services.TryAddSingleton<IDistributedLockFactory, RedisDistributedLockFactory>();
+        services.AddHostedService<MileageGpsRetentionJob>();
     }
 
     // Plan del tenant para el gate de mileage: proyección por evento + caché + reparación por pull.

@@ -39,6 +39,7 @@ public sealed class PermissionModuleMapTests
     [Theory]
     // Transversales / sin módulo → siempre efectivos (nunca 403 falso).
     [InlineData("sms.send")]
+    [InlineData("sms.send_any_number")]
     [InlineData("notification.settings.manage")]
     [InlineData("codes.code.read")] // Growth
     [InlineData("roles.manage")]
