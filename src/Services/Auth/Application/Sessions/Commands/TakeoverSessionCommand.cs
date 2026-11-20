@@ -12,7 +12,7 @@ namespace TaxVision.Auth.Application.Sessions.Commands;
 
 /// <summary>
 /// Confirma el takeover de sesión única: canjea el vale emitido por el login (un solo uso), revoca
-/// TODAS las sesiones anteriores del usuario y materializa la nueva. El vale ya prueba que el login
+/// las sesiones anteriores del mismo canal (web o móvil) y materializa la nueva. El vale ya prueba que el login
 /// (password + MFA si tocaba) se resolvió — acá no se re-autentica. <see cref="Surface"/> es dónde se
 /// confirma: debe coincidir con la del vale (un takeover del CRM no abre el Account ni al revés).
 /// </summary>
@@ -69,13 +69,16 @@ public static class TakeoverSessionHandler
         )
             return Result.Failure<LoginResponse>(denied);
 
-        // Sesión única: aún no existe la nueva, así que se revocan TODAS las anteriores. Denylist cada
-        // una (20 min cubre la vida máxima del JWT) y revocar en BD — mismo patrón que el cambio de
-        // contraseña.
-        var previous = await sessions.GetActiveSessionsByUserAsync(user.Id, ct);
+        // Sesión única por canal: se revocan las anteriores del mismo canal (la web no cae por la app ni al
+        // revés). Denylist cada una (20 min cubre la vida máxima del JWT) y revocar en BD.
+        var previous = (await sessions.GetActiveSessionsByUserAsync(user.Id, ct))
+            .Where(session => session.CompetesWith(payload.Surface))
+            .ToList();
         foreach (var session in previous)
+        {
             await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
-        await sessions.RevokeAllForUserAsync(user.Id, "single_session_superseded", null, ct);
+            await sessions.RevokeSessionAsync(session.Id, "single_session_superseded", ct);
+        }
 
         var issued = await SessionEstablishment.IssueAsync(
             user,

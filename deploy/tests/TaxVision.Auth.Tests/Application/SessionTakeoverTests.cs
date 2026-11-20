@@ -32,8 +32,108 @@ public sealed class SessionTakeoverTests
     private static Tenant BuildTenant() =>
         Tenant.Register(TenantId, "office", "Office", TenantKind.Customer, "America/Santo_Domingo").Value;
 
-    private static UserSession BuildSession(Guid userId) =>
-        UserSession.Start(TenantId, userId, "Device", "ua", "127.0.0.1");
+    private static UserSession BuildSession(Guid userId, SessionSurface surface = SessionSurface.Workspace) =>
+        UserSession.Start(TenantId, userId, "Device", "ua", "127.0.0.1", surface);
+
+    private static Task<SessionOutcome> SignIn(
+        User user,
+        FakeSessions sessions,
+        FakeIssuer issuer,
+        SessionSurface surface
+    ) =>
+        SessionEstablishment.IssueOrRequireTakeoverAsync(
+            user,
+            BuildTenant(),
+            ["pwd"],
+            deviceName: null,
+            mustEnrollMfa: false,
+            surface,
+            new FakeRoles(),
+            issuer,
+            sessions,
+            new FakeTakeoverStore(),
+            CancellationToken.None
+        );
+
+    // Decisión del dueño: una sesión web y una móvil pueden convivir; la sesión única se cuenta por canal.
+    [Fact]
+    public async Task An_open_web_session_does_not_block_signing_in_on_the_app()
+    {
+        var user = BuildUser();
+        var issuer = new FakeIssuer();
+
+        var outcome = await SignIn(
+            user,
+            new FakeSessions { Active = [BuildSession(user.Id)] },
+            issuer,
+            SessionSurface.Mobile
+        );
+
+        Assert.False(outcome.TakeoverRequired);
+        Assert.Equal(SessionSurface.Mobile, issuer.LastSurface);
+    }
+
+    [Fact]
+    public async Task An_open_app_session_does_not_block_signing_in_on_the_web()
+    {
+        var user = BuildUser();
+        var sessions = new FakeSessions { Active = [BuildSession(user.Id, SessionSurface.Mobile)] };
+
+        var outcome = await SignIn(user, sessions, new FakeIssuer(), SessionSurface.Workspace);
+
+        Assert.False(outcome.TakeoverRequired);
+    }
+
+    [Fact]
+    public async Task A_second_app_session_asks_for_takeover()
+    {
+        var user = BuildUser();
+        var sessions = new FakeSessions { Active = [BuildSession(user.Id, SessionSurface.Mobile)] };
+
+        var outcome = await SignIn(user, sessions, new FakeIssuer(), SessionSurface.Mobile);
+
+        Assert.True(outcome.TakeoverRequired);
+    }
+
+    [Fact]
+    public async Task Taking_over_on_the_app_keeps_the_web_session_open()
+    {
+        var user = BuildUser();
+        var web = BuildSession(user.Id);
+        var mobile = BuildSession(user.Id, SessionSurface.Mobile);
+        var sessions = new FakeSessions { Active = [web, mobile] };
+        var denylist = new RecordingDenylist();
+        var publisher = new RecordingRevocationPublisher();
+        var store = new FakeTakeoverStore
+        {
+            ToConsume = new SessionTakeoverPayload(TenantId, user.Id, ["pwd"], null, Surface: SessionSurface.Mobile),
+        };
+
+        var result = await TakeoverSessionHandler.Handle(
+            new TakeoverSessionCommand(Guid.NewGuid(), Surface: SessionSurface.Mobile),
+            store,
+            new StubUsers(user),
+            new StubTenants(BuildTenant()),
+            new FakeRoles(),
+            new FakeIssuer(),
+            sessions,
+            new FakeMfa(),
+            new FakeSecureTokens(),
+            denylist,
+            publisher,
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal([mobile.Id], sessions.Revoked);
+        Assert.False(sessions.RevokeAllCalled);
+        Assert.Single(denylist.Denied);
+        Assert.Single(publisher.Published);
+    }
 
     [Fact]
     public async Task Existing_session_returns_takeover_ticket_and_does_not_mint()
@@ -147,6 +247,7 @@ public sealed class SessionTakeoverTests
 
         Assert.Equal("Auth.TakeoverInvalid", result.Error.Code);
         Assert.False(sessions.RevokeAllCalled);
+        Assert.Empty(sessions.Revoked);
     }
 
     [Fact]
@@ -212,7 +313,7 @@ public sealed class SessionTakeoverTests
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Value.Tokens);
-        Assert.True(sessions.RevokeAllCalled);
+        Assert.Equal(previous.Select(session => session.Id).Order(), sessions.Revoked.Order());
         Assert.Equal(1, issuer.StartCount);
         Assert.Equal(2, denylist.Denied.Count); // ambas sesiones previas
         Assert.Equal(2, publisher.Published.Count); // aviso en tiempo real a ambas
@@ -432,8 +533,13 @@ public sealed class SessionTakeoverTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
-        public Task<int> RevokeSessionAsync(Guid sessionId, string reason, CancellationToken ct = default) =>
-            throw new NotSupportedException();
+        public List<Guid> Revoked { get; } = [];
+
+        public Task<int> RevokeSessionAsync(Guid sessionId, string reason, CancellationToken ct = default)
+        {
+            Revoked.Add(sessionId);
+            return Task.FromResult(1);
+        }
 
         public Task<int> RevokeSurfaceTokensAsync(
             Guid sessionId,
@@ -455,6 +561,7 @@ public sealed class SessionTakeoverTests
     private sealed class FakeIssuer : IAuthSessionIssuer
     {
         public int StartCount { get; private set; }
+        public TaxVision.Auth.Domain.RefreshTokens.SessionSurface? LastSurface { get; private set; }
 
         public Task<IssuedTokens> StartSessionAsync(
             User user,
@@ -467,6 +574,7 @@ public sealed class SessionTakeoverTests
         )
         {
             StartCount++;
+            LastSurface = surface;
             return Task.FromResult(new IssuedTokens("access", "refresh", 900, Guid.NewGuid()));
         }
 

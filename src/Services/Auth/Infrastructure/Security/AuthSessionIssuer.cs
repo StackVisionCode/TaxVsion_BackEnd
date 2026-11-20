@@ -31,11 +31,11 @@ public sealed class AuthSessionIssuer(
     private readonly RefreshTokenOptions _options = options.Value;
 
     /// <summary>
-    /// Mientras falte configurar el MFA que la oficina exige, el espacio de trabajo solo recibe tokens para
-    /// configurarlo. Se evalúa en cada emisión y cada renovación: no depende de lo que haga el front.
+    /// Mientras falte configurar el MFA que la oficina exige, el espacio de trabajo y la app solo reciben tokens
+    /// para configurarlo. Se evalúa en cada emisión y cada renovación: no depende de lo que haga el front.
     /// </summary>
     private async Task<bool> MfaEnrollmentOnlyAsync(User user, SessionSurface surface, CancellationToken ct) =>
-        surface == SessionSurface.Workspace
+        surface is SessionSurface.Workspace or SessionSurface.Mobile
         && (await MfaRequirement.DisposeAsync(user, mfa, ct, mfaOptions.Value.Enforced)).MustEnroll;
 
     public async Task<IssuedTokens> StartSessionAsync(
@@ -48,7 +48,14 @@ public sealed class AuthSessionIssuer(
         CancellationToken ct = default
     )
     {
-        var session = UserSession.Start(user.TenantId, user.Id, deviceName, request.UserAgent, request.IpAddress);
+        var session = UserSession.Start(
+            user.TenantId,
+            user.Id,
+            deviceName,
+            request.UserAgent,
+            request.IpAddress,
+            surface
+        );
         await sessions.AddSessionAsync(session, ct);
 
         return await IssueChainAsync(session, user, effectiveTimeZoneId, roles, authMethods, surface, ct);

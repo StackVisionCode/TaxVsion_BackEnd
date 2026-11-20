@@ -24,7 +24,16 @@ public sealed class MfaEnrollmentSessionTests
         User User
     ) Build(UserActorType actorType = UserActorType.TenantEmployee, bool enforced = true)
     {
-        var user = User.Register(Guid.NewGuid(), "Eve", "Staff", "eve@example.com", "hash", actorType).Value;
+        var customerId = actorType == UserActorType.CustomerPortal ? Guid.NewGuid() : (Guid?)null;
+        var user = User.Register(
+            Guid.NewGuid(),
+            "Eve",
+            "Staff",
+            "eve@example.com",
+            "hash",
+            actorType,
+            customerId
+        ).Value;
         var jwt = new CapturingJwtTokenGenerator();
         var mfa = new InMemoryMfaRepository();
         var issuer = new AuthSessionIssuer(
@@ -54,6 +63,18 @@ public sealed class MfaEnrollmentSessionTests
         mfa.Policy = RequireForEveryone(user.TenantId);
 
         await issuer.StartSessionAsync(user, "UTC", [], ["pwd"], "Chrome", SessionSurface.Workspace);
+
+        Assert.True(Assert.Single(jwt.Issued).MfaEnrollmentOnly);
+    }
+
+    // La app no es una puerta lateral: el cliente que debe enrolar MFA tampoco recibe una sesión completa en el móvil.
+    [Fact]
+    public async Task A_client_who_must_enroll_only_gets_an_mfa_enrollment_token_on_the_app_too()
+    {
+        var (issuer, jwt, mfa, user) = Build(UserActorType.CustomerPortal);
+        mfa.Policy = RequireForEveryone(user.TenantId);
+
+        await issuer.StartSessionAsync(user, "UTC", [], ["pwd"], "iPhone", SessionSurface.Mobile);
 
         Assert.True(Assert.Single(jwt.Issued).MfaEnrollmentOnly);
     }

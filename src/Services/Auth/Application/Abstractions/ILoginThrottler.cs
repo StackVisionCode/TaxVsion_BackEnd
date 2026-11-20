@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Abstractions;
 
@@ -19,6 +20,17 @@ public interface ILoginThrottler
     Task<TimeSpan?> GetIpRetryAfterAsync(string? ipAddress, CancellationToken ct = default);
 
     Task RegisterFailureAsync(string? ipAddress, CancellationToken ct = default);
+
+    /// <summary>
+    /// Fallos del login central por email y tipo de cuenta (10 cada 5 min). No va por tenant: en un fallo
+    /// ninguna oficina coincidió. Sin tipo se miran Staff y Portal. Null si puede intentar.
+    /// </summary>
+    Task<TimeSpan?> GetEmailRetryAfterAsync(string email, UserAccountKind? accountKind, CancellationToken ct = default);
+
+    Task RegisterEmailFailureAsync(string email, UserAccountKind? accountKind, CancellationToken ct = default);
+
+    /// <summary>Un login bueno borra los fallos de ese email: no queda un bloqueo pendiente.</summary>
+    Task ResetEmailFailuresAsync(string email, UserAccountKind? accountKind, CancellationToken ct = default);
 
     /// <summary>Throttle de reenvío de OTP: true si aún debe esperar.</summary>
     Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default);

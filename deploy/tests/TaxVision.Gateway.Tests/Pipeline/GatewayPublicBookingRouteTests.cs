@@ -47,6 +47,32 @@ public sealed class GatewayPublicBookingRouteTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    // Login, refresh y takeover de la app son anónimos y pesan menos de 1 KB: no heredan los 6 MB de /auth (avatares).
+    [Theory]
+    [InlineData("/auth/mobile/login")]
+    [InlineData("/auth/mobile/refresh")]
+    [InlineData("/auth/mobile/session/takeover")]
+    public async Task A_mobile_auth_body_over_16_KB_is_rejected_with_413(string path)
+    {
+        await using var proxy = await Proxy.StartAsync(withRateLimiter: false, cluster: "auth");
+
+        var over = await proxy.Client.PostAsync(path, Body(Cap + 1));
+        var under = await proxy.Client.PostAsync(path, Body(Cap - 1));
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, over.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, under.StatusCode);
+    }
+
+    [Fact]
+    public async Task The_rest_of_auth_keeps_its_body_size_for_avatars()
+    {
+        await using var proxy = await Proxy.StartAsync(withRateLimiter: false, cluster: "auth");
+
+        var response = await proxy.Client.PostAsync("/auth/me/avatar", Body(64 * 1024));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
     [Theory]
     [InlineData("/calendar/public/booking-pages/demo/bookings")]
     [InlineData("/calendar/public/booking-pages/another-page/bookings")]
@@ -73,6 +99,8 @@ public sealed class GatewayPublicBookingRouteTests
     [InlineData("/calendar/appointments", "POST", false)]
     [InlineData("/auth/login", "POST", true)]
     [InlineData("/auth/mobile/login", "POST", true)]
+    [InlineData("/auth/mobile/platform/login", "POST", true)]
+    [InlineData("/auth/mobile/platform/mfa/verify", "POST", true)]
     [InlineData("/tenants", "POST", true)]
     public void Reads_and_staff_routes_stay_out_of_the_gate(string path, string method, bool gated)
     {
@@ -131,7 +159,7 @@ public sealed class GatewayPublicBookingRouteTests
 
         public HttpClient Client { get; }
 
-        public static async Task<Proxy> StartAsync(bool withRateLimiter)
+        public static async Task<Proxy> StartAsync(bool withRateLimiter, string cluster = "calendar")
         {
             var upstream = Loopback(WebApplication.CreateBuilder());
             upstream.MapPost(
@@ -147,11 +175,11 @@ public sealed class GatewayPublicBookingRouteTests
             var settings = GatewaySettings();
             var proxyConfig = new Dictionary<string, string?>
             {
-                ["ReverseProxy:Clusters:calendar:Destinations:calendar1:Address"] = Address(upstream),
+                [$"ReverseProxy:Clusters:{cluster}:Destinations:{cluster}1:Address"] = Address(upstream),
             };
             foreach (var route in settings.GetSection("ReverseProxy:Routes").GetChildren())
             {
-                if (route["ClusterId"] != "calendar")
+                if (route["ClusterId"] != cluster)
                     continue;
                 foreach (var (key, value) in route.AsEnumerable(makePathsRelative: true))
                     if (value is not null)

@@ -33,7 +33,7 @@ public sealed class LoginSessionStep(
             ["pwd"],
             attempt.DeviceName,
             mustEnrollMfa,
-            SessionSurface.Workspace,
+            attempt.Surface,
             roles,
             issuer,
             sessions,

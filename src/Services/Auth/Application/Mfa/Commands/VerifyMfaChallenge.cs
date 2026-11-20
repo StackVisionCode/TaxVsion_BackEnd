@@ -14,13 +14,15 @@ namespace TaxVision.Auth.Application.Mfa.Commands;
 /// <summary>
 /// Paso 2 del login: verifica el código TOTP/OTP o un recovery code contra el
 /// desafío identificado por el login ticket, y emite la sesión y los tokens.
+/// <see cref="Surface"/> la fija el controller, nunca el body: <c>Mobile</c> solo desde la ruta de las apps.
 /// </summary>
 public sealed record VerifyMfaChallengeCommand(
     string LoginTicket,
     string? Code,
     string? RecoveryCode,
     bool RememberDevice = false,
-    string? DeviceName = null
+    string? DeviceName = null,
+    SessionSurface Surface = SessionSurface.Workspace
 );
 
 /// <summary>
@@ -78,8 +80,9 @@ public static class VerifyMfaChallengeHandler
         if (challenge is null || !challenge.IsUsable(now))
             return Result.Failure<MfaVerifyResponse>(invalid);
 
+        // Sesión de app sin permiso (staff de oficina): mismo error genérico que un código malo.
         var user = await users.GetByIdAsync(challenge.UserId, ct);
-        if (user is null || !user.IsActive)
+        if (user is null || !user.IsActive || !MobileSurfacePolicy.Allows(user, command.Surface))
             return Result.Failure<MfaVerifyResponse>(invalid);
 
         var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
@@ -163,7 +166,7 @@ public static class VerifyMfaChallengeHandler
             ["pwd", methodAmr],
             command.DeviceName,
             mustEnrollMfa: false,
-            SessionSurface.Workspace,
+            command.Surface,
             roles,
             issuer,
             sessions,

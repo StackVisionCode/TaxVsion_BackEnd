@@ -1,7 +1,10 @@
-﻿using BuildingBlocks.Infrastructure.RateLimiting;
+﻿using System.Security.Cryptography;
+using System.Text;
+using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Results;
 using StackExchange.Redis;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Infrastructure.Security;
 
@@ -36,6 +39,11 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
     // Por IP de oficina (NAT): con 20 bastaban unos pocos empleados equivocándose para bloquear el login
     // de todos. El brute force de una cuenta lo frena el lockout por cuenta (10 fallos), no esto.
     private const int MaxIpFailures = 50;
+
+    // Login central: un email con 10 fallos espera 5 min. Ventana corta a propósito: quien conoce el email puede
+    // bloquear logins nuevos de la app, que no tiene otra puerta. Decisión del dueño (2026-11-19).
+    public const int MaxEmailFailures = 10;
+    public static readonly TimeSpan EmailFailureWindow = TimeSpan.FromMinutes(5);
     private const int MaxPasswordResetRequestsPerEmail = 3;
     private const int MaxPasswordResetRequestsPerIp = 10;
     private const int MaxInvitationAcceptAttemptsPerIp = 20;
@@ -64,6 +72,38 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
         string.IsNullOrWhiteSpace(ipAddress)
             ? Task.CompletedTask
             : rateCounter.IncrementAndGetAsync(FailureKey(ipAddress), FailureWindow, ct);
+
+    public async Task<TimeSpan?> GetEmailRetryAfterAsync(
+        string email,
+        UserAccountKind? accountKind,
+        CancellationToken ct = default
+    )
+    {
+        foreach (var key in EmailFailureKeys(email, accountKind))
+            if (await GetCountAsync(key) >= MaxEmailFailures)
+                return await RemainingAsync(key, EmailFailureWindow);
+        return null;
+    }
+
+    public async Task RegisterEmailFailureAsync(
+        string email,
+        UserAccountKind? accountKind,
+        CancellationToken ct = default
+    )
+    {
+        foreach (var key in EmailFailureKeys(email, accountKind))
+            await rateCounter.IncrementAndGetAsync(key, EmailFailureWindow, ct);
+    }
+
+    public async Task ResetEmailFailuresAsync(
+        string email,
+        UserAccountKind? accountKind,
+        CancellationToken ct = default
+    )
+    {
+        foreach (var key in EmailFailureKeys(email, accountKind))
+            await redis.GetDatabase().KeyDeleteAsync(key.Value);
+    }
 
     public async Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default) =>
         await GetCountAsync(OtpKey(userId)) > 0;
@@ -130,6 +170,14 @@ public sealed class LoginThrottler(IConnectionMultiplexer redis, IRateCounter ra
         await redis.GetDatabase().KeyTimeToLiveAsync(key.Value) ?? window;
 
     private static RateCounterKey FailureKey(string ipAddress) => RateCounterKey.From($"auth:failip:{ipAddress}");
+
+    // Por tipo de cuenta: atacar el portal no bloquea al mismo email como empleado. El email va hasheado (sin PII).
+    private static IEnumerable<RateCounterKey> EmailFailureKeys(string email, UserAccountKind? accountKind)
+    {
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(email.Trim().ToLowerInvariant())));
+        UserAccountKind[] kinds = accountKind is { } only ? [only] : [UserAccountKind.Staff, UserAccountKind.Portal];
+        return kinds.Select(kind => RateCounterKey.From($"auth:failemail:{kind}:{hash}"));
+    }
 
     private static RateCounterKey OtpKey(Guid userId) => RateCounterKey.From($"auth:otp-resend:{userId:N}");
 

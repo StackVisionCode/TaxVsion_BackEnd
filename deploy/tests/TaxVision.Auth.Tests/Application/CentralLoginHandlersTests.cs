@@ -127,6 +127,75 @@ public sealed class CentralLoginHandlersTests
         Assert.Equal(43, result.Error.RetryAfterSeconds);
     }
 
+    // --- tope por email (decisión del dueño: 10 fallos cada 15 min, por email y tipo de cuenta) ---
+
+    [Fact]
+    public async Task Discover_without_matches_counts_a_failure_for_the_email_of_both_account_kinds()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.TenantEmployee);
+
+        await Discover(world, "user@example.com", "wrong-password");
+
+        Assert.Equal(1, world.Throttler.EmailFailures[("user@example.com", UserAccountKind.Staff)]);
+        Assert.Equal(1, world.Throttler.EmailFailures[("user@example.com", UserAccountKind.Portal)]);
+    }
+
+    [Fact]
+    public async Task Discover_an_email_with_ten_failures_waits_even_with_the_right_password()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.TenantEmployee);
+        for (var attempt = 0; attempt < FakeLoginThrottler.MaxEmailFailures; attempt++)
+            await world.Throttler.RegisterEmailFailureAsync("user@example.com", UserAccountKind.Staff);
+
+        var result = await Discover(world, "user@example.com", GoodPassword, accountKind: UserAccountKind.Staff);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.LockedOut", result.Error.Code);
+        Assert.NotNull(result.Error.RetryAfterSeconds);
+    }
+
+    // El mismo email puede tener otra clave en cada oficina: acertar la de una no es un fallo.
+    [Fact]
+    public async Task Discover_the_password_of_another_office_with_the_same_email_is_not_a_failure()
+    {
+        var world = new World { Hasher = new PerOfficePasswordHasher() };
+        world.AddOffice("acme", UserActorType.TenantEmployee, passwordHash: "acme-pass");
+        world.AddOffice("globex", UserActorType.TenantEmployee, passwordHash: "globex-pass");
+
+        var result = await Discover(world, "user@example.com", "globex-pass");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("globex", result.Value.Subdomain);
+        Assert.Empty(world.Throttler.EmailFailures);
+    }
+
+    [Fact]
+    public async Task Discover_a_good_sign_in_clears_the_failures_of_that_email()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.TenantEmployee);
+        await world.Throttler.RegisterEmailFailureAsync("user@example.com", null);
+
+        await Discover(world, "user@example.com", GoodPassword);
+
+        Assert.Empty(world.Throttler.EmailFailures);
+    }
+
+    [Fact]
+    public async Task Discover_failures_on_the_client_portal_do_not_block_the_same_email_as_staff()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.TenantEmployee);
+        for (var attempt = 0; attempt < FakeLoginThrottler.MaxEmailFailures; attempt++)
+            await world.Throttler.RegisterEmailFailureAsync("user@example.com", UserAccountKind.Portal);
+
+        var result = await Discover(world, "user@example.com", GoodPassword, accountKind: UserAccountKind.Staff);
+
+        Assert.True(result.IsSuccess);
+    }
+
     // --- handoff ---
 
     [Fact]
@@ -408,7 +477,218 @@ public sealed class CentralLoginHandlersTests
         Assert.Equal("Auth.HandoffInvalid", result.Error.Code);
     }
 
+    // --- login móvil (MobileSignIn): un caso de uso, sesión con superficie Mobile, solo cuentas del portal ---
+
+    private const string ClientEmail = "client@example.com";
+
+    [Fact]
+    public async Task Mobile_credentials_return_the_offices_even_when_there_is_only_one()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail);
+
+        var result = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword));
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.RequiresTenantSelection);
+        Assert.NotNull(result.Value.DiscoverySessionRef);
+        Assert.Equal(tenantId, Assert.Single(result.Value.Offices).TenantId);
+        Assert.Null(result.Value.AccessToken);
+        Assert.Empty(world.Issuer.Started);
+    }
+
+    [Fact]
+    public async Task Mobile_choosing_an_office_starts_a_mobile_session_for_that_client()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail);
+        var selection = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword));
+
+        var result = await MobileSignIn(
+            world,
+            new MobileSignInCommand(TenantId: tenantId, DiscoverySessionRef: selection.Value.DiscoverySessionRef)
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("access", result.Value.AccessToken);
+        Assert.Equal((world.UserIn(tenantId), SessionSurface.Mobile), Assert.Single(world.Issuer.Started));
+        Assert.False(world.Sessions.Contains(selection.Value.DiscoverySessionRef!.Value));
+    }
+
+    [Fact]
+    public async Task Mobile_with_the_office_in_the_first_request_signs_in_at_once()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail);
+
+        var result = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword, tenantId));
+
+        Assert.Equal("access", result.Value.AccessToken);
+        Assert.Equal(SessionSurface.Mobile, Assert.Single(world.Issuer.Started).Surface);
+    }
+
+    [Fact]
+    public async Task Mobile_never_signs_in_a_staff_account()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.TenantEmployee, ClientEmail);
+
+        var result = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword));
+
+        Assert.Equal("Auth.Invalid", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Mobile_an_office_outside_the_authenticated_set_is_rejected()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail);
+        var selection = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword));
+
+        var result = await MobileSignIn(
+            world,
+            new MobileSignInCommand(TenantId: Guid.NewGuid(), DiscoverySessionRef: selection.Value.DiscoverySessionRef)
+        );
+
+        Assert.Equal("Auth.HandoffInvalid", result.Error.Code);
+        Assert.Empty(world.Issuer.Started);
+    }
+
+    // Una referencia del login web puede traer oficinas de staff: la app nunca abre una sesión de staff.
+    [Fact]
+    public async Task Mobile_a_reference_with_a_staff_office_is_rejected()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.TenantEmployee, ClientEmail);
+        var reference = await world.Sessions.StoreAsync(
+            new DiscoverySession([
+                new DiscoveredOffice(tenantId, world.UserIn(tenantId), false, false, UserAccountKind.Staff),
+            ])
+        );
+
+        var result = await MobileSignIn(
+            world,
+            new MobileSignInCommand(TenantId: tenantId, DiscoverySessionRef: reference)
+        );
+
+        Assert.Equal("Auth.HandoffInvalid", result.Error.Code);
+        Assert.Empty(world.Issuer.Started);
+    }
+
+    [Fact]
+    public async Task Mobile_an_office_asking_for_mfa_without_the_code_keeps_the_reference_to_retry()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail, enrollTotp: true);
+        world.Mfa.Policy = RequireMfaForClients(tenantId);
+        var selection = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword));
+
+        var result = await MobileSignIn(
+            world,
+            new MobileSignInCommand(TenantId: tenantId, DiscoverySessionRef: selection.Value.DiscoverySessionRef)
+        );
+
+        Assert.Equal("Auth.MfaInvalid", result.Error.Code);
+        Assert.True(world.Sessions.Contains(selection.Value.DiscoverySessionRef!.Value));
+    }
+
+    [Fact]
+    public async Task Mobile_an_office_asking_for_mfa_with_a_valid_code_signs_in()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail, enrollTotp: true);
+        world.Mfa.Policy = RequireMfaForClients(tenantId);
+        var selection = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword));
+
+        var result = await MobileSignIn(
+            world,
+            new MobileSignInCommand(
+                TenantId: tenantId,
+                DiscoverySessionRef: selection.Value.DiscoverySessionRef,
+                MfaCode: "valid-totp"
+            )
+        );
+
+        Assert.Equal("access", result.Value.AccessToken);
+    }
+
+    [Fact]
+    public async Task Mobile_wrong_password_counts_a_failure_for_the_client_email_only()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail);
+
+        await MobileSignIn(world, new MobileSignInCommand(ClientEmail, "wrong-password"));
+
+        Assert.Equal(1, world.Throttler.Failures);
+        Assert.Equal(1, world.Throttler.EmailFailures[(ClientEmail, UserAccountKind.Portal)]);
+        Assert.False(world.Throttler.EmailFailures.ContainsKey((ClientEmail, UserAccountKind.Staff)));
+    }
+
+    [Fact]
+    public async Task Mobile_a_client_email_with_ten_failures_waits()
+    {
+        var world = new World();
+        world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail);
+        for (var attempt = 0; attempt < FakeLoginThrottler.MaxEmailFailures; attempt++)
+            await world.Throttler.RegisterEmailFailureAsync(ClientEmail, UserAccountKind.Portal);
+
+        var result = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword));
+
+        Assert.Equal("Auth.LockedOut", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Mobile_without_credentials_or_reference_asks_for_them()
+    {
+        var result = await MobileSignIn(new World(), new MobileSignInCommand(ClientEmail));
+
+        Assert.Equal("Auth.MobileCredentialsRequired", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Mobile_a_reference_without_the_office_asks_for_it()
+    {
+        var result = await MobileSignIn(new World(), new MobileSignInCommand(DiscoverySessionRef: Guid.NewGuid()));
+
+        Assert.Equal("Auth.MobileTenantRequired", result.Error.Code);
+    }
+
+    private static TenantMfaPolicy RequireMfaForClients(Guid tenantId)
+    {
+        var policy = TenantMfaPolicy.CreateDefault(tenantId);
+        policy.Update(requireForEmployees: false, requireForCustomerPortal: true, trustedDeviceDays: 30);
+        return policy;
+    }
+
     // --- drivers ---
+
+    private static Task<BuildingBlocks.Results.Result<MobileSignInResponse>> MobileSignIn(
+        World world,
+        MobileSignInCommand command
+    ) =>
+        MobileSignInHandler.Handle(
+            command,
+            world.Users,
+            world.Tenants,
+            world.Hasher,
+            world.Mfa,
+            world.Sessions,
+            world.Totp,
+            world.Protector,
+            world.SecureTokens,
+            world.Throttler,
+            world.Roles,
+            world.Issuer,
+            new EmptyUserSessionRepository(),
+            new NoopSessionTakeoverTicketStore(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            Microsoft.Extensions.Options.Options.Create(new TaxVision.Auth.Application.Common.MfaOptions()),
+            CancellationToken.None
+        );
 
     private static Task<BuildingBlocks.Results.Result<DiscoverLoginResponse>> Discover(
         World world,
@@ -489,7 +769,7 @@ public sealed class CentralLoginHandlersTests
     {
         public FakeUserRepository Users { get; } = new();
         public FakeTenantRegistry Tenants { get; } = new();
-        public FakePasswordHasher Hasher { get; } = new(GoodPassword);
+        public IPasswordHasher Hasher { get; init; } = new FakePasswordHasher(GoodPassword);
         public FakeMfaRepository Mfa { get; } = new();
         public FakeDiscoverySessionStore Sessions { get; } = new();
         public FakeHandoffTicketStore Tickets { get; } = new();
@@ -506,7 +786,8 @@ public sealed class CentralLoginHandlersTests
             string subdomain,
             UserActorType actorType,
             string email = "user@example.com",
-            bool enrollTotp = false
+            bool enrollTotp = false,
+            string passwordHash = "hash"
         )
         {
             // El dominio solo admite al PlatformAdmin en la oficina reservada de plataforma.
@@ -521,7 +802,8 @@ public sealed class CentralLoginHandlersTests
                     "America/Santo_Domingo"
                 )
                 .Value;
-            var user = User.Register(tenantId, "Test", "User", email, "hash", actorType).Value;
+            var customerId = actorType == UserActorType.CustomerPortal ? Guid.NewGuid() : (Guid?)null;
+            var user = User.Register(tenantId, "Test", "User", email, passwordHash, actorType, customerId).Value;
             Tenants.Add(tenant);
             Users.Add(email, user);
             _userByTenant[tenantId] = user.Id;
@@ -544,6 +826,14 @@ public sealed class CentralLoginHandlersTests
         public bool Verify(string password, string hash) => password == good;
     }
 
+    /// <summary>Cada oficina con su propia clave: el "hash" guardado es la clave en claro.</summary>
+    private sealed class PerOfficePasswordHasher : IPasswordHasher
+    {
+        public string Hash(string password) => password;
+
+        public bool Verify(string password, string hash) => password == hash;
+    }
+
     private sealed class FakeLoginThrottler : ILoginThrottler
     {
         public TimeSpan? RetryAfter { get; set; }
@@ -555,6 +845,42 @@ public sealed class CentralLoginHandlersTests
         public Task RegisterFailureAsync(string? ipAddress, CancellationToken ct = default)
         {
             Failures++;
+            return Task.CompletedTask;
+        }
+
+        // Mismo criterio que LoginThrottler: por email y tipo; sin tipo, los dos.
+        public Dictionary<(string Email, UserAccountKind Kind), int> EmailFailures { get; } = [];
+        public const int MaxEmailFailures = 10;
+
+        private static UserAccountKind[] Kinds(UserAccountKind? kind) =>
+            kind is { } only ? [only] : [UserAccountKind.Staff, UserAccountKind.Portal];
+
+        public Task<TimeSpan?> GetEmailRetryAfterAsync(
+            string email,
+            UserAccountKind? accountKind,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<TimeSpan?>(
+                Kinds(accountKind).Any(kind => EmailFailures.GetValueOrDefault((email, kind)) >= MaxEmailFailures)
+                    ? TimeSpan.FromMinutes(5)
+                    : null
+            );
+
+        public Task RegisterEmailFailureAsync(
+            string email,
+            UserAccountKind? accountKind,
+            CancellationToken ct = default
+        )
+        {
+            foreach (var kind in Kinds(accountKind))
+                EmailFailures[(email, kind)] = EmailFailures.GetValueOrDefault((email, kind)) + 1;
+            return Task.CompletedTask;
+        }
+
+        public Task ResetEmailFailuresAsync(string email, UserAccountKind? accountKind, CancellationToken ct = default)
+        {
+            foreach (var kind in Kinds(accountKind))
+                EmailFailures.Remove((email, kind));
             return Task.CompletedTask;
         }
 
@@ -671,6 +997,8 @@ public sealed class CentralLoginHandlersTests
 
     private sealed class FakeAuthSessionIssuer : IAuthSessionIssuer
     {
+        public List<(Guid UserId, SessionSurface Surface)> Started { get; } = [];
+
         public Task<IssuedTokens> StartSessionAsync(
             User user,
             string effectiveTimeZoneId,
@@ -679,7 +1007,11 @@ public sealed class CentralLoginHandlersTests
             string? deviceName,
             SessionSurface surface,
             CancellationToken ct = default
-        ) => Task.FromResult(new IssuedTokens("access", "refresh", 900, Guid.NewGuid()));
+        )
+        {
+            Started.Add((user.Id, surface));
+            return Task.FromResult(new IssuedTokens("access", "refresh", 900, Guid.NewGuid()));
+        }
 
         public Task<IssuedTokens> JoinSessionAsync(
             UserSession session,
@@ -860,8 +1192,10 @@ public sealed class CentralLoginHandlersTests
             list.Add(method);
         }
 
+        public TenantMfaPolicy? Policy { get; set; }
+
         public Task<TenantMfaPolicy?> GetPolicyAsync(Guid tenantId, CancellationToken ct = default) =>
-            Task.FromResult<TenantMfaPolicy?>(null);
+            Task.FromResult(Policy);
 
         public Task<IReadOnlyList<MfaMethod>> GetMethodsAsync(Guid userId, CancellationToken ct = default) =>
             Task.FromResult<IReadOnlyList<MfaMethod>>(_methods.TryGetValue(userId, out var list) ? list : []);

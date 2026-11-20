@@ -1,12 +1,13 @@
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Users.Commands;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Users.Login;
 
-/// <summary>Quién intenta entrar, una vez encontrados su oficina y su cuenta.</summary>
-public sealed record LoginAttempt(Tenant Tenant, User User, string? DeviceName);
+/// <summary>Quién intenta entrar, una vez encontrados su oficina y su cuenta, y desde qué superficie.</summary>
+public sealed record LoginAttempt(Tenant Tenant, User User, string? DeviceName, SessionSurface Surface);
 
 /// <summary>
 /// Cómo termina el login. Un paso solo decide: <c>LoginHandler</c> guarda y después publica <see cref="Notice"/>,

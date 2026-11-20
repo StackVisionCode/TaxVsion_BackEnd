@@ -88,6 +88,24 @@ public sealed class AcceptInvitationHandlerTests
 
         public Task RegisterFailureAsync(string? ipAddress, CancellationToken ct = default) => Task.CompletedTask;
 
+        public Task<TimeSpan?> GetEmailRetryAfterAsync(
+            string email,
+            TaxVision.Auth.Domain.Users.UserAccountKind? accountKind,
+            CancellationToken ct = default
+        ) => Task.FromResult<TimeSpan?>(null);
+
+        public Task RegisterEmailFailureAsync(
+            string email,
+            TaxVision.Auth.Domain.Users.UserAccountKind? accountKind,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
+
+        public Task ResetEmailFailuresAsync(
+            string email,
+            TaxVision.Auth.Domain.Users.UserAccountKind? accountKind,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
+
         public Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default) =>
             Task.FromResult(false);
 

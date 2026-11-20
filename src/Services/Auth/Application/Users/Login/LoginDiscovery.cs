@@ -46,7 +46,22 @@ public sealed class LoginDiscovery(
         if (user is null)
             return (null, await RefuseAnonymousAsync(command, """{"reason":"unknown_email"}""", ct));
 
-        return (new LoginAttempt(tenant, user, command.DeviceName), null);
+        // Sesión de app sin permiso (staff de oficina): igual que un email desconocido, sin verificar la clave ni
+        // sumar fallo. El motivo queda solo en auditoría.
+        if (!MobileSurfacePolicy.Allows(user, command.Surface))
+        {
+            await audit.RecordAsync(
+                command.TenantId,
+                user.Id,
+                AuthAuditAction.LoginFailed,
+                false,
+                ct,
+                detailsJson: """{"reason":"surface_not_allowed"}"""
+            );
+            return (null, LoginDecision.Refused(LoginPasswordCheck.InvalidCredentials));
+        }
+
+        return (new LoginAttempt(tenant, user, command.DeviceName, command.Surface), null);
     }
 
     private async Task<LoginDecision> RefuseAnonymousAsync(

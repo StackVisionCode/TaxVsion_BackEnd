@@ -39,6 +39,10 @@ public sealed class CentralLoginController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> DiscoverLogin(DiscoverLoginRequest request, CancellationToken ct)
     {
+        // Puerta web: CRM/portal o Account. Las apps tienen sus propias rutas en /auth/mobile.
+        if (request.Surface == SessionSurface.Mobile)
+            return BadRequest(new Error("Auth.SurfaceNotSupported", "This sign-in does not support that surface."));
+
         var command = new DiscoverLoginCommand(
             request.Email,
             request.Password,

@@ -57,8 +57,9 @@ public static class SessionEstablishment
     {
         // IgnoreQueryFilters ya aplicado en el repo (guardrail #8): el login corre pre-JWT, sin tenant
         // en contexto, y el userId propio es la clave confiable.
+        // Sesión única por canal: una web y una móvil conviven; solo compite la del mismo canal.
         var active = await sessions.GetActiveSessionsByUserAsync(user.Id, ct);
-        if (active.Count > 0)
+        if (active.Any(session => session.CompetesWith(surface)))
         {
             var ticket = await takeoverTickets.IssueAsync(
                 new SessionTakeoverPayload(

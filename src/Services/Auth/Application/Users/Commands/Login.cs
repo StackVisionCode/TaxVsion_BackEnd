@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Users.Login;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
@@ -9,6 +10,7 @@ namespace TaxVision.Auth.Application.Users.Commands;
 /// <summary>
 /// <see cref="AccountKind"/>: el CRM entra con la cuenta Staff y el portal con la Portal (la misma persona
 /// puede tener ambas con el mismo email). Sin indicarlo se usa Staff si existe y, si no, Portal.
+/// <see cref="Surface"/> la fija el controller, nunca el cliente: <c>Mobile</c> solo desde las rutas de las apps.
 /// </summary>
 public sealed record LoginCommand(
     Guid TenantId,
@@ -16,7 +18,8 @@ public sealed record LoginCommand(
     string Password,
     string? DeviceName = null,
     string? DeviceToken = null,
-    UserAccountKind? AccountKind = null
+    UserAccountKind? AccountKind = null,
+    SessionSurface Surface = SessionSurface.Workspace
 );
 
 public sealed record AuthTokensResponse(
