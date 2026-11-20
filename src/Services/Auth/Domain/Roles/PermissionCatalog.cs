@@ -30,6 +30,7 @@ public static class PermissionCatalog
     public const string InvoicingManage = "invoicing.manage";
     public const string InvoicingIssuerManage = "invoicing.issuer.manage";
     public const string InvoicingStatusOverride = "invoicing.status.override";
+    public const string InvoicingSummaryView = "invoicing.summary.view";
     public const string TenantDomainsManage = "tenant.domains.manage";
     public const string BrandingManage = TenantBrandingPermissions.Manage;
     public const string PlatformBrandingManage = TenantBrandingPermissions.Platform;
@@ -640,6 +641,16 @@ public static class PermissionCatalog
             InvoicingStatusOverride,
             "billing",
             "Change an invoice's status freely (reverses payments when reopening a paid invoice)",
+            false
+        ),
+        new(
+            // Los totales de la oficina (cobrado, por cobrar, tiempo medio de cobro, borradores) son información
+            // financiera del negocio, no trabajo diario del preparador: el owner decide quién los ve. El TenantAdmin lo
+            // recibe por su bundle, queda fuera del bundle del empleado y se delega con un rol.
+            new Guid("a1000000-0000-0000-0000-000000000230"),
+            InvoicingSummaryView,
+            "billing",
+            "See the office's billing totals (collected, outstanding, average time to get paid)",
             false
         ),
         new(
@@ -2555,11 +2566,9 @@ public static class PermissionCatalog
                 // servicio le quedaba inservible. Fuera queda notes.view_all, que es gobernanza.
                 NotesRead,
                 NotesManage,
-                // Referidos: el empleado ve el código de su oficina y lo copia/comparte (el envío
-                // registra su canal). Generar/regenerar queda para el owner (referrals.code.manage,
-                // solo Tenant Admin por defecto): el empleado no modifica el código.
-                GrowthReferralsOwnRead,
-                GrowthReferralsRewardRead,
+                // Referidos y Wallet NO vienen de fábrica en el empleado: el código de la oficina, sus premios y el
+                // saldo son del negocio. El owner decide quién los ve dándole un rol con referrals.own.read /
+                // referrals.reward.read / wallet.view. Lo mismo los totales de facturación (invoicing.summary.view).
             ],
             Role.SystemCustomerPortal =>
             [

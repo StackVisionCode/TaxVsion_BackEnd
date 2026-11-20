@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<BillingDbContext>());
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
         services.AddScoped<IInvoiceTitleReader, InvoiceTitleReader>();
+        services.AddScoped<IInvoiceSummaryReader, InvoiceSummaryReader>();
         services.AddScoped<IIssuerProfileRepository, IssuerProfileRepository>();
         services.AddScoped<ITenantBillingSettingsRepository, TenantBillingSettingsRepository>();
         services.AddScoped<IInvoiceNumberSequenceRepository, InvoiceNumberSequenceRepository>();

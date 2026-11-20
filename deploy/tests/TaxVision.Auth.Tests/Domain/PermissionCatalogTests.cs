@@ -443,6 +443,11 @@ public sealed class PermissionCatalogTests
     [InlineData(PermissionCatalog.CampaignsSendersManage)]
     [InlineData(PermissionCatalog.InvoicingIssuerManage)]
     [InlineData(PermissionCatalog.InvoicingStatusOverride)]
+    // Información del negocio (totales de facturación, referidos, saldo): el owner decide quién la ve.
+    [InlineData(PermissionCatalog.InvoicingSummaryView)]
+    [InlineData(PermissionCatalog.GrowthReferralsOwnRead)]
+    [InlineData(PermissionCatalog.GrowthReferralsRewardRead)]
+    [InlineData(PermissionCatalog.WalletView)]
     [InlineData(PermissionCatalog.NotesViewAll)]
     public void Employee_defaults_stay_out_of_the_administrative_permissions(string code)
     {

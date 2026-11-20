@@ -1084,6 +1084,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000230"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "invoicing.summary.view",
+                            Description = "See the office's billing totals (collected, outstanding, average time to get paid)",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "billing",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000186"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "invoicing.issuer.manage",
