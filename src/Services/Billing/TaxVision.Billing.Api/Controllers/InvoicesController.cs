@@ -14,6 +14,7 @@ using TaxVision.Billing.Application.Invoices.EditInvoice;
 using TaxVision.Billing.Application.Invoices.GetInvoice;
 using TaxVision.Billing.Application.Invoices.GetInvoiceDetail;
 using TaxVision.Billing.Application.Invoices.IssueInvoice;
+using TaxVision.Billing.Application.Invoices.GetInvoicesSummary;
 using TaxVision.Billing.Application.Invoices.ListInvoices;
 using TaxVision.Billing.Application.Invoices.OverrideInvoiceStatus;
 using TaxVision.Billing.Application.Invoices.RecordManualPayment;
@@ -125,6 +126,28 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<InvoiceSummaryResponse>>>(
             new ListInvoicesQuery(tenantId, userId, canViewAll, take, customerId),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Totales de facturación de la oficina (las tarjetas de cabecera): cobrado, por cobrar, tiempo medio de cobro y
+    /// borradores, sobre TODAS las facturas visibles para el actor. Exige invoicing.summary.view (lo delega el owner).
+    /// </summary>
+    [HttpGet("summary")]
+    [RateLimit("billing.f.invoice_read")]
+    [HasPermission(InvoicingPermissions.SummaryView)]
+    [ProducesResponseType<InvoicesSummaryResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Summary(CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<InvoicesSummaryResponse>>(
+            new GetInvoicesSummaryQuery(tenantId, userId, canViewAll),
             ct
         );
 

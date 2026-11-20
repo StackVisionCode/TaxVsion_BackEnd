@@ -1300,6 +1300,26 @@
           "response": []
         },
         {
+          "name": "Invoices summary (totales de la oficina)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/billing/invoices/summary",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoices",
+                "summary"
+              ]
+            },
+            "description": "Totales de facturacion de la oficina sobre TODAS sus facturas: collectedCents, outstandingCents, draftCount, averageDaysToPay, currency. Exige invoicing.summary.view: lo tiene el TenantAdmin por su bundle y NO el empleado; el owner lo delega con un rol. Sin el permiso responde 403 y el CRM no muestra las tarjetas."
+          },
+          "response": []
+        },
+        {
           "name": "Change invoice status (manual, matriz legal: Issued <-> Sent)",
           "request": {
             "method": "POST",
