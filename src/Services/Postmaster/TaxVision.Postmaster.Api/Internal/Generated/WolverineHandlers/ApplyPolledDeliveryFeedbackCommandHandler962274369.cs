@@ -25,7 +25,6 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
@@ -34,6 +33,7 @@ namespace Internal.Generated.WolverineHandlers
             var unmatchedDeliveryFeedbackRepository = new TaxVision.Postmaster.Infrastructure.Persistence.Repositories.UnmatchedDeliveryFeedbackRepository(postmasterDbContext);
             var deliveryFeedbackReceiptRepository = new TaxVision.Postmaster.Infrastructure.Persistence.Repositories.DeliveryFeedbackReceiptRepository(postmasterDbContext);
             var sentMessageRepository = new TaxVision.Postmaster.Infrastructure.Persistence.Repositories.SentMessageRepository(postmasterDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var applyPolledDeliveryFeedbackCommand = (TaxVision.Postmaster.Application.Feedback.Commands.ApplyPolledDeliveryFeedback.ApplyPolledDeliveryFeedbackCommand)context.Envelope.Message;
 

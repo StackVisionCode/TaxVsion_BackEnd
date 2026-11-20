@@ -10,6 +10,7 @@ public interface ITripRepository
     Task<TripOperation?> OperationAsync(Guid tenant, Guid customer, Guid tripId, long sequence, CancellationToken ct);
     void Add(Trip trip);
     void AddPoint(TripPoint point);
+    Task DeletePointsAsync(Guid tenant, Guid customer, Guid trip, CancellationToken ct);
     void AddOperation(TripOperation operation);
     Task<bool> HasVehicleTripsAsync(Guid tenant, Guid customer, Guid vehicle, CancellationToken ct);
     Task<PagedResult<Trip>> ListAsync(Guid tenant, Guid customer, TripFilter filter, CancellationToken ct);

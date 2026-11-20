@@ -26,6 +26,8 @@ public sealed class CatalogRevisionsTests
                 "2026-11-11-r3-plan-descriptions",
                 "2026-11-13-r4-financial-insights",
                 "2026-11-13-financial-insights-legacy-editions",
+                "2026-11-19-r5-mileage",
+                "2026-11-19-mileage-legacy-editions",
             ],
             CatalogRevisionCatalog.All.Select(revision => revision.Id)
         );
@@ -195,6 +197,112 @@ public sealed class CatalogRevisionsTests
             [office, starterOffice],
             modules: modules
         );
+        Assert.True(again.IsSuccess);
+        Assert.Equal(editions, enterprise.Versions.Count);
+        Assert.Equal(edition.Id, office.PlanVersionId);
+    }
+
+    // Mileage entra solo a Enterprise, el único plan a la venta; quien ya es cliente lo recibe porque solo suma.
+    [Fact]
+    public async Task Mileage_enters_enterprise_only_and_re_anchors_its_offices()
+    {
+        var (starter, pro, enterprise, _) = TodaysCatalog();
+        var enterpriseOffice = ActiveOn(enterprise, enterprise.GetPublishedVersion()!);
+        var proOffice = ActiveOn(pro, pro.GetPublishedVersion()!);
+        var proEdition = pro.GetPublishedVersion()!.Id;
+        var modules = ModuleCatalog();
+
+        var result = await Apply(
+            new MileageModuleRevision(),
+            [starter, pro, enterprise],
+            [enterpriseOffice, proOffice],
+            modules: modules
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        var published = enterprise.GetPublishedVersion()!;
+        var enabled = ContractedEntitlementPolicy.EnabledModules(published, modules.All).Value;
+        Assert.Contains("mileage", enabled);
+        Assert.Contains("meetings", enabled);
+        Assert.Equal(published.Id, enterpriseOffice.PlanVersionId);
+        Assert.Equal(proEdition, pro.GetPublishedVersion()!.Id);
+        Assert.Equal(proEdition, proOffice.PlanVersionId);
+        Assert.DoesNotContain(
+            "mileage",
+            ContractedEntitlementPolicy.EnabledModules(starter.GetPublishedVersion()!, modules.All).Value
+        );
+
+        var addon = modules.All.Single(module => module.Code == "mileage");
+        Assert.True(addon.IsSellableAsAddon);
+        Assert.Equal(19m, addon.AddonPriceMonthlyUsd);
+        Assert.Equal(190m, addon.AddonPriceYearlyUsd);
+    }
+
+    // El orden real del arranque: la edición heredada de Financial Insights ocupa el número siguiente a la publicada,
+    // y la revisión de mileage tiene que publicar con el que sigue (en la base local chocaba con v11 y frenaba el arranque).
+    [Fact]
+    public async Task Mileage_applies_after_financial_insights_created_a_legacy_edition()
+    {
+        var modules = ModuleCatalog();
+        var enterprise = Plan("enterprise", 299m, 2990m, seats: 25, storage: 200 * GiB);
+        var office = ActiveOn(enterprise, enterprise.GetPublishedVersion()!);
+        PublishCopy(enterprise, 99m, 999m, seats: 3, storage: 15 * GiB, extraModule: "meetings");
+        SubscriptionPlan[] plans = [enterprise];
+
+        Assert.True((await Apply(new FinancialInsightsModuleRevision(), plans, [office], modules: modules)).IsSuccess);
+        Assert.True(
+            (await Apply(new FinancialInsightsLegacyEditionsRevision(), plans, [office], modules: modules)).IsSuccess
+        );
+        var mileage = await Apply(new MileageModuleRevision(), plans, [office], modules: modules);
+
+        Assert.True(mileage.IsSuccess, mileage.IsFailure ? mileage.Error.Message : null);
+        Assert.Contains(
+            "mileage",
+            ContractedEntitlementPolicy.EnabledModules(enterprise.GetPublishedVersion()!, modules.All).Value
+        );
+        Assert.Equal(
+            enterprise.Versions.Count,
+            enterprise.Versions.Select(version => version.VersionNumber).Distinct().Count()
+        );
+    }
+
+    [Fact]
+    public async Task Mileage_module_revision_is_idempotent()
+    {
+        var (starter, pro, enterprise, _) = TodaysCatalog();
+        var modules = ModuleCatalog();
+        await Apply(new MileageModuleRevision(), [starter, pro, enterprise], [], modules: modules);
+        var edition = enterprise.GetPublishedVersion()!.Id;
+
+        var again = await Apply(new MileageModuleRevision(), [starter, pro, enterprise], [], modules: modules);
+
+        Assert.True(again.IsSuccess);
+        Assert.Equal(edition, enterprise.GetPublishedVersion()!.Id);
+    }
+
+    // Toda oficina Enterprise sin el módulo lo recibe, conservando su precio y sus límites.
+    [Fact]
+    public async Task Enterprise_offices_on_old_editions_get_mileage_without_changing_their_terms()
+    {
+        var modules = ModuleCatalog();
+        var enterprise = Plan("enterprise", 299m, 2990m, seats: 25, storage: 200 * GiB);
+        var old = enterprise.GetPublishedVersion()!;
+        var office = ActiveOn(enterprise, old);
+        PublishCopy(enterprise, 99m, 999m, seats: 3, storage: 15 * GiB, extraModule: "meetings");
+        await Apply(new MileageModuleRevision(), [enterprise], [office], modules: modules);
+        Assert.Equal(old.Id, office.PlanVersionId);
+        var published = enterprise.GetPublishedVersion()!.Id;
+
+        var result = await Apply(new MileageLegacyEditionsRevision(), [enterprise], [office], modules: modules);
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        var edition = enterprise.Versions.Single(version => version.Id == office.PlanVersionId);
+        Assert.Equal(CommercialTerms.Of(old), CommercialTerms.Of(edition));
+        Assert.Contains("mileage", ContractedEntitlementPolicy.EnabledModules(edition, modules.All).Value);
+        Assert.Equal(published, enterprise.GetPublishedVersion()!.Id);
+
+        var editions = enterprise.Versions.Count;
+        var again = await Apply(new MileageLegacyEditionsRevision(), [enterprise], [office], modules: modules);
         Assert.True(again.IsSuccess);
         Assert.Equal(editions, enterprise.Versions.Count);
         Assert.Equal(edition.Id, office.PlanVersionId);
@@ -533,6 +641,7 @@ public sealed class CatalogRevisionsTests
             Commercial("campaigns", 29m),
             Commercial("email", 29m),
             Commercial("financial_insights", null),
+            Commercial("mileage", null),
         ];
         return new ModuleCatalogFixture(all, new FakeModuleRepo(all));
     }

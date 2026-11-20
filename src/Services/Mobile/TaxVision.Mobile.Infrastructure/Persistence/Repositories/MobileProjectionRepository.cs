@@ -21,6 +21,17 @@ public sealed class MobileProjectionRepository(MobileDbContext db)
 
     public void AddUserPermissions(UserPermissionsProjection row) => db.UserPermissionsProjections.Add(row);
 
+    public Task<RolePermissionsProjection?> FindRolePermissionsAsync(
+        Guid tenantId,
+        Guid roleId,
+        CancellationToken ct = default
+    ) =>
+        db
+            .RolePermissionsProjections.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == roleId, ct);
+
+    public void AddRolePermissions(RolePermissionsProjection row) => db.RolePermissionsProjections.Add(row);
+
     public async Task<UserPermissionsSnapshot?> GetSnapshotAsync(
         Guid tenantId,
         Guid userId,

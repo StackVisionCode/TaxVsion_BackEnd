@@ -25,13 +25,13 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Auth.Infrastructure.Persistence.AuthDbContext authDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Auth.Infrastructure.Persistence.AuthDbContext.");
             var tenantOnboardingRepository = new TaxVision.Auth.Onboarding.Infrastructure.Persistence.Repositories.TenantOnboardingRepository(authDbContext);
             var emailVerificationChallengeRepository = new TaxVision.Auth.Onboarding.Infrastructure.Persistence.Repositories.EmailVerificationChallengeRepository(authDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var createOnboardingCommand = (TaxVision.Auth.Onboarding.Application.TenantOnboardings.Commands.CreateOnboardingCommand)context.Envelope.Message;
 

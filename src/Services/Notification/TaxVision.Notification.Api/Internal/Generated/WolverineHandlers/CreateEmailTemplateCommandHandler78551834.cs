@@ -22,8 +22,8 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
@@ -32,7 +32,7 @@ namespace Internal.Generated.WolverineHandlers
             // The actual message body
             var createEmailTemplateCommand = (TaxVision.Notification.Application.Email.Templates.Commands.CreateEmailTemplateCommand)context.Envelope.Message;
 
-
+            
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
             var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(notificationDbContext, context, _domainEventScraperIEnumerable);
             await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
@@ -48,15 +48,15 @@ namespace Internal.Generated.WolverineHandlers
                 TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
                 System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Notification.Application.Email.Templates.Commands.CreateEmailTemplateHandler");
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Email.Templates.Commands.CreateEmailTemplateHandler");
-
+                
                 // The actual message execution
                 var outgoing1 = await TaxVision.Notification.Application.Email.Templates.Commands.CreateEmailTemplateHandler.Handle(createEmailTemplateCommand, emailTemplateRepository, unitOfWork, cancellation).ConfigureAwait(false);
 
-
+                
                 // Outgoing, cascaded message
                 await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
 
-
+                
                 // Added by EF Core Transaction Middleware
                 var result_of_SaveChangesAsync = await notificationDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);
 
@@ -75,7 +75,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: CreateEmailTemplateCommandHandler78551834
-
-
+    
+    
 }
 

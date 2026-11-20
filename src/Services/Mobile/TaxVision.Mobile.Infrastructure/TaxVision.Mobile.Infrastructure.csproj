@@ -3,6 +3,7 @@
     <ProjectReference Include="..\TaxVision.Mobile.Application\TaxVision.Mobile.Application.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\BuildingBlocks.Infrastructure\BuildingBlocks.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\EfCore\BuildingBlocks.EfCore.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\TenantTimeZones\BuildingBlocks.TenantTimeZones.csproj" />
   </ItemGroup>
 
   <ItemGroup>

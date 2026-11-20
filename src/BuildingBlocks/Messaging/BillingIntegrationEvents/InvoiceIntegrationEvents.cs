@@ -35,6 +35,34 @@ public sealed record InvoicePaidIntegrationEvent : BillingIntegrationEvent
 
     /// <summary>Quién registró el pago manual (aditivo, Work Profile); null en cobros en línea.</summary>
     public Guid? RecordedByUserId { get; init; }
+
+    /// <summary>Nombre del cliente al momento del pago: Notification lo pone en el aviso a la oficina sin consultar Billing.
+    /// Aditivo y opcional (publicaciones anteriores no lo traen).</summary>
+    public string? CustomerName { get; init; }
+
+    /// <summary>Origen del pago que la saldó (<c>Online</c>, <c>Manual</c>, <c>CarriedCredit</c>…); null si la saldó una edición.</summary>
+    public string? PaymentSource { get; init; }
+}
+
+/// <summary>
+/// El estado de una factura cambió, sea por emisión, cobro, anulación, edición o cambio manual. Es el aviso GENÉRICO:
+/// Communication lo relaya por socket al personal de la oficina para que la lista se actualice sin recargar, y
+/// Notification puede reaccionar a estados concretos. Payload mínimo: quien lo recibe vuelve a pedir la factura por HTTP.
+/// </summary>
+[MessageIdentity("billing.invoice.status_changed.v1")]
+public sealed record InvoiceStatusChangedIntegrationEvent : BillingIntegrationEvent
+{
+    public override string EventType => "billing.invoice.status_changed";
+    public required Guid InvoiceId { get; init; }
+    public string? InvoiceNumber { get; init; }
+    public string? FromStatus { get; init; }
+    public required string ToStatus { get; init; }
+
+    /// <summary>Qué lo originó: Created / Issue / Payment / Void / Edit / ManualChange / StatusOverride.</summary>
+    public required string Trigger { get; init; }
+
+    /// <summary>Quién lo hizo; Guid.Empty si fue el sistema (un cobro online).</summary>
+    public Guid ChangedByUserId { get; init; }
 }
 
 /// <summary>Publicado cuando se aplica un pago parcial.</summary>

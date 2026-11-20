@@ -51,8 +51,9 @@ public sealed class RolesController(IMessageBus bus) : ControllerBase
         // comercial del techo (un PlatformAdmin consultando fuera de un tenant).
         var tenantId = User.TryGetTenantId(out var resolvedTenantId) ? resolvedTenantId : (Guid?)null;
 
+        // Los PlatformOnly se filtran en el servidor: ocultarlos solo en el CRM los dejaba visibles en la red.
         var result = await bus.InvokeAsync<Result<IReadOnlyList<PermissionResponse>>>(
-            new GetPermissionsCatalogQuery(tenantId),
+            new GetPermissionsCatalogQuery(tenantId, IncludePlatformOnly: User.IsPlatformAdmin()),
             ct
         );
 

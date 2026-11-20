@@ -18,7 +18,7 @@ public sealed class InvoicePaidDomainEventTests
         Pay(invoice, "a", 4_000, InvoicePaymentSource.Online);
         Pay(invoice, "b", 6_000, InvoicePaymentSource.Online);
 
-        var paid = Assert.IsType<InvoicePaidDomainEvent>(Assert.Single(invoice.DomainEvents));
+        var paid = Assert.Single(invoice.DomainEvents.OfType<InvoicePaidDomainEvent>());
         Assert.Equal(invoice.Id, paid.InvoiceId);
         Assert.Equal(invoice.TenantId, paid.TenantId);
         Assert.Equal("INV-2026-00001", paid.InvoiceNumber);
@@ -37,7 +37,7 @@ public sealed class InvoicePaidDomainEventTests
         Pay(invoice, "a", 10_000, InvoicePaymentSource.Manual);
         Pay(invoice, "b", 1_000, InvoicePaymentSource.Manual);
 
-        Assert.Single(invoice.DomainEvents);
+        Assert.Single(invoice.DomainEvents.OfType<InvoicePaidDomainEvent>());
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public sealed class InvoicePaidDomainEventTests
         );
 
         Assert.True(edited.IsSuccess);
-        var paid = Assert.IsType<InvoicePaidDomainEvent>(Assert.Single(invoice.DomainEvents));
+        var paid = Assert.Single(invoice.DomainEvents.OfType<InvoicePaidDomainEvent>());
         Assert.Null(paid.PaymentSource);
     }
 

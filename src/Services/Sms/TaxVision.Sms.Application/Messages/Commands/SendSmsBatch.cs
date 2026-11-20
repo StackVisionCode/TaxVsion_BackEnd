@@ -10,6 +10,7 @@ using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Application.Webhooks;
 using TaxVision.Sms.Domain;
 using TaxVision.Sms.Domain.Messages;
+using TaxVision.Sms.Domain.ValueObjects;
 using Wolverine;
 using Wolverine.Attributes;
 
@@ -105,6 +106,22 @@ public static class SendSmsBatchHandler
             return Result.Failure<SendSmsBatchResponse>(new Error("sms.noProvider", "No SMS provider is configured."));
         var nowUtc = DateTime.UtcNow;
 
+        // El cliente NO es obligatorio: un ítem sin CustomerId es un número escrito a mano. Se le deriva un id estable
+        // del teléfono (para la fila, la conversación y el STOP). Un número que no es E.164 queda sin id y falla solo.
+        var manualRecipients = new HashSet<int>();
+        var normalizedItems = new List<SmsSendItemDto>(command.Items.Count);
+        for (var i = 0; i < command.Items.Count; i++)
+        {
+            var current = command.Items[i];
+            if (current.CustomerId == Guid.Empty && PhoneE164.Create(current.To) is { IsSuccess: true } manualPhone)
+            {
+                manualRecipients.Add(i);
+                current = current with { CustomerId = SmsRecipientId.ForPhone(manualPhone.Value) };
+            }
+            normalizedItems.Add(current);
+        }
+        command = command with { Items = normalizedItems };
+
         var gate = await SmsSendGate.ForContactPolicyAsync(command, contactPolicies, ct);
         var chargeableCount = gate.ChargeableCount(command.Items);
         var chargeWallet = command.ChargeWallet && chargeableCount > 0;
@@ -119,9 +136,11 @@ public static class SendSmsBatchHandler
         await gate.LoadAssignmentsAsync(command, visibility.Value, assignments, ct);
 
         var results = new List<SmsSendItemResult>(command.Items.Count);
-        foreach (var item in command.Items)
+        for (var index = 0; index < command.Items.Count; index++)
         {
-            if (!gate.IsAssigned(item.CustomerId))
+            var item = command.Items[index];
+            // El alcance por cartera aplica a clientes; un número escrito a mano no pertenece a ninguna cartera.
+            if (!manualRecipients.Contains(index) && !gate.IsAssigned(item.CustomerId))
             {
                 results.Add(Failed(item, SmsErrors.CustomerNotAssigned.Code));
                 continue;

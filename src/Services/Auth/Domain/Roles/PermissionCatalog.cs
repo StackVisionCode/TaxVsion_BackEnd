@@ -29,6 +29,7 @@ public static class PermissionCatalog
     public const string InvoicingView = "invoicing.view";
     public const string InvoicingManage = "invoicing.manage";
     public const string InvoicingIssuerManage = "invoicing.issuer.manage";
+    public const string InvoicingStatusOverride = "invoicing.status.override";
     public const string TenantDomainsManage = "tenant.domains.manage";
     public const string BrandingManage = TenantBrandingPermissions.Manage;
     public const string PlatformBrandingManage = TenantBrandingPermissions.Platform;
@@ -628,6 +629,16 @@ public static class PermissionCatalog
             CampaignsManage,
             "campaigns",
             "Create and edit campaigns, contacts and lists",
+            false
+        ),
+        new(
+            // Corregir el estado de una factura a gusto de la oficina (incluso pagada → borrador) revierte pagos y toca
+            // stock y cobro: no es trabajo diario del preparador. Administrativo — el TenantAdmin lo recibe por su bundle,
+            // queda fuera del bundle del empleado y se puede delegar. No es IsDangerous: la oficina decide sobre SU facturación.
+            new Guid("a1000000-0000-0000-0000-000000000229"),
+            InvoicingStatusOverride,
+            "billing",
+            "Change an invoice's status freely (reverses payments when reopening a paid invoice)",
             false
         ),
         new(

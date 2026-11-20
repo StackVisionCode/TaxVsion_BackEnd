@@ -28,8 +28,9 @@ public sealed class MessagesController(
 {
     public sealed record MediaItemRequest(string Url, string ContentType, string? FileName, long? SizeBytes);
 
+    // CustomerId es OPCIONAL: sin cliente, el destinatario es el número escrito a mano (To en E.164).
     public sealed record MessageItemRequest(
-        Guid CustomerId,
+        Guid? CustomerId,
         string To,
         string Message,
         IReadOnlyList<MediaItemRequest>? Media,
@@ -64,7 +65,7 @@ public sealed class MessagesController(
             .Select(
                 (m, index) =>
                     new SmsSendItemDto(
-                        m.CustomerId,
+                        m.CustomerId ?? Guid.Empty,
                         m.To,
                         m.Message,
                         m.Media?.Select(x => new SmsMediaDto(x.Url, x.ContentType, x.FileName, x.SizeBytes)).ToList(),

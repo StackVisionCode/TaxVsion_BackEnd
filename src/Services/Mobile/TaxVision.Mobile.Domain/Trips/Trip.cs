@@ -25,6 +25,7 @@ public sealed class Trip : TenantEntity
     public DateTime LastPointAtUtc { get; private set; }
     public double LastLatitude { get; private set; }
     public double LastLongitude { get; private set; }
+    public DateTime? CoordinatesPurgedAtUtc { get; private set; }
     public bool HasDistanceAnchor { get; private set; }
     public double DistanceMeters { get; private set; }
     public double ActiveDurationSeconds { get; private set; }
@@ -186,9 +187,25 @@ public sealed class Trip : TenantEntity
         if (Status is TripStatus.InProgress or TripStatus.Paused)
             return Result.Failure(TripErrors.State);
         DeletedAtUtc = nowUtc;
+        LastLatitude = 0;
+        LastLongitude = 0;
+        HasDistanceAnchor = false;
+        CoordinatesPurgedAtUtc = nowUtc;
         UpdatedAtUtc = nowUtc;
         Revision = sequence;
         return Result.Success();
+    }
+
+    public bool PurgeCoordinates(DateTime nowUtc)
+    {
+        if (CoordinatesPurgedAtUtc.HasValue)
+            return false;
+        LastLatitude = 0;
+        LastLongitude = 0;
+        HasDistanceAnchor = false;
+        CoordinatesPurgedAtUtc = nowUtc;
+        UpdatedAtUtc = nowUtc;
+        return true;
     }
 
     public void ApplyRate(MileageRate? rate)

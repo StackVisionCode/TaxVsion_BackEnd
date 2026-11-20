@@ -442,6 +442,7 @@ public sealed class PermissionCatalogTests
     [Theory]
     [InlineData(PermissionCatalog.CampaignsSendersManage)]
     [InlineData(PermissionCatalog.InvoicingIssuerManage)]
+    [InlineData(PermissionCatalog.InvoicingStatusOverride)]
     [InlineData(PermissionCatalog.NotesViewAll)]
     public void Employee_defaults_stay_out_of_the_administrative_permissions(string code)
     {

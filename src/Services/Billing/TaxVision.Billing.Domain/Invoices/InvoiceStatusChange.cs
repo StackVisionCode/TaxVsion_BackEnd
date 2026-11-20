@@ -61,6 +61,9 @@ public static class StatusChangeTrigger
     public const string Void = "Void";
     public const string ManualChange = "ManualChange";
 
+    /// <summary>Corrección de estado hecha a mano por un usuario con permiso, fuera de la matriz legal (con motivo obligatorio).</summary>
+    public const string StatusOverride = "StatusOverride";
+
     /// <summary>La edición cambió el total y con él el estado de cobro (Paid ↔ PartiallyPaid).</summary>
     public const string Edit = "Edit";
 }

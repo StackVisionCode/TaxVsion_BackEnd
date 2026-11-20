@@ -22,8 +22,8 @@ namespace Internal.Generated.WolverineHandlers
 
         public override System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var tenantSubdomainChangedIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.TenantSubdomainChangedIntegrationEvent)context.Envelope.Message;
 
@@ -32,7 +32,7 @@ namespace Internal.Generated.WolverineHandlers
             TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware.Before(context, handlerBus);
             System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Notification.Application.Consumers.TenantHostCacheInvalidationConsumer");
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Consumers.TenantHostCacheInvalidationConsumer");
-
+            
             // The actual message execution
             TaxVision.Notification.Application.Consumers.TenantHostCacheInvalidationConsumer.Handle(tenantSubdomainChangedIntegrationEvent, _tenantHostCache, _loggerOfTenantHostCache);
 
@@ -42,7 +42,7 @@ namespace Internal.Generated.WolverineHandlers
     }
 
     // END: TenantSubdomainChangedIntegrationEventHandler902116571
-
-
+    
+    
 }
 

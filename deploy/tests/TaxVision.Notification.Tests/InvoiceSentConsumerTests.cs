@@ -91,6 +91,12 @@ public sealed class InvoiceSentConsumerTests
             new NotificationDispatcherHarness().Dispatcher,
             NoPortalRecipientResolver.Instance,
             new NoOpCorrelationContext(),
+            Microsoft
+                .Extensions
+                .Logging
+                .Abstractions
+                .NullLogger<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent>
+                .Instance,
             CancellationToken.None
         );
 

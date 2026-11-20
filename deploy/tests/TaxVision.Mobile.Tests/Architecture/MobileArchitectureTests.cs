@@ -14,7 +14,7 @@ public sealed class MobileArchitectureTests
     [InlineData(typeof(VehiclesController), 5)]
     [InlineData(typeof(TripsController), 12)]
     [InlineData(typeof(MobileStatisticsController), 2)]
-    [InlineData(typeof(MileageConfigurationController), 3)]
+    [InlineData(typeof(MileageConfigurationController), 5)]
     public void Every_vehicle_action_declares_permission_actor_and_registered_rate_limit(Type type, int count)
     {
         var actions = type.GetMethods().Where(x => x.GetCustomAttributes<HttpMethodAttribute>().Any()).ToArray();

@@ -132,6 +132,57 @@ public sealed class RoleCatalogQueriesTests
         Assert.False(result.Value.Single(permission => permission.Code == DangerousCode).Grantable);
     }
 
+    private const string PlatformCode = "growth.admin.cross_tenant";
+
+    private static IReadOnlyList<Permission> CatalogWithPlatformOnly() =>
+        [
+            .. Catalog(),
+            Permission.Seed(
+                Guid.NewGuid(),
+                PlatformCode,
+                "growth",
+                "Operate Growth resources for any office (platform only)",
+                isAssignableByTenant: false,
+                platformOnly: true
+            ),
+        ];
+
+    // Una oficina nunca puede concederlos: listarlos solo exponía el catálogo interno de la plataforma.
+    [Fact]
+    public async Task An_office_does_not_receive_platform_only_permissions()
+    {
+        var tenantId = Guid.NewGuid();
+        var roles = new StubRoleRepository { Catalog = CatalogWithPlatformOnly() };
+
+        var result = await GetPermissionsCatalogHandler.Handle(
+            new GetPermissionsCatalogQuery(tenantId),
+            roles,
+            new StubPlanLimitsStore(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain(result.Value, permission => permission.Code == PlatformCode);
+        Assert.Contains(result.Value, permission => permission.Code == DangerousCode);
+    }
+
+    [Fact]
+    public async Task A_platform_admin_still_receives_platform_only_permissions()
+    {
+        var roles = new StubRoleRepository { Catalog = CatalogWithPlatformOnly() };
+
+        var result = await GetPermissionsCatalogHandler.Handle(
+            new GetPermissionsCatalogQuery(TenantId: null, IncludePlatformOnly: true),
+            roles,
+            new StubPlanLimitsStore(),
+            CancellationToken.None
+        );
+
+        var platform = Assert.Single(result.Value, permission => permission.Code == PlatformCode);
+        Assert.True(platform.PlatformOnly);
+        Assert.False(platform.Grantable);
+    }
+
     [Fact]
     public async Task The_role_users_query_lists_the_active_holders()
     {

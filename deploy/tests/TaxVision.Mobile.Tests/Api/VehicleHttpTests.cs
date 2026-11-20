@@ -99,14 +99,60 @@ public sealed class VehicleHttpTests
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/mobile/vehicles")).StatusCode);
     }
 
+    [Fact]
+    public async Task Enforced_mileage_gate_denies_without_the_module_and_lets_in_with_it()
+    {
+        using var factory = Factory(enforceMileage: true);
+        using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
+        var withMileage = Guid.NewGuid();
+        var withoutModules = Guid.NewGuid();
+        var noPlanYet = Guid.NewGuid();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MobileDbContext>();
+            var included = TaxVision.Mobile.Domain.RateLimiting.TenantPlanCodeProjection.Create(
+                withMileage,
+                "enterprise",
+                1
+            );
+            included.ApplyIfNewer("enterprise", 1, ["mileage"]);
+            var expired = TaxVision.Mobile.Domain.RateLimiting.TenantPlanCodeProjection.Create(
+                withoutModules,
+                "enterprise",
+                1
+            );
+            expired.ApplyIfNewer("enterprise", 1, []);
+            db.TenantPlanCodeProjections.AddRange(included, expired);
+            await db.SaveChangesAsync();
+        }
+
+        Token(client, withMileage, Guid.NewGuid());
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/mobile/vehicles")).StatusCode);
+
+        // [] = se sabe que no tiene ningún módulo: deniega con el código que traduce el portal.
+        Token(client, withoutModules, Guid.NewGuid());
+        var denied = await client.GetAsync("/mobile/vehicles");
+        Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        Assert.Contains("Authz.ModuleUnavailable", await denied.Content.ReadAsStringAsync());
+
+        // Sin fila todavía (consistencia eventual): no deniega.
+        Token(client, noPlanYet, Guid.NewGuid());
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/mobile/vehicles")).StatusCode);
+    }
+
     private const string Key = "mobile-tests-only-signing-key-64-characters-long-do-not-use-in-prod";
 
-    private static WebApplicationFactory<Program> Factory()
+    private static WebApplicationFactory<Program> Factory(bool enforceMileage = false)
     {
         var database = Guid.NewGuid().ToString();
         return new MobileRoutingHostFactory().WithWebHostBuilder(builder =>
         {
             builder.UseSetting("Jwt:Secret", Key);
+            if (enforceMileage)
+            {
+                builder.UseSetting("Authorization:ModuleGate:Enforce", "true");
+                builder.UseSetting("Authorization:ModuleGate:EnforcedModules:0", "mileage");
+            }
             builder.UseSetting("Wolverine:CodeGeneration:TypeLoadMode", "Dynamic");
             builder.ConfigureTestServices(services =>
             {
@@ -130,6 +176,9 @@ public sealed class VehicleHttpTests
                 services.AddSingleton<IRateCounter, Counter>();
                 services.RemoveAll<ISessionDenylistReader>();
                 services.AddSingleton<ISessionDenylistReader, Denylist>();
+                // Sin Redis: el gate de mileage lee la proyección en memoria (sin fila → no deniega).
+                services.RemoveAll<BuildingBlocks.Caching.ICacheService>();
+                services.AddSingleton<BuildingBlocks.Caching.ICacheService, NoOpCache>();
             });
         });
     }
@@ -224,5 +273,22 @@ public sealed class VehicleHttpTests
     private sealed class Denylist : ISessionDenylistReader
     {
         public Task<bool> IsSessionDeniedAsync(Guid id, CancellationToken ct = default) => Task.FromResult(true);
+    }
+
+    private sealed class NoOpCache : BuildingBlocks.Caching.ICacheService
+    {
+        public Task<T?> GetAsync<T>(string key, CancellationToken ct = default) => Task.FromResult(default(T));
+
+        public Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task RemoveAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<T> GetOrCreateAsync<T>(
+            string key,
+            Func<CancellationToken, Task<T>> factory,
+            TimeSpan? ttl = null,
+            CancellationToken ct = default
+        ) => factory(ct);
     }
 }

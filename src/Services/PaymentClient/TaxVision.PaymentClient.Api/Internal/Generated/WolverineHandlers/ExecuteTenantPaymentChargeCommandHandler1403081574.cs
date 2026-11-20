@@ -31,13 +31,13 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var paymentClientDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.PaymentClient.Infrastructure.Persistence.PaymentClientDbContext>(serviceScope.ServiceProvider);
             var tenantConnectAccountRepository = new TaxVision.PaymentClient.Infrastructure.Persistence.Repositories.TenantConnectAccountRepository(paymentClientDbContext);
             var tenantPaymentConfigRepository = new TaxVision.PaymentClient.Infrastructure.Persistence.Repositories.TenantPaymentConfigRepository(paymentClientDbContext);
             var tenantPaymentRepository = new TaxVision.PaymentClient.Infrastructure.Persistence.Repositories.TenantPaymentRepository(paymentClientDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var executeTenantPaymentChargeCommand = (TaxVision.PaymentClient.Application.TenantPayments.Commands.ExecuteTenantPaymentCharge.ExecuteTenantPaymentChargeCommand)context.Envelope.Message;
 

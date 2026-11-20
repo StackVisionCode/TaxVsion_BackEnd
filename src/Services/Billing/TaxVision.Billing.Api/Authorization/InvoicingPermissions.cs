@@ -17,4 +17,11 @@ public static class InvoicingPermissions
     /// el dueño, no el preparador que emite la factura. El emisor legal ya no se edita aquí (vive en Tenant).
     /// </summary>
     public const string IssuerManage = "invoicing.issuer.manage";
+
+    /// <summary>
+    /// Corregir el estado de una factura a gusto de la oficina (incluso una pagada → borrador). Revierte pagos y
+    /// toca stock y cobro, así que sale de <see cref="Manage"/>: queda administrativo (TenantAdmin por su bundle,
+    /// fuera del bundle del empleado) y se puede delegar.
+    /// </summary>
+    public const string StatusOverride = "invoicing.status.override";
 }

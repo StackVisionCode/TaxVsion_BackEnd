@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using TaxVision.Sms.Application.Messages.Commands;
 using TaxVision.Sms.Application.Providers;
 using TaxVision.Sms.Domain;
+using TaxVision.Sms.Domain.ValueObjects;
 using TaxVision.Sms.Tests.Fakes;
 
 namespace TaxVision.Sms.Tests.Application;
@@ -165,17 +166,56 @@ public sealed partial class SendSmsBatchHandlerTests
         Assert.Equal(0, h.Provider.SendAsyncCallCount);
     }
 
+    // El cliente NO es obligatorio: un número escrito a mano se envía con un id derivado del teléfono.
     [Fact]
-    public async Task Item_without_a_customer_fails_alone()
+    public async Task Item_without_a_customer_is_sent_to_the_typed_number()
     {
         var h = new Harness();
 
         var result = await h.Run(
-            Batch(new SmsSendItemDto(Guid.Empty, Phone, "hi", null, "no-customer", "docs"), Item())
+            Batch(new SmsSendItemDto(Guid.Empty, OtherPhone, "hi", null, "no-customer", "docs"), Item())
         );
 
-        Assert.Equal(SmsErrors.InvalidCustomer.Code, result.Value.Results[0].ErrorCode);
+        var manual = result.Value.Results[0];
+        Assert.Equal("Accepted", manual.Status);
+        Assert.Null(manual.ErrorCode);
+        Assert.Equal(SmsRecipientId.ForPhone(PhoneE164.Create(OtherPhone).Value), manual.CustomerId);
         Assert.Equal("Accepted", result.Value.Results[1].Status);
+    }
+
+    [Fact]
+    public async Task Item_without_a_customer_and_an_invalid_number_fails_alone_as_invalid_destination()
+    {
+        var h = new Harness();
+
+        var result = await h.Run(
+            Batch(new SmsSendItemDto(Guid.Empty, "not-a-phone", "hi", null, "bad", "docs"), Item())
+        );
+
+        Assert.Equal(SmsErrors.InvalidDestination.Code, result.Value.Results[0].ErrorCode);
+        Assert.Equal("Accepted", result.Value.Results[1].Status);
+    }
+
+    [Fact]
+    public async Task Typed_number_skips_the_portfolio_gate_that_blocks_other_clients()
+    {
+        var h = new Harness();
+        h.Visibility.Enabled = true;
+        var command = new SendSmsBatchCommand(
+            Tenant,
+            "corr-1",
+            [
+                new SmsSendItemDto(Guid.Empty, OtherPhone, "hi", null, "typed", "docs"),
+                new SmsSendItemDto(OtherCustomer, OtherPhone, "hi", null, "not-mine", "docs"),
+            ],
+            ActorUserId: Guid.NewGuid(),
+            CanViewAll: false
+        );
+
+        var result = await h.Run(command);
+
+        Assert.Equal("Accepted", result.Value.Results[0].Status);
+        Assert.Equal(SmsErrors.CustomerNotAssigned.Code, result.Value.Results[1].ErrorCode);
     }
 
     [Fact]

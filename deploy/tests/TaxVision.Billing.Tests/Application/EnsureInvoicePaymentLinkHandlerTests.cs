@@ -85,6 +85,7 @@ public sealed class EnsureInvoicePaymentLinkHandlerTests
     private sealed class RecordingPaymentLinkClient : IInvoicePaymentLinkClient
     {
         public List<long> RequestedAmounts { get; } = [];
+        public List<bool> ReinstateRequests { get; } = [];
 
         public Task<Result<InvoicePayableResult>> EnsurePayableAsync(
             long amountCents,
@@ -92,10 +93,12 @@ public sealed class EnsureInvoicePaymentLinkHandlerTests
             Guid invoiceId,
             Guid tenantId,
             string? invoiceNumber = null,
-            CancellationToken ct = default
+            CancellationToken ct = default,
+            bool reinstate = false
         )
         {
             RequestedAmounts.Add(amountCents);
+            ReinstateRequests.Add(reinstate);
             return Task.FromResult(
                 Result.Success(new InvoicePayableResult(Guid.NewGuid(), "https://pay.example.test/i/1"))
             );

@@ -332,7 +332,7 @@ public sealed class Invoice : AggregateRoot
         if (to == InvoiceStatus.Paid)
         {
             // El recibo lleva la fecha y el medio del último pago, como al cobrar.
-            var last = _payments.OrderBy(p => p.PaidAtUtc).LastOrDefault();
+            var last = _payments.Where(p => p.IsActive).OrderBy(p => p.PaidAtUtc).LastOrDefault();
             IssueReceipt(
                 paidCents,
                 last?.Method ?? PaymentMethod ?? ValueObjects.PaymentMethod.Other,
@@ -559,7 +559,9 @@ public sealed class Invoice : AggregateRoot
         Money amount,
         ValueObjects.PaymentMethod method,
         DateTime paidAtUtc,
-        Guid actorUserId
+        Guid actorUserId,
+        string auditTrigger = StatusChangeTrigger.Payment,
+        string? auditReason = null
     )
     {
         if (string.IsNullOrWhiteSpace(sourceReference) || sourceReference.Length > InvoicePayment.ReferenceMaxLength)
@@ -611,7 +613,7 @@ public sealed class Invoice : AggregateRoot
         UpdatedAtUtc = paidAtUtc;
         // Auditar solo si el estado efectivamente cambió (un pago parcial sobre otro parcial no transiciona).
         if (from != Status)
-            RecordStatusChange(from, Status, StatusChangeTrigger.Payment, null, actorUserId, paidAtUtc);
+            RecordStatusChange(from, Status, auditTrigger, auditReason, actorUserId, paidAtUtc);
         if (Status == InvoiceStatus.Paid && from != InvoiceStatus.Paid)
             RaisePaid(source, source == InvoicePaymentSource.Manual && actorUserId != Guid.Empty ? actorUserId : null);
         return Result.Success();
@@ -630,6 +632,7 @@ public sealed class Invoice : AggregateRoot
                 PaidAtUtc,
                 PaidPdfFileId,
                 source,
+                Customer.Name,
                 recordedByUserId
             )
         );
@@ -664,6 +667,190 @@ public sealed class Invoice : AggregateRoot
         LastModifiedBy = actorUserId;
         RecordStatusChange(from, target, StatusChangeTrigger.ManualChange, reason, actorUserId, nowUtc);
         return Result.Success();
+    }
+
+    /// <summary>Estados a los que la oficina puede llevar una factura a mano. <c>PartiallyPaid</c> no: es consecuencia de
+    /// los pagos, no una etiqueta que se elija.</summary>
+    public static bool IsOverridableTarget(InvoiceStatus target) =>
+        target
+            is InvoiceStatus.Draft
+                or InvoiceStatus.Issued
+                or InvoiceStatus.Sent
+                or InvoiceStatus.Paid
+                or InvoiceStatus.Voided;
+
+    /// <summary>
+    /// CORRECCIÓN de estado a gusto de la oficina (cualquier estado → Draft/Issued/Sent/Paid/Voided), con motivo
+    /// obligatorio y auditada. Es la salida de escape de la matriz legal de <see cref="ChangeStatus"/>; mantiene
+    /// coherentes los datos que cuelgan del estado:
+    /// <list type="bullet">
+    /// <item>A Draft/Issued/Sent (volver a "sin cobrar"): los pagos vigentes se REVIERTEN —siguen en el historial, con
+    /// quién y por qué—, el saldo vuelve al total y el recibo deja de valer. Un cobro online no se devuelve solo: el
+    /// resultado lo avisa para que la oficina lo reembolse en el proveedor.</item>
+    /// <item>A Draft: se conserva el número (la reemisión lo reutiliza) y los enlaces de cobro se retiran.</item>
+    /// <item>A Paid: si queda saldo se registra un pago manual por ese saldo (recibo y aviso de "pagada" salen como
+    /// siempre); si no queda, se marca pagada.</item>
+    /// <item>A Voided: igual que anular — los pagos se conservan.</item>
+    /// <item>Sale de Voided: se limpia la fecha y el motivo de anulación.</item>
+    /// </list>
+    /// Una factura que nunca se emitió no tiene número: se emite, no se "corrige". Idempotente: mismo estado = no-op.
+    /// </summary>
+    public Result<StatusOverrideOutcome> OverrideStatus(
+        InvoiceStatus target,
+        string? reason,
+        DateTime nowUtc,
+        Guid actorUserId
+    )
+    {
+        if (DeletedAtUtc is not null)
+            return Result.Failure<StatusOverrideOutcome>(
+                new Error("Billing.Invoice.Deleted", "A deleted invoice cannot change status.")
+            );
+
+        var why = reason?.Trim();
+        if (string.IsNullOrEmpty(why) || why.Length < 3)
+            return Result.Failure<StatusOverrideOutcome>(
+                new Error("Billing.Invoice.ReasonRequired", "A reason of at least 3 characters is required.")
+            );
+
+        if (!IsOverridableTarget(target))
+            return Result.Failure<StatusOverrideOutcome>(
+                new Error(
+                    "Billing.Invoice.StatusNotSettable",
+                    $"An invoice can't be set to {target} by hand: that status follows from its payments."
+                )
+            );
+
+        if (Status == target)
+            return Result.Success(StatusOverrideOutcome.NoChange);
+
+        if (InvoiceNumber is null)
+            return Result.Failure<StatusOverrideOutcome>(
+                new Error(
+                    "Billing.Invoice.NeverIssued",
+                    "This draft was never issued and has no number. Issue it first."
+                )
+            );
+
+        var from = Status;
+        var reversed = new List<InvoicePayment>();
+        var paymentRecorded = false;
+
+        if (from == InvoiceStatus.Voided)
+        {
+            VoidedAtUtc = null;
+            VoidReason = null;
+        }
+
+        // Volver a "sin cobrar": los pagos vigentes se revierten y lo pagado vuelve a cero.
+        if (target is InvoiceStatus.Draft or InvoiceStatus.Issued or InvoiceStatus.Sent)
+        {
+            foreach (var payment in _payments.Where(p => p.IsActive))
+            {
+                payment.Reverse(why, nowUtc, actorUserId);
+                reversed.Add(payment);
+            }
+
+            ResetPaidState();
+        }
+
+        switch (target)
+        {
+            case InvoiceStatus.Draft:
+                SentAtUtc = null;
+                foreach (var link in _paymentLinks)
+                    link.Supersede(nowUtc);
+                PaymentLinkSyncedDue = null;
+                break;
+            case InvoiceStatus.Issued:
+                SentAtUtc = null;
+                break;
+            case InvoiceStatus.Sent:
+                SentAtUtc = nowUtc;
+                break;
+            case InvoiceStatus.Voided:
+                VoidedAtUtc = nowUtc;
+                VoidReason = why;
+                break;
+        }
+
+        if (target == InvoiceStatus.Paid)
+        {
+            // Una factura que estaba en borrador o anulada pasa primero por "emitida": ApplyPayment solo cobra estados cobrables.
+            if (from is InvoiceStatus.Draft or InvoiceStatus.Voided)
+            {
+                Status = InvoiceStatus.Issued;
+                RecordStatusChange(
+                    from,
+                    InvoiceStatus.Issued,
+                    StatusChangeTrigger.StatusOverride,
+                    why,
+                    actorUserId,
+                    nowUtc
+                );
+                from = InvoiceStatus.Issued;
+            }
+
+            var dueCents = Math.Max(0, Total.AmountCents - AmountPaid.AmountCents);
+            if (dueCents > 0)
+            {
+                var applied = ApplyPayment(
+                    InvoicePaymentSource.Manual,
+                    $"status-override:{Guid.NewGuid():N}",
+                    Money.Create(dueCents, Currency).Value,
+                    ValueObjects.PaymentMethod.Other,
+                    nowUtc,
+                    actorUserId,
+                    StatusChangeTrigger.StatusOverride,
+                    why
+                );
+                if (applied.IsFailure)
+                    return Result.Failure<StatusOverrideOutcome>(applied.Error);
+                paymentRecorded = true;
+            }
+            else
+            {
+                // Ya está cubierta por sus pagos: solo falta la etiqueta, el recibo y el aviso.
+                var paidCents = AmountPaid.AmountCents;
+                var last = _payments.Where(p => p.IsActive).OrderBy(p => p.PaidAtUtc).LastOrDefault();
+                Status = InvoiceStatus.Paid;
+                IssueReceipt(
+                    paidCents,
+                    last?.Method ?? PaymentMethod ?? ValueObjects.PaymentMethod.Other,
+                    last?.PaidAtUtc ?? nowUtc
+                );
+                RecordStatusChange(
+                    from,
+                    InvoiceStatus.Paid,
+                    StatusChangeTrigger.StatusOverride,
+                    why,
+                    actorUserId,
+                    nowUtc
+                );
+                RaisePaid(last?.Source);
+            }
+        }
+        else
+        {
+            Status = target;
+            RecordStatusChange(from, target, StatusChangeTrigger.StatusOverride, why, actorUserId, nowUtc);
+        }
+
+        UpdatedAtUtc = nowUtc;
+        LastModifiedBy = actorUserId;
+        return Result.Success(new StatusOverrideOutcome(true, reversed, paymentRecorded));
+    }
+
+    /// <summary>Deja la factura sin cobrar: lo pagado a cero, saldo = total, y sin recibo ni PDF "pagado".</summary>
+    private void ResetPaidState()
+    {
+        AmountPaid = Money.Zero(Currency);
+        AmountDue = Total;
+        PaidAtUtc = null;
+        PaidDate = null;
+        ReceiptNumber = null;
+        ReceiptHash = null;
+        PaidPdfFileId = null;
     }
 
     /// <summary>Motivo de la anulación cuando la reemisión no trae uno.</summary>
@@ -773,7 +960,14 @@ public sealed class Invoice : AggregateRoot
         string? reason,
         Guid actorUserId,
         DateTime nowUtc
-    ) => _statusChanges.Add(new InvoiceStatusChange(Id, from, to, trigger, reason, actorUserId, nowUtc));
+    )
+    {
+        _statusChanges.Add(new InvoiceStatusChange(Id, from, to, trigger, reason, actorUserId, nowUtc));
+        // Cada fila de auditoría lleva su aviso: la lista de la oficina se actualiza sin recargar.
+        AddDomainEvent(
+            new InvoiceStatusChangedDomainEvent(Id, TenantId, InvoiceNumber, from, to, trigger, actorUserId, nowUtc)
+        );
+    }
 
     /// <summary>Hash de verificación del recibo (SHA-256 hex). Reproducible: cualquiera con los mismos
     /// datos del pago obtiene el mismo hash → sirve para verificar que el recibo no fue alterado.</summary>

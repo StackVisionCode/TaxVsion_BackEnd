@@ -22,11 +22,11 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var mobileDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Mobile.Infrastructure.Persistence.MobileDbContext>(serviceScope.ServiceProvider);
             var tripRepository = new TaxVision.Mobile.Infrastructure.Persistence.Repositories.TripRepository(mobileDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var mileageConfigurationQuery = (TaxVision.Mobile.Application.Trips.Queries.MileageConfigurationQuery)context.Envelope.Message;
 

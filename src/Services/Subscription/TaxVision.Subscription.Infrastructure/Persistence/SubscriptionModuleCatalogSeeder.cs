@@ -77,6 +77,14 @@ public static class SubscriptionModuleCatalogSeeder
             29m,
             290m
         ),
+        Commercial(
+            "b2000000-0000-0000-0000-00000000000b",
+            "mileage",
+            "Mileage",
+            "GPS trip tracking, vehicle management and mileage reporting.",
+            19m,
+            190m
+        ),
     ];
 
     public static async Task SeedAsync(

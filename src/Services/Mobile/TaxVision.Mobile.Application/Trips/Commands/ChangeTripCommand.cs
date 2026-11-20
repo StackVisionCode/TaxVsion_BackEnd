@@ -76,6 +76,8 @@ public static class ChangeTripHandler
         var changed = Apply(trip, cmd, samples, now);
         if (changed.IsFailure)
             return Result.Failure<TripResponse>(changed.Error);
+        if (cmd.Action == TripAction.Delete)
+            await trips.DeletePointsAsync(cmd.TenantId, cmd.CustomerId, trip.Id, ct);
         foreach (var sample in samples)
             trips.AddPoint(TripPoint.From(trip, sample));
         if (trip.Status == TripStatus.Completed && (cmd.Action == TripAction.Complete || purposeChanged))

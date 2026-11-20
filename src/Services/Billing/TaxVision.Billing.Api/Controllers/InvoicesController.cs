@@ -15,6 +15,7 @@ using TaxVision.Billing.Application.Invoices.GetInvoice;
 using TaxVision.Billing.Application.Invoices.GetInvoiceDetail;
 using TaxVision.Billing.Application.Invoices.IssueInvoice;
 using TaxVision.Billing.Application.Invoices.ListInvoices;
+using TaxVision.Billing.Application.Invoices.OverrideInvoiceStatus;
 using TaxVision.Billing.Application.Invoices.RecordManualPayment;
 using TaxVision.Billing.Application.Invoices.ReissueInvoice;
 using TaxVision.Billing.Application.Invoices.SendInvoiceToCustomer;
@@ -281,6 +282,43 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
 
         var result = await bus.InvokeAsync<Result<ChangeInvoiceStatusResult>>(
             new ChangeInvoiceStatusCommand(tenantId, invoiceId, request.ToStatus, request.Reason, actorId, canViewAll),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    public sealed record OverrideInvoiceStatusRequest(string ToStatus, string? Reason);
+
+    /// <summary>
+    /// CORRECCIÓN de estado a gusto de la oficina: cualquier estado → Draft/Issued/Sent/Paid/Voided, con motivo
+    /// obligatorio y rastro de auditoría. Volver a "sin cobrar" revierte los pagos (los cobros online hay que
+    /// reembolsarlos en el proveedor: la respuesta los lista). Exige invoicing.status.override.
+    /// </summary>
+    [HttpPost("{invoiceId:guid}/status/override")]
+    [RateLimit("billing.g.invoice_manage")]
+    [HasPermission(InvoicingPermissions.StatusOverride)]
+    [ProducesResponseType<OverrideInvoiceStatusResult>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> OverrideStatus(
+        Guid invoiceId,
+        OverrideInvoiceStatusRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var actorId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
+        var result = await bus.InvokeAsync<Result<OverrideInvoiceStatusResult>>(
+            new OverrideInvoiceStatusCommand(
+                tenantId,
+                invoiceId,
+                request.ToStatus,
+                request.Reason,
+                actorId,
+                canViewAll
+            ),
             ct
         );
 

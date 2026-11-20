@@ -125,6 +125,12 @@ public static class NotificationKinds
     public const string PaymentClientConnectAccountOnboardingRequired =
         "payment_client.connect_account_onboarding_required";
     public const string BillingInvoiceSentToCustomer = "billing.invoice_sent_to_customer";
+
+    /// <summary>Aviso AL PERSONAL de la oficina: una factura quedó pagada (a diferencia del anterior, que es para el cliente).</summary>
+    public const string BillingInvoicePaid = "billing.invoice_paid";
+
+    /// <summary>Aviso AL PERSONAL: un cobro confirmado no se pudo aplicar a su factura y quedó pendiente de resolver.</summary>
+    public const string BillingInvoicePaymentRejected = "billing.invoice_payment_rejected";
     public const string DocumentsGenerationFailed = "documents.generation_failed";
     public const string TenantWispReviewDue = "tenant.wisp_review_due";
 

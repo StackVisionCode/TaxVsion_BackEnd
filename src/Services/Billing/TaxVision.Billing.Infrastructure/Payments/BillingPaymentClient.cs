@@ -25,7 +25,8 @@ public sealed class BillingPaymentClient(
         Guid invoiceId,
         Guid tenantId,
         string? invoiceNumber = null,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        bool reinstate = false
     )
     {
         var token = await tokenProvider.GetTokenAsync("payments", tenantId, ct);
@@ -40,6 +41,7 @@ public sealed class BillingPaymentClient(
             currency,
             invoiceId = invoiceId.ToString(),
             description = invoiceNumber,
+            reinstate,
         };
 
         using var httpRequest = new HttpRequestMessage(HttpMethod.Post, "internal/payables/invoices")

@@ -44,8 +44,18 @@ public static class EnsureInvoicePayableHandler
         {
             // La factura pudo editarse y cambiar el total: refrescar el monto (misma URL estable).
             var changed = false;
+            // La oficina anuló o regresó a borrador la factura y la VOLVIÓ a dejar cobrable (corrección manual de estado,
+            // pedida explícitamente por Billing): el payable revocado se reinstala con el saldo nuevo (misma URL estable).
+            // Un «asegurar» normal NO reabre uno revocado: una orden tardía no puede resucitar una factura anulada.
+            if (existing.IsRevoked && command.Reinstate)
+            {
+                var reinstated = existing.Reinstate(amountResult.Value, DateTime.UtcNow);
+                if (reinstated.IsFailure)
+                    return Result.Failure<EnsureInvoicePayableResponse>(reinstated.Error);
+                changed = true;
+            }
             // Billing (fuente de verdad del saldo) volvió a mandar saldo: la factura dejó de estar pagada.
-            if (existing.IsSettled && !existing.IsRevoked)
+            else if (existing.IsSettled && !existing.IsRevoked)
             {
                 var reopened = existing.Reopen(amountResult.Value, DateTime.UtcNow);
                 if (reopened.IsFailure)

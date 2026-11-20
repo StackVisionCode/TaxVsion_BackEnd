@@ -19,5 +19,6 @@ public sealed record InvoicePaidDomainEvent(
     DateTime? PaidAtUtc,
     Guid? PaidPdfFileId,
     InvoicePaymentSource? PaymentSource,
+    string? CustomerName = null,
     Guid? RecordedByUserId = null
 ) : IDomainEvent;

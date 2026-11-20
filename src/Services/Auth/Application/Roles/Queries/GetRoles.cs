@@ -105,7 +105,11 @@ public sealed record PermissionResponse(Guid Id, string Code, string Module, str
 /// Tenant de quien consulta, para resolver <see cref="PermissionResponse.Grantable"/> contra su plan
 /// y sus módulos. null = sin contexto de tenant (el catálogo sigue siendo global).
 /// </param>
-public sealed record GetPermissionsCatalogQuery(Guid? TenantId = null);
+/// <summary>
+/// <paramref name="IncludePlatformOnly"/> es false por defecto: solo un PlatformAdmin recibe los permisos
+/// <see cref="Permission.PlatformOnly"/>. Una oficina no puede concederlos y no tiene por qué verlos.
+/// </summary>
+public sealed record GetPermissionsCatalogQuery(Guid? TenantId = null, bool IncludePlatformOnly = false);
 
 public static class GetPermissionsCatalogHandler
 {
@@ -129,6 +133,7 @@ public static class GetPermissionsCatalogHandler
         }
 
         IReadOnlyList<PermissionResponse> response = catalog
+            .Where(permission => query.IncludePlatformOnly || !permission.PlatformOnly)
             .Select(permission => new PermissionResponse(
                 permission.Id,
                 permission.Code,

@@ -56,9 +56,20 @@ public static class IssueInvoiceHandler
         var officeZone = await zones.ResolveAsync(command.TenantId, ct);
         var periodKey = CivilDate.Of(nowUtc, officeZone).Year.ToString(CultureInfo.InvariantCulture);
 
-        var sequence = await sequences.GetOrCreateAsync(command.TenantId, periodKey, ct);
-        var number = sequence.Allocate();
-        var invoiceNumber = InvoiceNumber.Create($"INV-{periodKey}-{number:D5}");
+        // Un borrador que ya tuvo número (la oficina lo reabrió desde emitida/pagada) conserva el SUYO: reservar otro
+        // dejaría un hueco en la secuencia y cambiaría el número que el cliente ya conoce.
+        Result<InvoiceNumber> invoiceNumber;
+        if (invoice.InvoiceNumber is { } existingNumber)
+        {
+            invoiceNumber = InvoiceNumber.Create(existingNumber);
+        }
+        else
+        {
+            var sequence = await sequences.GetOrCreateAsync(command.TenantId, periodKey, ct);
+            var number = sequence.Allocate();
+            invoiceNumber = InvoiceNumber.Create($"INV-{periodKey}-{number:D5}");
+        }
+
         if (invoiceNumber.IsFailure)
             return Result.Failure<IssueInvoiceResult>(invoiceNumber.Error);
 
