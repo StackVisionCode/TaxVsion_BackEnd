@@ -445,9 +445,17 @@ internal sealed class AccountSessionFixture
 
     public AccountSessionFixture(UserActorType actorType = UserActorType.TenantAdmin)
     {
-        var tenantId = Guid.NewGuid();
+        // El dominio solo admite al PlatformAdmin en la oficina reservada de plataforma.
+        var isPlatform = actorType == UserActorType.PlatformAdmin;
+        var tenantId = isPlatform ? BuildingBlocks.Tenancy.PlatformTenant.Id : Guid.NewGuid();
         Tenant = Tenant
-            .Register(tenantId, "office", "Office", BuildingBlocks.Tenancy.TenantKind.Customer, "America/New_York")
+            .Register(
+                tenantId,
+                "office",
+                "Office",
+                isPlatform ? BuildingBlocks.Tenancy.TenantKind.Platform : BuildingBlocks.Tenancy.TenantKind.Customer,
+                "America/New_York"
+            )
             .Value;
         Admin = User.Register(
             tenantId,
@@ -591,6 +599,24 @@ internal sealed class PermissiveLoginThrottler : ILoginThrottler
         Task.FromResult<TimeSpan?>(null);
 
     public Task RegisterFailureAsync(string? ipAddress, CancellationToken ct = default) => Task.CompletedTask;
+
+    public Task<TimeSpan?> GetEmailRetryAfterAsync(
+        string email,
+        TaxVision.Auth.Domain.Users.UserAccountKind? accountKind,
+        CancellationToken ct = default
+    ) => Task.FromResult<TimeSpan?>(null);
+
+    public Task RegisterEmailFailureAsync(
+        string email,
+        TaxVision.Auth.Domain.Users.UserAccountKind? accountKind,
+        CancellationToken ct = default
+    ) => Task.CompletedTask;
+
+    public Task ResetEmailFailuresAsync(
+        string email,
+        TaxVision.Auth.Domain.Users.UserAccountKind? accountKind,
+        CancellationToken ct = default
+    ) => Task.CompletedTask;
 
     public Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default) => Task.FromResult(false);
 
@@ -822,7 +848,7 @@ internal sealed class InMemoryMfaRepository : IMfaRepository
     }
 
     public Task<MfaChallenge?> GetChallengeByTicketHashAsync(string ticketHash, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+        Task.FromResult(Challenges.FirstOrDefault(challenge => challenge.LoginTicketHash == ticketHash));
 
     public Task<IReadOnlyList<RecoveryCode>> GetRecoveryCodesAsync(Guid userId, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<RecoveryCode>>(Codes.Where(c => c.UserId == userId).ToList());

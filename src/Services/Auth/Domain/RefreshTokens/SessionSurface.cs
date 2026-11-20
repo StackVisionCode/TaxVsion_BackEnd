@@ -12,4 +12,10 @@ public enum SessionSurface
 
     /// <summary>Account del Landing (gestión de la suscripción del TenantAdmin).</summary>
     Account = 1,
+
+    /// <summary>
+    /// App móvil del cliente, con sesión y cadena propias. Su refresh no pasa por el binding de host de la web,
+    /// así que un token web nunca se renueva por la ruta móvil ni al revés.
+    /// </summary>
+    Mobile = 2,
 }

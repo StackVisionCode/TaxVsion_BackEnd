@@ -1,7 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
@@ -25,8 +24,7 @@ public sealed record DiscoverLoginCommand(
     string? DeviceName = null,
     UserAccountKind? AccountKind = null,
     string? DeviceToken = null,
-    SessionSurface Surface = SessionSurface.Workspace,
-    bool ForceSelection = false
+    SessionSurface Surface = SessionSurface.Workspace
 );
 
 /// <summary>
@@ -63,9 +61,10 @@ public sealed record DiscoverLoginResponse(
 }
 
 /// <summary>
-/// Paso 1 del login central: autentica el password contra CADA oficina del email (los hashes son
+/// Paso 1 del login central web: autentica el password contra CADA oficina del email (los hashes son
 /// por-tenant) y decide. 1 oficina sin MFA → emite el vale directo (menos saltos). Varias o con MFA
 /// → guarda el set autenticado y devuelve el selector. Sin coincidencias → genérico (anti-enumeración).
+/// Los frenos y la autenticación los comparte con el login móvil (<see cref="CentralLoginAuthentication"/>).
 /// </summary>
 public static class DiscoverLoginHandler
 {
@@ -87,14 +86,16 @@ public static class DiscoverLoginHandler
         CancellationToken ct
     )
     {
-        // 1. Throttle por IP: una vez por intento, NO por oficina candidata.
-        if (await throttler.GetIpRetryAfterAsync(request.IpAddress, ct) is { } retryAfter)
-            return Result.Failure<DiscoverLoginResponse>(
-                new Error("Auth.LockedOut", "Too many attempts. Try again later.").WithRetryAfter(retryAfter)
-            );
-
         var email = command.Email.Trim().ToLowerInvariant();
-        var (matches, platformAdminMatched) = await AuthenticateAcrossOfficesAsync(
+
+        // 1. Frenos por IP y por email: una vez por intento, NO por oficina candidata.
+        if (
+            await CentralLoginAuthentication.CheckThrottleAsync(throttler, request, email, command.AccountKind, ct) is
+            { } throttled
+        )
+            return Result.Failure<DiscoverLoginResponse>(throttled);
+
+        var (matches, platformAdminMatched) = await CentralLoginAuthentication.AuthenticateAsync(
             email,
             command.Password,
             command.AccountKind,
@@ -109,23 +110,27 @@ public static class DiscoverLoginHandler
             ct
         );
 
-        // 2. Sin coincidencias: fallo por IP + genérico. No se descuenta lockout por-cuenta (ver helper). Si
-        //    el password solo calzó en una cuenta PlatformAdmin la respuesta es idéntica (no confirma ni la
-        //    cuenta ni la clave); el motivo real queda solo en la auditoría.
+        // 2. Sin coincidencias: fallo para la IP y el email, y respuesta genérica.
         if (matches.Count == 0)
-            return await FailAsync(
-                throttler,
-                audit,
-                request,
-                correlation,
-                unitOfWork,
-                platformAdminMatched ? "central_platform_admin" : "central_no_match",
-                ct
+            return Result.Failure<DiscoverLoginResponse>(
+                await CentralLoginAuthentication.FailAsync(
+                    email,
+                    command.AccountKind,
+                    platformAdminMatched ? "central_platform_admin" : "central_no_match",
+                    throttler,
+                    audit,
+                    request,
+                    correlation,
+                    unitOfWork,
+                    ct
+                )
             );
+
+        await throttler.ResetEmailFailuresAsync(email, command.AccountKind, ct);
 
         // 3. Optimización: una sola oficina que no pide código (sin MFA, o MFA sin método enrolado)
         //    → el vale viaja directo, arrastrando el flag de "debe enrolar" si aplica.
-        if (!command.ForceSelection && matches is [{ ChallengeRequired: false } only])
+        if (matches is [{ ChallengeRequired: false } only])
         {
             var ticket = await tickets.IssueAsync(
                 new HandoffTicketPayload(only.TenantId, only.UserId, only.MustEnroll),
@@ -146,7 +151,7 @@ public static class DiscoverLoginHandler
                         m.UserId,
                         m.ChallengeRequired,
                         m.MustEnroll,
-                        m.IsClientPortal ? UserAccountKind.Portal : UserAccountKind.Staff
+                        m.AccountKind
                     ))
                     .ToList()
             ),
@@ -162,133 +167,6 @@ public static class DiscoverLoginHandler
             ))
             .ToList();
         return Result.Success(DiscoverLoginResponse.Selection(sessionRef, offices));
-    }
-
-    private sealed record Match(
-        Guid TenantId,
-        Guid UserId,
-        string Subdomain,
-        string TenantName,
-        bool ChallengeRequired,
-        bool MustEnroll,
-        bool IsClientPortal
-    );
-
-    /// <summary>
-    /// Autentica el password contra el usuario de cada tenant donde el email tiene cuenta activa. Un
-    /// password que no calza en una oficina NO descuenta el lockout de esa cuenta: como el mismo email
-    /// puede tener distinta clave en cada oficina, hacerlo bloquearía oficinas ajenas al usar la clave
-    /// de otra. El freno de fuerza bruta acá es el throttle por IP.
-    /// </summary>
-    private static async Task<(List<Match> Matches, bool PlatformAdminMatched)> AuthenticateAcrossOfficesAsync(
-        string email,
-        string password,
-        UserAccountKind? accountKind,
-        string? deviceToken,
-        SessionSurface surface,
-        IUserRepository users,
-        ITenantRegistry tenants,
-        IPasswordHasher hasher,
-        IMfaRepository mfa,
-        ISecureTokenService secureTokens,
-        bool mfaEnforced,
-        CancellationToken ct
-    )
-    {
-        var now = DateTime.UtcNow;
-        var matches = new List<Match>();
-        var platformAdminMatched = false;
-
-        // Dispositivo de confianza: se resuelve UNA vez, no por oficina. El token identifica al
-        // aparato y a un usuario concreto, así que solo exime del código a ESE usuario — tener el
-        // equipo marcado para una cuenta no vale para otra que comparta el email.
-        var trusted = string.IsNullOrWhiteSpace(deviceToken)
-            ? null
-            : await mfa.GetTrustedDeviceByHashAsync(secureTokens.Hash(deviceToken), ct);
-        var trustedUserId = trusted is { IsActive: true } ? trusted.UserId : (Guid?)null;
-
-        UserAccountKind[] kinds = accountKind is { } only ? [only] : [UserAccountKind.Staff, UserAccountKind.Portal];
-        foreach (var kind in kinds)
-        foreach (var tenantId in await users.GetActiveTenantIdsByEmailAsync(email, kind, ct))
-        {
-            var user = await users.GetByEmailAsync(tenantId, email, kind, ct);
-            if (user is null || !user.IsActive || user.IsLockedOut(now))
-                continue;
-            if (!hasher.Verify(password, user.PasswordHash))
-                continue;
-
-            // El PlatformAdmin no entra por el login central: se descarta ANTES del MFA (antes se le pedía
-            // el código y terminaba dentro del CRM de la oficina de plataforma).
-            if (!CentralLoginActorPolicy.IsAllowed(user, surface))
-            {
-                platformAdminMatched = true;
-                continue;
-            }
-
-            var tenant = await tenants.GetByIdAsync(tenantId, ct);
-            if (tenant is null || !tenant.IsActive)
-                continue;
-
-            // Fase 2 — oficina con acceso bloqueado por facturación: no matchea para empleados/clientes
-            // (el TenantAdmin sí, para poder entrar a renovar).
-            if (BillingAccessPolicy.IsBlockedForBilling(tenant, user.ActorType))
-                continue;
-
-            // Landing (surface=Account) solo lista oficinas donde el usuario es TenantAdmin. Sin este
-            // filtro, el flujo discover→selector→handoff→from-ticket terminaba con 403 "Only office
-            // administrators..." al materializar la sesión — el usuario veía oficinas donde era
-            // Employee/Portal como si pudiera entrar a gestionar suscripción, y recibía el rechazo
-            // tres pasos después. AccountSurfacePolicy sigue siendo defensa en profundidad en
-            // ExchangeHandoffTicket; este filtro corrige la raíz y evita la fuga de información.
-            if (surface == SessionSurface.Account && user.ActorType != UserActorType.TenantAdmin)
-                continue;
-
-            var mfa2 = await MfaRequirement.DisposeAsync(user, mfa, ct, mfaEnforced);
-            // El dispositivo de confianza exime del CÓDIGO, nunca del enrolamiento: si todavía no
-            // tiene método, sigue teniendo que configurarlo.
-            var challengeRequired = mfa2.ChallengeRequired && trustedUserId != user.Id;
-            matches.Add(
-                new Match(
-                    tenantId,
-                    user.Id,
-                    tenant.SubDomain,
-                    tenant.Name,
-                    challengeRequired,
-                    mfa2.MustEnroll,
-                    user.ActorType == UserActorType.CustomerPortal
-                )
-            );
-        }
-
-        return (matches, platformAdminMatched);
-    }
-
-    private static async Task<Result<DiscoverLoginResponse>> FailAsync(
-        ILoginThrottler throttler,
-        IAuthAuditWriter audit,
-        IRequestContext request,
-        ICorrelationContext correlation,
-        IUnitOfWork unitOfWork,
-        string reason,
-        CancellationToken ct
-    )
-    {
-        await throttler.RegisterFailureAsync(request.IpAddress, ct);
-        await audit.AddAsync(
-            AuthAuditLog.Record(
-                PlatformTenant.Id,
-                null,
-                AuthAuditAction.LoginFailed,
-                false,
-                request.IpAddress,
-                request.UserAgent,
-                correlation.CorrelationId,
-                detailsJson: $$"""{"reason":"{{reason}}"}"""
-            ),
-            ct
-        );
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Failure<DiscoverLoginResponse>(new Error("Auth.Invalid", "Invalid credentials."));
     }
 
     private static AuthAuditLog Success(

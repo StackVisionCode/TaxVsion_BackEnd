@@ -9,6 +9,7 @@ using TaxVision.Auth.Api.Common;
 using TaxVision.Auth.Application.Mfa.Commands;
 using TaxVision.Auth.Application.Mfa.Queries;
 using TaxVision.Auth.Application.Users.Commands;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using Wolverine;
 
@@ -28,7 +29,14 @@ public sealed class MfaController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<Error>(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Verify(VerifyMfaChallengeCommand command, CancellationToken ct)
     {
-        var result = await bus.InvokeAsync<Result<MfaVerifyResponse>>(command, ct);
+        // La superficie la fija el servidor: un "surface" del body nunca abre una sesión de app desde la web.
+        var result = await bus.InvokeAsync<Result<MfaVerifyResponse>>(
+            command with
+            {
+                Surface = SessionSurface.Workspace,
+            },
+            ct
+        );
 
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }

@@ -239,6 +239,38 @@ public sealed class LoginHandlerPathsTests
         Assert.Empty(world.Bus.Published);
     }
 
+    // App de soporte de plataforma: su sesión es del canal móvil y convive con la consola web.
+    [Fact]
+    public async Task A_platform_admin_on_the_support_app_gets_a_mobile_session()
+    {
+        var world = new LoginWorld(UserActorType.PlatformAdmin);
+
+        var result = await world.LoginAsync(surface: TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Mobile);
+
+        Assert.NotNull(result.Value.Tokens);
+        Assert.Equal(
+            TaxVision.Auth.Domain.Sessions.SessionChannel.Mobile,
+            Assert.Single(world.Account.Sessions.Sessions).Channel
+        );
+        Assert.Equal(
+            TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Mobile,
+            Assert.Single(world.Account.Sessions.Tokens).Surface
+        );
+    }
+
+    // Una sesión móvil se renueva sin binding de host: el staff de oficina no tiene app y nunca la recibe.
+    [Fact]
+    public async Task Office_staff_never_get_a_mobile_session_and_learn_nothing_about_why()
+    {
+        var world = new LoginWorld(UserActorType.TenantAdmin);
+
+        var result = await world.LoginAsync(surface: TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Mobile);
+
+        Assert.Equal(TaxVision.Auth.Application.Users.Login.LoginPasswordCheck.InvalidCredentials, result.Error);
+        Assert.Empty(world.Account.Sessions.Sessions);
+        Assert.Equal(0, world.Throttler.Failures);
+    }
+
     [Fact]
     public async Task An_open_session_asks_for_a_takeover_instead_of_tokens()
     {
@@ -478,7 +510,9 @@ public sealed class LoginHandlerPathsTests
             string? email = null,
             Guid? tenantId = null,
             string? deviceName = null,
-            string? deviceToken = null
+            string? deviceToken = null,
+            TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface =
+                TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Workspace
         )
         {
             var steps = LoginStepsFixture.Build(
@@ -490,7 +524,14 @@ public sealed class LoginHandlerPathsTests
                 new MfaOptions { Enforced = _mfaEnforced }
             );
             return LoginHandler.Handle(
-                new LoginCommand(tenantId ?? Account.Tenant.Id, email ?? User.Email, password, deviceName, deviceToken),
+                new LoginCommand(
+                    tenantId ?? Account.Tenant.Id,
+                    email ?? User.Email,
+                    password,
+                    deviceName,
+                    deviceToken,
+                    Surface: surface
+                ),
                 steps.Discovery,
                 steps.Password,
                 steps.Mfa,
@@ -556,6 +597,24 @@ public sealed class LoginHandlerPathsTests
             Failures++;
             return Task.CompletedTask;
         }
+
+        public Task<TimeSpan?> GetEmailRetryAfterAsync(
+            string email,
+            TaxVision.Auth.Domain.Users.UserAccountKind? accountKind,
+            CancellationToken ct = default
+        ) => Task.FromResult<TimeSpan?>(null);
+
+        public Task RegisterEmailFailureAsync(
+            string email,
+            TaxVision.Auth.Domain.Users.UserAccountKind? accountKind,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
+
+        public Task ResetEmailFailuresAsync(
+            string email,
+            TaxVision.Auth.Domain.Users.UserAccountKind? accountKind,
+            CancellationToken ct = default
+        ) => Task.CompletedTask;
 
         public Task<bool> IsOtpResendThrottledAsync(Guid userId, CancellationToken ct = default) =>
             _inner.IsOtpResendThrottledAsync(userId, ct);

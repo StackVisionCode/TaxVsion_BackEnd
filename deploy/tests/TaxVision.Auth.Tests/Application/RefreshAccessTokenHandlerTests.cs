@@ -140,6 +140,39 @@ public sealed class RefreshAccessTokenHandlerTests
         Assert.True((await world.Sessions.GetSessionByIdAsync(sessionId))!.IsActive);
     }
 
+    // La ruta móvil no compara host: un token del CRM o del portal no puede renovarse por ahí (binding de host).
+    [Fact]
+    public async Task A_web_token_is_never_renewed_through_the_mobile_route()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, workspaceRefresh) = await world.StartWorkspaceSessionAsync();
+
+        var result = await RefreshAsync(world, workspaceRefresh, SessionSurface.Mobile);
+
+        Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
+        Assert.True((await world.Sessions.GetSessionByIdAsync(sessionId))!.IsActive);
+    }
+
+    [Fact]
+    public async Task A_mobile_token_rotates_on_the_mobile_route_and_never_on_the_web_one()
+    {
+        var world = new AccountSessionFixture();
+        var mobile = await world.Issuer.StartSessionAsync(
+            world.Admin,
+            "UTC",
+            [],
+            ["pwd"],
+            "iPhone",
+            SessionSurface.Mobile
+        );
+
+        var onWeb = await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Workspace);
+        var onMobile = await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile);
+
+        Assert.Equal("Auth.InvalidRefreshToken", onWeb.Error.Code);
+        Assert.True(onMobile.IsSuccess);
+    }
+
     [Fact]
     public async Task Revoking_the_shared_session_cuts_both_surfaces()
     {

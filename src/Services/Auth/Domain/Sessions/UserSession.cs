@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain;
+using TaxVision.Auth.Domain.RefreshTokens;
 
 namespace TaxVision.Auth.Domain.Sessions;
 
@@ -19,15 +20,23 @@ public sealed class UserSession : TenantEntity
     public DateTime LastSeenAtUtc { get; private set; }
     public DateTime? RevokedAtUtc { get; private set; }
     public string? RevokedReason { get; private set; }
+    public SessionChannel Channel { get; private set; }
 
     public bool IsActive => RevokedAtUtc is null;
+
+    /// <summary>Una sesión nueva en esa superficie le disputa la sesión única a esta (mismo canal).</summary>
+    public bool CompetesWith(SessionSurface surface) => Channel == ChannelOf(surface);
+
+    private static SessionChannel ChannelOf(SessionSurface surface) =>
+        surface == SessionSurface.Mobile ? SessionChannel.Mobile : SessionChannel.Web;
 
     public static UserSession Start(
         Guid tenantId,
         Guid userId,
         string? deviceName,
         string? userAgent,
-        string? ipAddress
+        string? ipAddress,
+        SessionSurface surface = SessionSurface.Workspace
     )
     {
         var session = new UserSession
@@ -39,6 +48,7 @@ public sealed class UserSession : TenantEntity
             IpAddress = Truncate(ipAddress, 45),
             CreatedAtUtc = DateTime.UtcNow,
             LastSeenAtUtc = DateTime.UtcNow,
+            Channel = ChannelOf(surface),
         };
         session.SetTenant(tenantId);
         return session;

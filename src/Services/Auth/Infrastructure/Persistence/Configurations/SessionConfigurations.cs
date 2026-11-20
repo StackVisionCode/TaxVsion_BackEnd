@@ -20,6 +20,13 @@ public sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSess
         builder.Property(session => session.RevokedReason).HasMaxLength(64);
         builder.Property(session => session.CreatedAtUtc).IsRequired();
         builder.Property(session => session.LastSeenAtUtc).IsRequired();
+        // Las sesiones anteriores al canal eran todas web.
+        builder
+            .Property(session => session.Channel)
+            .HasConversion<string>()
+            .HasMaxLength(16)
+            .HasDefaultValue(SessionChannel.Web)
+            .IsRequired();
         builder.Ignore(session => session.IsActive);
 
         builder.HasIndex(session => new { session.UserId, session.RevokedAtUtc });
