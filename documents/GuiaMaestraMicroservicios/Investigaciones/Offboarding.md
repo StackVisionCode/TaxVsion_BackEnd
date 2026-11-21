@@ -22,7 +22,7 @@ Alcance: **retirar (offboard)** a un empleado de su oficina. No es onboarding, n
 | Quién puede | Permiso `users.manage` + actor `TenantAdmin` o `PlatformAdmin`. |
 | Qué es | Estado **terminal** `UserStatus.Offboarded` (no se puede reactivar). Invariante `Offboarded ⇒ IsActive == false`. |
 | Corte de acceso | Síncrono, en el mismo comando: denylist del `sid` en Redis + aviso Pub/Sub (logout por socket) + revocación de sesiones/refresh en BD. MFA purgado, invitaciones que envió canceladas, avatar borrado. |
-| Limpieza | Asíncrona, por **coreografía**: Auth publica `UserOffboardedIntegrationEvent` al fanout `taxvision-events`; 27 servicios reaccionan (51 pasos). |
+| Limpieza | Asíncrona, por **coreografía**: Auth publica `UserOffboardedIntegrationEvent` al fanout `taxvision-events`; 28 servicios reaccionan (52 pasos). |
 | Seguimiento | `OffboardingRun` en Auth: cada paso acusa con `UserOffboardingStepCompletedIntegrationEvent`. A los 30 min sin todos los acuses → `UserOffboardingIncompleteIntegrationEvent` → Notification avisa a los admins. CRM: "Handover status N/N". |
 | Guardarraíl | `[UserReference(Kind, HandledBy, Via)]` en cada campo de dominio que apunta a un empleado + 3 fitness tests en `TaxVision.BuildingBlocks.Tests/Offboarding/`. |
 | Recuperación | No hay re-ejecución automática del handover. Reintentos Wolverine/Node (1s/5s/15s) → DLQ → drenado manual (README §48). |
@@ -65,7 +65,7 @@ Alcance: **retirar (offboard)** a un empleado de su oficina. No es onboarding, n
 - Evento: `UserOffboardedIntegrationEvent` — `src/BuildingBlocks/Messaging/AuthIntegrationEvents/UserOffboardedIntegrationEvent.cs:11-25`
   `[MessageIdentity("BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardedIntegrationEvent")]`; campos `UserId`, `Email`, `ActorType`, `OffboardedByUserId?`, `SuccessorUserId?`, `RemovedAtUtc`; heredados de `IntegrationEvent` (`src/BuildingBlocks/Messaging/IIntegrationEvent.cs:11-20`): `EventId`, `TenantId`, `OccurredOn`, `CorrelationId`.
 - Exchange fanout `taxvision-events`; cada servicio .NET escucha su cola `<servicio>-events` enlazada al fanout (p. ej. Auth `auth-tenant-events`, `Program.cs:600-608`); Communication escucha `communication-events` (`src/Services/Communication/src/infrastructure/config.ts:42`) y mapea el tipo CLR al alias `auth.user.offboarded.v1` (`src/infrastructure/rabbit/consumer-runtime.ts:71`).
-- Consumidores: 27 servicios, 51 pasos (detalle en `Offboarding_Integraciones.md`). Registro: `src/Services/Auth/Application/Offboarding/OffboardingParticipants.cs:25-143`.
+- Consumidores: 28 servicios, 52 pasos (detalle en `Offboarding_Integraciones.md`). Registro: `src/Services/Auth/Application/Offboarding/OffboardingParticipants.cs:25-144`.
 - Eventos derivados que nacen del retiro (todos en `src/BuildingBlocks/Messaging/...`): `CustomerPreparerAssigned/Unassigned`, `CustomerAssignmentsChanged`, `MeetingHostTransferred/Cancelled/Ended` (Node), `AppointmentCancelled`, `ReminderTargetClosed`, `ShareLinkRevoked`, `ConnectorsTenantEmailAccountDisconnected`, `ConnectorsOfficeMailboxReviewRequired`, `CloudConnectionReviewRequired`, `SignaturePreparerChanged`, `SignaturePreparerAttentionRequired`, `CampaignSchedulesPausedOnOffboarding`, `OfficeSecurityCoordinatorVacated`, `TaskAssigned`. Notification los convierte en avisos (`Notification.Application/Consumers/Offboarding/*`).
 
 ### 2.4 Acuse por servicio (N/N) — Código verificado
@@ -135,7 +135,7 @@ Proyecciones de permisos (`IsActive=false` en ~25 servicios), directorios, traba
 
 1. **Node sin transacción única**: cada paso del consumer de Communication persiste por separado; reintentos retoman, pero una caída del proceso deja el inbox marcado (V4).
 2. **Aviso de incompleto único**: tras el primer aviso no hay recordatorio ni escalado (`OffboardingRun.MarkIncomplete`, `OffboardingRun.cs:105-118`).
-3. **Volumen**: cada retiro produce 51 acuses que el fanout entrega a ~28 colas; los servicios que no los manejan los descartan (ruido "No known handler", Documentación histórica §8). Aceptable hoy; crece con cada paso.
+3. **Volumen**: cada retiro produce 52 acuses que el fanout entrega a ~29 colas; los servicios que no los manejan los descartan (ruido "No known handler", Documentación histórica §8). Aceptable hoy; crece con cada paso.
 4. **Carrera de dos retiros del mismo usuario**: el índice único de `OffboardingRun` impide dos corridas/eventos; la respuesta HTTP del segundo no está probada (**Pendiente de confirmar**).
 
 ---

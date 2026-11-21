@@ -23,18 +23,19 @@
 
 | Carpeta / archivo | Qué contiene |
 |---|---|
-| [GUIA_MAESTRA_CREACION_MICROSERVICIOS_TAXVISION.md](GUIA_MAESTRA_CREACION_MICROSERVICIOS_TAXVISION.md) | La guía completa: 37 capítulos y un anexo, con evidencia, ejemplos reales, errores históricos, pruebas y checklist por tema |
+| [GUIA_MAESTRA_CREACION_MICROSERVICIOS_TAXVISION.md](GUIA_MAESTRA_CREACION_MICROSERVICIOS_TAXVISION.md) | La guía completa: 38 capítulos y un anexo, con evidencia, ejemplos reales, errores históricos, pruebas y checklist por tema |
 | [01_ESTADO_INVESTIGACION.md](01_ESTADO_INVESTIGACION.md) | Cómo se construyó y estado de cada etapa |
 | [02_COMPARATIVA_GUIAS.md](02_COMPARATIVA_GUIAS.md) | Qué instrucciones de las guías antiguas siguen vigentes y cuáles no |
 | [03_INVENTARIO_ARQUITECTURA.md](03_INVENTARIO_ARQUITECTURA.md) | Todos los servicios, stack con versiones y servicios de referencia |
-| `Investigaciones/` | 31 investigaciones por tema, con evidencia `ruta:línea` |
-| `Checklists/` | 10 checklists verificables (ítems condicionales marcados) |
+| `Investigaciones/` | 32 investigaciones por tema, con evidencia `ruta:línea` |
+| `Checklists/` | 11 checklists verificables, 348 ítems (condicionales marcados) |
+| `Revisiones/` | Revisiones de servicios contra la guía ([Mobile](Revisiones/Revision_Mobile_2026-11-19.md), [4 proyectos](Revisiones/Revision_4_Proyectos_2026-11-20.md)) y el script [restore_generated.ps1](Revisiones/restore_generated.ps1) |
 | `Diagramas/` | 23 diagramas SVG (abajo) |
 | `Referencias/` | [Guardrails](Referencias/Guardrails.md) (los 36 originales), [Decisiones](Referencias/Decisiones_Arquitectonicas.md) (contradicciones resueltas y pendientes), [Fuentes](Referencias/Fuentes_Verificadas.md) |
 
 ## Checklists
 
-[Nuevo microservicio](Checklists/Nuevo_Microservicio.md) · [Seguridad](Checklists/Seguridad.md) · [Proyecciones y reconciliation](Checklists/Proyecciones_Reconciliation.md) · [Offboarding](Checklists/Offboarding.md) · [Testing](Checklists/Testing.md) · [Módulos y planes](Checklists/Modulos_Planes.md) · [Notificaciones](Checklists/Notificaciones.md) · [Enlaces por oficina](Checklists/Tenant_Links.md) · [YARP y Cloudflare](Checklists/YARP_Cloudflare.md) · [Producción](Checklists/Produccion.md)
+[Nuevo microservicio](Checklists/Nuevo_Microservicio.md) · [Seguridad](Checklists/Seguridad.md) · [Proyecciones y reconciliation](Checklists/Proyecciones_Reconciliation.md) · [Offboarding](Checklists/Offboarding.md) · [Testing](Checklists/Testing.md) · [Módulos y planes](Checklists/Modulos_Planes.md) · [Notificaciones](Checklists/Notificaciones.md) · [Enlaces por oficina](Checklists/Tenant_Links.md) · [YARP y Cloudflare](Checklists/YARP_Cloudflare.md) · [Producción](Checklists/Produccion.md) · [Archivos y File Library](Checklists/Archivos_FileLibrary.md)
 
 ## Diagramas
 

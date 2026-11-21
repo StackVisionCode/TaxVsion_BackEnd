@@ -38,7 +38,7 @@
 <path d="M 250.0 248.0 L 250.0 284.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
 <path d="M 460.0 332.0 L 520.0 332.0" fill="none" stroke="#444B55" stroke-width="1.7" marker-end="url(#arr-dark)"/>
 <rect x="40" y="414" width="1140" height="96" rx="8" ry="8" fill="#E3EAF5" stroke="#1F4E8C" stroke-width="1.6"/>
-<text x="50.0" y="440.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">Gateway YARP · 43 rutas por prefijo, 27 clusters (un destino por servicio) · no autoriza por ruta</text>
+<text x="50.0" y="440.0" font-size="14" font-weight="700" fill="#1F4E8C" text-anchor="start">Gateway YARP · 48 rutas por prefijo, 28 clusters (un destino por servicio) · no autoriza por ruta</text>
 <text x="50.0" y="460.0" font-size="13" fill="#1F2328" text-anchor="start">Valida el JWT si viene · InternalSurfaceGuard (404 a internal/* y al grant M2M) · MfaEnrollmentGuard · SeatSlotGate</text>
 <text x="50.0" y="478.0" font-size="13" fill="#1F2328" text-anchor="start">Rate limit pre-auth por IP · load shedding · TenantHostGuard (host ↔ oficina) · CORS por settings de plataforma</text>
 <text x="50.0" y="496.0" font-size="13" fill="#1F2328" text-anchor="start">Re-inyecta CF-Connecting-IP · UseWebSockets antes de MapReverseProxy · lee la base de Auth para el gate de asiento</text>
@@ -53,7 +53,7 @@
 <rect x="419.3" y="524.0" width="381.4" height="20" rx="4" fill="#FFFFFF" stroke="#444B55" stroke-width="0.8"/>
 <text x="610.0" y="538.5" font-size="13" fill="#444B55" text-anchor="middle">/&lt;prefijo&gt;/{**catch-all} → cluster → http://&lt;svc&gt;-api:8080</text>
 <rect x="40" y="556" width="366" height="168" rx="10" ry="10" fill="#F7F7F8" fill-opacity="0.55" stroke="#8C8C96" stroke-width="1.4" stroke-dasharray="7 5"/>
-<text x="52" y="578" font-size="14" font-weight="700" fill="#8C8C96">Identidad, plataforma y suscripción</text>
+<text x="52" y="578" font-size="14" font-weight="700" fill="#8C8C96">Identidad, plataforma, suscripción y móvil</text>
 <rect x="52" y="594" width="165" height="32" rx="6" ry="6" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
 <text x="134.5" y="614.5" font-size="13" font-weight="700" fill="#1F2328" text-anchor="middle">Auth</text>
 <rect x="229" y="594" width="165" height="32" rx="6" ry="6" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
@@ -62,6 +62,8 @@
 <text x="134.5" y="654.5" font-size="13" font-weight="700" fill="#1F2328" text-anchor="middle">Subscription</text>
 <rect x="229" y="634" width="165" height="32" rx="6" ry="6" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
 <text x="311.5" y="654.5" font-size="13" font-weight="700" fill="#1F2328" text-anchor="middle">Growth</text>
+<rect x="52" y="674" width="342" height="32" rx="6" ry="6" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
+<text x="223.0" y="694.5" font-size="13" font-weight="700" fill="#1F2328" text-anchor="middle">Mobile (app móvil: viajes y millaje)</text>
 <rect x="427" y="556" width="366" height="168" rx="10" ry="10" fill="#F7F7F8" fill-opacity="0.55" stroke="#8C8C96" stroke-width="1.4" stroke-dasharray="7 5"/>
 <text x="439" y="578" font-size="14" font-weight="700" fill="#8C8C96">Cobros, facturación y catálogo</text>
 <rect x="439" y="594" width="165" height="32" rx="6" ry="6" fill="#E9F5EC" stroke="#2E7D4F" stroke-width="1.4"/>
@@ -140,7 +142,7 @@
 <text x="1230.0" y="710.0" font-size="13" fill="#1F2328" text-anchor="start">DLQ: wolverine-dead-letter-queue</text>
 <rect x="1220" y="736" width="350" height="112" rx="8" ry="8" fill="#F6EFE6" stroke="#8A5A2B" stroke-width="1.6"/>
 <text x="1230.0" y="762.0" font-size="14" font-weight="700" fill="#8A5A2B" text-anchor="start">SQL Server (externo)</text>
-<text x="1230.0" y="782.0" font-size="13" fill="#1F2328" text-anchor="start">Una base por servicio: 26 DbContext</text>
+<text x="1230.0" y="782.0" font-size="13" fill="#1F2328" text-anchor="start">Una base por servicio: 27 DbContext</text>
 <text x="1230.0" y="800.0" font-size="13" fill="#1F2328" text-anchor="start">+ Communication vía Prisma</text>
 <text x="1230.0" y="818.0" font-size="13" fill="#1F2328" text-anchor="start">Esquema: contenedor migrations</text>
 <text x="1230.0" y="836.0" font-size="13" fill="#1F2328" text-anchor="start">(apply-migrations.sh), no el servicio</text>

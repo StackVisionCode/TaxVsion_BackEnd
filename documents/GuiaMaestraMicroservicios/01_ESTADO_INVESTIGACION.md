@@ -12,6 +12,7 @@
 | 4 | Comercialización, mensajería, compilación en producción | `Modulos_Planes_Addons.md`, `Wolverine_RabbitMQ.md`, `Roslyn_Produccion.md` | Hecho (2026-11-15) |
 | 5 | Tenants, enlaces y notificaciones | `Tenant_Subdomains.md`, `Tenant_Links.md`, `Scribe_Templates.md`, `Notification_Email.md`, `Notification_SMS.md`, `Notification_InApp_Push.md` | Hecho (2026-11-15) |
 | 6 | Operaciones y testing | `Docker_Deploy.md`, `Scripts_Locales.md`, `Gateway_YARP.md`, `Cloudflare.md`, `CI_CD_Secrets.md`, `Postman.md`, `Observabilidad.md`, `Testing_*.md` | Hecho (2026-11-15) |
+| 7 | Archivos y File Library; servicio Mobile en el inventario | `Archivos_FileLibrary.md` (cap. 38, `Checklists/Archivos_FileLibrary.md`); Mobile en `03_INVENTARIO_ARQUITECTURA.md`, guía §6, caps. 16, 26, 28 y 29, `Offboarding*.md` | Hecho (2026-11-20) |
 
 ## Etapas
 
@@ -20,16 +21,16 @@
 | A | Inventario de proyectos, guías y documentación | Hecho (2026-11-15) |
 | B–C | Investigación por tema con evidencia | Hecho (2026-11-15) |
 | D | Consolidación de contradicciones | Hecho: 58 contradicciones resueltas y ~82 decisiones pendientes (`Referencias/Decisiones_Arquitectonicas.md`) |
-| E | Superguía | Hecho: 37 capítulos + anexo |
+| E | Superguía | Hecho: 38 capítulos + anexo |
 | F | Diagramas SVG | Hecho: 23 SVG, XML válido, sin recursos externos |
-| G | Checklists | Hecho: 10 checklists, 322 ítems |
-| H | Validación final | Hecho: 48 Markdown y 23 SVG; 0 enlaces rotos, 0 secretos o IPs, 0 archivos vacíos; backend sin cambios |
+| G | Checklists | Hecho: 11 checklists, 348 ítems |
+| H | Validación final | Hecho: 53 Markdown y 23 SVG; 0 enlaces rotos, 0 secretos o IPs, 0 archivos vacíos; backend sin cambios |
 
 ## Inventario inicial (etapa A)
 
 - Backend: `C:\Users\devcacg\Desktop\Proyectos\TaxVsion_BackEnd`, rama `Develop`, árbol limpio al empezar.
-- 30 carpetas en `src/Services` (27 .NET con tests + 3 Node: Communication, CommunicationRecorder, CommunicationTranscriptWorker), Gateway en `src/Gateway`, 23 BuildingBlocks.
-- 31 proyectos de tests en `deploy/tests`, más `Shared` y `TaxVision.BuildingBlocks.Testing`.
+- 31 carpetas en `src/Services` (28 .NET con tests + 3 Node: Communication, CommunicationRecorder, CommunicationTranscriptWorker), Gateway en `src/Gateway`, 23 BuildingBlocks.
+- 32 proyectos de tests en `deploy/tests` (incluida la biblioteca `TaxVision.BuildingBlocks.Testing`), más `Shared`.
 - Un solo workflow: `.github/workflows/deploy.yml`.
 - Scripts: `start-fleet.ps1`, `stop-fleet.ps1`, `restart-down.ps1`, `migrate-local.ps1`, `codegen/regenerate-wolverine-code.ps1`.
 - Guía antigua: `Implementaciones/DEVS/Guia_Creacion_Microservicio.md` (sigue en su lugar).

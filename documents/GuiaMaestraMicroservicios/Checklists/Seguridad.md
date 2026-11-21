@@ -116,9 +116,6 @@
 - [ ] [si hay endpoint anónimo con riesgo de abuso] Regla en `GatewayRateLimiting:PreAuthByIp:Rules` y `MaxRequestBodySize` en una ruta propia.
   - Verificación: `appsettings.json` del Gateway; patrón `GatewayPublicBookingRouteTests`.
   - Origen: [Gateway_YARP](../Investigaciones/Gateway_YARP.md) §9.4; [Testing_Security](../Investigaciones/Testing_Security.md) §6.
-- [ ] [si hay login o refresh fuera del host de la oficina (app móvil, otra app)] **Superficie de sesión propia** en `SessionSurface`: su refresh solo rota su cadena y nunca acepta tokens web (que sí pasan por el binding de host). La sesión única se cuenta por canal (`UserSession.CompetesWith`). Los frenos de fuerza bruta se reutilizan de `CentralLoginAuthentication` (IP + email por tipo de cuenta), no se copian. El caso de uso vive en Application; el controller solo entrega el mensaje. **La superficie la fija el controller, nunca el body** (si un comando se toma del body, se sobrescribe con `with { Surface = ... }`), y quién puede abrir esa superficie se decide en una política explícita (`MobileSurfacePolicy`).
-  - Verificación: pruebas "token web en la ruta nueva → `Auth.InvalidRefreshToken`" y "token nuevo en el refresh web → rechazado" (patrón `RefreshAccessTokenHandlerTests`); prueba del controller que fija la superficie (`MobileAuthControllerTests`).
-  - Origen: [Decisiones_Arquitectonicas](../Referencias/Decisiones_Arquitectonicas.md) C-59; revisión del servicio Mobile (2026-11-19, O2).
 - [ ] [si la ruta pública lleva credencial en la URL] Partición `Token` en la política de rate limit (parámetro de ruta `token`).
   - Verificación: definición en `RateLimitPolicyCatalog.<Svc>.cs`.
   - Origen: [RateLimit_Cuotas_Gates](../Investigaciones/RateLimit_Cuotas_Gates.md) §1.2 y §5.
