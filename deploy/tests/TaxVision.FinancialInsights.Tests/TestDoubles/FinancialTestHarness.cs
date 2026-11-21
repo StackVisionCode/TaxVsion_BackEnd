@@ -31,6 +31,7 @@ public sealed class FinancialTestHarness : IAsyncDisposable
         Reservations = new AiReservationRepository(Db);
         Access = new FinancialAccessReader(Db);
         Projections = new FinancialProjectionRepository(Db);
+        (Bus, Published) = RecordingBus.Create();
         Entitlements = new TenantEntitlementsResolver(
             Projections,
             Snapshots,
@@ -53,6 +54,8 @@ public sealed class FinancialTestHarness : IAsyncDisposable
     public FakeEntitlementsSnapshotClient Snapshots { get; } = new();
     public RecordingCacheInvalidator Cache { get; } = new();
     public FakeCorrelationContext Correlation { get; } = new();
+    public Wolverine.IMessageBus Bus { get; }
+    public RecordingBus Published { get; }
 
     public IOptions<FinancialCustomerVisibilityOptions> Visibility { get; set; } =
         Options.Create(new FinancialCustomerVisibilityOptions());

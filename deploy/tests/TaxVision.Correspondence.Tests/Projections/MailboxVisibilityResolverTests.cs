@@ -19,7 +19,10 @@ public sealed class MailboxVisibilityResolverTests
     private readonly Guid _user = Guid.NewGuid();
 
     private MailboxVisibilityResolver Resolver(bool canSeeOffice = false) =>
-        new(new FixedPermissions(canSeeOffice), _connectors, _rows, NullLogger<MailboxVisibilityResolver>.Instance);
+        Resolver(canSeeOffice ? ConnectorsPermissions.AccountsOfficeRead : null);
+
+    private MailboxVisibilityResolver Resolver(string? permission) =>
+        new(new FixedPermissions(permission), _connectors, _rows, NullLogger<MailboxVisibilityResolver>.Instance);
 
     private ClaimsPrincipal User =>
         new(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, _user.ToString())], "test"));
@@ -91,16 +94,66 @@ public sealed class MailboxVisibilityResolverTests
         Assert.Empty(visible!);
     }
 
-    [Fact]
-    public async Task Resolve_OfficeReader_SeesEverything()
+    // E-2: office.read abre los buzones de oficina, nunca el personal de otro empleado.
+    [Theory]
+    [InlineData(ConnectorsPermissions.AccountsOfficeRead)]
+    [InlineData(ConnectorsPermissions.AccountsWrite)]
+    public async Task Resolve_OfficeReader_SeesOwnAndOfficeButNotAnotherPersonal(string permission)
     {
-        Assert.Null(await Resolver(canSeeOffice: true).ResolveVisibleAccountIdsAsync(User, _tenant));
+        var mine = Seed(_user);
+        var office = Seed(owner: null);
+        var disconnectedOffice = Seed(owner: null, isActive: false);
+        Seed(Guid.NewGuid());
+
+        var visible = await Resolver(permission).ResolveVisibleAccountIdsAsync(User, _tenant);
+
+        Assert.NotNull(visible);
+        Assert.Equivalent(new[] { mine, office, disconnectedOffice }, visible, strict: true);
         Assert.Equal(0, _connectors.VisibleCalls);
     }
 
-    private sealed class FixedPermissions(bool allowed) : IUserPermissionsSource
+    [Fact]
+    public async Task Resolve_OfficeReader_EmptyProjection_AsksConnectorsWithOffice()
+    {
+        var personal = Guid.NewGuid();
+        var office = Guid.NewGuid();
+        _connectors.VisibleAccountIdsByIncludeOffice = includeOffice =>
+            Result.Success<IReadOnlyCollection<Guid>>(includeOffice ? [personal, office] : [personal]);
+
+        var visible = await Resolver(canSeeOffice: true).ResolveVisibleAccountIdsAsync(User, _tenant);
+
+        Assert.Equivalent(new[] { personal, office }, visible, strict: true);
+        Assert.Equal(1, _connectors.VisibleCalls);
+    }
+
+    [Fact]
+    public async Task Resolve_OfficeReader_EmptyProjection_AndConnectorsDown_SeesNothing()
+    {
+        _connectors.VisibleAccountIdsResponse = Result.Failure<IReadOnlyCollection<Guid>>(
+            new Error("ConnectorsClient.Unavailable", "down")
+        );
+
+        var visible = await Resolver(canSeeOffice: true).ResolveVisibleAccountIdsAsync(User, _tenant);
+
+        Assert.NotNull(visible);
+        Assert.Empty(visible);
+    }
+
+    [Fact]
+    public async Task Resolve_OfficeReader_WithoutUserId_SeesNothing()
+    {
+        Seed(owner: null);
+
+        var visible = await Resolver(canSeeOffice: true)
+            .ResolveVisibleAccountIdsAsync(new ClaimsPrincipal(new ClaimsIdentity()), _tenant);
+
+        Assert.NotNull(visible);
+        Assert.Empty(visible);
+    }
+
+    private sealed class FixedPermissions(string? granted) : IUserPermissionsSource
     {
         public Task<bool> HasPermissionAsync(ClaimsPrincipal user, string permission, CancellationToken ct = default) =>
-            Task.FromResult(allowed && permission == ConnectorsPermissions.AccountsOfficeRead);
+            Task.FromResult(granted is not null && permission == granted);
     }
 }

@@ -13,6 +13,7 @@ using TaxVision.FinancialInsights.Application.Imports;
 using TaxVision.FinancialInsights.Application.Imports.Abstractions;
 using TaxVision.FinancialInsights.Application.Projections.Abstractions;
 using TaxVision.FinancialInsights.Infrastructure.Customers;
+using TaxVision.FinancialInsights.Infrastructure.Messaging;
 using TaxVision.FinancialInsights.Infrastructure.Permissions;
 using TaxVision.FinancialInsights.Infrastructure.Persistence;
 using TaxVision.FinancialInsights.Infrastructure.Persistence.Repositories;
@@ -43,6 +44,7 @@ public static class DependencyInjection
 
         // Lotes y lecturas del dominio.
         services.AddScoped<IImportBatchRepository, ImportBatchRepository>();
+        services.AddScoped<IFileSourceDeclarationPublisher, FileSourceDeclarationPublisher>();
         services.AddScoped<IFinancialMovementRepository, FinancialMovementRepository>();
         services.AddScoped<IAiReservationRepository, AiReservationRepository>();
         services.AddScoped<IFinancialAccessReader, FinancialAccessReader>();

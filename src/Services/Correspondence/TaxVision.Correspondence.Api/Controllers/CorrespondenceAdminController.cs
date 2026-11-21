@@ -3,6 +3,7 @@ using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Correspondence.Application.Backfill;
 using TaxVision.Correspondence.Application.Ingest;
 using Wolverine;
 
@@ -39,6 +40,33 @@ public sealed class CorrespondenceAdminController(IMessageBus bus) : ControllerB
 
         var report = await bus.InvokeAsync<RepairCrossCustomerThreadsReport>(
             new RepairCrossCustomerThreadsCommand(tenantId, dryRun),
+            ct
+        );
+        return Ok(report);
+    }
+
+    /// <summary>
+    /// Backfill de File Library: re-declara a CloudStorage los adjuntos de cada enviado de la oficina.
+    /// <c>dryRun=true</c> (por defecto) solo cuenta. Idempotente.
+    /// </summary>
+    [HttpPost("correspondence/admin/redeclare-file-sources")]
+    [RateLimitExempt("Reposición de plataforma (PlatformAdmin o M2M de la PlatformTenant), una corrida por oficina.")]
+    [ProducesResponseType<RedeclareFileSourcesReport>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> RedeclareFileSources(
+        [FromQuery] Guid tenantId,
+        [FromQuery] bool dryRun = true,
+        CancellationToken ct = default
+    )
+    {
+        if (!IsPlatformCaller())
+            return Forbid();
+        if (tenantId == Guid.Empty)
+            return BadRequest(new { error = "tenantId is required." });
+
+        var report = await bus.InvokeAsync<RedeclareFileSourcesReport>(
+            new RedeclareFileSourcesCommand(tenantId, dryRun),
             ct
         );
         return Ok(report);

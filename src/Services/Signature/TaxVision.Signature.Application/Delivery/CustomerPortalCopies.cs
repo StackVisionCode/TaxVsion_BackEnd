@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Abstractions.Sealing;
+using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 
@@ -55,6 +56,11 @@ public sealed class CustomerPortalCopier(
                 pending.SourceFileId,
                 pending.CustomerId,
                 taxYear,
+                new SignatureFileSource(
+                    request.Id,
+                    SealedFileRole.OfCopy(request, pending.SourceFileId),
+                    pending.CustomerId
+                ),
                 ct
             );
             if (copy.IsFailure)

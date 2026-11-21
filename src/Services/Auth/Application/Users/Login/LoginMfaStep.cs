@@ -5,6 +5,7 @@ using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Mfa;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Application.Users.Login;
@@ -41,7 +42,7 @@ public sealed class LoginMfaStep(
         if (await IsTrustedDeviceAsync(user, deviceToken, ct))
             return await sessionStep.OpenAsync(attempt, LoginSessionEntry.TrustedDevice, ct);
 
-        return await ChallengeAsync(user, confirmedMethods, now, ct);
+        return await ChallengeAsync(user, confirmedMethods, attempt.Surface, now, ct);
     }
 
     private async Task<bool> IsTrustedDeviceAsync(User user, string? deviceToken, CancellationToken ct)
@@ -56,6 +57,7 @@ public sealed class LoginMfaStep(
     private async Task<LoginDecision> ChallengeAsync(
         User user,
         IReadOnlyList<MfaMethod> confirmedMethods,
+        SessionSurface surface,
         DateTime now,
         CancellationToken ct
     )
@@ -92,7 +94,8 @@ public sealed class LoginMfaStep(
             challengeMethod.Id,
             tokens.Hash(loginTicket),
             otpHash,
-            LockoutPolicy.MfaTicketValidity
+            LockoutPolicy.MfaTicketValidity,
+            surface
         );
         await mfa.AddChallengeAsync(challenge, ct);
 

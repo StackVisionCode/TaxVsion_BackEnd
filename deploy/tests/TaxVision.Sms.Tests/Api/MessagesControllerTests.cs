@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -41,18 +42,60 @@ public sealed class MessagesControllerTests
         Assert.StartsWith("crm:", first);
     }
 
-    private static MessagesController BuildController(CapturingBus bus, string? idempotencyKeyHeader = null)
+    // El permiso de número manual viaja en el comando: lo decide el handler ítem por ítem.
+    [Fact]
+    public async Task User_without_send_any_number_gets_a_command_that_blocks_typed_numbers()
+    {
+        var bus = new CapturingBus();
+
+        await BuildController(bus, denied: SmsPermissions.SendAnyNumber).Send(SameText(), CancellationToken.None);
+
+        var command = Assert.Single(bus.Commands);
+        Assert.NotNull(command.ActorUserId);
+        Assert.False(command.CanSendToAnyNumber);
+    }
+
+    [Fact]
+    public async Task User_with_send_any_number_gets_a_command_that_allows_typed_numbers()
+    {
+        var bus = new CapturingBus();
+
+        await BuildController(bus).Send(SameText(), CancellationToken.None);
+
+        Assert.True(Assert.Single(bus.Commands).CanSendToAnyNumber);
+    }
+
+    // A un servicio (M2M) no se le mide: el comando va sin usuario y el handler no restringe.
+    [Fact]
+    public async Task Service_caller_is_sent_without_an_actor_user()
+    {
+        var bus = new CapturingBus();
+
+        await BuildController(bus, actorType: "Service", denied: SmsPermissions.SendAnyNumber)
+            .Send(SameText(), CancellationToken.None);
+
+        Assert.Null(Assert.Single(bus.Commands).ActorUserId);
+    }
+
+    private static MessagesController BuildController(
+        CapturingBus bus,
+        string? idempotencyKeyHeader = null,
+        string? actorType = null,
+        string? denied = null
+    )
     {
         var claims = new List<Claim>
         {
             new(ClaimNames.TenantId, TenantId.ToString()),
             new("sub", Guid.NewGuid().ToString()),
         };
+        if (actorType is not null)
+            claims.Add(new Claim(ClaimNames.ActorType, actorType));
         var http = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test")) };
         if (idempotencyKeyHeader is not null)
             http.Request.Headers["Idempotency-Key"] = idempotencyKeyHeader;
 
-        return new MessagesController(bus, new FixedTenant(), new FakeCorrelationContext(), new AllowAll())
+        return new MessagesController(bus, new FixedTenant(), new FakeCorrelationContext(), new AllowAllBut(denied))
         {
             ControllerContext = new ControllerContext { HttpContext = http },
         };
@@ -66,10 +109,10 @@ public sealed class MessagesControllerTests
         public void SetTenant(Guid id) { }
     }
 
-    private sealed class AllowAll : IUserPermissionsSource
+    private sealed class AllowAllBut(string? denied) : IUserPermissionsSource
     {
         public Task<bool> HasPermissionAsync(ClaimsPrincipal user, string permission, CancellationToken ct = default) =>
-            Task.FromResult(true);
+            Task.FromResult(permission != denied);
     }
 
     /// <summary>Captura los SendSmsBatchCommand y responde un lote vacío.</summary>

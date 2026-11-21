@@ -35,6 +35,42 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 3000
     );
 
+    // Biblioteca de archivos: orígenes que ve quien llama (sin tocar la base).
+    public static readonly RateLimitPolicyDefinition CloudStorageLibrarySources = Define(
+        "cloudstorage.f.library_sources",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 300,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 3000
+    );
+
+    // Biblioteca de archivos: búsqueda y listado (también la búsqueda dentro de Documents); el front espera 300 ms.
+    public static readonly RateLimitPolicyDefinition CloudStorageLibrarySearch = Define(
+        "cloudstorage.h.library_search",
+        RateLimitCategory.H,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 120,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 1200
+    );
+
+    // Biblioteca de archivos: URL de vista previa y descarga, mismo perfil que download_url.
+    public static readonly RateLimitPolicyDefinition CloudStorageLibraryDownload = Define(
+        "cloudstorage.f.library_download",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 300,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 3000
+    );
+
     // Compartida por Contents + Tree (FoldersController) — mismo perfil de navegación de carpetas.
     public static readonly RateLimitPolicyDefinition CloudStorageFolderBrowse = Define(
         "cloudstorage.f.folder_browse",

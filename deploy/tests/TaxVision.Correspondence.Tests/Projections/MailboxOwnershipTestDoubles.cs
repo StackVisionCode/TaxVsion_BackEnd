@@ -27,4 +27,9 @@ internal sealed class FakeMailboxOwnershipRepository : IMailboxOwnershipReposito
             ofTenant.Count == 0 ? null : ofTenant.Where(x => x.OwnerUserId == userId).Select(x => x.AccountId).ToList()
         );
     }
+
+    public Task<IReadOnlyCollection<Guid>> ListOfficeAccountIdsAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyCollection<Guid>>(
+            Rows.Where(x => x.TenantId == tenantId && x.IsOffice).Select(x => x.AccountId).ToList()
+        );
 }

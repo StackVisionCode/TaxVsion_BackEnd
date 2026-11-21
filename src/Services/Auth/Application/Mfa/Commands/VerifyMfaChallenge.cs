@@ -77,7 +77,8 @@ public static class VerifyMfaChallengeHandler
             return Result.Failure<MfaVerifyResponse>(invalid);
 
         var challenge = await mfa.GetChallengeByTicketHashAsync(tokens.Hash(command.LoginTicket), ct);
-        if (challenge is null || !challenge.IsUsable(now))
+        // Un desafío pedido por otra superficie (web o app) responde igual que uno que no existe.
+        if (challenge is null || !challenge.IsUsable(now) || challenge.Surface != command.Surface)
             return Result.Failure<MfaVerifyResponse>(invalid);
 
         // Sesión de app sin permiso (staff de oficina): mismo error genérico que un código malo.

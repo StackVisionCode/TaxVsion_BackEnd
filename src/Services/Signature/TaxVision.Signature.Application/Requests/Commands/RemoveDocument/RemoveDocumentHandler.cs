@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
+using Wolverine;
 
 namespace TaxVision.Signature.Application.Requests.Commands.RemoveDocument;
 
@@ -11,6 +12,8 @@ public static class RemoveDocumentHandler
         ISignatureRequestRepository repository,
         IUnitOfWork unitOfWork,
         ISignatureRequestListCacheInvalidator listCache,
+        IMessageBus bus,
+        ISignatureTemplateFileQuery templates,
         CancellationToken ct
     )
     {
@@ -20,12 +23,14 @@ public static class RemoveDocumentHandler
                 new Error("Signature.Request.NotFound", "The signature request does not exist for this tenant.")
             );
 
+        var originalsBefore = OriginalFileSources.Snapshot(request);
         var removed = request.RemoveDocument(cmd.DocumentId);
         if (removed.IsFailure)
             return removed;
 
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
+        await OriginalFileSources.DeclareChangesAsync(bus, templates, originalsBefore, request, "", ct);
         return Result.Success();
     }
 }

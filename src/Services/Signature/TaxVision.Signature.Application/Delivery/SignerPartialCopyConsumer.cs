@@ -252,7 +252,8 @@ public static class SignerPartialCopyConsumer
                     ownerId,
                     "Signatures",
                     request.OfficeYearOf(DateTime.UtcNow),
-                    request.CreatedByUserId
+                    request.CreatedByUserId,
+                    new SignatureFileSource(request.Id, SealedFileRole.PartialCopy, signer.MappedCustomerId)
                 ),
                 ct
             );

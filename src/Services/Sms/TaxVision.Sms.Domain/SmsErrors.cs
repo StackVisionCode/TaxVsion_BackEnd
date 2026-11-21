@@ -18,6 +18,10 @@ public static class SmsErrors
     public static Error CustomerNotAssigned =>
         new("sms.customerNotAssigned", "The customer is not assigned to the sender.");
 
+    // Número escrito a mano sin sms.send_any_number: se rechaza el ítem, no el lote, y no se cobra.
+    public static Error ManualNumberNotAllowed =>
+        new("sms.manualNumberNotAllowed", "You don't have permission to send SMS to numbers that are not clients.");
+
     // Media (estables, agnósticos del proveedor)
     public static Error MediaNotSupported => new("mediaNotSupported", "The selected provider does not support media.");
     public static Error MultipleMediaNotSupported =>

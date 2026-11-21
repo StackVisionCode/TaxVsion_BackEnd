@@ -16,7 +16,10 @@ public sealed class VerifyMfaChallengeHandlerTests
     private const string Ticket = "login-ticket";
     private const string Code = "123456";
 
-    private static (AccountSessionFixture World, InMemoryMfaRepository Mfa) WithChallenge(UserActorType actorType)
+    private static (AccountSessionFixture World, InMemoryMfaRepository Mfa) WithChallenge(
+        UserActorType actorType,
+        SessionSurface askedOn = SessionSurface.Workspace
+    )
     {
         var world = new AccountSessionFixture(actorType);
         var mfa = new InMemoryMfaRepository();
@@ -27,7 +30,8 @@ public sealed class VerifyMfaChallengeHandlerTests
                 Guid.NewGuid(),
                 world.TokenService.Hash(Ticket),
                 world.TokenService.Hash(Code),
-                TimeSpan.FromMinutes(5)
+                TimeSpan.FromMinutes(5),
+                askedOn
             )
         );
         return (world, mfa);
@@ -71,13 +75,52 @@ public sealed class VerifyMfaChallengeHandlerTests
     [Fact]
     public async Task A_platform_admin_completing_mfa_on_the_support_app_gets_a_mobile_session()
     {
-        var (world, mfa) = WithChallenge(UserActorType.PlatformAdmin);
+        var (world, mfa) = WithChallenge(UserActorType.PlatformAdmin, askedOn: SessionSurface.Mobile);
 
         var result = await VerifyAsync(world, mfa, SessionSurface.Mobile);
 
         Assert.NotNull(result.Value.Tokens);
         Assert.Equal(SessionChannel.Mobile, Assert.Single(world.Sessions.Sessions).Channel);
         Assert.Equal(SessionSurface.Mobile, Assert.Single(world.Sessions.Tokens).Surface);
+    }
+
+    // El desafío queda atado a la superficie que lo pidió, aunque la política deje a esa cuenta usar la otra.
+    [Fact]
+    public async Task A_challenge_asked_on_the_web_is_not_completed_on_the_app_route()
+    {
+        var (world, mfa) = WithChallenge(UserActorType.PlatformAdmin, askedOn: SessionSurface.Workspace);
+
+        var result = await VerifyAsync(world, mfa, SessionSurface.Mobile);
+
+        Assert.Equal("Auth.MfaInvalid", result.Error.Code);
+        Assert.Empty(world.Sessions.Sessions);
+        Assert.Null(mfa.Challenges[0].ConsumedAtUtc);
+    }
+
+    [Fact]
+    public async Task A_challenge_asked_on_the_app_is_not_completed_on_the_web_route()
+    {
+        var (world, mfa) = WithChallenge(UserActorType.PlatformAdmin, askedOn: SessionSurface.Mobile);
+
+        var result = await VerifyAsync(world, mfa, SessionSurface.Workspace);
+
+        Assert.Equal("Auth.MfaInvalid", result.Error.Code);
+        Assert.Empty(world.Sessions.Sessions);
+        Assert.Null(mfa.Challenges[0].ConsumedAtUtc);
+    }
+
+    // La otra superficie no gasta los intentos ni el desafío: su dueño lo termina por donde lo pidió.
+    [Fact]
+    public async Task A_try_on_the_wrong_route_does_not_spend_the_challenge()
+    {
+        var (world, mfa) = WithChallenge(UserActorType.PlatformAdmin, askedOn: SessionSurface.Mobile);
+
+        await VerifyAsync(world, mfa, SessionSurface.Workspace);
+        var result = await VerifyAsync(world, mfa, SessionSurface.Mobile);
+
+        Assert.Equal(0, mfa.Challenges[0].Attempts);
+        Assert.NotNull(result.Value.Tokens);
+        Assert.Equal(SessionChannel.Mobile, Assert.Single(world.Sessions.Sessions).Channel);
     }
 
     // Un desafío del login web no se puede terminar por la ruta de las apps para llevarse una sesión sin binding.

@@ -4,6 +4,7 @@ using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.NotesIntegrationEvents;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -154,6 +155,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<NoteUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<NoteDeletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<NoteAttachmentDetachedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileSourceDeclaredIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).

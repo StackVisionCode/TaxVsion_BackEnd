@@ -16,6 +16,8 @@ import type { AttachmentTrackingRepository } from '../ports/attachment-tracking-
 import { ChatEventTypes, type MessageSentEvent } from '../../contracts/events/chat-events.js';
 import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
 import { messageSnapshotToDto } from './chat-mappers.js';
+import { chatFileRole, declareFileSource, relatedCustomerOf } from '../services/file-source-declarer.js';
+import { FileSourceResourceTypes } from '../../contracts/events/cloudstorage-events.js';
 
 /**
  * Comando: enviar un mensaje a una conversacion existente. Body (Text) o
@@ -179,6 +181,16 @@ export async function sendMessage(
       messageId: messageSnapshot.id,
       conversationId: command.conversationId,
       tenantId: command.tenantId,
+    });
+    // Biblioteca de archivos: el adjunto nace de esta conversación.
+    await declareFileSource(deps.publisher, {
+      tenantId: command.tenantId,
+      correlationId: command.correlationId,
+      fileId: messageSnapshot.attachmentFileId,
+      resourceType: FileSourceResourceTypes.Conversation,
+      resourceId: command.conversationId,
+      role: chatFileRole(messageResult.value.isVoiceNote()),
+      relatedCustomerId: relatedCustomerOf(conversation.getParticipantSnapshots()),
     });
     // F8d: categoría provisional con el tipo declarado; al pasar el escaneo se reemplaza por el detectado.
     // Si el escaneo ya terminó (un audio tarda < 1 s), el evento `available` pudo llegar antes de este

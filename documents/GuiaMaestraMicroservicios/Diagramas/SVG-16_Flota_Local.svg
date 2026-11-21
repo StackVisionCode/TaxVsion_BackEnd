@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1358" width="1600" height="1358" font-family="Segoe UI, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1376" width="1600" height="1376" font-family="Segoe UI, Arial, sans-serif">
 <title>SVG-16 · Flota local: scripts, orden de arranque y alta de un servicio</title>
 <desc>En local los .NET corren como procesos dotnet desde bin\Release\net10.0 con ASPNETCORE_ENVIRONMENT=Development; Docker solo da la infraestructura. La configuración sale de los user-secrets de cada Api, no del .env.</desc>
 <defs><marker id="ah-dark" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#374151"/></marker><marker id="ah-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2F5D9E"/></marker><marker id="ah-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D4F"/></marker><marker id="ah-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B7791F"/></marker><marker id="ah-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#B83232"/></marker><marker id="ah-purple" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B4FA0"/></marker><marker id="ah-teal" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#2C7A7B"/></marker><marker id="ah-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#6B7280"/></marker></defs>
-<rect x="0" y="0" width="1600" height="1358" fill="#FFFFFF"/>
+<rect x="0" y="0" width="1600" height="1376" fill="#FFFFFF"/>
 <rect class="ctr" x="480.0" y="112.0" width="560.0" height="734.0" rx="8" fill="#FAFBFC" stroke="#C5CAD3" stroke-width="1.2"/>
 <text x="490.0" y="135.0" font-size="14" font-weight="700" fill="#111827">Orden de arranque de start-fleet.ps1</text>
-<rect class="ctr" x="30.0" y="1266.0" width="1540.0" height="68.0" rx="8" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.2"/>
-<text x="40.0" y="1289.0" font-size="14" font-weight="700" fill="#111827">Leyenda</text>
+<rect class="ctr" x="30.0" y="1284.0" width="1540.0" height="68.0" rx="8" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.2"/>
+<text x="40.0" y="1307.0" font-size="14" font-weight="700" fill="#111827">Leyenda</text>
 <text x="30.0" y="42.0" font-size="24" font-weight="700" fill="#111827">SVG-16 · Flota local: scripts, orden de arranque y alta de un servicio</text>
 <text x="30.0" y="68.0" font-size="14" fill="#4B5563">En local los .NET corren como procesos dotnet desde bin\Release\net10.0 con ASPNETCORE_ENVIRONMENT=Development; Docker solo da la infraestructura. La configuración sale de los user-secrets</text>
 <text x="30.0" y="88.0" font-size="14" fill="#4B5563">de cada Api, no del .env.</text>
@@ -34,7 +34,7 @@
 <text x="40.0" y="554.0" font-size="13" font-style="italic" fill="#4B5563">&lt;Svc&gt;; solo servidores locales</text>
 <rect class="box" x="30.0" y="582.0" width="420.0" height="98.0" rx="6" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
 <text x="40.0" y="605.0" font-size="14" font-weight="700" fill="#111827">codegen/regenerate-wolverine-code.ps1</text>
-<text x="40.0" y="628.0" font-size="13" fill="#1F2937">Lista fija $all de 26 servicios; corre</text>
+<text x="40.0" y="628.0" font-size="13" fill="#1F2937">Lista fija $all de 27 servicios; corre</text>
 <text x="40.0" y="646.0" font-size="13" fill="#1F2937">PreGeneratedHandlerCodeTests con</text>
 <text x="40.0" y="664.0" font-size="13" fill="#1F2937">TAXVISION_CODEGEN_WRITE=1</text>
 <rect class="box" x="30.0" y="692.0" width="420.0" height="80.0" rx="6" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
@@ -54,7 +54,7 @@
 <text x="504.0" y="401.0" font-size="14" font-weight="700" fill="#111827">Paso 2 · resto de .NET, uno cada 3 s</text>
 <text x="504.0" y="424.0" font-size="13" fill="#2F5D9E">•</text>
 <text x="518.0" y="424.0" font-size="13" fill="#1F2937">Tenant, Customer, Wallet, FinancialInsights, Notification,</text>
-<text x="518.0" y="442.0" font-size="13" fill="#1F2937">CloudStorage, Signature, Subscription, Postmaster, Scribe,</text>
+<text x="518.0" y="442.0" font-size="13" fill="#1F2937">CloudStorage, Signature, Subscription, Mobile, Postmaster, Scribe,</text>
 <text x="518.0" y="460.0" font-size="13" fill="#1F2937">Connectors, MailboxListener, Correspondence, Growth, Payment*,</text>
 <text x="518.0" y="478.0" font-size="13" fill="#1F2937">Notes, Documents, Billing, Sms, Catalog, Inventory, Reminder,</text>
 <text x="518.0" y="496.0" font-size="13" fill="#1F2937">Tasks, Calendar, Campaigns</text>
@@ -82,7 +82,7 @@
 <rect class="box" x="1070.0" y="112.0" width="500.0" height="152.0" rx="6" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
 <text x="1080.0" y="135.0" font-size="14" font-weight="700" fill="#111827">User-secrets de cada Api (no el .env)</text>
 <text x="1080.0" y="158.0" font-size="13" fill="#6B4FA0">•</text>
-<text x="1094.0" y="158.0" font-size="13" fill="#1F2937">27 proyectos Api/Gateway con &lt;UserSecretsId&gt;</text>
+<text x="1094.0" y="158.0" font-size="13" fill="#1F2937">28 proyectos Api/Gateway con &lt;UserSecretsId&gt;</text>
 <text x="1080.0" y="176.0" font-size="13" fill="#6B4FA0">•</text>
 <text x="1094.0" y="176.0" font-size="13" fill="#1F2937">ConnectionStrings:Default, ConnectionStrings:Redis,</text>
 <text x="1094.0" y="194.0" font-size="13" fill="#1F2937">RabbitMq:Uri, Jwt:*, Encryption:MasterKey,</text>
@@ -119,16 +119,17 @@
 <text x="1080.0" y="680.0" font-size="13" fill="#B7791F">•</text>
 <text x="1094.0" y="680.0" font-size="13" fill="#1F2937">Un 502 del gateway suele ser un puerto caído</text>
 <text x="30.0" y="890.0" font-size="16" font-weight="700" fill="#1F2937">Puertos locales (fuente de verdad: start-fleet.ps1, la lee DevClientPortDefaultsTests)</text>
-<rect class="box" x="30.0" y="904.0" width="376.0" height="164.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<rect class="box" x="30.0" y="904.0" width="376.0" height="182.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
 <text x="40.0" y="926.0" font-size="13" fill="#1F2937">Auth  ·  5124</text>
 <text x="40.0" y="944.0" font-size="13" fill="#1F2937">Tenant  ·  5217</text>
 <text x="40.0" y="962.0" font-size="13" fill="#1F2937">Customer  ·  5263</text>
 <text x="40.0" y="980.0" font-size="13" fill="#1F2937">Wallet  ·  5270</text>
 <text x="40.0" y="998.0" font-size="13" fill="#1F2937">FinancialInsights  ·  5276</text>
-<text x="40.0" y="1016.0" font-size="13" fill="#1F2937">Notification  ·  5320</text>
-<text x="40.0" y="1034.0" font-size="13" fill="#1F2937">CloudStorage  ·  5330</text>
-<text x="40.0" y="1052.0" font-size="13" fill="#1F2937">Signature  ·  5340</text>
-<rect class="box" x="418.0" y="904.0" width="376.0" height="164.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<text x="40.0" y="1016.0" font-size="13" fill="#1F2937">Mobile  ·  5280</text>
+<text x="40.0" y="1034.0" font-size="13" fill="#1F2937">Notification  ·  5320</text>
+<text x="40.0" y="1052.0" font-size="13" fill="#1F2937">CloudStorage  ·  5330</text>
+<text x="40.0" y="1070.0" font-size="13" fill="#1F2937">Signature  ·  5340</text>
+<rect class="box" x="418.0" y="904.0" width="376.0" height="182.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
 <text x="428.0" y="926.0" font-size="13" fill="#1F2937">Communication (Node)  ·  5350</text>
 <text x="428.0" y="944.0" font-size="13" fill="#1F2937">Subscription  ·  5360</text>
 <text x="428.0" y="962.0" font-size="13" fill="#1F2937">CommunicationRecorder  ·  5365</text>
@@ -137,7 +138,7 @@
 <text x="428.0" y="1016.0" font-size="13" fill="#1F2937">Connectors  ·  5390</text>
 <text x="428.0" y="1034.0" font-size="13" fill="#1F2937">MailboxListener  ·  5395</text>
 <text x="428.0" y="1052.0" font-size="13" fill="#1F2937">Correspondence  ·  5400</text>
-<rect class="box" x="806.0" y="904.0" width="376.0" height="164.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<rect class="box" x="806.0" y="904.0" width="376.0" height="182.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
 <text x="816.0" y="926.0" font-size="13" fill="#1F2937">Growth  ·  5410</text>
 <text x="816.0" y="944.0" font-size="13" fill="#1F2937">PaymentClient  ·  5420</text>
 <text x="816.0" y="962.0" font-size="13" fill="#1F2937">PaymentApp  ·  5430</text>
@@ -146,7 +147,7 @@
 <text x="816.0" y="1016.0" font-size="13" fill="#1F2937">Billing  ·  5460</text>
 <text x="816.0" y="1034.0" font-size="13" fill="#1F2937">Sms  ·  5470</text>
 <text x="816.0" y="1052.0" font-size="13" fill="#1F2937">Catalog  ·  5480</text>
-<rect class="box" x="1194.0" y="904.0" width="376.0" height="164.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
+<rect class="box" x="1194.0" y="904.0" width="376.0" height="182.0" rx="6" fill="#FFFFFF" stroke="#9CA3AF" stroke-width="1.5"/>
 <text x="1204.0" y="926.0" font-size="13" fill="#1F2937">Inventory  ·  5490</text>
 <text x="1204.0" y="944.0" font-size="13" fill="#1F2937">Reminder  ·  5500</text>
 <text x="1204.0" y="962.0" font-size="13" fill="#1F2937">Tasks  ·  5510</text>
@@ -155,34 +156,34 @@
 <text x="1204.0" y="1016.0" font-size="13" fill="#1F2937">content-scanner (Docker)  ·  5540</text>
 <text x="1204.0" y="1034.0" font-size="13" fill="#1F2937">Gateway  ·  5047</text>
 <text x="1204.0" y="1052.0" font-size="13" fill="#1F2937">TranscriptWorker (Node)  ·  —</text>
-<rect class="box" x="30.0" y="1094.0" width="1540.0" height="152.0" rx="6" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
-<text x="40.0" y="1117.0" font-size="14" font-weight="700" fill="#111827">Dónde agregar un servicio nuevo (4 listas duplicadas + configuración)</text>
-<text x="40.0" y="1140.0" font-size="13" fill="#111827">1.</text>
-<text x="64.0" y="1140.0" font-size="13" fill="#1F2937">Puerto libre de la tabla de start-fleet.ps1 y en Properties/launchSettings.json del Api</text>
-<text x="40.0" y="1158.0" font-size="13" fill="#111827">2.</text>
-<text x="64.0" y="1158.0" font-size="13" fill="#1F2937">scripts/start-fleet.ps1: línea @{ n = "&lt;Svc&gt;"; d = "src\Services\&lt;Svc&gt;\TaxVision.&lt;Svc&gt;.Api"; p = &lt;puerto&gt; } antes de Gateway (w = puerto si espera a otro)</text>
-<text x="40.0" y="1176.0" font-size="13" fill="#111827">3.</text>
-<text x="64.0" y="1176.0" font-size="13" fill="#1F2937">scripts/restart-down.ps1: la misma línea · 4. scripts/stop-fleet.ps1: el puerto en $ports · 5. regenerate-wolverine-code.ps1: "&lt;Svc&gt;" en $all</text>
-<text x="40.0" y="1194.0" font-size="13" fill="#111827">6.</text>
-<text x="64.0" y="1194.0" font-size="13" fill="#1F2937">Cluster del gateway en src/Gateway/TaxVision.Gateway/appsettings.json con http://localhost:&lt;puerto&gt;/</text>
-<text x="40.0" y="1212.0" font-size="13" fill="#111827">7.</text>
-<text x="64.0" y="1212.0" font-size="13" fill="#1F2937">dotnet user-secrets set ... (ConnectionStrings:Default, Redis, RabbitMq:Uri) + cliente M2M en Auth (ServiceAuth:Clients:&lt;N&gt;:*)</text>
-<text x="40.0" y="1230.0" font-size="13" fill="#111827">8.</text>
-<text x="64.0" y="1230.0" font-size="13" fill="#1F2937">dotnet build -c Release y ./scripts/migrate-local.ps1 -Apply -Service &lt;Svc&gt; · 9. Gate local (DevClientPortDefaultsTests valida los puertos)</text>
-<rect class="sw" x="42.0" y="1306.0" width="30" height="16" rx="3" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
-<text x="82.0" y="1319.0" font-size="13" fill="#1F2937">Arranque / alta</text>
-<rect class="sw" x="216.5" y="1306.0" width="30" height="16" rx="3" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
-<text x="256.5" y="1319.0" font-size="13" fill="#1F2937">Script o configuración</text>
-<rect class="sw" x="443.5" y="1306.0" width="30" height="16" rx="3" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
-<text x="483.5" y="1319.0" font-size="13" fill="#1F2937">Node</text>
-<rect class="sw" x="535.5" y="1306.0" width="30" height="16" rx="3" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
-<text x="575.5" y="1319.0" font-size="13" fill="#1F2937">Secretos locales</text>
-<rect class="sw" x="717.5" y="1306.0" width="30" height="16" rx="3" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
-<text x="757.5" y="1319.0" font-size="13" fill="#1F2937">Precaución</text>
-<rect class="sw" x="854.5" y="1306.0" width="30" height="16" rx="3" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
-<text x="894.5" y="1319.0" font-size="13" fill="#1F2937">Docker / infraestructura</text>
-<path class="leg" d="M 1096.5 1314.0 L 1126.5 1314.0" stroke="#374151" stroke-width="1.8" marker-end="url(#ah-dark)"/>
-<text x="1136.5" y="1319.0" font-size="13" fill="#1F2937">Orden de arranque</text>
+<rect class="box" x="30.0" y="1112.0" width="1540.0" height="152.0" rx="6" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="40.0" y="1135.0" font-size="14" font-weight="700" fill="#111827">Dónde agregar un servicio nuevo (4 listas duplicadas + configuración)</text>
+<text x="40.0" y="1158.0" font-size="13" fill="#111827">1.</text>
+<text x="64.0" y="1158.0" font-size="13" fill="#1F2937">Puerto libre de la tabla de start-fleet.ps1 y en Properties/launchSettings.json del Api</text>
+<text x="40.0" y="1176.0" font-size="13" fill="#111827">2.</text>
+<text x="64.0" y="1176.0" font-size="13" fill="#1F2937">scripts/start-fleet.ps1: línea @{ n = "&lt;Svc&gt;"; d = "src\Services\&lt;Svc&gt;\TaxVision.&lt;Svc&gt;.Api"; p = &lt;puerto&gt; } antes de Gateway (w = puerto si espera a otro)</text>
+<text x="40.0" y="1194.0" font-size="13" fill="#111827">3.</text>
+<text x="64.0" y="1194.0" font-size="13" fill="#1F2937">scripts/restart-down.ps1: la misma línea · 4. scripts/stop-fleet.ps1: el puerto en $ports · 5. regenerate-wolverine-code.ps1: "&lt;Svc&gt;" en $all</text>
+<text x="40.0" y="1212.0" font-size="13" fill="#111827">6.</text>
+<text x="64.0" y="1212.0" font-size="13" fill="#1F2937">Cluster del gateway en src/Gateway/TaxVision.Gateway/appsettings.json con http://localhost:&lt;puerto&gt;/</text>
+<text x="40.0" y="1230.0" font-size="13" fill="#111827">7.</text>
+<text x="64.0" y="1230.0" font-size="13" fill="#1F2937">dotnet user-secrets set ... (ConnectionStrings:Default, Redis, RabbitMq:Uri) + cliente M2M en Auth (ServiceAuth:Clients:&lt;N&gt;:*)</text>
+<text x="40.0" y="1248.0" font-size="13" fill="#111827">8.</text>
+<text x="64.0" y="1248.0" font-size="13" fill="#1F2937">dotnet build -c Release y ./scripts/migrate-local.ps1 -Apply -Service &lt;Svc&gt; · 9. Gate local (DevClientPortDefaultsTests valida los puertos)</text>
+<rect class="sw" x="42.0" y="1324.0" width="30" height="16" rx="3" fill="#E7F4EA" stroke="#2E7D4F" stroke-width="1.5"/>
+<text x="82.0" y="1337.0" font-size="13" fill="#1F2937">Arranque / alta</text>
+<rect class="sw" x="216.5" y="1324.0" width="30" height="16" rx="3" fill="#E8F0FB" stroke="#2F5D9E" stroke-width="1.5"/>
+<text x="256.5" y="1337.0" font-size="13" fill="#1F2937">Script o configuración</text>
+<rect class="sw" x="443.5" y="1324.0" width="30" height="16" rx="3" fill="#E6F5F5" stroke="#2C7A7B" stroke-width="1.5"/>
+<text x="483.5" y="1337.0" font-size="13" fill="#1F2937">Node</text>
+<rect class="sw" x="535.5" y="1324.0" width="30" height="16" rx="3" fill="#F0EAFB" stroke="#6B4FA0" stroke-width="1.5"/>
+<text x="575.5" y="1337.0" font-size="13" fill="#1F2937">Secretos locales</text>
+<rect class="sw" x="717.5" y="1324.0" width="30" height="16" rx="3" fill="#FFF4E0" stroke="#B7791F" stroke-width="1.5"/>
+<text x="757.5" y="1337.0" font-size="13" fill="#1F2937">Precaución</text>
+<rect class="sw" x="854.5" y="1324.0" width="30" height="16" rx="3" fill="#F1F3F5" stroke="#6B7280" stroke-width="1.5"/>
+<text x="894.5" y="1337.0" font-size="13" fill="#1F2937">Docker / infraestructura</text>
+<path class="leg" d="M 1096.5 1332.0 L 1126.5 1332.0" stroke="#374151" stroke-width="1.8" marker-end="url(#ah-dark)"/>
+<text x="1136.5" y="1337.0" font-size="13" fill="#1F2937">Orden de arranque</text>
 <path class="arw" d="M 760.0 264.0 L 760.0 290.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
 <path class="arw" d="M 760.0 352.0 L 760.0 378.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>
 <path class="arw" d="M 760.0 548.0 L 760.0 574.0" fill="none" stroke="#374151" stroke-width="1.6" marker-end="url(#ah-dark)"/>

@@ -373,7 +373,7 @@ public static class FormFileScanResultConsumer
         return false;
     }
 
-    // Solo se avisa del adjunto que pasa a rechazado con este veredicto, no del que ya lo estaba.
+    // Solo se avisa del adjunto que cambia de estado con este veredicto: el rechazado, y el disponible se declara.
     private static async Task<bool> ApplyToRequestAsync(
         FormRequest request,
         Guid fileId,
@@ -394,12 +394,12 @@ public static class FormFileScanResultConsumer
 
         foreach (var attachment in request.Submission.Attachments.Where(item => item.FileId == fileId))
         {
-            if (
-                attachment.Status != FormAttachmentStatus.Rejected
-                || before.GetValueOrDefault(attachment.Id) == FormAttachmentStatus.Rejected
-            )
+            if (attachment.Status == before.GetValueOrDefault(attachment.Id))
                 continue;
-            await AddRejectedAsync(request, attachment, customers, outgoing, correlation.CorrelationId, ct);
+            if (attachment.Status == FormAttachmentStatus.Available)
+                outgoing.Add(FormFileSources.ForAttachment(request, attachment, correlation.CorrelationId));
+            else if (attachment.Status == FormAttachmentStatus.Rejected)
+                await AddRejectedAsync(request, attachment, customers, outgoing, correlation.CorrelationId, ct);
         }
         return true;
     }

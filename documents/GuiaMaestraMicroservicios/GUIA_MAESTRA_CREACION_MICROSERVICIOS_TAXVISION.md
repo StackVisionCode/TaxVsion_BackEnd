@@ -69,6 +69,9 @@
 - [36. Troubleshooting (errores históricos reales)](#cap-36)
 - [37. Criterios de aceptación para producción](#cap-37)
 
+**Parte XI — Archivos**
+- [38. Archivos y File Library](#cap-38)
+
 **Anexos**
 - [A. Mapa de documentos relacionados](#anexo-a)
 
@@ -77,7 +80,7 @@
 <a id="cap-01"></a>
 ## 1. Introducción
 
-TaxVision (marca comercial actual TaxOffix) es una plataforma SaaS multi-oficina para despachos contables. El backend es una flota de microservicios: **26 servicios .NET de negocio** con base propia, **2 workers .NET** sin API pública (`Connectors.MailboxListener`, `ContentScanner`), **3 servicios Node/TypeScript** (Communication, CommunicationRecorder, CommunicationTranscriptWorker) y **un Gateway YARP**. Se comunican por eventos en RabbitMQ (fanout `taxvision-events`) y, cuando hace falta, por HTTP interno con token de servicio (M2M).
+TaxVision (marca comercial actual TaxOffix) es una plataforma SaaS multi-oficina para despachos contables. El backend es una flota de microservicios: **27 servicios .NET de negocio** con base propia, **2 workers .NET** sin API pública (`Connectors.MailboxListener`, `ContentScanner`), **3 servicios Node/TypeScript** (Communication, CommunicationRecorder, CommunicationTranscriptWorker) y **un Gateway YARP**. Se comunican por eventos en RabbitMQ (fanout `taxvision-events`) y, cuando hace falta, por HTTP interno con token de servicio (M2M).
 
 ![SVG-01 Ecosistema](Diagramas/SVG-01_Ecosistema.svg)
 
@@ -119,7 +122,7 @@ Todos esos fallos **ya ocurrieron** (ver [cap. 36](#cap-36)). La guía convierte
 
 ### Estructura de cada capítulo temático
 
-Cada capítulo de los temas 6 a 34 tiene las mismas secciones: **Qué es · Por qué existe · Cómo funciona · Implementación actual en TaxVision · Cómo integrarlo en un servicio nuevo · Archivos involucrados · Ejemplo técnico · Integraciones · Errores históricos · Pruebas · Checklist**. Los fragmentos de código son **reales** (tomados de las investigaciones, con ruta y líneas); los comentarios se recortaron.
+Cada capítulo de los temas 6 a 34 y el 38 tiene las mismas secciones: **Qué es · Por qué existe · Cómo funciona · Implementación actual en TaxVision · Cómo integrarlo en un servicio nuevo · Archivos involucrados · Ejemplo técnico · Integraciones · Errores históricos · Pruebas · Checklist**. Los fragmentos de código son **reales** (tomados de las investigaciones, con ruta y líneas); los comentarios se recortaron.
 
 ### Etiquetas
 
@@ -162,6 +165,7 @@ Cada capítulo enlaza su investigación en `Investigaciones/`. Si una afirmació
 | **EventKey (Scribe)** | Clave de plantilla en Scribe (p. ej. `tenant.wisp_review_due.v1`). **No** es el `[MessageIdentity]` del evento. |
 | **Fail-closed / fail-open** | Ante falta de dato o fallo: denegar / dejar pasar. Cada mecanismo documenta su elección. |
 | **Fanout `taxvision-events`** | Exchange RabbitMQ único al que publican los servicios; cada servicio escucha su cola `<svc>-events`. |
+| **File Library (biblioteca de archivos)** | Vista de solo consulta de CloudStorage (`/storage/library*`, permiso `cloudstorage.library.view`) que junta los archivos de todos los módulos según el **origen** que declaró cada servicio dueño (`FileSourceDeclaredIntegrationEvent`). Ver [cap. 38](#cap-38). |
 | **Fitness test** | Prueba de arquitectura que lee código, reflexión o archivos de despliegue para impedir que se rompa una regla. |
 | **Gate (local)** | Comando exacto de pruebas que debe estar verde antes de entregar: `dotnet test TaxVision.slnx --nologo --filter "FullyQualifiedName!~.Integration.&FullyQualifiedName!~.Persistence.&FullyQualifiedName!~ReminderRetentionJobTests"`. |
 | **Gate de módulo** | Comprobación, dentro de `[HasPermission]`, de que el plan del tenant incluye el módulo del permiso. 403 `Authz.ModuleUnavailable`. |
@@ -169,7 +173,7 @@ Cada capítulo enlaza su investigación en `Investigaciones/`. Si una afirmació
 | **Kit (BB)** | Proyecto BB con proyección + consumer + reconciliación reutilizables (`TenantTimeZones`, `CustomerVisibility`). |
 | **M2M** | Llamada servicio a servicio con token de `client_credentials` emitido por `POST auth/service-token`. Actor `Service`, sin `sid`. |
 | **MessageIdentity** | Nombre estable del contrato en el cable (`[MessageIdentity("...")]`). Cambiarlo rompe mensajes en vuelo y a Node. |
-| **Offboarding (retiro)** | Estado terminal `UserStatus.Offboarded` de un empleado; lo ejecuta Auth y lo limpian 27 servicios por coreografía. |
+| **Offboarding (retiro)** | Estado terminal `UserStatus.Offboarded` de un empleado; lo ejecuta Auth y lo limpian 28 servicios por coreografía. |
 | **Outbox / inbox durable** | Tablas `wolverine_*` en la base de cada servicio: lo publicado se confirma con la transacción de negocio; lo recibido se deduplica por `MessageId`. |
 | **PlatformTenant** | Tenant fijo `8f58a521-4c25-4d91-9f4e-7ad5df14c001` usado para operaciones cross-tenant de plataforma. |
 | **Proyección local** | Read-model en la base del servicio alimentado por eventos del dueño del dato (permisos, plan, zona, asignaciones, directorios). |
@@ -255,6 +259,7 @@ La matriz dice **qué capacidad aplica según lo que hace el servicio**. Primero
 | **W** — worker | ¿Es un proceso sin API pública? |
 | **N** — avisa | ¿Debe mandar emails, SMS, in-app o push? |
 | **T** — tiempo de oficina | ¿Calcula vencimientos, ventanas o fechas civiles en la zona de la oficina? |
+| **F** — guarda archivos | ¿Guarda en su base el `FileId` de un archivo de CloudStorage (adjunto, PDF generado, grabación, estado de cuenta…)? |
 
 ### 5.3 Capacidad por condición
 
@@ -291,6 +296,12 @@ La matriz dice **qué capacidad aplica según lo que hace el servicio**. Primero
 | Plantilla Scribe + kind en catálogo + consumer en Notification | OC | N | [23](#cap-23), [24](#cap-24) | `Checklists/Notificaciones.md` |
 | Kit `TenantTimeZones` + fechas tipadas | OC | T | [25](#cap-25) | Proyecciones_Reconciliation |
 | Kit `CustomerVisibility` | OC | Muestra datos por cliente y debe respetar asignaciones | [9](#cap-09), [14](#cap-14) | Proyecciones_Reconciliation |
+| Índice del `FileId` + origen declarado (`FileSourceDeclared` o campos de `SaveFileRequested`) + par en `FileSourceCatalog` | OC | F | [38](#cap-38) | `Checklists/Archivos_FileLibrary.md` |
+| Entrada en `LibrarySourceCatalog` (y su SQL) | OC | F con archivos que deben salir en la File Library | [38](#cap-38) | Archivos_FileLibrary |
+| Visibilidad por fila: `POST /<svc>/files/visibility` + alta del dueño en CloudStorage + `Services__<Svc>__BaseUrl` en `cloudstorage-api` | OC | F con privacidad por registro (no todo el personal con el permiso del módulo ve todos los archivos) | [38](#cap-38) | Archivos_FileLibrary |
+| Handler de `FileSourcesClaimRequested` + reconciliación manual `redeclare-file-sources` | OC | F | [15](#cap-15), [38](#cap-38) | Archivos_FileLibrary |
+| Descarga mediada por el dueño + origen en `FileReadGate.IsOwnerMediated` + `cloudstorage.file.download` en su cliente M2M | OC | F con archivos privados del recurso | [13](#cap-13), [38](#cap-38) | Archivos_FileLibrary |
+| Borrado por `FilesDeletionRequestedIntegrationEvent` (cola `cloudstorage-file-deletions`) | OC | F con retención o borrado de archivos | [38](#cap-38) | Archivos_FileLibrary |
 | Ruta + cluster YARP + criticidad + override en compose | OC | X | [26](#cap-26) | `Checklists/YARP_Cloudflare.md` |
 | Regla en Caddy | OC | X con URL que el usuario abre en el navegador en host de oficina | [27](#cap-27) | YARP_Cloudflare |
 | Cambio en Cloudflare (hostname, DNS, puerto no HTTP, Turnstile) | RA (lo ejecuta el senior a mano) | Hostname nuevo o protocolo no HTTP | [27](#cap-27) | YARP_Cloudflare |
@@ -326,6 +337,7 @@ Columnas: **API-H** = API de negocio con humanos · **CONS** = servicio consumer
 | Cloudflare | RA (solo hostname nuevo) | NA | NA | RA | — | NA |
 | Notificaciones vía Notification | OC (N) | OC (N) | NA | OC | OC | NA |
 | Zona horaria | OC (T) | OC (T) | NA | OC | OC | NA |
+| Archivos y File Library | OC (F) | OC (F) | OC (F) | OC (F) | OC (F) | NA |
 | Pruebas + gate | **OS** | **OS** | **OS** | **OS** | **OS** | **OS** |
 
 > Regla de lectura: una celda "OC" se resuelve con la condición de la tabla 5.3. Una "RA" se pide antes de escribir código.
@@ -352,12 +364,16 @@ Un servicio nuevo debe usar **exactamente** las versiones y piezas de la flota: 
 #### Implementación actual en TaxVision
 | Pieza | Cantidad | Evidencia (Código verificado) |
 |---|---|---|
-| Servicios .NET con 4 capas y base propia | 26 | 26 `*DbContext` en `src/Services/*/…/Persistence/` |
+| Servicios .NET con 4 capas y base propia | 27 | 27 `*DbContext` en `src/Services/*/…/Persistence/` |
 | Workers .NET | 2 | `TaxVision.slnx`; compose `connectors-mailbox-listener`, `content-scanner` |
 | Servicios Node | 3 | `src/Services/*/package.json` |
 | Proyectos BuildingBlocks | 10 | `src/BuildingBlocks/**/*.csproj` |
-| Proyectos de pruebas .NET | 31 (30 + biblioteca `BuildingBlocks.Testing`) | `TaxVision.slnx:218-250` |
-| Bases EF aplicadas por el deploy | 25 + FinancialInsights condicional | `deploy/docker/migrations/apply-migrations.sh` |
+| Proyectos de pruebas .NET | 32 (31 + biblioteca `BuildingBlocks.Testing`) | `TaxVision.slnx:225-257` |
+| Bases EF aplicadas por el deploy | 26 + FinancialInsights condicional | `deploy/docker/migrations/apply-migrations.sh` (Mobile en `:179-183`, FinancialInsights condicional en `:171-176`) |
+
+**Servicios .NET de negocio** (detalle en el [inventario](03_INVENTARIO_ARQUITECTURA.md) §2): Auth, Billing, Calendar, Campaigns, Catalog, CloudStorage, Connectors, Correspondence, Customer, Documents, FinancialInsights, Growth, Inventory, **Mobile**, Notes, Notification, PaymentApp, PaymentClient, Postmaster, Reminder, Scribe, Signature, Sms, Subscription, Tasks, Tenant y Wallet.
+
+**Mobile (Código verificado).** Vehículos y viajes con GPS, millaje, estados, estadísticas y tarifas de millaje para los clientes del portal, desde la app móvil (`src/Services/Mobile/README.md:5`, `TRACKING_API.md:5-33`). Actor `CustomerPortal` con `mobile.vehicles.*`, `mobile.trips.*` y `mobile.configuration.read`; `mobile.rates.manage` solo para admins (`src/BuildingBlocks/Authorization/MobilePermissions.cs:5-11`). Se vende como módulo `mileage` (`PermissionModuleMap.cs:69-70`; gate en `TaxVision.Mobile.Api/Program.cs:49-50`, apagado por defecto en compose: `docker-compose.yml:1658-1659`). Puerto local 5280 (`scripts/start-fleet.ps1:16`), bloque `mobile-api` (`docker-compose.yml:1629-1676`), cluster `mobile` en el Gateway y cliente M2M `mobile-worker`. Purga el recorrido GPS por plazo de la oficina con `MileageGpsRetentionJob` (`Infrastructure/DependencyInjection.cs:72`; sección `Mobile:GpsRetention`).
 
 **Stack obligatorio de un servicio .NET nuevo (Código verificado):**
 
@@ -648,33 +664,33 @@ Imaging ───────────────── núcleo, SkiaSharp 3
 Infrastructure ────────── núcleo, Authorization, Messaging, Redis, Polly, SqlClient, Pkcs
 Web ───────────────────── núcleo, Authorization, Infrastructure, Messaging, ASP.NET Core, JwtBearer, OTel, Serilog, WolverineFx.RabbitMQ
 ```
-**Regla del proyecto:** en BuildingBlocks solo se agregan piezas **opcionales y aditivas**; nunca se cambia el comportamiento por defecto (afectaría a 26 servicios a la vez). Cada pieza nueva es Requiere aprobación.
+**Regla del proyecto:** en BuildingBlocks solo se agregan piezas **opcionales y aditivas**; nunca se cambia el comportamiento por defecto (afectaría a 27 servicios a la vez). Cada pieza nueva es Requiere aprobación.
 
 #### Implementación actual en TaxVision
 | Pieza | Responsabilidad | Cuándo | Uso |
 |---|---|---|---|
-| Results | `Result`, `Error`, `ConflictException`, `ModuleUnavailableException` | Siempre | 26/26 |
-| Domain | `BaseEntity`, `TenantEntity`, `AggregateRoot`, `ITenantOwned`, `[UserReference]` | Siempre | 26/26 |
-| Persistence | `IUnitOfWork` | Siempre | 26/26 |
-| Tenancy | `ITenantContext`, `PlatformTenant` | Siempre | 26/26 |
-| Authorization (proyecto) | Constantes `*Permissions.cs`, `PermissionModuleMap`, scopes M2M, `SlotGating` | Con `[HasPermission]` | 26/26 |
-| Permissions | Puertos de proyección de permisos y `IPermissionsSnapshotClient` | Con humanos | 26/26 |
-| ActorTypeAuthorization | `ActorType`, `ClaimNames`, extensiones de claims | Siempre | 26/26 |
+| Results | `Result`, `Error`, `ConflictException`, `ModuleUnavailableException` | Siempre | 27/27 |
+| Domain | `BaseEntity`, `TenantEntity`, `AggregateRoot`, `ITenantOwned`, `[UserReference]` | Siempre | 27/27 |
+| Persistence | `IUnitOfWork` | Siempre | 27/27 |
+| Tenancy | `ITenantContext`, `PlatformTenant` | Siempre | 27/27 |
+| Authorization (proyecto) | Constantes `*Permissions.cs`, `PermissionModuleMap`, scopes M2M, `SlotGating` | Con `[HasPermission]` | 27/27 |
+| Permissions | Puertos de proyección de permisos y `IPermissionsSnapshotClient` | Con humanos | 27/27 |
+| ActorTypeAuthorization | `ActorType`, `ClaimNames`, extensiones de claims | Siempre | 27/27 |
 | Security | `ISecretProtector`, `ExpiringValueCache` | Secretos en BD; tokens M2M | según pieza |
-| Sessions | `ISessionDenylistReader` | Siempre con JWT humano | 26 |
-| Messaging (proyecto) | `IntegrationEvent`, contratos `*IntegrationEvents`, políticas de fallo/conflicto | Siempre | 26/26 |
-| Caching | `ICacheService` | Caché distribuida | 26/26 |
-| TimeZones | `IanaTimeZone`, `CivilDate`, `LocalDay`, `WallTime`, `ZonedTimeFormatter`… | Toda fecha civil o zona | 19 |
-| TenantTimeZones (kit) | Proyección de zona por oficina + consumer + reconciliación | Fechas en zona de oficina | 12 |
+| Sessions | `ISessionDenylistReader` | Siempre con JWT humano | 27 |
+| Messaging (proyecto) | `IntegrationEvent`, contratos `*IntegrationEvents`, políticas de fallo/conflicto | Siempre | 27/27 |
+| Caching | `ICacheService` | Caché distribuida | 27/27 |
+| TimeZones | `IanaTimeZone`, `CivilDate`, `LocalDay`, `WallTime`, `ZonedTimeFormatter`… | Toda fecha civil o zona | 20 |
+| TenantTimeZones (kit) | Proyección de zona por oficina + consumer + reconciliación | Fechas en zona de oficina | 13 |
 | CustomerVisibility (kit) | Proyección de asignaciones cliente↔staff + reconciliación | Filtrar por cliente asignado | 11 |
-| EfCore | `UseUtcDateTimes()` | Siempre (final de `OnModelCreating`) | 23 |
+| EfCore | `UseUtcDateTimes()` | Siempre (final de `OnModelCreating`) | 24 |
 | Jobs | `TransactionalJobUnit.RunAsync/RunEachAsync` | Jobs que escriben y publican | 12 |
-| RateLimiting | Catálogo `RateLimitPolicyCatalog.<Svc>.cs` y resolución de cuotas | Siempre con endpoints | 26/26 |
+| RateLimiting | Catálogo `RateLimitPolicyCatalog.<Svc>.cs` y resolución de cuotas | Siempre con endpoints | 27/27 |
 | Platform | `PlatformSettingsSnapshot`, `OAuthReturnRedirectPolicy` | URLs públicas, orígenes, redirecciones | 11 + Gateway |
 | PurchaseIntentAmount | Firma HMAC de montos | Solo cobros de plataforma | 3 |
-| Common | `ICorrelationContext`, `PagedResult<T>`, `ReconciliationRetry` | Siempre | 26/26 |
-| Web (proyecto) | Hosting, seguridad, autorización, tenancy, middlewares, `ErrorHttpMapping`, `[RateLimit]`, webhooks, health, OTel | Siempre | 26/26 + Gateway |
-| Infrastructure (proyecto) | Redis, lectores cacheados, resiliencia HTTP, protectores, `ServiceTokenHttpAcquisition`, denylist reader | Siempre | 26/26 + Gateway |
+| Common | `ICorrelationContext`, `PagedResult<T>`, `ReconciliationRetry` | Siempre | 27/27 |
+| Web (proyecto) | Hosting, seguridad, autorización, tenancy, middlewares, `ErrorHttpMapping`, `[RateLimit]`, webhooks, health, OTel | Siempre | 27/27 + Gateway |
+| Infrastructure (proyecto) | Redis, lectores cacheados, resiliencia HTTP, protectores, `ServiceTokenHttpAcquisition`, denylist reader | Siempre | 27/27 + Gateway |
 | Imaging | Normalizador de avatares | Solo fotos de perfil | 2 |
 
 Piezas de pruebas reutilizables (`deploy/tests/TaxVision.BuildingBlocks.Testing`, alias `BbTesting`): `LayeringRulesBase`, `PreGeneratedCodeRules`, `SaveBeforePublishRules`, `JobPublishingRulesBase`, `ConstructorBusRules`, `IntegrationIsolationRules`, `LocalQueueDurabilityRules`, `DomainEventHandlerConventionRules`, `DomainEventEnvelopeRoundTrip`, `HandlerOutboxProbes`, `TemporaryTestDatabase`, `MigrationTestDatabase`, `TemporaryDatabaseTestFramework`.
@@ -766,8 +782,8 @@ El filtro de tenant es la red de seguridad del aislamiento entre oficinas; la co
 - **Migraciones**: las crea el desarrollador con `dotnet ef migrations add`, se aplican **en local de inmediato** con `scripts/migrate-local.ps1`, y en producción las aplica **el contenedor `migrations` del deploy**. **Los servicios no migran al arrancar** (no hay `Database.Migrate`/`MigrateAsync`/`EnsureCreated` en `src/`); al arrancar solo Wolverine crea sus tablas `wolverine_*`.
 
 #### Implementación actual en TaxVision
-- 26 DbContext con filtro (Código verificado); 23 con `UseUtcDateTimes()` (Calendar, Signature y Tasks usan un conversor propio y no tienen `UtcDateTimesTests`).
-- 26 design-time factories con `ITenantContext` de diseño (`HasTenant = false`).
+- 27 DbContext con filtro (Código verificado); 24 con `UseUtcDateTimes()` (Calendar, Signature y Tasks usan un conversor propio y no tienen `UtcDateTimesTests`).
+- 27 design-time factories con `ITenantContext` de diseño (`HasTenant = false`).
 - `scripts/migrate-local.ps1`: sin parámetros solo informa; `-Apply` (pregunta), `-Yes`, `-Service A,B`, `-SkipEf`, `-SkipPrisma`, `-AllowRemote`, `-Force`, `-UseEfToDetect`. Conexión como ASP.NET en Development (user-secrets del Api → `appsettings.Development.json` → `appsettings.json`); nunca imprime contraseñas; compara `[Migration]` con `__EFMigrationsHistory`.
 - Producción (`.github/workflows/deploy.yml`): build con `--profile tools` (reconstruye la imagen `migrations`), `docker compose … --profile tools run --rm migrations`, después Prisma de Communication, después `up -d`. `apply-migrations.sh` usa `set -eu`: falta una variable → **no migra nada**.
 - Seeding: `HasData` para referencia estable; `InsertData`/`UpdateData` en migraciones para catálogo de permisos; seeders idempotentes al arrancar para datos que dependen de configuración (Scribe, Subscription, Tenant, Postmaster, Growth, Auth).
@@ -918,7 +934,7 @@ Handler → LocalCommandTenantMiddleware → HasQueryFilter fail-closed
 - **Tenant**: HTTP → `JwtTenantContextMiddleware`; consumers → `IntegrationEventTenantMiddleware` (`Guid.Empty` → excepción); comandos locales → `LocalCommandTenantMiddleware` (su comentario advierte que el tenant no siempre llega al scope del handler: de ahí `IgnoreQueryFilters()` + `TenantId` explícito). `tenant_id` **siempre** del token, nunca del body/query.
 
 #### Implementación actual en TaxVision
-- 26 servicios .NET con `HasQueryFilter` fail-closed y `PermissionPolicyProvider`; 15 con gate de módulo ([cap. 17](#cap-17)).
+- 27 servicios .NET con `HasQueryFilter` fail-closed y `PermissionPolicyProvider`; 16 con gate de módulo ([cap. 17](#cap-17)).
 - Reparación de proyecciones en Auth: `PermissionsBackfillService` (al arrancar), `SystemRolePermissionsSyncService`, `PermissionsReconciliationService` (cada 6 h re-publica `UserRolesChanged` de los activos, lotes de 50, sin subir versión).
 - `RolePermissionsChanged` **ya no** se usa para recomponer permisos de usuarios: Auth hace fan-out y publica un `UserRolesChanged` por titular (`RolePermissionsFanOut.cs`). Recomponer en el consumidor resucitaba permisos denegados.
 - Códigos estables de denegación: `Auth.TokenStale`, `Authz.ActorTypeNotDeclared`, `Authz.PermissionDenied`, `Authz.ModuleUnavailable`, `Auth.SurfaceNotAllowed`. Métrica `authz.decision{result,layer}`.
@@ -1024,7 +1040,7 @@ El access token dura 15 min. Revocar en la base solo corta el **próximo refresh
 - El **Gateway no consulta la denylist**: cada servicio es responsable.
 
 #### Implementación actual en TaxVision
-`AddSessionDenylist` + middleware en 25 servicios .NET además de Auth (que registra su propio `AccessTokenDenylist`). Ningún `appsettings` ni el compose define `SessionDenylist`: todos corren `Enabled=true, FailOpen`.
+`AddSessionDenylist` + middleware en 26 servicios .NET además de Auth (que registra su propio `AccessTokenDenylist`). Ningún `appsettings` ni el compose define `SessionDenylist`: todos corren `Enabled=true, FailOpen`.
 
 #### Cómo integrarlo en un servicio nuevo
 1. `AddRedisCache(config)` **antes** de `AddSessionDenylist(config)` (sin Redis previo falla al resolver `ICacheService`).
@@ -1227,9 +1243,9 @@ En el camino de la request se lee **la proyección local**, no a otro servicio p
 #### Implementación actual en TaxVision
 | Proyección | Dueño | Evento(s) | Consumidores | Reparación |
 |---|---|---|---|---|
-| `UserPermissionsProjection` (+ `Authz*`) | Auth | `UserRolesChanged` + `UserDeactivated/Offboarded/Reactivated` | 21 servicios + 4 `Authz*` + Communication | Pull-recovery; Auth re-publica (arranque, sync, 6 h) |
+| `UserPermissionsProjection` (+ `Authz*`) | Auth | `UserRolesChanged` + `UserDeactivated/Offboarded/Reactivated` | 22 servicios + 4 `Authz*` + Communication | Pull-recovery; Auth re-publica (arranque, sync, 6 h) |
 | `RolePermissionsProjection` | Auth | `RolePermissionsChanged` | los mismos | re-publicación de Auth |
-| `TenantPlanCodeProjection` | Subscription | `TenantEntitlementsChanged` | 25 servicios | Subscription re-encola cada 24 h **solo si cambió** |
+| `TenantPlanCodeProjection` | Subscription | `TenantEntitlementsChanged` | 26 servicios | Subscription re-encola cada 24 h **solo si cambió** |
 | `TenantEntitlementsProjection` | Subscription | `TenantEntitlementsChanged` | FinancialInsights | pull + job 6 h |
 | `TenantTimeZoneProjection` (kit) | Tenant | `TenantCreated`, `TenantUpdated` | 12 servicios | job 12 h con `ReconciliationRetry` |
 | `CustomerAssignmentProjection` (kit) | Customer | `CustomerAssignmentsChanged` (snapshot del set) | 11 servicios | job 12 h con `ReconciliationRetry` |
@@ -1360,6 +1376,7 @@ Los eventos son el camino principal, pero un servicio nuevo nace sin historia y 
 
 #### Implementación actual en TaxVision
 - `ReconciliationRetry` lo usan **5 jobs** (fijados por `ReconciliationRetryTests`): `TenantTimeZoneReconciliationJob`, `CustomerAssignmentReconciliationJob` y `TenantCustomerFullReconciliationJob` de Calendar, Notes y Tasks.
+- **Reclamo de orígenes de archivos** (variante "pregunta al dueño"): `FileSourceClaimReconciliationJob` de CloudStorage corre al arrancar y cada 24 h con `ReconciliationRetry` y publica `FileSourcesClaimRequestedIntegrationEvent` (hasta 500 ids por oficina) por los archivos con `SourceDeclaredAtUtc IS NULL`; cada dueño declara solo los suyos. Detalle en el [cap. 38](#cap-38).
 - **Al menos 10 jobs siguen sin reintento corto**: FI (clientes completos, nombres, entitlements), Customer (empleados), Notification (destinatarios, directorio), Correspondence/Signature (clientes), Sms (política de contacto), Calendar (nombres). FI tenant directory usa un reintento propio de 5 min.
 - URL de Tenant: `TenantTimeZoneReconciliationOptions.TenantBaseUrl` → `PlatformSettings:TenantBaseUrl` → **`http://localhost:5217`** por defecto (en un contenedor, `localhost` es el propio contenedor: la reconciliación nunca llega). Compose: ancla `x-platform-settings-env` con `PlatformSettings__TenantBaseUrl: http://tenant-api:8080`; 7 servicios con `TenantTimeZones__Reconciliation__TenantBaseUrl` explícito. Mismo riesgo con `CustomerVisibilityReconciliationOptions.CustomerBaseUrl` (default `http://localhost:5263`).
 
@@ -1449,7 +1466,7 @@ Investigaciones: [Offboarding](Investigaciones/Offboarding.md), [Offboarding_Int
 > **Regla de oro:** si tu servicio guarda un `Guid` que apunta a un empleado, decide hoy qué le pasa cuando la oficina lo retira.
 
 #### Qué es
-El retiro (offboard) de un empleado de su oficina: estado **terminal** `UserStatus.Offboarded` (no se reactiva; invariante `Offboarded ⇒ IsActive == false`). Lo ejecuta **Auth**; la limpieza la hacen **27 servicios en 51 pasos** por coreografía.
+El retiro (offboard) de un empleado de su oficina: estado **terminal** `UserStatus.Offboarded` (no se reactiva; invariante `Offboarded ⇒ IsActive == false`). Lo ejecuta **Auth**; la limpieza la hacen **28 servicios en 52 pasos** por coreografía.
 
 #### Por qué existe
 Un empleado que se va no puede seguir viendo datos de clientes ni puede quedar trabajo a su nombre: clientes asignados, tareas, citas, borradores, firmas pendientes, campañas que disparan "en su nombre", buzones personales que siguen poleando, enlaces públicos, push a su teléfono.
@@ -1511,8 +1528,8 @@ Si la corrige otro servicio por evento derivado: `HandledBy = "Servicio:Clase"` 
 | V7 | Denylist y Pub/Sub antes del `SaveChanges` | falla hacia seguridad | El admin reintenta |
 
 #### Implementación actual en TaxVision
-- Registro: `src/Services/Auth/Application/Offboarding/OffboardingParticipants.cs:25-143` (27 servicios, 51 pasos). Pre-flight: 10 rutas `offboarding-impact` con `users.manage` (Calendar, Campaigns, CloudStorage, Communication, Connectors, Correspondence, Customer, Signature, Tasks, Tenant); descubrible en `GET /auth/offboarding/participants`.
-- Consumidor transversal en 25 servicios: `UserLifecyclePermissionsProjectionConsumer` (patrón `Billing.Application/Permissions/Consumers/UserLifecyclePermissionsProjectionConsumer.cs:15-70`).
+- Registro: `src/Services/Auth/Application/Offboarding/OffboardingParticipants.cs:25-144` (28 servicios, 52 pasos). Pre-flight: 10 rutas `offboarding-impact` con `users.manage` (Calendar, Campaigns, CloudStorage, Communication, Connectors, Correspondence, Customer, Signature, Tasks, Tenant); descubrible en `GET /auth/offboarding/participants`.
+- Consumidor transversal en 25 servicios: `UserLifecyclePermissionsProjectionConsumer` (patrón `Billing.Application/Permissions/Consumers/UserLifecyclePermissionsProjectionConsumer.cs:15-70`); Notification usa `AuthzUserLifecyclePermissionsProjectionConsumer`.
 - Matriz resumida (detalle en [Offboarding_Integraciones](Investigaciones/Offboarding_Integraciones.md)):
 
 | Servicio | Acción principal | Estado |
@@ -1532,6 +1549,7 @@ Si la corrige otro servicio por evento derivado: `HandledBy = "Servicio:Clase"` 
 | Tasks (+ Client Forms) | Tareas, series, timers, avisos, intake links, form requests | Participa |
 | Tenant | Coordinador WISP queda vacante + aviso | Participa |
 | Billing, Catalog, Documents, FinancialInsights, Growth, Inventory, PaymentApp, PaymentClient, Postmaster, Scribe, Sms, Subscription, Wallet | Proyección de permisos inactiva | Participa |
+| Mobile | Proyección de permisos inactiva (vehículos y viajes son del cliente del portal; sin trabajo de staff que reasignar) | Participa (`OffboardingParticipants.cs:28`; consumer en `Mobile.Application/Projections/Consumers/UserLifecyclePermissionsProjectionConsumer.cs:9-95`, `Handle(UserOffboardedIntegrationEvent…)` en `:30`) |
 | ContentScanner, Gateway | Sin datos de empleado | No participa |
 | Recorder, TranscriptWorker | Workers sin ids de usuario propios (Redis solo para la cola y la idempotencia) | No participa |
 
@@ -1621,7 +1639,7 @@ FinancialInsights entró **sin ser vendible**: sin plan, sin precio de add-on, p
 #### Cómo funciona
 | Pieza | Dueño | Dónde |
 |---|---|---|
-| Módulo (`customers`, `signatures`, `documents`, `planner`, `email`, `meetings`, `comms`, `campaigns`, `wallet`, `financial_insights`) | Subscription, tabla `Modules` | `Subscription.Domain/Catalog/Module.cs`; seeder `SubscriptionModuleCatalogSeeder.cs` |
+| Módulo (`customers`, `signatures`, `documents`, `planner`, `email`, `meetings`, `comms`, `campaigns`, `wallet`, `financial_insights`, `mileage`) | Subscription, tabla `Modules` | `Subscription.Domain/Catalog/Module.cs`; seeder `SubscriptionModuleCatalogSeeder.cs` |
 | Categoría `Core` / `Commercial`; vendible si `Commercial` y ambos precios > 0 | Subscription | `ModuleCategory.cs`, `Module.cs:17-18` |
 | Plan (`starter`, `pro`, `enterprise`) y edición (Draft → Published → Superseded/Archived) | Subscription | `PlanCatalog.cs`, `SubscriptionPlanVersion` |
 | Revisión de catálogo (se aplica una vez al desplegar) | Subscription | `ICatalogRevision`, `CatalogRevisionCatalog.All`, `CatalogRevisionRunner`, tabla `CatalogRevisions` |
@@ -1630,12 +1648,12 @@ FinancialInsights entró **sin ser vendible**: sin plan, sin precio de add-on, p
 | Gate en cada request | BuildingBlocks + config por servicio | `ModuleGateSettings`, `ModuleGateRegistration`, `TenantModuleEntitlementsSource` |
 | Front | CRM `features.ts`, portal, landing | `TaxVsion_Front/src/app/core/access/features.ts` |
 
-- **Mapa** (el primero que calza gana; `communication.meeting.` va **antes** de `communication.`): `customers.`→customers, `financial.`→financial_insights, `signature.`→signatures, `documents.`/`cloudstorage.`/`scribe.`→documents, `calendar.`/`reminders.`/`tasks.`/`notes.`→planner, `correspondence.`/`connectors.`/`postmaster.`/`email.`→email, `communication.meeting.`→meetings, `communication.`/`comms.`→comms, `campaigns.`→campaigns, `wallet.`→wallet. Exentos: `communication.notification.read`, `communication.support.open`, `communication.support.agent`. Sin módulo = **siempre efectivo** (auth, billing, subscription, tenant, notification, sms, growth, catalog, inventory…).
+- **Mapa** (el primero que calza gana; `communication.meeting.` va **antes** de `communication.`): `customers.`→customers, `financial.`→financial_insights, `signature.`→signatures, `documents.`/`cloudstorage.`/`scribe.`→documents, `calendar.`/`reminders.`/`tasks.`/`notes.`→planner, `correspondence.`/`connectors.`/`postmaster.`/`email.`→email, `communication.meeting.`→meetings, `communication.`/`comms.`→comms, `campaigns.`→campaigns, `wallet.`→wallet, `mobile.`/`mileage.`→mileage (`PermissionModuleMap.cs:48-71`). Exentos: `communication.notification.read`, `communication.support.open`, `communication.support.agent`. Sin módulo = **siempre efectivo** (auth, billing, subscription, tenant, notification, sms, growth, catalog, inventory…).
 - **Gate:** vive dentro de `PermissionPolicyProvider`, después de conceder el permiso. Config `Authorization:ModuleGate:Enforce` + `EnforcedModules` (lista vacía con `Enforce=true` = todos; nombre desconocido con enforce **revienta el arranque**). Semántica de la fuente: PlatformAdmin y Service siempre habilitados; sin tenant no gatea; **sin fila (`null`) → no gatea (fail-open)**; **lista vacía `[]` → deniega** (suscripción vencida). Lector con caché Redis 1 min (`null` no se cachea, `[]` sí). Un endpoint sin `[HasPermission]` **no pasa por el gate**.
 - **Revisiones:** `CatalogRevisionRunner` con candado distribuido; cada revisión en su transacción con fila en `CatalogRevisions`; una aplicada no se repite; una que falla **frena el arranque** de Subscription. Orden actual: R1 rebaseline, R2 single enterprise (solo Enterprise a la venta, $99/$999, 3 asientos, 15 GB), R3 descripciones, R4 FinancialInsights, legacy editions. **No tomar el seeder como fuente de precios** (siembra precios viejos que R2 corrige en el mismo arranque).
 
 #### Implementación actual en TaxVision
-- 15 servicios con gate cableado (la fuente del conteo es la **prueba de fitness** `ModuleGateWiringFitnessTests.The_fourteen_gated_services_are_still_wired`, que afirma **15** pese a su nombre). 14 de ellos en compose con `${<SVC>_MODULE_GATE_ENFORCE:-false}` y lista literal; **FinancialInsights con `"true"` literal** (deniega desde el primer día).
+- 16 servicios con gate cableado (la fuente del conteo es la **prueba de fitness** `ModuleGateWiringFitnessTests.The_fourteen_gated_services_are_still_wired`, que afirma **16** pese a su nombre: `deploy/tests/TaxVision.BuildingBlocks.Tests/ActorTypeAuthorization/ModuleGateWiringFitnessTests.cs:109-120`). 15 de ellos en compose con `${<SVC>_MODULE_GATE_ENFORCE:-false}` y lista literal (Mobile: `MOBILE_MODULE_GATE_ENFORCE` + `mileage`); **FinancialInsights con `"true"` literal** (deniega desde el primer día).
 - `ModuleCatalogKnownModulesTests` exige que los códigos del seeder sean exactamente `PermissionModuleMap.KnownModules`.
 
 #### Cómo integrarlo en un servicio nuevo (módulo vendible)
@@ -1957,7 +1975,7 @@ Incidente del 2026-11-13: Tasks llegó a 3,5 GB en producción. El heap .NET seg
 - **La forma del contenedor no depende de la configuración.** El código se genera una vez y corre en todos los entornos; el generador decide por el registro de DI cómo obtiene cada dependencia. Un servicio que solo se registra si hay una clave (API key, URL) queda, en el código generado sin esa clave, como lista vacía inyectada por constructor desde la raíz; con la clave son servicios *scoped* que no se pueden tomar de la raíz (en Development, `ValidateScopes` impide crear el handler; en Production quedan atrapados de por vida en el handler). Se registra siempre y se apaga por propiedad: patrón Postmaster, `IDeliveryFeedbackPoller.IsEnabled` (`Smtp2GoActivityFeedbackPoller` sin API key) y `DeliveryFeedbackCapabilities` que solo ofrece los habilitados.
 
 #### Implementación actual en TaxVision
-26 servicios + MailboxListener con `UseTaxVisionCodeGeneration`; 26 `PreGeneratedHandlerCodeTests`; `WolverineFx.RuntimeCompilation` sigue referenciado (Roslyn en la imagen, no se usa en Static). **Ninguna prueba exige** que un `Program.cs` nuevo llame `UseTaxVisionCodeGeneration` ni que el servicio tenga su `PreGeneratedHandlerCodeTests` (hueco; Decisión pendiente).
+27 servicios + MailboxListener con `UseTaxVisionCodeGeneration`; 27 `PreGeneratedHandlerCodeTests`; `WolverineFx.RuntimeCompilation` sigue referenciado (Roslyn en la imagen, no se usa en Static). **Ninguna prueba exige** que un `Program.cs` nuevo llame `UseTaxVisionCodeGeneration` ni que el servicio tenga su `PreGeneratedHandlerCodeTests` (hueco; Decisión pendiente).
 
 #### Cómo integrarlo en un servicio nuevo
 1. Primera línea de `UseWolverine`: `options.UseTaxVisionCodeGeneration(...)`.
@@ -2035,7 +2053,7 @@ Wolverine/JasperFx 6.14, compose (`ASPNETCORE_ENVIRONMENT`), `start-fleet.ps1`, 
 - Registro condicional por configuración (pollers de SMTP2GO en Postmaster): el código generado sin API key tomaba los pollers por constructor desde la raíz y, con la key, los handlers de avisos de entrega (webhook, rebotes y reconciliación) no se podían crear en Development.
 
 #### Pruebas
-`PreGeneratedHandlerCodeTests` (26 servicios), `PreGeneratedCodeRules`, `WolverineCodeGenerationExtensionsTests`, `DotnetImageMallocArenaTests`. Corren en el gate (el filtro no excluye `.Architecture.`).
+`PreGeneratedHandlerCodeTests` (27 servicios), `PreGeneratedCodeRules`, `WolverineCodeGenerationExtensionsTests`, `DotnetImageMallocArenaTests`. Corren en el gate (el filtro no excluye `.Architecture.`).
 
 #### Checklist
 - [ ] `UseTaxVisionCodeGeneration` primera línea de `UseWolverine`.
@@ -2400,7 +2418,7 @@ Vencimientos civiles guardados como medianoche UTC, pipes de fecha que no aplica
 - **Presentación en correos:** fechas tipadas (`ScribeDates.Instant`/`Date`); Scribe formatea en la zona e idioma del lector.
 
 #### Implementación actual en TaxVision
-Kit en 12 servicios; `UseUtcDateTimes` en 23 de 26 DbContext (Calendar, Signature y Tasks con conversor propio, sin `UtcDateTimesTests`; Decisión pendiente). Guardarraíles: `TimeZoneInfraFitnessTests`, `ContainerUtcTimeZoneDeployTests`, `TenantTimeZoneReconciliationDeployTests`.
+Kit en 14 servicios; `UseUtcDateTimes` en 24 de 27 DbContext (Calendar, Signature y Tasks con conversor propio, sin `UtcDateTimesTests`; Decisión pendiente). Guardarraíles: `TimeZoneInfraFitnessTests`, `ContainerUtcTimeZoneDeployTests`, `TenantTimeZoneReconciliationDeployTests`.
 
 #### Cómo integrarlo en un servicio nuevo
 1. `UseUtcDateTimes()` y `UtcDateTimesTests`.
@@ -2464,7 +2482,7 @@ La entrada única a los servicios (`src/Gateway/TaxVision.Gateway`, Yarp.Reverse
 Un solo punto de entrada con CORS, IP real, MFA, asientos, host de oficina y superficie interna cerrada. La autorización fina (actor, permiso, tenant) la hace cada servicio.
 
 #### Cómo funciona
-- 43 rutas y 27 clusters (uno por servicio, un destino). Rutas `/<prefijo>/{**catch-all}`. En local los destinos son `http://localhost:<puerto>/`; en producción el compose los pisa con `ReverseProxy__Clusters__<id>__Destinations__<id>1__Address: http://<svc>-api:8080/`.
+- 48 rutas y 28 clusters (uno por servicio, un destino; p. ej. `mobile` → Mobile, con las rutas `mobile-tracking` y `mobile-complete` a 256 KiB y `mobile` a 16 KiB: `appsettings.json:181-189`, cluster en `:486-499`). Rutas `/<prefijo>/{**catch-all}`. En local los destinos son `http://localhost:<puerto>/`; en producción el compose los pisa con `ReverseProxy__Clusters__<id>__Destinations__<id>1__Address: http://<svc>-api:8080/`.
 - Ninguna ruta declara `AuthorizationPolicy`, `RateLimiterPolicy`, `CorsPolicy` ni `Timeout`.
 - Pipeline: `UseTaxVisionClientIp` → correlación/logs/excepciones → `SecurityHeadersMiddleware` → **`InternalSurfaceGuardMiddleware` (404 a cualquier path con segmento `internal` y al grant `/auth/service-token`)** → CORS → `UseAuthentication` → `MfaEnrollmentGuardMiddleware` → `SeatSlotGateMiddleware` → `UseRateLimiter` → `UseAuthorization` → `LoadSheddingMiddleware` → `TenantPropagationMiddleware` → `TenantHostGuardMiddleware` → `UseWebSockets()` → `MapReverseProxy()`.
 - Health: cada cluster con check activo a `/health/live` cada 15 s (`ConsecutiveFailures`, umbral 3, `HealthyOrPanic`); `/health/ready` del gateway sin checks `ready` (200 si el proceso vive, decisión GW-06); `/health/dependencies` con estado `Degraded`.
@@ -2473,7 +2491,7 @@ Un solo punto de entrada con CORS, IP real, MFA, asientos, host de oficina y sup
 - `MaxRequestBodySize` por ruta (p. ej. 64 KB financial, 16 KB calendar-public, 26 MB signature); `HttpRequest.ActivityTimeout` largo solo en cloudstorage, documents (10 min) y communication (1 h).
 
 #### Implementación actual en TaxVision
-`appsettings.json` del Gateway (1 079 líneas); bloque `gateway` en compose con overrides de destino y `depends_on`; `docker-compose.local.yml` repite la lista `!override`.
+`appsettings.json` del Gateway (1 141 líneas); bloque `gateway` en compose con overrides de destino y `depends_on`; `docker-compose.local.yml` repite la lista `!override`.
 
 #### Cómo integrarlo en un servicio nuevo
 1. Ruta(s) en `ReverseProxy:Routes` con un prefijo que no choque con otro ni con los buckets de MinIO (`/taxvision-storage`, `/taxvision-temp`, `/taxvision-quarantine`).
@@ -2641,7 +2659,7 @@ Que la misma imagen corra en local y en la VM, nada interno quede publicado, las
 - Perfiles: `observability` (apagado por RAM), `tools` (`migrations`, `minio-provision`).
 
 #### Implementación actual en TaxVision
-32 Dockerfiles (28 .NET, 3 Node). Solo 12 servicios con healthcheck en compose. **Ninguna imagen .NET de API declara `USER`** (corren como root; solo ContentScanner y Node usan usuario no root; Decisión pendiente). Volumen `taxvision-logs` montado aunque el sink de archivo está apagado en contenedor. `minio/mc:latest` sin versión fija.
+33 Dockerfiles (30 .NET: 27 APIs, Gateway, MailboxListener y ContentScanner; 3 Node). Solo 12 servicios con healthcheck en compose. El bloque `mobile-api` (`deploy/docker/docker-compose.yml:1629-1676`) sigue la plantilla; en `auth-api` el secreto de su cliente `mobile-worker` usa `:?` (`:714`) mientras los demás clientes usan `:-`: si falta, el compose entero no interpola, Auth incluido (Decisión pendiente). **Ninguna imagen .NET de API declara `USER`** (corren como root; solo ContentScanner y Node usan usuario no root; Decisión pendiente). Volumen `taxvision-logs` montado aunque el sink de archivo está apagado en contenedor. `minio/mc:latest` sin versión fija.
 
 #### Cómo integrarlo en un servicio nuevo
 1. Dockerfile en `src/Services/<Svc>/TaxVision.<Svc>.Api/Dockerfile` con `TZ` y `MALLOC_ARENA_MAX`.
@@ -2763,7 +2781,7 @@ En local los servicios .NET **no corren en Docker**: corren como procesos `dotne
 | `scripts/generate-dev-keys.ps1` / `.sh` | Par JWT RS256 de desarrollo en `dev-keys/` |
 | `deploy/docker/compose.ps1` | Wrapper de compose (full/local/infra) |
 
-Puertos (fuente de verdad: `start-fleet.ps1`, la lee `DevClientPortDefaultsTests`): Auth 5124, Tenant 5217, Customer 5263, Wallet 5270, FinancialInsights 5276, Notification 5320, CloudStorage 5330, Signature 5340, Communication 5350, Subscription 5360, Recorder 5365, Postmaster 5370, Scribe 5380, Connectors 5390, MailboxListener 5395, Correspondence 5400, Growth 5410, PaymentClient 5420, PaymentApp 5430, Notes 5440, Documents 5450, Billing 5460, Sms 5470, Catalog 5480, Inventory 5490, Reminder 5500, Tasks 5510, Calendar 5520, Campaigns 5530, content-scanner 5540, Gateway 5047.
+Puertos (fuente de verdad: `start-fleet.ps1`, la lee `DevClientPortDefaultsTests`): Auth 5124, Tenant 5217, Customer 5263, Wallet 5270, FinancialInsights 5276, Mobile 5280, Notification 5320, CloudStorage 5330, Signature 5340, Communication 5350, Subscription 5360, Recorder 5365, Postmaster 5370, Scribe 5380, Connectors 5390, MailboxListener 5395, Correspondence 5400, Growth 5410, PaymentClient 5420, PaymentApp 5430, Notes 5440, Documents 5450, Billing 5460, Sms 5470, Catalog 5480, Inventory 5490, Reminder 5500, Tasks 5510, Calendar 5520, Campaigns 5530, content-scanner 5540, Gateway 5047.
 
 #### Implementación actual en TaxVision
 Tres listas de puertos duplicadas (start, stop, restart) más la de codegen; solo `start-fleet.ps1` está protegida por prueba. `restart-down.ps1` **no** fija Static ni espera a Scribe (Decisión pendiente). `start-fleet.ps1` toca Docker (paso 0) y está en cp1252 (escribir solo ASCII).
@@ -3066,7 +3084,7 @@ Más, cuando aplica: `.Integration.` del servicio contra la base local, CSharpie
 - Ciclo: rojo → arreglo mínimo → verde → gate.
 
 #### Implementación actual en TaxVision
-Fitness comunes por servicio: `<Svc>LayeringTests` (26), `PreGeneratedHandlerCodeTests` (26), `UtcDateTimesTests` (23), `LocalQueueDurabilityTests` (19), `DomainEventHandlerConventionTests` (19), `<Svc>ArchitectureTests` / `*ActorTypeArchitectureTests`. Globales en `BuildingBlocks.Tests/Architecture/` (`SaveBeforePublishTests`, `CorrelationIdFitnessTests`, `InternalRouteConventionFitnessTests`, `ClientIpForwardingFitnessTests`, `IntegrationIsolationTests`, `NoPlanNameLogicFitnessTests`…), `Messaging/` (`MessageIdentityTests`, `EventRoutingContractTests`, `NodeInteropContractTests`…), `Offboarding/` (3 fitness) y `Deploy/` (18 pruebas de wiring).
+Fitness comunes por servicio: `<Svc>LayeringTests` (27), `PreGeneratedHandlerCodeTests` (27), `UtcDateTimesTests` (24), `LocalQueueDurabilityTests` (19), `DomainEventHandlerConventionTests` (19), `<Svc>ArchitectureTests` / `*ActorTypeArchitectureTests`. Globales en `BuildingBlocks.Tests/Architecture/` (`SaveBeforePublishTests`, `CorrelationIdFitnessTests`, `InternalRouteConventionFitnessTests`, `ClientIpForwardingFitnessTests`, `IntegrationIsolationTests`, `NoPlanNameLogicFitnessTests`…), `Messaging/` (`MessageIdentityTests`, `EventRoutingContractTests`, `NodeInteropContractTests`…), `Offboarding/` (3 fitness) y `Deploy/` (18 pruebas de wiring).
 
 #### Cómo integrarlo en un servicio nuevo
 1. Proyecto `deploy/tests/TaxVision.<Svc>.Tests` (copiar el csproj de Notes) y alta en `.slnx`.
@@ -3354,6 +3372,15 @@ Checklist imprimible: [Checklists/Nuevo_Microservicio.md](Checklists/Nuevo_Micro
 ### Fase 8 — Comunicación (si N)
 26. Evento propio; consumer en Notification; plantilla Scribe; kind en catálogo; links por oficina ([caps. 22–24](#cap-22)).
 
+### Fase 8b — Archivos (si F)
+- Índice del `FileId` (con `TenantId` si la tabla lo tiene) en la migración del recurso, aplicada en local ([cap. 38](#cap-38)).
+- Origen declarado al guardar (`FileSourceDeclaredIntegrationEvent` o campos de origen de `SaveFileRequested`) + par en `FileSourceCatalog` y, si sale en la biblioteca, en `LibrarySourceCatalog`.
+- Modelo de visibilidad: por permiso (`FileReadGate`) o por fila (`POST /<svc>/files/visibility`, alta del dueño en CloudStorage y `Services__<Svc>__BaseUrl` en `cloudstorage-api` + `ComposeInternalBaseUrlWiringTests`).
+- Handler de `FileSourcesClaimRequestedIntegrationEvent` + reconciliación manual `POST /<svc>/admin/redeclare-file-sources` (PlatformAdmin, `dryRun`) con los mismos valores ([cap. 15](#cap-15)).
+- Si hay archivos privados: endpoint propio de descarga, origen mediado en `FileReadGate.IsOwnerMediated` y `cloudstorage.file.download` en el cliente M2M del servicio.
+- Si borra o retiene: `FilesDeletionRequestedIntegrationEvent` a `cloudstorage-file-deletions`.
+- Checklist: [Checklists/Archivos_FileLibrary.md](Checklists/Archivos_FileLibrary.md).
+
 ### Fase 9 — Exposición
 27. Ruta + cluster YARP + criticidad + override en compose (prod y local) ([cap. 26](#cap-26)).
 28. Regla de Caddy si hay navegación pública; solicitud al senior (11 pasos) si hay hostname o puerto nuevo ([cap. 27](#cap-27)).
@@ -3393,6 +3420,7 @@ Checklist imprimible: [Checklists/Nuevo_Microservicio.md](Checklists/Nuevo_Micro
 | Excepción en el primer mensaje de un tipo en producción, o handler ignorado | Handler nuevo sin regenerar `Internal/Generated` (Static) | `regenerate-wolverine-code.ps1 -Service <Svc>` | [20](#cap-20) |
 | Servicio sigue en Dynamic aunque "se configuró" Static | Variable con un solo guion bajo | `Wolverine__CodeGeneration__TypeLoadMode` | [20](#cap-20) |
 | `codegen write` arranca el servicio y procesa mensajes | Los servicios terminan en `app.Run()` | Usar solo el script de regeneración | [20](#cap-20) |
+| Cambios legítimos en código generado desaparecen tras regenerar | [`Revisiones/restore_generated.ps1`](Revisiones/restore_generated.ps1) devuelve a `HEAD` todo generado modificado que no calce con `-Keep` (`:9-11`); con `powershell -File` el arreglo `-Keep a,b` llega como un solo texto y no calza con nada | Incluir en `-Keep` también los generados ya modificados antes de regenerar; llamarlo con `&` y arreglo: `& .\restore_generated.ps1 -Repo <repo> -Dir <carpeta> -Keep @('A.cs','B.cs')` | [20](#cap-20), [38](#cap-38) |
 | Evento que nunca llega; "No routes can be determined" en el emisor | Falta `PublishMessage<T>()` (demo pública, Calendar, H-12) | Ruta en el mismo cambio + prueba en runtime | [19](#cap-19) |
 | "No known handler" para un handler que sí existe | Nombre plural (`…Consumers`) o fuera de `Discovery` | Clases en singular; `IncludeType` | [19](#cap-19) |
 | Mensajes duplicados o "fantasma" tras un fallo | Publicar antes de guardar con `InvokeAsync` (T-8) | Guardar antes de publicar; `TransactionalJobUnit` en jobs | [19](#cap-19) |
@@ -3430,6 +3458,10 @@ Checklist imprimible: [Checklists/Nuevo_Microservicio.md](Checklists/Nuevo_Micro
 | Fan-out de correos colapsado en uno | `IdempotencyKey` propio sin destinatario | No pasar clave propia; `RelatedEventId = evt.EventId` | [24](#cap-24) |
 | "No me llegó el SMS" sin rastro en Notification | Notification marca "Sent" al publicar; supresión/E.164 solo en Sms | Mirar el servicio Sms | [24](#cap-24) |
 | Link de correo a `localhost:4200` | Falta `PORTAL_BASE_URL` y Auth no resolvió el host | Variable en compose; resolver host | [22](#cap-22) |
+| En local, la File Library no muestra Chat ni Recordings y la página avisa que el origen no está disponible | `http://localhost:5350` desde CloudStorage en Windows prueba primero IPv6 y Communication escucha solo IPv4 (`0.0.0.0`): ~2 s por intento, vence el tope de 2 s del ámbito | `http://127.0.0.1:<puerto>/` en `appsettings.Development.json` de CloudStorage para dueños Node | [38](#cap-38) |
+| Un origen por fila nunca aparece en producción (siempre en `unavailableSources`) | Falta `Services__<Svc>__BaseUrl` en el bloque `cloudstorage-api` | URL interna en compose + fila en `ComposeInternalBaseUrlWiringTests` | [38](#cap-38) |
+| Archivo guardado que no sale en la File Library | Origen sin declarar, o par que no está en `FileSourceCatalog` (descartado y auditado como `source.declare-rejected`), o falta la entrada en `LibrarySourceCatalog` | Declarar al guardar, registrar el par en las dos listas; la reconciliación de orígenes repara lo viejo | [38](#cap-38) |
+| 403 de CloudStorage al pedir el estado o la URL de un archivo por M2M | El cliente M2M del servicio no tiene `cloudstorage.file.view` / `cloudstorage.file.download` | Permiso en `ServiceAuth__Clients__<N>__Permissions__*` de `auth-api` (patrón `notes-worker`) | [13](#cap-13), [38](#cap-38) |
 
 ---
 
@@ -3478,6 +3510,14 @@ Checklist imprimible: [Checklists/Produccion.md](Checklists/Produccion.md). Un s
 - [ ] (B) Plantilla en Scribe con variables declaradas y fechas tipadas; kind en catálogo.
 - [ ] Links por oficina (A/B probados); `Confidential` si hay token; sin PII en la URL.
 
+### Archivos (si F)
+- [ ] (B) `FileId` con índice por oficina; origen declarado al guardar; par en `FileSourceCatalog` (y en `LibrarySourceCatalog` si sale en la File Library).
+- [ ] (B) Modelo de visibilidad decidido; si es por fila: `POST /<svc>/files/visibility` con el token del usuario, alta del dueño en CloudStorage y `Services__<Svc>__BaseUrl` en `cloudstorage-api` cubierto por `ComposeInternalBaseUrlWiringTests`.
+- [ ] (B) Handler de `FileSourcesClaimRequestedIntegrationEvent` y reconciliación manual `redeclare-file-sources` con los mismos valores.
+- [ ] (B) Archivos privados: descarga solo por el endpoint del dueño y origen mediado en `FileReadGate.IsOwnerMediated`; `cloudstorage.file.download` en el cliente M2M si el servicio pide la URL.
+- [ ] Borrado y retención por `FilesDeletionRequestedIntegrationEvent`.
+- [ ] Verificación en vivo en `/storage/library`: aparece con su origen y no lo ve quien no tiene acceso al recurso.
+
 ### Exposición y despliegue
 - [ ] (B) Ruta + cluster + criticidad + override en compose (prod y local).
 - [ ] (B) Dockerfile con `TZ` y `MALLOC_ARENA_MAX`; bloque compose sin `ports:`; URLs internas por DNS.
@@ -3497,6 +3537,115 @@ Checklist imprimible: [Checklists/Produccion.md](Checklists/Produccion.md). Un s
 
 ---
 
+<a id="cap-38"></a>
+## 38. Archivos y File Library
+
+Investigación: [Archivos_FileLibrary](Investigaciones/Archivos_FileLibrary.md). Checklist: [Checklists/Archivos_FileLibrary.md](Checklists/Archivos_FileLibrary.md).
+
+#### Qué es
+Lo que tiene que cumplir un servicio que guarda archivos en CloudStorage. El servicio guarda solo el `FileId` (Guid) en su tabla; CloudStorage guarda el objeto y la fila `Files`. La **File Library** es la vista de solo consulta de CloudStorage (`/storage/library*`) que junta los archivos de todos los módulos según el **origen** que declara cada servicio dueño.
+
+#### Por qué existe
+CloudStorage no sabe de qué tarea, nota, correo o factura nace un archivo, ni quién puede verlo. Sin origen declarado el archivo no sale en la biblioteca; sin regla de visibilidad saldría para cualquiera con el permiso de archivos; sin descarga mediada, un adjunto privado se abriría por id.
+
+#### Cómo funciona
+1. **Guardar el FileId con índice.** El dueño indexa la columna para encontrarla sin el recurso padre: `(TenantId, FileId)` si la tabla tiene `TenantId` (Correspondence `AddDraftAttachmentFileIndex`, `AddIncomingAttachmentFileIndex`); solo `FileId` en una hija sin `TenantId` (Notes `AddNoteAttachmentFileIndex`); filtrado si es opcional (Tasks `AddFormRevisionPdfFileIndex`).
+2. **Declarar el origen al guardar.** `FileSourceDeclaredIntegrationEvent` (`cloudstorage.file_source_declared.v1`) con `SourceService`, `SourceResourceType`, `SourceResourceId`, `SourceRole` y `RelatedCustomerId`; o los campos opcionales de origen de `SaveFileRequestedIntegrationEvent` cuando CloudStorage guarda por el servicio. CloudStorage lo aplica en `DeclareFileSourceHandler` y `FileObject.DeclareSource`: no reescribe si no cambia y una declaración más vieja no pisa a la nueva.
+3. **Lista blanca.** El par (servicio, recurso, papeles, dueños, carpeta) debe estar en `FileSourceCatalog`; lo que no encaja se descarta y queda auditado. Para salir en la biblioteca, además, en `LibrarySourceCatalog` (y la misma clasificación en el SQL de `LibraryReadRepository`).
+4. **Visibilidad.**
+   - **(a) Por permiso** (Documents, Signature, Billing, FinancialInsights): decide CloudStorage con `FileReadGate` y el permiso del origen.
+   - **(b) Por fila** (Tasks, Correspondence, Notes, Communication chat y grabaciones): CloudStorage llama `POST /{svc}/files/visibility` reenviando el token del usuario (`HttpFileOwnerVisibilityClient`); Communication además `GET /communication/files/scope`. El dueño devuelve solo lo que esa persona vería en su módulo (`VisibleFile` con `CanDownload` y `RestrictedTo`). **Falla cerrado**: si el dueño no responde, sus filas no se muestran y la respuesta lo avisa en `unavailableSources` (`partialSources` indica solo un ámbito recortado por tope).
+5. **Archivos viejos sin origen.** `FileSourceClaimReconciliationJob` de CloudStorage (al arrancar y cada 24 h, con `ReconciliationRetry`) busca `Files.SourceDeclaredAtUtc IS NULL` y publica `FileSourcesClaimRequestedIntegrationEvent` (`cloudstorage.file_sources_claim_requested.v1`, hasta 500 ids por oficina). Cada dueño busca esos ids en sus tablas y declara solo los suyos, con los mismos valores que su reconciliación manual `redeclare-file-sources`. El orden del deploy no importa: la pasada siguiente repite. Es una variante del [cap. 15](#cap-15).
+6. **Descargas privadas.** El dueño expone su propio endpoint de descarga, aplica su regla y pide la URL a CloudStorage por M2M. CloudStorage cierra el acceso directo por id a esos orígenes (`FileReadGate.IsOwnerMediated`).
+7. **Borrado y retención.** `FilesDeletionRequestedIntegrationEvent` punto a punto a la cola `cloudstorage-file-deletions`.
+
+#### Implementación actual en TaxVision
+- Contratos (Código verificado): `src/BuildingBlocks/Messaging/CloudStorageIntegrationEvents/CloudStorageIntegrationEvents.cs` — `FileSourceDeclaredIntegrationEvent` `:398-407`; origen opcional en `SaveFileRequestedIntegrationEvent` `:345-353`; `FileSourcesClaimRequestedIntegrationEvent` `:413-420` (`MaxFileIds = 500`); `FilesDeletionRequestedIntegrationEvent` `:444-456`. Visibilidad: `src/BuildingBlocks/Contracts/Files/FileVisibilityContracts.cs:4-75` (lote de 100 ids, propósitos `list`/`download`).
+- CloudStorage aplica la declaración: `TaxVision.CloudStorage.Application/Files/Commands/DeclareFileSourceHandler.cs:19-86` (espera si el archivo aún no está catalogado `:36-40`; descarta lo que no encaja `:63-80`; guarda solo si cambió `:82-84`) y `TaxVision.CloudStorage.Domain/Files/FileObject.cs:464-489`. Desde `SaveFileRequested`: `SaveFileFromSourceHandler.cs:322-336`.
+- Listas blancas: `TaxVision.CloudStorage.Application/Files/FileSourceCatalog.cs:19-134`; `TaxVision.CloudStorage.Application/Library/LibrarySource.cs:61-219` (orígenes `:86-149`, `RowScoped` `:33`).
+- Visibilidad por permiso: `TaxVision.CloudStorage.Application/Abstractions/FileReadGate.cs:18-45` (flag `CloudStorage:SourceReadGate:Enabled`, encendido por defecto).
+- Visibilidad por fila: `TaxVision.CloudStorage.Infrastructure/Library/HttpFileOwnerVisibilityClient.cs:18-157`; registro con `Services:<Svc>:BaseUrl` en `TaxVision.CloudStorage.Infrastructure/DependencyInjection.cs:356-400`; topes en `LibraryOwnerOptions.cs:13-19` (3 s por dueño, 2 s el ámbito de Communication, 6 s de presupuesto). Compose `deploy/docker/docker-compose.yml:2141-2144`; guarda `ComposeInternalBaseUrlWiringTests.cs:52-55`. Endpoints de los dueños: `NoteFilesController.cs:20,31`, `TaskFilesController.cs:22,35`, `CorrespondenceFilesController.cs:19,35`, Communication `files.route.ts:39,49`.
+- Reconciliación: `TaxVision.CloudStorage.Infrastructure/Storage/FileSourceClaimReconciliationJob.cs:20-148`; opciones `CloudStorage:FileSourceClaims` (`Enabled`, `IntervalHours=24`, `BatchSize=500`) en `FileSourceClaimOptions.cs:6-13`; consulta `CloudStorageRepositories.cs:150-174`. Handlers de los dueños: Billing `FileSourcesClaimRequestedConsumer`, Notes `NoteFileSourcesClaimConsumer`, Tasks y Correspondence `FileSourcesClaimConsumer`, Signature y FinancialInsights `FileSourcesClaimRequestedConsumer`, Communication `claim-file-sources.ts`. Reconciliación manual (PlatformAdmin, `dryRun=true` por defecto): `POST /notes/admin/redeclare-file-sources` (`NotesAdminController.cs:13-41`) y equivalentes en Tasks, Correspondence, Signature, Billing y FinancialInsights; Communication usa `POST /communication/admin/files/redeclare-sources` con `kind`.
+- Descarga mediada: `FileReadGate.cs:53-64` (Communication salvo avatares, notas de voz, adjuntos de notas y adjuntos entrantes de correo sin cliente); flag `CloudStorage:OwnerMediatedGate:Enabled`, encendido por defecto (`CloudStorageOwnerMediatedGateOptions.cs:6-8`). Endpoints del dueño: `POST /notes/{id}/attachments/{fileId}/download-url` (`NotesController.cs:481`) y `POST /communication/conversations/:id/attachments/:fileId/download-url` (`conversations.route.ts:504`). El cliente `notes-worker` tiene `cloudstorage.file.download` en `auth-api` (`docker-compose.yml:660`, `ServiceAuth__Clients__20__Permissions__1`).
+- API de la biblioteca: `TaxVision.CloudStorage.Api/Controllers/LibraryController.cs` — `GET /storage/library/sources` y `GET /storage/library` con `cloudstorage.library.view`; `GET /storage/library/documents` con `cloudstorage.file.view`; `POST /storage/library/files/{fileId}/download-url` con `cloudstorage.library.view` + `cloudstorage.file.download`; solo staff, sin PlatformAdmin (`:24-70`). Permiso en `CloudStoragePermissions.cs:11` y `PermissionCatalog.cs:67` de Auth.
+
+#### Cómo integrarlo en un servicio nuevo
+1. Columna del `FileId` con índice por oficina en la migración del recurso; aplicarla en local.
+2. Clase estática de declaración por recurso (patrón `NoteFileSources`): servicio, recurso, papel, cliente solo si el recurso es de un cliente. Publicar al guardar (o llenar los campos de `SaveFileRequested`), con `PublishMessage<FileSourceDeclaredIntegrationEvent>().ToRabbitExchange("taxvision-events")`.
+3. Registrar el par en `FileSourceCatalog` y, si debe salir en la biblioteca, en `LibrarySourceCatalog` y en el SQL de `LibraryReadRepository`.
+4. Elegir visibilidad. Por permiso si todo el personal con el permiso del módulo ve todos los archivos. Por fila si hay privacidad por registro: `POST /<svc>/files/visibility` (staff, permiso de lectura, `[RateLimit]`, lote ≤ 100); alta del dueño en CloudStorage (`FileOwnerService`, ruta y cliente en `HttpFileOwnerVisibilityClient`, `AddOwnerClient`); `Services__<Svc>__BaseUrl: http://<svc>-api:8080/` en `cloudstorage-api` y su fila en `ComposeInternalBaseUrlWiringTests`; URL local en `appsettings.Development.json` de CloudStorage.
+5. Handler de `FileSourcesClaimRequestedIntegrationEvent` que reutiliza el mismo redeclarador que `POST /<svc>/admin/redeclare-file-sources` (PlatformAdmin, `dryRun=true` por defecto).
+6. Si hay archivos privados: endpoint propio de descarga, origen en `FileReadGate.IsOwnerMediated` y `cloudstorage.file.download` (y `cloudstorage.file.view` si consulta el estado) en el cliente M2M del servicio en `auth-api` y en los user-secrets locales de Auth.
+7. Si borra o retiene: `FilesDeletionRequestedIntegrationEvent` con `PublishMessage<...>().ToRabbitQueue("cloudstorage-file-deletions")` y manejo de `FileDeletionSkippedIntegrationEvent`.
+8. Regenerar codegen de CloudStorage y del dueño; gate; `.Integration.` de ambos; verificación en vivo en `/storage/library`.
+
+#### Archivos involucrados
+Dueño: migración y configuración EF del recurso, clase de declaración, handler del reclamo, comando de reconciliación manual, controller `<Svc>FilesController` (si es por fila), `Program.cs` (rutas). CloudStorage: `FileSourceCatalog.cs`, `LibrarySource.cs`, `LibraryReadRepository.cs`, `FileReadGate.cs`, `IFileOwnerVisibilityClient.cs`, `HttpFileOwnerVisibilityClient.cs`, `DependencyInjection.cs`, `appsettings.Development.json`. Despliegue: `deploy/docker/docker-compose.yml` (`cloudstorage-api`, `auth-api`), `ComposeInternalBaseUrlWiringTests.cs`.
+
+#### Ejemplo técnico
+```csharp
+// src/Services/Notes/TaxVision.Notes.Application/Notes/NoteFileSources.cs:9-35
+public const string Service = "notes";
+public const string ResourceType = "note";
+public const string Role = "attachment";
+
+public static FileSourceDeclaredIntegrationEvent Declare(
+    Guid tenantId, Guid noteId, NoteTargetType targetType, Guid? targetId, Guid fileId, string correlationId) =>
+    new()
+    {
+        TenantId = tenantId,
+        CorrelationId = correlationId,
+        FileId = fileId,
+        SourceService = Service,
+        SourceResourceType = ResourceType,
+        SourceResourceId = noteId,
+        SourceRole = Role,
+        RelatedCustomerId = CustomerOf(targetType, targetId),
+    };
+```
+```csharp
+// src/Services/CloudStorage/TaxVision.CloudStorage.Application/Files/FileSourceCatalog.cs:99-106
+// Adjunto de nota: el CRM lo sube al cliente de la nota o a la oficina, carpeta Other.
+new(
+    "notes",
+    "note",
+    new HashSet<string> { "attachment" },
+    new HashSet<OwnerType> { OwnerType.Customer, OwnerType.Tenant },
+    FolderType.Other
+),
+```
+```yaml
+# deploy/docker/docker-compose.yml (cloudstorage-api), :2141-2144
+Services__Tasks__BaseUrl: http://tasks-api:8080/
+Services__Correspondence__BaseUrl: http://correspondence-api:8080/
+Services__Communication__BaseUrl: http://communication-api:5350/
+Services__Notes__BaseUrl: http://notes-api:8080/
+```
+
+#### Integraciones
+CloudStorage (catálogos, compuertas, job, API), Auth (permiso `cloudstorage.library.view`, clientes M2M), RabbitMQ (fanout para declaraciones y reclamos; cola `cloudstorage-file-deletions` para borrados), [M2M](#cap-13), [Reconciliation](#cap-15), [Docker y compose](#cap-28), CRM (página de la biblioteca).
+
+#### Errores históricos
+- En Windows, `http://localhost:5350` desde CloudStorage hacia Communication tardaba ~2 s por intento (IPv6 primero; Communication escucha solo IPv4, `COMMUNICATION_HTTP_HOST` por defecto `0.0.0.0` en `src/Services/Communication/src/infrastructure/config.ts:15`) y vencía el tope de 2 s del ámbito. Por eso `appsettings.Development.json` de CloudStorage usa `http://127.0.0.1:5350/` (`:38`).
+- `Revisiones/restore_generated.ps1` (carpeta de la guía) devuelve a `HEAD` todo generado modificado que no calce con `-Keep` (`:9-11`, `:17-37`): un generado modificado a propósito antes de regenerar se pierde si no va en `-Keep`. Con `powershell -File`, `-Keep a,b` llega como un solo texto; se llama con `&` y arreglo.
+- El cliente `notes-worker` respondía 403 al consultar sus adjuntos en CloudStorage hasta que recibió `cloudstorage.file.view` (comentario en `docker-compose.yml:657`).
+
+#### Pruebas
+Existentes: CloudStorage `FileSourceCatalogTests` (+ `Chat`, `Notes`, `Recordings`), `DeclareFileSourceHandlerTests`, `FileSourceDeclarationTests`, `FileSourceClaimReconciliationJobTests`, `FileReadGate*Tests`, `LibrarySourceCatalog*Tests`, `SearchLibraryHandlerTests`, `IssueLibraryDownloadUrl*Tests`, `LibraryEndpointsTests` y `LibraryRowSourcesEndpointsTests` (`.Integration.`); dueños `NoteFileSourcesClaimConsumerTests`, `NoteFileSourceClaimIntegrationTests`, `NoteFilesControllerTests`, `RedeclareFileSourcesTests` (6 servicios), `FileSourcesClaimConsumerTests` (Tasks, Correspondence); Communication `claim-file-sources.test.ts`, `file-visibility-chat.test.ts`; `ComposeInternalBaseUrlWiringTests`. Servicio nuevo: declaración con los valores correctos; par aceptado y rechazado en el catálogo; reclamo que declara solo lo suyo de esa oficina; visibilidad que devuelve solo lo que la persona vería (lote > 100 → 400); descarga directa por id → 404 si es mediado; `.Integration.` del índice y de la consulta por `FileId`.
+
+#### Checklist
+- [ ] `FileId` con índice por oficina; migración aplicada en local.
+- [ ] Origen declarado al guardar; par en `FileSourceCatalog` (y `LibrarySourceCatalog` si sale en la biblioteca).
+- [ ] Visibilidad decidida; si es por fila, endpoint + alta en CloudStorage + `Services__<Svc>__BaseUrl` en compose y su prueba.
+- [ ] Handler de `FileSourcesClaimRequested` + `redeclare-file-sources` con los mismos valores.
+- [ ] Privados: descarga por el dueño, `IsOwnerMediated`, `cloudstorage.file.download` en el cliente M2M.
+- [ ] Borrado por `FilesDeletionRequestedIntegrationEvent`.
+- [ ] Verificación en vivo en `/storage/library`.
+
+[Volver al índice](#indice)
+
+---
+
 <a id="anexo-a"></a>
 ## Anexo A. Mapa de documentos relacionados
 
@@ -3507,7 +3656,7 @@ Checklist imprimible: [Checklists/Produccion.md](Checklists/Produccion.md). Un s
 - [03_INVENTARIO_ARQUITECTURA.md](03_INVENTARIO_ARQUITECTURA.md) · [02_COMPARATIVA_GUIAS.md](02_COMPARATIVA_GUIAS.md) · [01_ESTADO_INVESTIGACION.md](01_ESTADO_INVESTIGACION.md)
 
 **Checklists**
-- [Nuevo_Microservicio](Checklists/Nuevo_Microservicio.md) · [Seguridad](Checklists/Seguridad.md) · [Proyecciones_Reconciliation](Checklists/Proyecciones_Reconciliation.md) · [Offboarding](Checklists/Offboarding.md) · [Testing](Checklists/Testing.md) · [Modulos_Planes](Checklists/Modulos_Planes.md) · [Notificaciones](Checklists/Notificaciones.md) · [Tenant_Links](Checklists/Tenant_Links.md) · [YARP_Cloudflare](Checklists/YARP_Cloudflare.md) · [Produccion](Checklists/Produccion.md)
+- [Nuevo_Microservicio](Checklists/Nuevo_Microservicio.md) · [Seguridad](Checklists/Seguridad.md) · [Proyecciones_Reconciliation](Checklists/Proyecciones_Reconciliation.md) · [Offboarding](Checklists/Offboarding.md) · [Testing](Checklists/Testing.md) · [Modulos_Planes](Checklists/Modulos_Planes.md) · [Notificaciones](Checklists/Notificaciones.md) · [Tenant_Links](Checklists/Tenant_Links.md) · [YARP_Cloudflare](Checklists/YARP_Cloudflare.md) · [Produccion](Checklists/Produccion.md) · [Archivos_FileLibrary](Checklists/Archivos_FileLibrary.md)
 
 **Investigaciones**
 - Fundamentos: [Arquitectura](Investigaciones/Arquitectura.md) · [BuildingBlocks](Investigaciones/BuildingBlocks.md) · [Migraciones](Investigaciones/Migraciones.md)
@@ -3518,6 +3667,9 @@ Checklist imprimible: [Checklists/Produccion.md](Checklists/Produccion.md). Un s
 - Oficina y comunicación: [Tenant_Subdomains](Investigaciones/Tenant_Subdomains.md) · [Tenant_Links](Investigaciones/Tenant_Links.md) · [Scribe_Templates](Investigaciones/Scribe_Templates.md) · [Notification_Email](Investigaciones/Notification_Email.md) · [Notification_SMS](Investigaciones/Notification_SMS.md) · [Notification_InApp_Push](Investigaciones/Notification_InApp_Push.md)
 - Operación: [Docker_Deploy](Investigaciones/Docker_Deploy.md) · [Scripts_Locales](Investigaciones/Scripts_Locales.md) · [Gateway_YARP](Investigaciones/Gateway_YARP.md) · [Cloudflare](Investigaciones/Cloudflare.md) · [CI_CD_Secrets](Investigaciones/CI_CD_Secrets.md) · [Postman](Investigaciones/Postman.md) · [Observabilidad](Investigaciones/Observabilidad.md)
 - Testing: [Testing_Unit](Investigaciones/Testing_Unit.md) · [Testing_Integration](Investigaciones/Testing_Integration.md) · [Testing_Security](Investigaciones/Testing_Security.md) · [Testing_EDA](Investigaciones/Testing_EDA.md)
+- Archivos: [Archivos_FileLibrary](Investigaciones/Archivos_FileLibrary.md)
+
+**Revisiones** (carpeta `Revisiones/`): [Revision_Mobile_2026-11-19](Revisiones/Revision_Mobile_2026-11-19.md) (revisión del servicio Mobile contra la guía) · [Revision_4_Proyectos_2026-11-20](Revisiones/Revision_4_Proyectos_2026-11-20.md) · [restore_generated.ps1](Revisiones/restore_generated.ps1) (devuelve a `HEAD` los generados sin cambio real; ver [cap. 36](#cap-36)).
 
 **Diagramas** (carpeta `Diagramas/`): SVG-01_Ecosistema, SVG-02_Clean_Architecture, SVG-03_Creacion, SVG-04_Reconciliation, SVG-05_Seguridad, SVG-06_Comercializacion, SVG-07_Mensajeria, SVG-08_M2M, SVG-09_Subdominios, SVG-10_Links_Tenant, SVG-11_Notification, SVG-12_Scribe, SVG-13_YARP_Cloudflare, SVG-14_Cloudflare_Manual, SVG-15_Deployment, SVG-16_Flota_Local, SVG-17_Matriz_Dinamica, SVG-18_Checklist, SVG-19_Offboarding, SVG-20_Offboarding_Servicios, SVG-21_Offboarding_Seguridad, SVG-22_Testing_Architecture, SVG-23_Testing_CI_CD.
 

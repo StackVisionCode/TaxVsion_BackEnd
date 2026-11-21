@@ -25,6 +25,10 @@ public static class TripErrors
         "Vehicle.InUse",
         "This vehicle has trips. Preserve it for trip history."
     );
+    public static readonly Error InvalidRetention = new(
+        "Mobile.Retention.InvalidDays",
+        "Retention must be between 1 and 3650 days, or empty to use the default period."
+    );
     public static readonly Error InvalidRate = new(
         "MileageRate.InvalidInput",
         "Invalid purpose, effective date, currency or rate."

@@ -8,12 +8,9 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using TaxVision.Mobile.Application.Trips;
 using TaxVision.Mobile.Application.Trips.Commands;
 using TaxVision.Mobile.Application.Trips.Queries;
-using TaxVision.Mobile.Domain.Trips;
-using TaxVision.Mobile.Infrastructure.Persistence;
 using Wolverine;
 
 namespace TaxVision.Mobile.Api.Controllers;
@@ -21,8 +18,7 @@ namespace TaxVision.Mobile.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("mobile/mileage-configuration")]
-public sealed class MileageConfigurationController(IMessageBus bus, TimeProvider clock, MobileDbContext db)
-    : ControllerBase
+public sealed class MileageConfigurationController(IMessageBus bus, TimeProvider clock) : ControllerBase
 {
     public sealed record RetentionPolicyRequest(int? RetentionDays);
 
@@ -30,35 +26,30 @@ public sealed class MileageConfigurationController(IMessageBus bus, TimeProvider
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [HasPermission(MobilePermissions.RatesManage)]
     [RateLimit("mobile.f.trip_read")]
+    [ProducesResponseType<MileageRetentionResponse>(200)]
     public async Task<IActionResult> GetRetention(CancellationToken ct)
     {
-        if (!Identity(out var tenant))
+        if (!Identity(out var t))
             return Unauthorized();
-        var policy = await db.MileageRetentionPolicies.SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
-        return Ok(new { retentionDays = policy?.RetentionDays, configured = policy?.RetentionDays is not null });
+        return Respond(await bus.InvokeAsync<Result<MileageRetentionResponse>>(new MileageRetentionQuery(t), ct), Ok);
     }
 
     [HttpPut("retention")]
     [AllowActorTypes(ActorType.TenantAdmin, ActorType.PlatformAdmin)]
     [HasPermission(MobilePermissions.RatesManage)]
     [RateLimit("mobile.g.trip_write")]
+    [ProducesResponseType<MileageRetentionResponse>(200)]
     public async Task<IActionResult> SetRetention(RetentionPolicyRequest request, CancellationToken ct)
     {
-        if (!Identity(out var tenant))
+        if (!Identity(out var t))
             return Unauthorized();
-        if (request.RetentionDays is <= 0 or > 3650)
-            return BadRequest(new { code = "Mobile.Retention.InvalidDays" });
-        var policy = await db
-            .MileageRetentionPolicies.IgnoreQueryFilters()
-            .SingleOrDefaultAsync(x => x.TenantId == tenant, ct);
-        if (policy is null)
-            db.MileageRetentionPolicies.Add(
-                MileageRetentionPolicy.Create(tenant, request.RetentionDays, clock.GetUtcNow().UtcDateTime)
-            );
-        else
-            policy.Update(request.RetentionDays, clock.GetUtcNow().UtcDateTime);
-        await db.SaveChangesAsync(ct);
-        return Ok(new { retentionDays = request.RetentionDays, configured = request.RetentionDays is not null });
+        return Respond(
+            await bus.InvokeAsync<Result<MileageRetentionResponse>>(
+                new SetMileageRetentionCommand(t, request.RetentionDays),
+                ct
+            ),
+            Ok
+        );
     }
 
     [HttpGet]

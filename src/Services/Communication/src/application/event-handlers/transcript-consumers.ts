@@ -24,6 +24,9 @@ import { failRecording, isNewestWithFile, type RecordingLifecycleDeps } from '..
 import { findRecordingTranscript } from '../services/recording-transcript-lookup.js';
 import type { RecordingSession } from '../../domain/recording/recording-session.js';
 import { logger } from '../../infrastructure/logger/logger.js';
+import { declareFileSource, recordingResourceType, relatedCustomerOf } from '../services/file-source-declarer.js';
+import { recordingClientCandidates, type RecordingSubject } from '../services/recording-visibility.js';
+import { FileSourceRoles } from '../../contracts/events/cloudstorage-events.js';
 
 /**
  * Consumers del worker de transcripts (proceso separado).
@@ -67,7 +70,7 @@ export function bindTranscriptConsumers(
       return;
     }
     const callSession = await sessionOfTranscript(deps, env.tenantId, 'Call', callId, getString(env.payload, 'recordingFileId'));
-    await completeArtifact(deps, env.tenantId, 'Call', callId, transcriptFileId, v2, callSession);
+    await completeArtifact(deps, env.tenantId, 'Call', callId, transcriptFileId, v2, callSession, env.correlationId);
 
     const dto: CallTranscriptReadyDto = {
       callId,
@@ -114,7 +117,7 @@ export function bindTranscriptConsumers(
         return;
       }
     }
-    await completeArtifact(deps, env.tenantId, 'Meeting', meetingId, transcriptFileId, v2, session);
+    await completeArtifact(deps, env.tenantId, 'Meeting', meetingId, transcriptFileId, v2, session, env.correlationId);
 
     const dto: MeetingTranscriptReadyDto = {
       meetingId,
@@ -238,6 +241,7 @@ async function completeArtifact(
   txtFileId: string,
   v2: TranscriptV2,
   session: RecordingSession | null,
+  correlationId?: string | null,
 ): Promise<void> {
   if (!deps.transcripts) return;
   const artifact = await artifactFor(deps.transcripts, tenantId, scope, scopeId, session);
@@ -258,6 +262,46 @@ async function completeArtifact(
     return;
   }
   await deps.transcripts.save(artifact);
+  await declareTranscriptFiles(deps, tenantId, scope, scopeId, { txt: txtFileId, json: v2.jsonFileId }, correlationId);
+}
+
+/** Biblioteca de archivos: el .txt (y el .json, que la biblioteca no lista) nacen de su llamada o reunión. */
+async function declareTranscriptFiles(
+  deps: TranscriptConsumerDeps,
+  tenantId: string,
+  scope: 'Meeting' | 'Call',
+  scopeId: string,
+  files: { txt: string; json: string | null },
+  correlationId: string | null | undefined,
+): Promise<void> {
+  const subject = await recordingSubjectOf(deps, tenantId, scope, scopeId);
+  const relatedCustomerId = subject ? relatedCustomerOf(recordingClientCandidates(subject)) : null;
+  const declare = (fileId: string, role: string) =>
+    declareFileSource(deps.publisher, {
+      tenantId,
+      correlationId: correlationId ?? undefined,
+      fileId,
+      resourceType: recordingResourceType(scope),
+      resourceId: scopeId,
+      role,
+      relatedCustomerId,
+    });
+  await declare(files.txt, FileSourceRoles.Transcript);
+  if (files.json) await declare(files.json, FileSourceRoles.TranscriptData);
+}
+
+async function recordingSubjectOf(
+  deps: TranscriptConsumerDeps,
+  tenantId: string,
+  scope: 'Meeting' | 'Call',
+  scopeId: string,
+): Promise<RecordingSubject | null> {
+  if (scope === 'Call') {
+    const call = await deps.calls.findById(tenantId, scopeId);
+    return call ? { scope: 'Call', call } : null;
+  }
+  const meeting = await deps.meetings.findById(tenantId, scopeId);
+  return meeting ? { scope: 'Meeting', meeting } : null;
 }
 
 async function updateVoiceNote(

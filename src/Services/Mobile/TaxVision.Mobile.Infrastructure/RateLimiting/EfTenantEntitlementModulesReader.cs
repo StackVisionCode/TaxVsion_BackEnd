@@ -12,6 +12,7 @@ public sealed class EfTenantEntitlementModulesReader(MobileDbContext db) : ITena
 {
     public async Task<IReadOnlyList<string>?> GetEnabledModulesAsync(Guid tenantId, CancellationToken ct = default)
     {
+        // Sin filtro global: la proyección del plan se lee con la oficina explícita.
         var projection = await db
             .TenantPlanCodeProjections.IgnoreQueryFilters()
             .AsNoTracking()

@@ -115,6 +115,48 @@ public sealed class InvoicePaymentIntegrationTests(BillingTestDatabase database)
         Assert.Equal(2, rows);
     }
 
+    // Factura anterior a la tabla de pagos: al devolverla a "sin cobrar", lo pagado queda como fila Legacy revertida.
+    [Fact]
+    public async Task Reopening_a_paid_invoice_without_payment_rows_persists_a_reversed_legacy_row()
+    {
+        var actor = Guid.NewGuid();
+        await using (var seed = NewContext())
+        {
+            var legacy = await LoadAsync(seed);
+            Seed(legacy, nameof(Invoice.AmountPaid), Money.Create(15_000, "USD").Value);
+            Seed(legacy, nameof(Invoice.AmountDue), Money.Zero("USD"));
+            Seed(legacy, nameof(Invoice.Status), InvoiceStatus.Paid);
+            Seed(legacy, nameof(Invoice.PaidAtUtc), Now);
+            Seed(legacy, nameof(Invoice.PaymentMethod), PaymentMethod.Online);
+            await seed.SaveChangesAsync();
+        }
+
+        await using (var db = NewContext())
+        {
+            var invoice = await LoadAsync(db);
+            Assert.Empty(invoice.Payments);
+            Assert.True(
+                invoice.OverrideStatus(InvoiceStatus.Issued, "Charged by mistake", Now.AddHours(1), actor).IsSuccess
+            );
+            await db.SaveChangesAsync();
+        }
+
+        await using var read = NewContext();
+        var reloaded = await LoadAsync(read);
+        Assert.Equal(InvoiceStatus.Issued, reloaded.Status);
+        Assert.Equal(0, reloaded.AmountPaid.AmountCents);
+        var row = Assert.Single(reloaded.Payments);
+        Assert.Equal(InvoicePaymentSource.Legacy, row.Source);
+        Assert.Equal(15_000, row.Amount.AmountCents);
+        Assert.False(row.IsActive);
+        Assert.Equal(actor, row.ReversedByUserId);
+        Assert.Equal("Charged by mistake", row.ReversalReason);
+        Assert.True(row.NeedsProviderRefund);
+    }
+
+    private static void Seed(Invoice invoice, string property, object? value) =>
+        typeof(Invoice).GetProperty(property)!.SetValue(invoice, value);
+
     private async Task<Invoice> LoadAsync(BillingDbContext db) =>
         (await new InvoiceRepository(db).GetByIdAsync(_tenantId, _invoiceId))!;
 

@@ -173,6 +173,41 @@ public sealed class DraftRepository(CorrespondenceDbContext db) : IDraftReposito
             )
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Draft>> ListSentWithAttachmentsAsync(
+        Guid tenantId,
+        int skip,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .Drafts.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Include(d => d.Attachments)
+            .Where(d => d.TenantId == tenantId && d.Status == DraftStatus.Sent && d.Attachments.Any())
+            .OrderBy(d => d.Id)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Draft>> ListSentByAttachmentFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        CancellationToken ct = default
+    )
+    {
+        Guid[] ids = [.. fileIds.Distinct()];
+        return await db
+            .Drafts.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Include(d => d.Attachments)
+            .Where(d =>
+                d.TenantId == tenantId
+                && d.Status == DraftStatus.Sent
+                && d.Attachments.Any(a => a.TenantId == tenantId && ids.Contains(a.FileId))
+            )
+            .ToListAsync(ct);
+    }
+
     // Papelera: enviados borrados de un customer, más reciente primero.
     public async Task<PagedResult<Draft>> ListTrashedSentByCustomerAsync(
         Guid tenantId,

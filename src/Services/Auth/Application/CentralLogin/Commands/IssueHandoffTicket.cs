@@ -45,6 +45,7 @@ public static class IssueHandoffTicketHandler
         IDiscoverySessionStore sessions,
         IHandoffTicketStore tickets,
         ITenantRegistry tenants,
+        IUserRepository users,
         IMfaRepository mfa,
         ITotpService totp,
         ISecretProtector protector,
@@ -74,6 +75,12 @@ public static class IssueHandoffTicketHandler
         if (office is null)
             return Result.Failure<HandoffTicketView>(invalid);
 
+        // El código tiene tope por cuenta: bloqueada, ni el código correcto pasa hasta que venza.
+        var now = DateTime.UtcNow;
+        var challenged = office.ChallengeRequired ? await users.GetByIdAsync(office.UserId, ct) : null;
+        if (CentralMfaAttempts.Blocked(challenged, now) is { } lockedOut)
+            return Result.Failure<HandoffTicketView>(lockedOut);
+
         // El resultado concreto importa: un código de recuperación NO marca el equipo como de
         // confianza, así que hay que distinguirlo de un TOTP en vez de mirar solo si falló.
         MfaCodeCheck? codeCheck = office.ChallengeRequired
@@ -82,6 +89,7 @@ public static class IssueHandoffTicketHandler
 
         if (office.ChallengeRequired && codeCheck == MfaCodeCheck.Invalid)
         {
+            CentralMfaAttempts.RegisterFailure(challenged, now);
             await audit.AddAsync(
                 AuthAuditLog.Record(
                     office.TenantId,
@@ -97,6 +105,8 @@ public static class IssueHandoffTicketHandler
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Failure<HandoffTicketView>(new Error("Auth.MfaInvalid", "MFA code is invalid or expired."));
         }
+
+        CentralMfaAttempts.RegisterSuccess(challenged);
 
         var tenant = await tenants.GetByIdAsync(office.TenantId, ct);
         if (tenant is null || !tenant.IsActive)

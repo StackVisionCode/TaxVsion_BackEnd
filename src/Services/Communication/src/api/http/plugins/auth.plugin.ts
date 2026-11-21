@@ -7,6 +7,7 @@ import {
 } from '../../../infrastructure/jwks/jwt-verifier.js';
 import type { HttpRateLimiter } from '../../../infrastructure/redis/http-rate-limiter.js';
 import { sendRateLimited } from '../../../infrastructure/http/rate-limit-rejection.js';
+import { isFileLibraryRoute } from '../../../infrastructure/http/global-http-rate-limit.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -18,6 +19,8 @@ declare module 'fastify' {
 }
 
 export const USER_HTTP_RATE_LIMIT_POLICY = 'communication.user_http';
+// Biblioteca de archivos: cupo propio por usuario (mismos números), para no gastar el que usa el chat.
+export const FILES_HTTP_RATE_LIMIT_POLICY = 'communication.files_http';
 
 export interface AuthPluginOptions {
   readonly httpRateLimiter: HttpRateLimiter;
@@ -72,14 +75,16 @@ async function authPlugin(app: FastifyInstance, options: AuthPluginOptions): Pro
       }
       request.principal = principal;
 
+      const files = isFileLibraryRoute(request.url);
+      const policy = files ? FILES_HTTP_RATE_LIMIT_POLICY : USER_HTTP_RATE_LIMIT_POLICY;
       const decision = await options.httpRateLimiter.allow({
-        key: `comm:rl:http.user:${principal.tenantId}:${principal.userId}`,
-        policy: USER_HTTP_RATE_LIMIT_POLICY,
+        key: `comm:rl:${files ? 'http.files' : 'http.user'}:${principal.tenantId}:${principal.userId}`,
+        policy,
         maxPerWindow: options.userRateLimit.maxPerWindow,
         windowSeconds: options.userRateLimit.windowSeconds,
       });
       if (!decision.allowed) {
-        await sendRateLimited(reply, decision.retryAfterSeconds, USER_HTTP_RATE_LIMIT_POLICY);
+        await sendRateLimited(reply, decision.retryAfterSeconds, policy);
       }
     },
   );

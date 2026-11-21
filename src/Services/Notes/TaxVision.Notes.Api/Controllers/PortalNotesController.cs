@@ -1,9 +1,11 @@
 using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
+using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
+using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Notes.Application.Notes;
 using TaxVision.Notes.Application.Notes.Queries;
@@ -56,6 +58,33 @@ public sealed class PortalNotesController(IMessageBus bus) : ControllerBase
             ct
         );
         return Ok(result);
+    }
+
+    /// <summary>
+    /// URL de un adjunto de una nota ClientVisible de su cliente. Notes la pide a CloudStorage con su token de
+    /// servicio; cualquier otra nota o archivo responde 404.
+    /// </summary>
+    [HttpPost("{id:guid}/attachments/{fileId:guid}/download-url")]
+    [RateLimit("notes.f.portal_read")]
+    [ProducesResponseType<NoteAttachmentDownloadUrlResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> AttachmentDownloadUrl(
+        Guid id,
+        Guid fileId,
+        [FromQuery] string? purpose,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+        if (!User.TryGetCustomerId(out var customerId))
+            return Forbid();
+
+        var forPreview = string.Equals(purpose, "preview", StringComparison.OrdinalIgnoreCase);
+        var result = await bus.InvokeAsync<Result<NoteAttachmentDownloadUrlResponse>>(
+            new GetPortalNoteAttachmentDownloadUrlQuery(tenantId, customerId, id, fileId, forPreview),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     private static int NormalizePage(int page) => page < 1 ? 1 : page;

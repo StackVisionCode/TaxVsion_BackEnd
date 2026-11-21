@@ -7,6 +7,7 @@ namespace TaxVision.Mobile.Infrastructure.Persistence.Repositories;
 
 public sealed class VehicleRepository(MobileDbContext db) : IVehicleRepository
 {
+    // Sin filtro global: la oficina y el cliente van explícitos, y vacíos no devuelven nada.
     private IQueryable<Vehicle> Owned(Guid tenantId, Guid customerId) =>
         db
             .Vehicles.IgnoreQueryFilters()

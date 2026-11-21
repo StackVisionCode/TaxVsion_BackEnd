@@ -110,6 +110,10 @@ public static class ClientFormsRegistration
         services.AddScoped<IFormAnswerIndexReadRepository, FormAnswerIndexReadRepository>();
         services.AddScoped<FormAnswerIndexer>();
         services.AddScoped<IFormRequestVisibilityFilter, FormRequestVisibilityFilter>();
+        services.AddScoped<
+            TaxVision.Tasks.ClientForms.Application.Requests.Files.IFormFileVisibilityReader,
+            FormFileVisibilityReader
+        >();
         services.AddScoped<IClientFormsCustomerReader, ClientFormsCustomerReader>();
         services.AddScoped<IClientFormsCustomerEmailDirectory, ClientFormsCustomerEmailDirectory>();
         services.AddScoped<IClientFormsTaskReader, ClientFormsTaskReader>();

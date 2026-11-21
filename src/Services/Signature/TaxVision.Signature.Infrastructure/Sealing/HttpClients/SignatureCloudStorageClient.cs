@@ -108,6 +108,10 @@ internal sealed class SignatureCloudStorageClient(
                 ContentType = upload.ContentType,
                 SizeBytes = upload.Content.LongLength,
                 CorrelationId = correlation.CorrelationId,
+                SourceResourceType = upload.Source is null ? null : SignatureFileSource.ResourceType,
+                SourceResourceId = upload.Source?.RequestId,
+                SourceRole = upload.Source?.Role,
+                RelatedCustomerId = upload.Source?.RelatedCustomerId,
             }
         );
     }
@@ -117,6 +121,7 @@ internal sealed class SignatureCloudStorageClient(
         Guid sourceFileId,
         Guid customerId,
         int taxYear,
+        SignatureFileSource source,
         CancellationToken ct = default
     )
     {
@@ -127,7 +132,13 @@ internal sealed class SignatureCloudStorageClient(
         using var request = new HttpRequestMessage(HttpMethod.Post, $"storage/files/{sourceFileId}/copies")
         {
             Content = JsonContent.Create(
-                new CopyFileRequestDto("Customer", customerId, "Signatures", taxYear),
+                new CopyFileRequestDto(
+                    "Customer",
+                    customerId,
+                    "Signatures",
+                    taxYear,
+                    new FileSourceDto(SignatureFileSource.ResourceType, source.RequestId, source.Role)
+                ),
                 options: Json
             ),
         };
@@ -304,7 +315,16 @@ internal sealed class SignatureCloudStorageClient(
     private sealed record DownloadUrlResponseDto(Guid FileId, Uri DownloadUrl, DateTime ExpiresAtUtc);
 
     // Enums de CloudStorage serializados como string (JsonStringEnumConverter en su API).
-    private sealed record CopyFileRequestDto(string OwnerType, Guid OwnerId, string FolderType, int TaxYear);
+    // Source: CloudStorage la honra solo con token de servicio; el cliente sale del dueño de la copia.
+    private sealed record CopyFileRequestDto(
+        string OwnerType,
+        Guid OwnerId,
+        string FolderType,
+        int TaxYear,
+        FileSourceDto Source
+    );
+
+    private sealed record FileSourceDto(string ResourceType, Guid ResourceId, string Role);
 
     private sealed record CopiedFileResponseDto(Guid FileId);
 

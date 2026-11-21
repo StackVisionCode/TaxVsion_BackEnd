@@ -70,6 +70,7 @@ public static class GetFolderContentsHandler
                 assignedCustomerIds,
                 query.OwnerType,
                 query.OwnerId,
+                query.Scope.ExcludesOwnerMediated,
                 ct
             );
         var fileCount = await files.CountInFolderAsync(
@@ -80,6 +81,7 @@ public static class GetFolderContentsHandler
             query.OwnerType,
             query.OwnerId,
             filter,
+            query.Scope.ExcludesOwnerMediated,
             ct
         );
 
@@ -103,6 +105,7 @@ public static class GetFolderContentsHandler
                 filter,
                 folderSkip,
                 folderTake,
+                query.Scope.ExcludesOwnerMediated,
                 ct
             );
 
@@ -123,6 +126,7 @@ public static class GetFolderContentsHandler
                 filter,
                 fileSkip,
                 fileTake,
+                query.Scope.ExcludesOwnerMediated,
                 ct
             );
 
@@ -179,6 +183,7 @@ public static class GetFolderContentsHandler
                     filter,
                     skip: null,
                     take: null,
+                    query.Scope.ExcludesOwnerMediated,
                     ct
                 )
             ).ToArray();
@@ -193,6 +198,7 @@ public static class GetFolderContentsHandler
                 filter,
                 skip: null,
                 take: null,
+                query.Scope.ExcludesOwnerMediated,
                 ct
             )
         ).ToArray();

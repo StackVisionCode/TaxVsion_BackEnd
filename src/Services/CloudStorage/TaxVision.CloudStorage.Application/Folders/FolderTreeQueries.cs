@@ -53,6 +53,9 @@ public static class GetFolderTreeHandler
         // Portal con deny Visible/Preview en carpetas: oculta tanto la carpeta como su subárbol.
         if (query.Scope.HasAnyPortalDenyRules)
             flat = flat.Where(f => !query.Scope.IsHiddenForPortal(AccessResourceType.Folder, f.Id)).ToList();
+        // La carpeta "Voice Notes" no existe para una persona: sus notas solo se abren por el chat.
+        if (query.Scope.ExcludesOwnerMediated)
+            flat = flat.Where(f => !query.Scope.HidesOwnerMediatedFolder(f)).ToList();
         return Result.Success(BuildTree(flat, parentId: null));
     }
 

@@ -303,6 +303,7 @@ public sealed class CountingStorage : ISignatureCloudStorageClient
         Guid sourceFileId,
         Guid customerId,
         int taxYear,
+        SignatureFileSource source,
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 

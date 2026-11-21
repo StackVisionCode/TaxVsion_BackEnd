@@ -32,5 +32,8 @@ internal sealed class DraftAttachmentConfiguration : IEntityTypeConfiguration<Dr
             .HasIndex(x => new { x.TenantId, x.DraftId })
             .IncludeProperties(x => x.Filename)
             .HasDatabaseName("IX_DraftAttachments_TenantId_DraftId");
+
+        // Visibilidad por archivo de File Library (POST /correspondence/files/visibility).
+        builder.HasIndex(x => new { x.TenantId, x.FileId }).HasDatabaseName("IX_DraftAttachments_TenantId_FileId");
     }
 }

@@ -35,8 +35,15 @@ public sealed class InvoicePayment : BaseEntity
     public bool IsActive => ReversedAtUtc is null;
 
     /// <summary>Un cobro online (Stripe, etc.) mueve dinero real: revertirlo aquí NO lo devuelve al cliente, hay que
-    /// reembolsarlo en el proveedor. Los manuales y el crédito arrastrado no.</summary>
-    public bool NeedsProviderRefund => Source == InvoicePaymentSource.Online;
+    /// reembolsarlo en el proveedor. Los manuales y el crédito arrastrado no. Un pago <c>Legacy</c> cuenta si la
+    /// factura se cobró en línea.</summary>
+    public bool NeedsProviderRefund =>
+        Source == InvoicePaymentSource.Online
+        || (Source == InvoicePaymentSource.Legacy && Method == PaymentMethod.Online);
+
+    /// <summary>Crédito arrastrado de la factura reemplazada: ese dinero ya se cobró allí. Revertirlo no lo devuelve
+    /// ni lo guarda: queda sin aplicar hasta que la oficina lo reembolse o lo vuelva a aplicar.</summary>
+    public bool IsCarriedCredit => Source == InvoicePaymentSource.CarriedCredit;
 
     private InvoicePayment() { }
 
@@ -72,7 +79,8 @@ public sealed class InvoicePayment : BaseEntity
     }
 }
 
-/// <summary>Origen del pago. Se persiste como texto.</summary>
+/// <summary>Origen del pago. Se persiste como texto. <c>Legacy</c>: lo cobrado antes de que existieran estas filas;
+/// solo se escribe, ya revertido, cuando una corrección de estado lo deja en cero.</summary>
 public enum InvoicePaymentSource
 {
     Online,

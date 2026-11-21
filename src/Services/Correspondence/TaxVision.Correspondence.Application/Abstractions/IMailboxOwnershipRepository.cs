@@ -14,4 +14,7 @@ public interface IMailboxOwnershipRepository
         Guid userId,
         CancellationToken ct = default
     );
+
+    /// <summary>Los buzones de oficina del tenant (sin dueño), en cualquier estado.</summary>
+    Task<IReadOnlyCollection<Guid>> ListOfficeAccountIdsAsync(Guid tenantId, CancellationToken ct = default);
 }

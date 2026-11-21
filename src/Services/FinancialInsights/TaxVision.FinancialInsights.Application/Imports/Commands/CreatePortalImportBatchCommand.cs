@@ -2,6 +2,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.FinancialInsights.Application.Imports.Abstractions;
 using TaxVision.FinancialInsights.Domain.Imports;
+using Wolverine;
 
 namespace TaxVision.FinancialInsights.Application.Imports.Commands;
 
@@ -26,6 +27,7 @@ public static class CreatePortalImportBatchHandler
         TenantEntitlementsResolver entitlements,
         IImportFileGateway files,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -65,6 +67,7 @@ public static class CreatePortalImportBatchHandler
             batch.MarkFileReady(fileId);
         if (!await batches.TryAddAsync(batch, ct))
             return Result.Failure<ImportBatchView>(FinancialInsightsErrors.FileAlreadyRegistered);
+        await ImportFileSources.DeclareAsync(bus, batch);
 
         // FileAvailable puede llegar antes del commit del lote: se vuelve a mirar lo pendiente.
         var changed = false;

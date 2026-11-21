@@ -227,7 +227,11 @@ public sealed class CreateSignatureRequestFromTemplateHandlerTests
         Assert.True(field.IsRequired);
         Assert.Equal(0.2, field.Position.Y);
 
-        var created = Assert.IsType<SignatureRequestCreatedIntegrationEvent>(Assert.Single(scenario.Bus.Messages));
+        var created = Assert.Single(scenario.Bus.Messages.OfType<SignatureRequestCreatedIntegrationEvent>());
+        // El PDF base de la plantilla no se declara: las plantillas no entran en la biblioteca (E-9).
+        Assert.Empty(
+            scenario.Bus.Messages.OfType<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileSourceDeclaredIntegrationEvent>()
+        );
         Assert.Equal(request.Id, created.SignatureRequestId);
         Assert.Equal(Tenant, created.TenantId);
         Assert.Equal(Actor, created.CreatedByUserId);

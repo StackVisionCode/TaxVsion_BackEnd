@@ -82,6 +82,41 @@ public sealed class EnsureInvoicePaymentLinkHandlerTests
         Assert.Equal(1, unitOfWork.Saves);
     }
 
+    // Una orden tardía (o reintentada) no puede dejar cobrable una factura que volvió a borrador.
+    [Fact]
+    public async Task A_numbered_draft_is_not_made_payable()
+    {
+        var invoice = Invoice
+            .CreateDraft(
+                TenantId,
+                ActorUserId,
+                new CustomerSnapshot(Guid.NewGuid(), "Client", "client@example.com", null, null, null),
+                "USD",
+                [new DraftInvoiceLine("Tax preparation", 1, 15_000, 0)],
+                null,
+                Now
+            )
+            .Value;
+        Assert.True(
+            invoice.Issue(InvoiceNumber.Create("INV-2026-00004").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
+        Assert.True(invoice.OverrideStatus(InvoiceStatus.Draft, "Office correction", Now, ActorUserId).IsSuccess);
+        var links = new RecordingPaymentLinkClient();
+
+        await EnsureInvoicePaymentLinkHandler.Handle(
+            new EnsureInvoicePaymentLinkCommand(TenantId, invoice.Id, Reinstate: true),
+            new SingleInvoiceRepository(invoice),
+            links,
+            new CountingUnitOfWork(),
+            new FakeMessageBus(),
+            new FixedClock(Now),
+            CancellationToken.None
+        );
+
+        Assert.Empty(links.RequestedAmounts);
+        Assert.Null(invoice.ActivePaymentLink);
+    }
+
     private sealed class RecordingPaymentLinkClient : IInvoicePaymentLinkClient
     {
         public List<long> RequestedAmounts { get; } = [];

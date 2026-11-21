@@ -21,7 +21,7 @@
   - Verificación: lista de archivos a copiar. · Origen: [03_INVENTARIO](../03_INVENTARIO_ARQUITECTURA.md) §5; [Auth_RBAC](../Investigaciones/Auth_RBAC.md) encabezado.
 - [ ] **No copiar las deudas de la referencia**: comentarios con fases/narrativa, mensajes de error en español, `DateTime.UtcNow` dentro del agregado, `UseRabbitMq(...).AutoProvision()` de la guía antigua o el libro.
   - Verificación: revisión del PR. · Origen: [03_INVENTARIO](../03_INVENTARIO_ARQUITECTURA.md) §5 "Deudas"; [Arquitectura](../Investigaciones/Arquitectura.md) "Riesgos".
-- [ ] **Elegir BuildingBlocks**: siempre núcleo, `Messaging`, `Authorization`, `Web`, `Infrastructure`, `EfCore`; + `Jobs` [si un job escribe y publica]; + `TenantTimeZones` [si calcula fechas en la zona de la oficina]; + `CustomerVisibility` [si filtra por cliente asignado]; + `Imaging` [si guarda fotos de perfil]; `PurchaseIntentAmount` [si fija montos que cobra PaymentApp]; protección de secretos [si cifra secretos en su base].
+- [ ] **Elegir BuildingBlocks**: siempre núcleo, `Messaging`, `Authorization`, `Web`, `Infrastructure`, `EfCore`; + `Jobs` [si un job escribe y publica]; + `TenantTimeZones` [si calcula fechas en la zona de la oficina]; + `CustomerVisibility` [si filtra por cliente asignado]; + `Imaging` [si guarda fotos de perfil]; `PurchaseIntentAmount` [si fija montos que cobra PaymentApp]; protección de secretos [si cifra secretos en su base]; `Contracts/Files` [si guarda archivos y su visibilidad es por fila].
   - Verificación: referencias de los `.csproj`. · Origen: [BuildingBlocks](../Investigaciones/BuildingBlocks.md) "Recomendación".
 - [ ] **¿EDA o M2M?** Hecho para quien le interese → evento; dato de otro servicio leído en cada request → proyección local; rellenar o recuperar → M2M en un job de reconciliación; consulta que no admite retraso → M2M directo; orden a un único servicio → cola dedicada sin fanout.
   - Verificación: tabla de integraciones del servicio. · Origen: [Wolverine_RabbitMQ](../Investigaciones/Wolverine_RabbitMQ.md) §5.
@@ -103,6 +103,8 @@
 - [ ] **Regenerar codegen** de emisor y receptor al agregar/cambiar handlers, middleware o `IncludeType`: `powershell -ExecutionPolicy Bypass -File scripts\codegen\regenerate-wolverine-code.ps1 -Service <Svc>` (fuerza Dynamic mientras regenera). Agregar el servicio a `$all` del script.
   - Verificación: `PreGeneratedHandlerCodeTests` en el gate. · Origen: [Roslyn_Produccion](../Investigaciones/Roslyn_Produccion.md) §6 y §10.
 - [ ] [si llama a otros servicios por M2M] Cliente, acquirer con caché y secretos: ver [Seguridad](Seguridad.md) §6.
+- [ ] [si guarda archivos en CloudStorage] Completar [Archivos_FileLibrary](Archivos_FileLibrary.md): índice del `FileId`, origen declarado, par en `FileSourceCatalog`, modelo de visibilidad, respuesta a `FileSourcesClaimRequested`, descarga mediada y borrado por `FilesDeletionRequestedIntegrationEvent`.
+  - Verificación: checklist de archivos completo. · Origen: [Archivos_FileLibrary](../Investigaciones/Archivos_FileLibrary.md).
 
 ## Fase 7 — Proyecciones y reconciliación
 

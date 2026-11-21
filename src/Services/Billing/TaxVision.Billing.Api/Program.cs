@@ -173,6 +173,11 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
+    // PDF de factura adoptado o reemplazado → CloudStorage guarda su origen (biblioteca de archivos).
+    options
+        .PublishMessage<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileSourceDeclaredIntegrationEvent>()
+        .ToRabbitExchange("taxvision-events");
+
     options
         .ListenToRabbitQueue("billing-events", queue => queue.BindExchange("taxvision-events", string.Empty))
         .UseDurableInbox();

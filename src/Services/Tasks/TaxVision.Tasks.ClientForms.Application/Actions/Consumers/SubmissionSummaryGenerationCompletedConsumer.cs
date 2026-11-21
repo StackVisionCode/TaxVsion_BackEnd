@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.DocumentsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging;
+using TaxVision.Tasks.ClientForms.Application.Requests;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using Wolverine;
@@ -53,6 +54,7 @@ public static class SubmissionSummaryGenerationCompletedConsumer
 
             // Guardar antes de publicar: el outbox confirma el comando en la misma transacción.
             await unitOfWork.SaveChangesAsync(ct);
+            await bus.PublishAsync(FormFileSources.ForSummary(request, evt.FileId, correlation.CorrelationId));
             if (signatureMessage is not null)
                 await bus.PublishAsync(signatureMessage);
         }

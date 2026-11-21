@@ -14,7 +14,13 @@ using Wolverine;
 namespace TaxVision.CloudStorage.Application.Files.RecycleBin;
 
 /// <summary>Fase C1 — recupera un archivo de la papelera. No toca cuota (ver TenantStorageLimit.ReleaseUsed).</summary>
-public sealed record RestoreFileCommand(Guid TenantId, Guid ActorId, Guid FileId, RequestAuditContext Audit);
+public sealed record RestoreFileCommand(
+    Guid TenantId,
+    Guid ActorId,
+    StorageActorScope Scope,
+    Guid FileId,
+    RequestAuditContext Audit
+);
 
 public static class RestoreFileHandler
 {
@@ -52,7 +58,10 @@ public static class RestoreFileHandler
     )
     {
         var file = await files.GetAsync(command.TenantId, command.FileId, ct);
-        return file is null ? Result.Failure<FileObject>(FileErrors.NotFound) : Result.Success(file);
+        // Mismo alcance que la descarga por id: lo que la persona no ve, no existe.
+        return file is null || !command.Scope.CanAccess(file)
+            ? Result.Failure<FileObject>(FileErrors.NotFound)
+            : Result.Success(file);
     }
 
     private static async Task PersistAndPublish(

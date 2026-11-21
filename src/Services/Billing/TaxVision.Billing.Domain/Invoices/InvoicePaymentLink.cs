@@ -46,6 +46,13 @@ public sealed class InvoicePaymentLink : BaseEntity
             CheckoutUrl = checkoutUrl;
     }
 
+    /// <summary>La factura volvió a quedar cobrable con el mismo payable: el enlace retirado vuelve a Active.</summary>
+    internal void Reactivate()
+    {
+        if (Status == InvoicePaymentLinkStatus.Superseded)
+            Status = InvoicePaymentLinkStatus.Active;
+    }
+
     /// <summary>Marca este enlace como reemplazado por otro (Fase 3). No-op si ya no esta Active.</summary>
     internal void Supersede(DateTime nowUtc)
     {

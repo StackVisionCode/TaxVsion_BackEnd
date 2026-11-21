@@ -164,6 +164,7 @@ public sealed class CreateImportBatchHandlerTests
             h.Entitlements,
             h.Files,
             h.Visibility,
+            h.Bus,
             CancellationToken.None
         );
 }

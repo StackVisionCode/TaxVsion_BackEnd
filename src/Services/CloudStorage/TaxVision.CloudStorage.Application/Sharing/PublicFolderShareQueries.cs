@@ -89,7 +89,8 @@ public static class ResolvePublicFolderContentsHandler
             return PublicFolderContentsResult.Denied();
 
         var folder = await folders.GetAsync(link!.TenantId, targetFolderId, ct);
-        if (folder is null)
+        // La carpeta "Voice Notes" no se entrega por enlace: sus notas solo se abren por el chat.
+        if (folder is null || FileReadGate.IsOwnerMediated(folder))
             return PublicFolderContentsResult.Denied();
 
         var subfolders = link.IsRecursive ? (
@@ -104,9 +105,10 @@ public static class ResolvePublicFolderContentsHandler
                     FolderContentsFilter.None,
                     null,
                     null,
+                    excludeOwnerMediated: false,
                     ct
                 )
-            ).Select(f => new PublicFolderSubfolder(f.Id, f.Name)).ToList() : [];
+            ).Where(f => !FileReadGate.IsOwnerMediated(f)).Select(f => new PublicFolderSubfolder(f.Id, f.Name)).ToList() : [];
 
         var folderFiles = await files.ListInFolderAsync(
             link.TenantId,
@@ -118,10 +120,15 @@ public static class ResolvePublicFolderContentsHandler
             FolderContentsFilter.None,
             null,
             null,
+            excludeOwnerMediated: false,
             ct
         );
         var visibleFiles = folderFiles
-            .Where(f => f.Status == FileStatus.Available && FolderShareCoverage.IncludesFileByTime(link, f))
+            .Where(f =>
+                f.Status == FileStatus.Available
+                && FolderShareCoverage.IncludesFileByTime(link, f)
+                && !FileReadGate.IsOwnerMediated(f)
+            )
             .Select(f => new PublicFolderFile(
                 f.Id,
                 f.OriginalName,
@@ -245,7 +252,7 @@ public static class PreparePublicFolderZipHandler
             return PublicZipResult.Denied();
 
         var root = await folders.GetAsync(link.TenantId, targetFolderId, ct);
-        if (root is null)
+        if (root is null || FileReadGate.IsOwnerMediated(root))
             return PublicZipResult.Denied();
 
         var config = await platform.GetAsync(ct);
@@ -269,7 +276,11 @@ public static class PreparePublicFolderZipHandler
         // Share público: no se aplica filtro ABAC.
         var folderFiles = await files.ListInFoldersAsync(link.TenantId, allFolderIds, null, null, ct);
         var combined = folderFiles
-            .Where(f => f.Status == FileStatus.Available && FolderShareCoverage.IncludesFileByTime(link, f))
+            .Where(f =>
+                f.Status == FileStatus.Available
+                && FolderShareCoverage.IncludesFileByTime(link, f)
+                && !FileReadGate.IsOwnerMediated(f)
+            )
             .Select(f => (File: f, FolderPrefix: (string?)folderEntryPrefixes[f.FolderId!.Value]))
             .ToList();
 

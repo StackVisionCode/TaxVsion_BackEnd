@@ -58,6 +58,7 @@ public static class ListFilesHandler
             query.FolderType,
             Math.Max(0, query.Skip),
             Math.Clamp(query.Take, 1, 100),
+            query.Scope.ExcludesOwnerMediated,
             ct
         );
         // Portal: oculta items con deny Visible/Preview (Fase 4). Staff/flag off = sin filtro.

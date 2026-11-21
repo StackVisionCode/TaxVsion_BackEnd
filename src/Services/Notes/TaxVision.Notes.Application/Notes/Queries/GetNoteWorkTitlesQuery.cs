@@ -41,7 +41,7 @@ public static class GetNoteWorkTitlesHandler
     }
 
     // La nota no tiene título: primera línea no vacía del texto, recortada.
-    private static string? TitleOf(string text) =>
+    internal static string? TitleOf(string text) =>
         WorkLimits.ClipTitle(
             text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault()
         );

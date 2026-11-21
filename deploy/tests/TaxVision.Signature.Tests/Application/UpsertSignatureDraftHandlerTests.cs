@@ -6,6 +6,8 @@ using TaxVision.Signature.Application.Requests.Commands.UpsertDraft;
 using TaxVision.Signature.Domain.Projections;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
+using TaxVision.Signature.Tests.Delivery;
+using TaxVision.Signature.Tests.Requests;
 
 namespace TaxVision.Signature.Tests.Application;
 
@@ -29,6 +31,8 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new FakeCache(),
+            new CapturingBus(),
+            TemplateFiles.None,
             CancellationToken.None
         );
 
@@ -70,6 +74,8 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new FakeCache(),
+            new CapturingBus(),
+            TemplateFiles.None,
             CancellationToken.None
         );
 
@@ -98,6 +104,8 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new FakeCache(),
+            new CapturingBus(),
+            TemplateFiles.None,
             CancellationToken.None
         );
 
@@ -119,6 +127,8 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new FakeCache(),
+            new CapturingBus(),
+            TemplateFiles.None,
             CancellationToken.None
         );
 
@@ -207,6 +217,73 @@ public sealed class UpsertSignatureDraftHandlerTests
         Assert.Equal(sam.Id, result.Value.SignerIds[1]);
     }
 
+    [Fact]
+    public async Task Changing_the_file_declares_the_new_original_and_supersedes_the_old_one()
+    {
+        var draft = NewDraft();
+        var oldFileId = draft.Documents[0].OriginalFileId;
+        var command = NewCommand(draft);
+        var newFileId = Guid.NewGuid();
+        command = command with { Documents = [command.Documents[0] with { OriginalFileId = newFileId }] };
+
+        var declared = await DeclaredBy(draft, command);
+
+        Assert.Equal(2, declared.Count);
+        Assert.Contains(declared, evt => evt.FileId == newFileId && evt.SourceRole == "original");
+        Assert.Contains(declared, evt => evt.FileId == oldFileId && evt.SourceRole == "original_superseded");
+    }
+
+    [Fact]
+    public async Task A_save_that_does_not_change_the_files_declares_nothing()
+    {
+        var draft = NewDraft();
+
+        var declared = await DeclaredBy(draft, NewCommand(draft));
+
+        Assert.Empty(declared);
+    }
+
+    [Fact]
+    public async Task A_new_template_base_pdf_is_not_declared()
+    {
+        var draft = NewDraft();
+        var templateBase = Guid.NewGuid();
+        var command = NewCommand(draft);
+        command = command with
+        {
+            Documents = [command.Documents[0], new DraftDocumentSpec("doc-2", null, templateBase, "Letter", null)],
+        };
+
+        var declared = await DeclaredBy(draft, command, new TemplateFiles(templateBase));
+
+        Assert.Empty(declared);
+    }
+
+    private static async Task<
+        List<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileSourceDeclaredIntegrationEvent>
+    > DeclaredBy(SignatureRequest draft, UpsertSignatureDraftCommand command, TemplateFiles? templates = null)
+    {
+        var bus = new CapturingBus();
+        var result = await UpsertSignatureDraftHandler.Handle(
+            command,
+            new FakeRepository(draft),
+            new FakeProjection(),
+            new FakeCategoryResolver(),
+            new FixedSignatureLimitsResolver(),
+            new FixedSignaturePlatformSettings(),
+            new FakeUnitOfWork(),
+            new FakeCache(),
+            bus,
+            templates ?? TemplateFiles.None,
+            CancellationToken.None
+        );
+        Assert.True(result.IsSuccess);
+        return
+        [
+            .. bus.Messages.OfType<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileSourceDeclaredIntegrationEvent>(),
+        ];
+    }
+
     private static Task<Result<UpsertSignatureDraftResponse>> Upsert(
         UpsertSignatureDraftCommand command,
         FakeRepository repo
@@ -220,6 +297,8 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FixedSignaturePlatformSettings(),
             new FakeUnitOfWork(),
             new FakeCache(),
+            new CapturingBus(),
+            TemplateFiles.None,
             CancellationToken.None
         );
 

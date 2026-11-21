@@ -66,7 +66,13 @@ public sealed class SealingDocumentProcessor(
 
             var staged = await storage.StageAsync(
                 request.TenantId,
-                SealedFileUpload.For(request, sealResult.Value.SealedPdfBytes, document.Title, "_Signed.pdf"),
+                SealedFileUpload.For(
+                    request,
+                    sealResult.Value.SealedPdfBytes,
+                    document.Title,
+                    "_Signed.pdf",
+                    SealedFileRole.Sealed
+                ),
                 ct
             );
             if (staged.IsFailure)

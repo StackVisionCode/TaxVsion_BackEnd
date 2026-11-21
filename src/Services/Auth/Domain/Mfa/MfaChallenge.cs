@@ -1,4 +1,5 @@
 using BuildingBlocks.Domain;
+using TaxVision.Auth.Domain.RefreshTokens;
 
 namespace TaxVision.Auth.Domain.Mfa;
 
@@ -24,6 +25,9 @@ public sealed class MfaChallenge : TenantEntity
     /// <summary>Hash del OTP enviado (email/SMS). Null para TOTP y recovery codes.</summary>
     public string? OtpHash { get; private set; }
 
+    /// <summary>Superficie del login que lo pidió: solo esa ruta puede completarlo.</summary>
+    public SessionSurface Surface { get; private set; }
+
     public int Attempts { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime ExpiresAtUtc { get; private set; }
@@ -37,7 +41,8 @@ public sealed class MfaChallenge : TenantEntity
         Guid? mfaMethodId,
         string loginTicketHash,
         string? otpHash,
-        TimeSpan validity
+        TimeSpan validity,
+        SessionSurface surface = SessionSurface.Workspace
     )
     {
         var challenge = new MfaChallenge
@@ -47,6 +52,7 @@ public sealed class MfaChallenge : TenantEntity
             MfaMethodId = mfaMethodId,
             LoginTicketHash = loginTicketHash,
             OtpHash = otpHash,
+            Surface = surface,
             CreatedAtUtc = DateTime.UtcNow,
             ExpiresAtUtc = DateTime.UtcNow.Add(validity),
         };

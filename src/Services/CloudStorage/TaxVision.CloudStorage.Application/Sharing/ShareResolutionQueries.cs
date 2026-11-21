@@ -504,7 +504,7 @@ internal static class ShareLinkResourceResolver
     )
     {
         if (link.ResourceType == ShareResourceType.File)
-            return await files.GetAsync(link.TenantId, link.ResourceId, ct);
+            return Served(await files.GetAsync(link.TenantId, link.ResourceId, ct));
 
         if (requestedFileId is not { } fileId)
             return null;
@@ -513,8 +513,12 @@ internal static class ShareLinkResourceResolver
         if (file is null || !await FolderShareCoverage.CoversAsync(link, file, folders, ct))
             return null;
 
-        return file;
+        return Served(file);
     }
+
+    // Un enlace nunca entrega lo que solo media su dueño (chat, grabaciones, notas de voz).
+    private static FileObject? Served(FileObject? file) =>
+        file is not null && FileReadGate.IsOwnerMediated(file) ? null : file;
 }
 
 /// <summary>

@@ -5,6 +5,7 @@ using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Users;
 using TaxVision.Auth.Application.Users.Commands;
+using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Sessions;
@@ -173,6 +174,65 @@ public sealed class RefreshAccessTokenHandlerTests
         Assert.True(onMobile.IsSuccess);
     }
 
+    // Señal de uso indebido: queda rastro, pero ni la respuesta cambia ni se cierra la sesión.
+    [Fact]
+    public async Task A_web_token_on_the_mobile_route_leaves_a_trace_and_keeps_the_session()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, workspaceRefresh) = await world.StartWorkspaceSessionAsync();
+
+        var result = await RefreshAsync(world, workspaceRefresh, SessionSurface.Mobile);
+
+        Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
+        var log = Assert.Single(world.Audit.Logs);
+        Assert.Equal(AuthAuditAction.RefreshTokenSurfaceMismatch, log.Action);
+        Assert.False(log.Success);
+        Assert.Equal(world.Admin.Id, log.UserId);
+        Assert.Equal(world.Tenant.Id, log.TenantId);
+        Assert.Equal(sessionId, log.TargetId);
+        Assert.Equal("""{"tokenSurface":"Workspace","route":"Mobile"}""", log.DetailsJson);
+        Assert.Equal(1, world.UnitOfWork.SaveChangesCallCount);
+        Assert.True((await world.Sessions.GetSessionByIdAsync(sessionId))!.IsActive);
+        Assert.Empty(world.Denylist.Denied);
+        Assert.True((await RefreshAsync(world, workspaceRefresh, SessionSurface.Workspace)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task A_mobile_token_on_the_web_route_leaves_a_trace_and_keeps_the_session()
+    {
+        var world = new AccountSessionFixture();
+        var mobile = await world.Issuer.StartSessionAsync(
+            world.Admin,
+            "UTC",
+            [],
+            ["pwd"],
+            "iPhone",
+            SessionSurface.Mobile
+        );
+
+        var result = await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Workspace);
+
+        Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
+        var log = Assert.Single(world.Audit.Logs);
+        Assert.Equal(AuthAuditAction.RefreshTokenSurfaceMismatch, log.Action);
+        Assert.Equal("""{"tokenSurface":"Mobile","route":"Workspace"}""", log.DetailsJson);
+        Assert.True((await world.Sessions.GetSessionByIdAsync(mobile.SessionId))!.IsActive);
+        Assert.Empty(world.Denylist.Denied);
+        Assert.True((await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile)).IsSuccess);
+    }
+
+    [Fact]
+    public async Task An_unknown_token_leaves_no_trace()
+    {
+        var world = new AccountSessionFixture();
+
+        var result = await RefreshAsync(world, "never-issued", SessionSurface.Mobile);
+
+        Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
+        Assert.Empty(world.Audit.Logs);
+        Assert.Equal(0, world.UnitOfWork.SaveChangesCallCount);
+    }
+
     [Fact]
     public async Task Revoking_the_shared_session_cuts_both_surfaces()
     {
@@ -194,10 +254,37 @@ public sealed class RefreshAccessTokenHandlerTests
         Assert.True((await RefreshAsync(world, account.RefreshToken, SessionSurface.Account)).IsFailure);
     }
 
+    // Un cliente en bucle reintentando un token ya rotado: la sesión se revoca una vez y la alerta sale una vez.
+    [Fact]
+    public async Task Retrying_a_reused_token_alerts_only_once_per_session()
+    {
+        var world = new AccountSessionFixture();
+        var mobile = await world.Issuer.StartSessionAsync(
+            world.Admin,
+            "UTC",
+            [],
+            ["pwd"],
+            "iPhone",
+            SessionSurface.Mobile
+        );
+        var rotated = await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile);
+        var bus = new FakeMessageBus();
+
+        await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile, bus);
+        await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile, bus);
+        await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile, bus);
+
+        Assert.True(rotated.IsSuccess);
+        var alert = Assert.IsType<SecurityAlertIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(SecurityAlertType.TokenReuseDetected, alert.AlertType);
+        Assert.False((await world.Sessions.GetSessionByIdAsync(mobile.SessionId))!.IsActive);
+    }
+
     private static Task<BuildingBlocks.Results.Result<AuthTokensResponse>> RefreshAsync(
         AccountSessionFixture world,
         string refreshToken,
-        SessionSurface surface
+        SessionSurface surface,
+        FakeMessageBus? bus = null
     ) =>
         RefreshAccessTokenHandler.Handle(
             new RefreshAccessTokenCommand(refreshToken, ResolvedTenantId: null, surface),
@@ -212,7 +299,7 @@ public sealed class RefreshAccessTokenHandlerTests
             world.Request,
             world.Correlation,
             world.UnitOfWork,
-            new FakeMessageBus(),
+            bus ?? new FakeMessageBus(),
             CancellationToken.None
         );
 

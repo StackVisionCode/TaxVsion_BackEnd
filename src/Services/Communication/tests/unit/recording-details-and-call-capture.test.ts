@@ -178,7 +178,7 @@ describe('getRecordingDetails', () => {
     expect(rt.presigned).toEqual([]);
   });
 
-  it('forbids staff who neither took part nor hold the record permission', async () => {
+  it('E-14: staff who did not take part never open a meeting recording, even with the record permission', async () => {
     const rt = detailsRuntime();
     const { meeting } = endedMeeting();
     await rt.meetings.save(meeting);
@@ -189,8 +189,9 @@ describe('getRecordingDetails', () => {
     const allowed = await getRecordingDetails({ viewer: { ...outsider, holdsRecordPermission: true }, scope: RecordingScope.Meeting, scopeId: meeting.id }, rt.deps);
 
     expect(denied.isSuccess).toBe(false);
-    if (!denied.isSuccess) expect(denied.error.code).toBe('Meeting.Recording.Forbidden');
-    expect(allowed.isSuccess).toBe(true);
+    if (!denied.isSuccess) expect(denied.error.code).toBe('Meeting.Recording.NotFound');
+    expect(allowed.isSuccess).toBe(false);
+    if (!allowed.isSuccess) expect(allowed.error.code).toBe('Meeting.Recording.NotFound');
   });
 
   it('hides call recordings from the portal unless the office makes them visible', async () => {

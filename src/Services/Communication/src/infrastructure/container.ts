@@ -130,6 +130,8 @@ import { PrismaConversationContentRepository } from './persistence/prisma-conver
 import { PrismaConversationActivityReader } from './persistence/prisma-conversation-activity-reader.js';
 import type { MemberWorkReader } from '../application/ports/member-work-reader.js';
 import { PrismaMemberWorkReader } from './persistence/prisma-member-work-reader.js';
+import { PrismaFileLibraryReadRepository } from './persistence/prisma-file-library-read-repository.js';
+import type { FileLibraryReadRepository } from '../application/ports/file-library-read-repository.js';
 import type { ConversationAuditRepository } from '../application/ports/conversation-audit-repository.js';
 import { PrismaConversationAuditRepository } from './persistence/prisma-conversation-audit-repository.js';
 import type { SocketSessionTerminator } from '../application/ports/socket-session-terminator.js';
@@ -210,6 +212,8 @@ export interface AppContainer {
   readonly conversationActivity: ConversationActivityReader;
   /** Work Profile: tickets asignados y reuniones próximas por persona. */
   readonly memberWork: MemberWorkReader;
+  /** Biblioteca de archivos: ámbito y visibilidad de los adjuntos de chat, y su backfill. */
+  readonly fileLibrary: FileLibraryReadRepository;
   readonly supportTickets: SupportTicketRepository;
   readonly platform: PlatformTenantProvider;
   readonly tenantSettings: SettingsRepository;
@@ -372,6 +376,7 @@ export function buildContainer(): AppContainer {
     conversationContent: new PrismaConversationContentRepository(prisma),
     conversationActivity: new PrismaConversationActivityReader(prisma),
     memberWork: new PrismaMemberWorkReader(prisma),
+    fileLibrary: new PrismaFileLibraryReadRepository(prisma),
     supportTickets: new PrismaSupportTicketRepository(prisma),
     platform: new ConfigPlatformTenantProvider(),
     tenantSettings: tenantSettingsRepository,

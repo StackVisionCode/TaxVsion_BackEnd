@@ -30,6 +30,7 @@ public static class PermissionCatalog
     public const string InvoicingManage = "invoicing.manage";
     public const string InvoicingIssuerManage = "invoicing.issuer.manage";
     public const string InvoicingStatusOverride = "invoicing.status.override";
+    public const string InvoicingSummaryView = "invoicing.summary.view";
     public const string TenantDomainsManage = "tenant.domains.manage";
     public const string BrandingManage = TenantBrandingPermissions.Manage;
     public const string PlatformBrandingManage = TenantBrandingPermissions.Platform;
@@ -63,6 +64,7 @@ public static class PermissionCatalog
     public const string CloudStorageFileView = CloudStoragePermissions.FileView;
     public const string CloudStorageFileUpload = CloudStoragePermissions.FileUpload;
     public const string CloudStorageFileDownload = CloudStoragePermissions.FileDownload;
+    public const string CloudStorageLibraryView = CloudStoragePermissions.LibraryView;
     public const string CloudStorageFileDelete = CloudStoragePermissions.FileDelete;
     public const string CloudStorageReassignFormParticipant = CloudStoragePermissions.ReassignFormParticipant;
     public const string CloudStorageSettingsManage = CloudStoragePermissions.SettingsManage;
@@ -166,6 +168,7 @@ public static class PermissionCatalog
     // Lectura del historial/opt-outs (endpoints GET del CRM) y gestión manual de bajas.
     public const string SmsRead = SmsPermissions.Read;
     public const string SmsManage = SmsPermissions.Manage;
+    public const string SmsSendAnyNumber = SmsPermissions.SendAnyNumber;
 
     // Catalog — productos/servicios/categorías (microservicio Catalog). Humano-asignables: TenantAdmin
     // los recibe vía SystemRoleDefaults; los callers M2M los llevan como claim "perm" (ServiceAuth:Clients).
@@ -642,6 +645,16 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // Los totales de la oficina (cobrado, por cobrar, tiempo medio de cobro, borradores) son información
+            // financiera del negocio, no trabajo diario del preparador: el owner decide quién los ve. El TenantAdmin lo
+            // recibe por su bundle, queda fuera del bundle del empleado y se delega con un rol.
+            new Guid("a1000000-0000-0000-0000-000000000230"),
+            InvoicingSummaryView,
+            "billing",
+            "See the office's billing totals (collected, outstanding, average time to get paid)",
+            false
+        ),
+        new(
             // El emisor legal (razón social, RNC/EIN, dirección fiscal) sale de invoicing.manage:
             // emitir una factura es trabajo diario del preparador, cambiar con qué identidad fiscal
             // factura la oficina no lo es. Queda administrativo — fuera del bundle del empleado.
@@ -708,6 +721,14 @@ public static class PermissionCatalog
             "portal",
             "The client can see the folders on their profile",
             true
+        ),
+        new(
+            // Solo abre la File Library: lo que se ve lo decide el permiso de cada origen.
+            new Guid("a1000000-0000-0000-0000-000000000232"),
+            CloudStorageLibraryView,
+            "cloudstorage",
+            "Use the file library",
+            false
         ),
         new(
             // Explícito (no inferido): SystemRoleDefaults(SystemCustomerPortal) ya le otorga
@@ -1082,6 +1103,15 @@ public static class PermissionCatalog
             SmsManage,
             "sms",
             "Manually manage SMS opt-outs and opt-ins",
+            false
+        ),
+        // Un número escrito a mano se salta la cartera y la política de contacto. Administrativo: el TenantAdmin
+        // lo recibe por su bundle, queda fuera del bundle del empleado y se puede delegar.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000231"),
+            SmsSendAnyNumber,
+            "sms",
+            "Send SMS to numbers that are not clients",
             false
         ),
         // Catalog — productos/servicios/categorías. Humano-asignables (TenantAdmin vía defaults).
@@ -2376,6 +2406,7 @@ public static class PermissionCatalog
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,
+                CloudStorageLibraryView,
                 // Organizar archivos en carpetas es trabajo operativo diario, no
                 // administrativo — a diferencia de recyclebin.manage/settings/audit.
                 CloudStorageFolderManage,
@@ -2545,11 +2576,9 @@ public static class PermissionCatalog
                 // servicio le quedaba inservible. Fuera queda notes.view_all, que es gobernanza.
                 NotesRead,
                 NotesManage,
-                // Referidos: el empleado ve el código de su oficina y lo copia/comparte (el envío
-                // registra su canal). Generar/regenerar queda para el owner (referrals.code.manage,
-                // solo Tenant Admin por defecto): el empleado no modifica el código.
-                GrowthReferralsOwnRead,
-                GrowthReferralsRewardRead,
+                // Referidos y Wallet NO vienen de fábrica en el empleado: el código de la oficina, sus premios y el
+                // saldo son del negocio. El owner decide quién los ve dándole un rol con referrals.own.read /
+                // referrals.reward.read / wallet.view. Lo mismo los totales de facturación (invoicing.summary.view).
             ],
             Role.SystemCustomerPortal =>
             [

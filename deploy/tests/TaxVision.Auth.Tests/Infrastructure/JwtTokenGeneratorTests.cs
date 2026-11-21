@@ -3,6 +3,7 @@ using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 using TaxVision.Auth.Infrastructure.Security;
@@ -43,6 +44,30 @@ public sealed class JwtTokenGeneratorTests
             claim => claim.Type == ClaimNames.Surface && claim.Value == AccessSurface.Account
         );
         Assert.Contains(token.Claims, claim => claim.Type == "sid" && claim.Value == sessionId.ToString());
+    }
+
+    // Aditivo: misma audiencia y sin "surface", para que ningún servicio rechace el token de la app.
+    [Fact]
+    public void Mobile_tokens_carry_the_channel_and_stay_valid_for_every_service()
+    {
+        var token = Read(Generator().Generate(Admin, "UTC", Guid.NewGuid(), [], ["pwd"], SessionSurface.Mobile).Token);
+
+        Assert.Contains(
+            token.Claims,
+            claim => claim.Type == SessionChannelClaim.Type && claim.Value == SessionChannelClaim.Mobile
+        );
+        Assert.Equal(new[] { "TaxVision.Services" }, token.Audiences);
+        Assert.DoesNotContain(token.Claims, claim => claim.Type == ClaimNames.Surface);
+    }
+
+    [Theory]
+    [InlineData(SessionSurface.Workspace)]
+    [InlineData(SessionSurface.Account)]
+    public void Web_tokens_carry_no_channel(SessionSurface surface)
+    {
+        var token = Read(Generator().Generate(Admin, "UTC", Guid.NewGuid(), [], ["pwd"], surface).Token);
+
+        Assert.DoesNotContain(token.Claims, claim => claim.Type == SessionChannelClaim.Type);
     }
 
     [Fact]

@@ -474,6 +474,41 @@ public sealed class NotesController(
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>
+    /// URL de un adjunto para verlo o bajarlo. Notes aplica la regla de lectura de la nota y pide la URL a
+    /// CloudStorage con su token de servicio: por id directo, CloudStorage ya no la entrega a una persona.
+    /// </summary>
+    [HttpPost("{id:guid}/attachments/{fileId:guid}/download-url")]
+    [HasPermission(NotesPermissions.Read)]
+    [RateLimit("notes.f.get")]
+    [ProducesResponseType<NoteAttachmentDownloadUrlResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> AttachmentDownloadUrl(
+        Guid id,
+        Guid fileId,
+        [FromQuery] string? purpose,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var (hasViewAll, canViewAllCustomers) = await ReadVisibilityAsync(ct);
+        var forPreview = string.Equals(purpose, "preview", StringComparison.OrdinalIgnoreCase);
+        var result = await bus.InvokeAsync<Result<NoteAttachmentDownloadUrlResponse>>(
+            new GetNoteAttachmentDownloadUrlQuery(
+                tenantId,
+                id,
+                fileId,
+                userId,
+                hasViewAll,
+                canViewAllCustomers,
+                forPreview
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     private static int NormalizePage(int page) => page < 1 ? 1 : page;
 
     private static int NormalizeSize(int size) => size is < 1 or > 100 ? DefaultSize : size;

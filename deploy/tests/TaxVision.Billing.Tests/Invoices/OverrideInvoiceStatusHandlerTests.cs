@@ -139,6 +139,88 @@ public sealed class OverrideInvoiceStatusHandlerTests
         Assert.Empty(bus.Published);
     }
 
+    // Anular por corrección es una anulación de verdad: va a la actividad del equipo, igual que el botón "Void".
+    [Fact]
+    public async Task Voiding_carries_the_actor_and_the_customer()
+    {
+        var bus = new FakeMessageBus();
+        var invoice = IssuedInvoice();
+
+        var result = await RunAsync(invoice, "Voided", bus);
+
+        Assert.True(result.IsSuccess);
+        var voided = Assert.Single(bus.Published.OfType<InvoiceVoidedIntegrationEvent>());
+        Assert.Equal(ActorUserId, voided.VoidedByUserId);
+        Assert.Equal(invoice.CustomerId, voided.CustomerId);
+    }
+
+    // Devolver a borrador solo retira el cobro: sin autor, la actividad del equipo no lo cuenta como una anulación.
+    [Fact]
+    public async Task Reopening_as_a_draft_revokes_the_payable_without_naming_who_voided()
+    {
+        var bus = new FakeMessageBus();
+
+        var result = await RunAsync(PaidInvoice(InvoicePaymentSource.Manual), "Draft", bus);
+
+        Assert.True(result.IsSuccess);
+        var revoked = Assert.Single(bus.Published.OfType<InvoiceVoidedIntegrationEvent>());
+        Assert.Null(revoked.VoidedByUserId);
+    }
+
+    [Fact]
+    public async Task A_reason_that_is_too_long_is_rejected_without_saving_or_publishing()
+    {
+        var bus = new FakeMessageBus();
+        var unitOfWork = new CountingUnitOfWork();
+
+        var result = await RunAsync(
+            PaidInvoice(InvoicePaymentSource.Manual),
+            "Draft",
+            bus,
+            unitOfWork,
+            reason: new string('x', 501)
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Billing.Invoice.ReasonTooLong", result.Error.Code);
+        Assert.Empty(bus.Published);
+        Assert.Equal(0, unitOfWork.Saves);
+    }
+
+    // El crédito arrastrado ya se cobró en la factura reemplazada: revertido, la respuesta avisa que quedó sin aplicar.
+    [Fact]
+    public async Task Reversing_a_carried_credit_is_flagged_in_the_result()
+    {
+        var bus = new FakeMessageBus();
+        var original = PaidInvoice(InvoicePaymentSource.Online);
+        var replacement = original.CreateReplacementDraft(ActorUserId, Now).Value;
+        Assert.True(original.ReissueAs(replacement, null, Now, ActorUserId).IsSuccess);
+        Assert.True(
+            replacement.Issue(InvoiceNumber.Create("INV-2026-00002").Value, Now, Now.AddDays(30), ActorUserId).IsSuccess
+        );
+        Assert.True(replacement.ApplyCarriedCredit(Now).IsSuccess);
+
+        var result = await RunAsync(replacement, "Issued", bus);
+
+        Assert.True(result.IsSuccess);
+        var reversed = Assert.Single(result.Value.ReversedPayments);
+        Assert.Equal("CarriedCredit", reversed.Source);
+        Assert.Equal(10_000, reversed.AmountCents);
+        Assert.True(reversed.CreditLeftUnapplied);
+        Assert.False(reversed.NeedsProviderRefund);
+    }
+
+    [Fact]
+    public async Task Reversing_an_ordinary_payment_is_not_flagged_as_credit()
+    {
+        var bus = new FakeMessageBus();
+
+        var result = await RunAsync(PaidInvoice(InvoicePaymentSource.Manual), "Issued", bus);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(Assert.Single(result.Value.ReversedPayments).CreditLeftUnapplied);
+    }
+
     private static Task<BuildingBlocks.Results.Result<OverrideInvoiceStatusResult>> RunAsync(
         Invoice invoice,
         string target,

@@ -39,7 +39,7 @@ public static class InvoiceSentConsumer
         NotificationDispatcher dispatcher,
         IRecipientResolver recipientResolver,
         ICorrelationContext correlation,
-        ILogger<InvoiceSentToCustomerIntegrationEvent> logger,
+        ILogger<InvoiceSentLog> logger,
         CancellationToken ct
     )
     {
@@ -154,3 +154,6 @@ public static class InvoiceSentConsumer
     private static string FormatAmount(long cents, string currency) =>
         $"{cents / 100m:N2} {currency.ToUpperInvariant()}";
 }
+
+/// <summary>Ancla de categoría para el <see cref="ILogger{T}"/> del consumer (es estático: no puede ser el tipo del logger).</summary>
+public sealed class InvoiceSentLog { }

@@ -94,6 +94,7 @@ public sealed class ImportProcessingCommandTests
             h.Entitlements,
             h.Files,
             h.Db,
+            h.Bus,
             CancellationToken.None
         );
 

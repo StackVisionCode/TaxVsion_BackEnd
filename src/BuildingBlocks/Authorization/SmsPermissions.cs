@@ -27,4 +27,10 @@ public static class SmsPermissions
     /// al STOP/START entrante). Operación de administración del tenant → solo TenantAdmin.
     /// </summary>
     public const string Manage = "sms.manage";
+
+    /// <summary>
+    /// Enviarle a un número escrito a mano (que no es cliente): se salta la cartera y la política de
+    /// contacto. Administrativo → TenantAdmin por defecto; delegable. Los servicios (M2M) no lo necesitan.
+    /// </summary>
+    public const string SendAnyNumber = "sms.send_any_number";
 }

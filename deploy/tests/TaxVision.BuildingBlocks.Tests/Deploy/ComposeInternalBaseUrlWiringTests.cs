@@ -48,6 +48,11 @@ public sealed class ComposeInternalBaseUrlWiringTests
             ("subscription-api", "Subscription__CloudStorage__BaseUrl", "http://cloudstorage-api:8080"),
             // Team (Work Profile): Tenant reconcilia las asignaciones cliente/preparador contra Customer.
             ("tenant-api", "CustomerVisibility__Reconciliation__CustomerBaseUrl", "http://customer-api:8080"),
+            // File Library: CloudStorage pregunta a los dueños qué adjuntos ve cada persona.
+            ("cloudstorage-api", "Services__Tasks__BaseUrl", "http://tasks-api:8080/"),
+            ("cloudstorage-api", "Services__Correspondence__BaseUrl", "http://correspondence-api:8080/"),
+            ("cloudstorage-api", "Services__Communication__BaseUrl", "http://communication-api:5350/"),
+            ("cloudstorage-api", "Services__Notes__BaseUrl", "http://notes-api:8080/"),
         };
 
         var missing = new List<string>();

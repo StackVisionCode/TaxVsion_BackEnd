@@ -26,6 +26,19 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 3000
     );
 
+    // POST /tasks/files/visibility — la llama CloudStorage con el token del usuario (biblioteca de archivos). Cuota
+    // propia para no gastar la de task.f.read con la que el usuario trabaja en Tasks.
+    public static readonly RateLimitPolicyDefinition TaskFileVisibility = Define(
+        "task.f.file_visibility",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 600,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 6000
+    );
+
     // GET /tasks/waiting-on-client — pantalla de seguimiento de lo que se le pidió al cliente.
     public static readonly RateLimitPolicyDefinition TaskWaitingOnClient = Define(
         "task.f.waiting_on_client",

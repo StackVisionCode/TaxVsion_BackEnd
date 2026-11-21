@@ -371,6 +371,14 @@ public sealed class Invoice : AggregateRoot
             return Result.Failure(
                 new Error("Billing.Invoice.NotDraft", $"Only a Draft invoice can be deleted (current: {Status}).")
             );
+        // Borrador reabierto: ya tuvo número (y quizá cobros). Se anula para no dejar un hueco en la secuencia.
+        if (InvoiceNumber is not null)
+            return Result.Failure(
+                new Error(
+                    "Billing.Invoice.NumberedDraft",
+                    "This invoice already has a number. Void it instead of deleting it."
+                )
+            );
         DeletedAtUtc = nowUtc;
         UpdatedAtUtc = nowUtc;
         LastModifiedBy = actorUserId;
@@ -385,6 +393,8 @@ public sealed class Invoice : AggregateRoot
             return Result.Success();
         if (DeletedAtUtc is not null)
             return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot be voided."));
+        if (ReasonTooLong(reason) is { } tooLong)
+            return Result.Failure(tooLong);
         if (
             Status
             is not (InvoiceStatus.Issued or InvoiceStatus.Sent or InvoiceStatus.PartiallyPaid or InvoiceStatus.Paid)
@@ -533,6 +543,8 @@ public sealed class Invoice : AggregateRoot
         if (existing is not null)
         {
             existing.RefreshCheckoutUrl(checkoutUrl);
+            // Retirado al volver a borrador: la reemisión asegura el mismo payable y lo deja activo otra vez.
+            existing.Reactivate();
             return existing;
         }
 
@@ -650,6 +662,8 @@ public sealed class Invoice : AggregateRoot
             return Result.Failure(new Error("Billing.Invoice.Deleted", "A deleted invoice cannot change status."));
         if (Status == target)
             return Result.Success();
+        if (ReasonTooLong(reason) is { } tooLong)
+            return Result.Failure(tooLong);
         if (!InvoiceStatusTransitions.IsLegal(Status, target))
             return Result.Failure(
                 new Error(
@@ -668,6 +682,15 @@ public sealed class Invoice : AggregateRoot
         RecordStatusChange(from, target, StatusChangeTrigger.ManualChange, reason, actorUserId, nowUtc);
         return Result.Success();
     }
+
+    /// <summary>Tope del motivo que escribe la oficina (anular, reemitir, cambiar o corregir estado). Es el de la columna
+    /// más corta que lo guarda (<c>InvoicePayments.ReversalReason</c>).</summary>
+    public const int ReasonMaxLength = 500;
+
+    private static Error? ReasonTooLong(string? reason) =>
+        reason is not null && reason.Trim().Length > ReasonMaxLength
+            ? new Error("Billing.Invoice.ReasonTooLong", $"The reason cannot exceed {ReasonMaxLength} characters.")
+            : null;
 
     /// <summary>Estados a los que la oficina puede llevar una factura a mano. <c>PartiallyPaid</c> no: es consecuencia de
     /// los pagos, no una etiqueta que se elija.</summary>
@@ -712,6 +735,8 @@ public sealed class Invoice : AggregateRoot
             return Result.Failure<StatusOverrideOutcome>(
                 new Error("Billing.Invoice.ReasonRequired", "A reason of at least 3 characters is required.")
             );
+        if (ReasonTooLong(why) is { } tooLong)
+            return Result.Failure<StatusOverrideOutcome>(tooLong);
 
         if (!IsOverridableTarget(target))
             return Result.Failure<StatusOverrideOutcome>(
@@ -723,6 +748,15 @@ public sealed class Invoice : AggregateRoot
 
         if (Status == target)
             return Result.Success(StatusOverrideOutcome.NoChange);
+
+        // Su crédito ya pasó al reemplazo: revivirla dejaría dos facturas cobradas con el mismo dinero.
+        if (ReplacedByInvoiceId is not null)
+            return Result.Failure<StatusOverrideOutcome>(
+                new Error(
+                    "Billing.Invoice.Replaced",
+                    "This invoice was replaced by another one. Correct the replacement instead."
+                )
+            );
 
         if (InvoiceNumber is null)
             return Result.Failure<StatusOverrideOutcome>(
@@ -745,6 +779,23 @@ public sealed class Invoice : AggregateRoot
         // Volver a "sin cobrar": los pagos vigentes se revierten y lo pagado vuelve a cero.
         if (target is InvoiceStatus.Draft or InvoiceStatus.Issued or InvoiceStatus.Sent)
         {
+            // Factura anterior a la tabla de pagos: lo pagado sin fila entra como pago Legacy para que quede en el historial.
+            var untrackedCents =
+                AmountPaid.AmountCents - _payments.Where(p => p.IsActive).Sum(p => p.Amount.AmountCents);
+            if (untrackedCents > 0)
+                _payments.Add(
+                    new InvoicePayment(
+                        Id,
+                        InvoicePaymentSource.Legacy,
+                        $"legacy:{Guid.NewGuid():N}",
+                        Money.Create(untrackedCents, Currency).Value,
+                        PaymentMethod ?? ValueObjects.PaymentMethod.Other,
+                        PaidAtUtc ?? UpdatedAtUtc,
+                        Guid.Empty,
+                        0
+                    )
+                );
+
             foreach (var payment in _payments.Where(p => p.IsActive))
             {
                 payment.Reverse(why, nowUtc, actorUserId);
@@ -884,6 +935,10 @@ public sealed class Invoice : AggregateRoot
     /// suma de <see cref="Payments"/>, y también cubre las facturas previas a esa tabla.</summary>
     public Result<string> ReissueAs(Invoice replacement, string? reason, DateTime nowUtc, Guid actorUserId)
     {
+        // Antes de enlazar: un motivo inválido no debe dejar el reemplazo a medio marcar.
+        if (ReasonTooLong(reason) is { } tooLong)
+            return Result.Failure<string>(tooLong);
+
         var linked = replacement.LinkAsReplacementFor(Id, AmountPaid.AmountCents, nowUtc);
         if (linked.IsFailure)
             return Result.Failure<string>(linked.Error);

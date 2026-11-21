@@ -75,6 +75,9 @@ public static class AuthAuditAction
     public const string TokenRefreshed = "auth.token.refreshed";
     public const string TokenReuseDetected = "auth.token.reuse_detected";
     public const string RefreshTokenHostMismatch = "auth.token.host_mismatch";
+
+    // Refresh token presentado en la ruta de otra superficie (web en la móvil o al revés). Solo deja rastro.
+    public const string RefreshTokenSurfaceMismatch = "auth.token.surface_mismatch";
     public const string SessionRevoked = "auth.session.revoked";
     public const string AllSessionsRevoked = "auth.session.all_revoked";
     public const string PasswordChanged = "auth.password.changed";

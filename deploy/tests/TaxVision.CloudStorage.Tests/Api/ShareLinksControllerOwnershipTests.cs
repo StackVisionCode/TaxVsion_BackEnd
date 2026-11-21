@@ -196,7 +196,8 @@ public sealed class ShareLinksControllerOwnershipTests
             repo,
             authorizationService,
             new FakeOwnershipOptionsMonitor(flagEnabled),
-            new JwtEmbeddedPermissionsSource()
+            new JwtEmbeddedPermissionsSource(),
+            null!
         )
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } },

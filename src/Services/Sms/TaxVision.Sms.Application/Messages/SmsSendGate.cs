@@ -51,9 +51,12 @@ public sealed class SmsSendGate
 
     public bool IsAssigned(Guid customerId) => _allowedCustomers is null || _allowedCustomers.Contains(customerId);
 
-    /// <summary>Unidades a reservar: todo lo que la política deja pasar. El resto se libera al liquidar.</summary>
-    public int ChargeableCount(IReadOnlyList<SmsSendItemDto> items) =>
-        items.Count(item => !BlockedByContactPolicy(item.CustomerId));
+    /// <summary>Unidades a reservar: todo lo que la política deja pasar, menos los ítems ya rechazados
+    /// (<paramref name="rejectedIndexes"/>). El resto se libera al liquidar.</summary>
+    public int ChargeableCount(IReadOnlyList<SmsSendItemDto> items, IReadOnlySet<int> rejectedIndexes) =>
+        items
+            .Where((item, index) => !rejectedIndexes.Contains(index) && !BlockedByContactPolicy(item.CustomerId))
+            .Count();
 
     /// <summary>Política de contacto del cliente, o STOP por (tenant, número): la fila queda Suppressed.</summary>
     public static async Task ApplySuppressionAsync(

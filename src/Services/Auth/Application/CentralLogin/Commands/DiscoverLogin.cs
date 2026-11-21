@@ -89,16 +89,20 @@ public static class DiscoverLoginHandler
         var email = command.Email.Trim().ToLowerInvariant();
 
         // 1. Frenos por IP y por email: una vez por intento, NO por oficina candidata.
-        if (
-            await CentralLoginAuthentication.CheckThrottleAsync(throttler, request, email, command.AccountKind, ct) is
-            { } throttled
-        )
+        var gate = await CentralLoginAuthentication.CheckThrottleAsync(
+            throttler,
+            request,
+            email,
+            command.AccountKind,
+            ct
+        );
+        if (gate.Throttled is { } throttled)
             return Result.Failure<DiscoverLoginResponse>(throttled);
 
         var (matches, platformAdminMatched) = await CentralLoginAuthentication.AuthenticateAsync(
             email,
             command.Password,
-            command.AccountKind,
+            gate.Kinds,
             command.DeviceToken,
             command.Surface,
             users,
@@ -115,7 +119,7 @@ public static class DiscoverLoginHandler
             return Result.Failure<DiscoverLoginResponse>(
                 await CentralLoginAuthentication.FailAsync(
                     email,
-                    command.AccountKind,
+                    gate.Kinds,
                     platformAdminMatched ? "central_platform_admin" : "central_no_match",
                     throttler,
                     audit,
@@ -126,7 +130,9 @@ public static class DiscoverLoginHandler
                 )
             );
 
-        await throttler.ResetEmailFailuresAsync(email, command.AccountKind, ct);
+        // Solo los tipos que se probaron: entrar como empleado no limpia el freno de la puerta del cliente.
+        foreach (var kind in gate.Kinds)
+            await throttler.ResetEmailFailuresAsync(email, kind, ct);
 
         // 3. Optimización: una sola oficina que no pide código (sin MFA, o MFA sin método enrolado)
         //    → el vale viaja directo, arrastrando el flag de "debe enrolar" si aplica.

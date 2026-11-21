@@ -58,6 +58,10 @@ public static class FileErrors
         "File.InvalidReassignmentRequest",
         "The reassignment request is invalid."
     );
+    public static readonly Error InvalidSourceDeclaration = new(
+        "File.InvalidSourceDeclaration",
+        "The file source declaration is invalid."
+    );
 
     /// <summary>
     /// Antes esto caia en UnsupportedType junto con extension/content-type invalidos —

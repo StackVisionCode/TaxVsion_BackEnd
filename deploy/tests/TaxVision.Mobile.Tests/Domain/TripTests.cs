@@ -104,6 +104,25 @@ public sealed class TripTests
         );
     }
 
+    // Un viaje sin terminar que fue purgado y vuelve a reportar tiene recorrido otra vez: deja de estar purgado.
+    [Fact]
+    public void New_points_after_a_purge_clear_the_purged_mark()
+    {
+        var trip = New();
+        Assert.True(trip.PurgeCoordinates(Now));
+        Assert.True(trip.Synchronize(2, Start.AddMinutes(5), [], Now).IsSuccess);
+        Assert.NotNull(trip.CoordinatesPurgedAtUtc);
+
+        Assert.True(
+            trip.Synchronize(3, Start.AddMinutes(10), [new(1, Start.AddMinutes(10), 40.01, -74, 5)], Now).IsSuccess
+        );
+
+        Assert.Null(trip.CoordinatesPurgedAtUtc);
+        Assert.Equal(40.01, trip.LastLatitude);
+        // El tramo desde la posición borrada no suma distancia.
+        Assert.Equal(0, trip.DistanceMeters);
+    }
+
     [Theory]
     [InlineData("unknown", 1, "USD")]
     [InlineData("business", -1, "USD")]

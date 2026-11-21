@@ -286,7 +286,7 @@ public sealed class CloudStorageSaveBeforePublishTests
 
         return AssertNothingLeavesWhenTheSaveFailsAsync(
             typeof(RestoreFileHandler),
-            new RestoreFileCommand(_tenant, _actor, file.Id, Audit)
+            new RestoreFileCommand(_tenant, _actor, new StorageActorScope(false, null), file.Id, Audit)
         );
     }
 

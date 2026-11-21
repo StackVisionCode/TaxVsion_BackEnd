@@ -66,6 +66,12 @@ builder.Services.AddScoped<
     TaxVision.CloudStorage.Api.Common.IStorageActorScopeResolver,
     TaxVision.CloudStorage.Api.Common.StorageActorScopeResolver
 >();
+
+// Biblioteca de archivos: permisos, módulos y clientes asignados de quien llama, resueltos antes del bus.
+builder.Services.AddScoped<
+    TaxVision.CloudStorage.Api.Common.ILibraryAccessResolver,
+    TaxVision.CloudStorage.Api.Common.LibraryAccessResolver
+>();
 builder.Services.AddRedisCache(builder.Configuration);
 builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
@@ -292,6 +298,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<FileDeletionSkippedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<FileSaveRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CloudConnectionReviewRequiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Reclamo de orígenes de archivos sin declarar (FileSourceClaimReconciliationJob).
+    options.PublishMessage<FileSourcesClaimRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // X-5 — cola de comandos punto a punto: el job de retención de Tasks pide borrar archivos de Client Forms.
     options.ListenToRabbitQueue("cloudstorage-file-deletions").UseDurableInbox();

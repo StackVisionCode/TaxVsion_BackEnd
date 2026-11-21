@@ -6,6 +6,9 @@ public static class CloudStoragePermissions
     public const string FileUpload = "cloudstorage.file.upload";
     public const string FileDownload = "cloudstorage.file.download";
     public const string FileDelete = "cloudstorage.file.delete";
+
+    /// <summary>Entrar a la biblioteca de archivos. Por sí solo no da acceso a ningún archivo: cada origen pide el suyo.</summary>
+    public const string LibraryView = "cloudstorage.library.view";
     public const string ReassignFormParticipant = "cloudstorage.file.reassign_form_participant";
     public const string SettingsManage = "cloudstorage.settings.manage";
     public const string AuditView = "cloudstorage.audit.view";

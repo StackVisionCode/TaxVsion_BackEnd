@@ -36,6 +36,7 @@ public static class CreateSignatureRequestHandler
         ISignatureCloudStorageClient storage,
         IRequestDocumentVerifier verifier,
         ILogger<CreateSignatureRequestCommand> logger,
+        ISignatureTemplateFileQuery templates,
         CancellationToken ct
     )
     {
@@ -113,6 +114,15 @@ public static class CreateSignatureRequestHandler
         await PersistRequestAsync(request, repository, unitOfWork, ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
         await PublishCreatedEventAsync(request, cmd, correlation, bus);
+        await OriginalFileSources.DeclareAsync(
+            bus,
+            templates,
+            request,
+            [.. request.Documents.Select(document => document.OriginalFileId)],
+            [],
+            correlation.CorrelationId,
+            ct
+        );
 
         return Result.Success(SignatureRequestResponse.From(request));
     }

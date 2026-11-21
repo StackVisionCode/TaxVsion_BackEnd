@@ -55,6 +55,8 @@ public static class UploadTaskAttachmentHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(AttachmentEvents.Added(found.Value, attached.Value, correlation.CorrelationId));
+        if (AttachmentFileSources.ForUploaded(found.Value, attached.Value, correlation.CorrelationId) is { } declared)
+            await bus.PublishAsync(declared);
 
         return Result.Success(TaskAttachmentResponse.From(attached.Value));
     }

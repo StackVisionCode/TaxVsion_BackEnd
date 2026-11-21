@@ -774,7 +774,17 @@ public sealed class PerItemAccessEnforcementTests
         var permissions = new NeverHasPermissionSource();
         var visibility = Options.Create(new CloudStorageVisibilityOptions { Enabled = false });
         var perItem = Options.Create(new CloudStoragePerItemAccessOptions { Enabled = perItemEnabled });
-        return new StorageActorScopeResolver(assignments, permissions, visibility, perItem, rules);
+        var sourceGate = Options.Create(new CloudStorageSourceReadGateOptions());
+        var ownerGate = Options.Create(new CloudStorageOwnerMediatedGateOptions());
+        return new StorageActorScopeResolver(
+            assignments,
+            permissions,
+            visibility,
+            perItem,
+            rules,
+            sourceGate,
+            ownerGate
+        );
     }
 
     private static ClaimsPrincipal NewPortalPrincipal() =>

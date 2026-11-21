@@ -40,6 +40,8 @@ public sealed class RecycleBinHandlerTests
 
     private static RequestAuditContext Audit() => new(null, null, "corr-1");
 
+    private static readonly StorageActorScope Staff = new(false, null);
+
     [Fact]
     public async Task Restore_of_a_soft_deleted_file_succeeds_and_publishes_the_integration_event()
     {
@@ -53,7 +55,7 @@ public sealed class RecycleBinHandlerTests
         var unitOfWork = new FakeUnitOfWork();
 
         var result = await RestoreFileHandler.Handle(
-            new RestoreFileCommand(tenantId, Guid.NewGuid(), file.Id, Audit()),
+            new RestoreFileCommand(tenantId, Guid.NewGuid(), Staff, file.Id, Audit()),
             files,
             audit,
             new FakeSystemClock(now),
@@ -79,7 +81,7 @@ public sealed class RecycleBinHandlerTests
         files.Seed(file);
 
         var result = await RestoreFileHandler.Handle(
-            new RestoreFileCommand(Guid.NewGuid(), Guid.NewGuid(), file.Id, Audit()),
+            new RestoreFileCommand(Guid.NewGuid(), Guid.NewGuid(), Staff, file.Id, Audit()),
             files,
             new FakeStorageAuditRepository(),
             new FakeSystemClock(DateTime.UtcNow),
@@ -103,7 +105,7 @@ public sealed class RecycleBinHandlerTests
         var bus = new FakeMessageBus();
 
         var result = await RestoreFileHandler.Handle(
-            new RestoreFileCommand(tenantId, Guid.NewGuid(), file.Id, Audit()),
+            new RestoreFileCommand(tenantId, Guid.NewGuid(), Staff, file.Id, Audit()),
             files,
             new FakeStorageAuditRepository(),
             new FakeSystemClock(DateTime.UtcNow),
@@ -264,7 +266,7 @@ public sealed class RecycleBinHandlerTests
         files.Seed(avatar);
 
         var result = await GetRecycleBinHandler.Handle(
-            new GetRecycleBinQuery(tenantId, 0, 50),
+            new GetRecycleBinQuery(tenantId, Staff, 0, 50),
             files,
             new FakeFolderRepository(),
             CancellationToken.None
@@ -287,7 +289,7 @@ public sealed class RecycleBinHandlerTests
 
         // La foto se reemplaza subiendo otra; restaurar la vieja la volvería a servir sin que Auth/Customer apunten a ella.
         var result = await RestoreFileHandler.Handle(
-            new RestoreFileCommand(tenantId, Guid.NewGuid(), avatar.Id, Audit()),
+            new RestoreFileCommand(tenantId, Guid.NewGuid(), Staff, avatar.Id, Audit()),
             files,
             new FakeStorageAuditRepository(),
             new FakeSystemClock(now),
@@ -348,7 +350,7 @@ public sealed class RecycleBinHandlerTests
         files.Seed(otherTenantFile);
 
         var result = await GetRecycleBinHandler.Handle(
-            new GetRecycleBinQuery(tenantId, 0, 50),
+            new GetRecycleBinQuery(tenantId, Staff, 0, 50),
             files,
             new FakeFolderRepository(),
             CancellationToken.None

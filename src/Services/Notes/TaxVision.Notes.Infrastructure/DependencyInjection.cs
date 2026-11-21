@@ -50,6 +50,7 @@ public static class DependencyInjection
         services.AddScoped<INoteRepository, NoteRepository>();
         // N3: lectura con el gate de visibilidad, compartida por lecturas y escrituras de una nota.
         services.AddScoped<Application.Notes.VisibleNoteReader>();
+        services.AddScoped<Application.Notes.Abstractions.INoteFileSourceRedeclarer, Notes.NoteFileSourceRedeclarer>();
         // N2: rellena una sola vez el texto plano de las notas viejas.
         services.AddHostedService<NotePlainTextBackfillJob>();
         // Fase 5 — un solo HtmlSanitizer reusado (thread-safe, caro de reconstruir), ver comentario de la clase.
@@ -100,6 +101,15 @@ public static class DependencyInjection
                 var opt = sp.GetRequiredService<IOptions<NotesCloudStorageClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
                 http.Timeout = TimeSpan.FromSeconds(15);
+            }
+        );
+        // Descarga mediada de adjuntos: mismo CloudStorage y mismo token de servicio que el escaneo.
+        services.AddHttpClient<INoteFileDownloadClient, NotesFileDownloadClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<NotesCloudStorageClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(10);
             }
         );
 

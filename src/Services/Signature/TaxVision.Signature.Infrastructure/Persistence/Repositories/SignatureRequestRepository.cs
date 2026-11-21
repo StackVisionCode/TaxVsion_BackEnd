@@ -236,6 +236,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .AsNoTracking()
             .Include(request => request.Signers)
             .Include(request => request.Documents)
+            .Include(request => request.CustomerCopies)
             .Where(request =>
                 request.TenantId == tenantId
                 && request.Status == SignatureRequestStatus.Completed

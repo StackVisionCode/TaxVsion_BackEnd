@@ -160,6 +160,66 @@ public sealed class InvoiceStatusOverrideTests
         Assert.Null(invoice.PaymentLinkSyncedDue);
     }
 
+    // La reemisión vuelve a asegurar el MISMO payable: el enlace retirado tiene que quedar activo otra vez.
+    [Fact]
+    public void Reissuing_a_reopened_draft_brings_its_payment_link_back()
+    {
+        var invoice = IssuedInvoice(10_000);
+        var payableId = Guid.NewGuid();
+        invoice.AttachPaymentLink(payableId, "https://pay.example.com/x", Now);
+        Assert.True(invoice.OverrideStatus(InvoiceStatus.Draft, Why, Now, ActorUserId).IsSuccess);
+        var number = InvoiceNumber.Create(invoice.InvoiceNumber!).Value;
+        Assert.True(invoice.Issue(number, Now.AddHours(1), Now.AddDays(30), ActorUserId).IsSuccess);
+
+        var link = invoice.AttachPaymentLink(payableId, "https://pay.example.com/x", Now.AddHours(1));
+
+        Assert.Same(link, invoice.ActivePaymentLink);
+        Assert.Single(invoice.PaymentLinks);
+    }
+
+    // La original ya entregó su crédito al reemplazo: revivirla dejaría dos facturas cobradas con el mismo dinero.
+    [Theory]
+    [InlineData(InvoiceStatus.Paid)]
+    [InlineData(InvoiceStatus.Issued)]
+    [InlineData(InvoiceStatus.Sent)]
+    [InlineData(InvoiceStatus.Draft)]
+    public void A_replaced_invoice_cannot_be_brought_back(InvoiceStatus target)
+    {
+        var original = PaidInvoice(10_000, InvoicePaymentSource.Manual);
+        var replacement = original.CreateReplacementDraft(ActorUserId, Now).Value;
+        Assert.True(original.ReissueAs(replacement, Why, Now, ActorUserId).IsSuccess);
+
+        var result = original.OverrideStatus(target, Why, Now.AddHours(1), ActorUserId);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Billing.Invoice.Replaced", result.Error.Code);
+        Assert.Equal(InvoiceStatus.Voided, original.Status);
+        Assert.Single(original.Payments, p => p.IsActive);
+    }
+
+    // Tuvo número y cobros: se anula, no se borra (dejaría un hueco en la secuencia y perdería el historial).
+    [Fact]
+    public void A_reopened_draft_that_keeps_its_number_cannot_be_deleted()
+    {
+        var invoice = PaidInvoice(10_000, InvoicePaymentSource.Manual);
+        Assert.True(invoice.OverrideStatus(InvoiceStatus.Draft, Why, Now, ActorUserId).IsSuccess);
+
+        var result = invoice.SoftDeleteDraft(Now.AddHours(1), ActorUserId);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Billing.Invoice.NumberedDraft", result.Error.Code);
+        Assert.Null(invoice.DeletedAtUtc);
+    }
+
+    [Fact]
+    public void A_draft_that_was_never_issued_can_still_be_deleted()
+    {
+        var draft = DraftInvoice(10_000);
+
+        Assert.True(draft.SoftDeleteDraft(Now, ActorUserId).IsSuccess);
+        Assert.NotNull(draft.DeletedAtUtc);
+    }
+
     [Fact]
     public void Every_override_is_audited_and_announced()
     {
@@ -231,6 +291,168 @@ public sealed class InvoiceStatusOverrideTests
         Assert.Equal("Billing.Invoice.NeverIssued", result.Error.Code);
         Assert.Equal(InvoiceStatus.Draft, invoice.Status);
     }
+
+    // Las columnas del motivo son de 500/512: uno más largo terminaba en un error 500 al guardar.
+    [Fact]
+    public void A_reason_longer_than_500_characters_is_rejected()
+    {
+        var invoice = PaidInvoice(10_000, InvoicePaymentSource.Manual);
+
+        var result = invoice.OverrideStatus(InvoiceStatus.Issued, new string('x', 501), Now, ActorUserId);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Billing.Invoice.ReasonTooLong", result.Error.Code);
+        Assert.Equal(InvoiceStatus.Paid, invoice.Status);
+        Assert.True(invoice.Payments.Single().IsActive);
+    }
+
+    [Fact]
+    public void A_reason_of_exactly_500_characters_is_accepted_ignoring_outer_spaces()
+    {
+        var invoice = PaidInvoice(10_000, InvoicePaymentSource.Manual);
+        var reason = new string('x', 500);
+
+        var result = invoice.OverrideStatus(InvoiceStatus.Issued, $"  {reason}  ", Now, ActorUserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(reason, invoice.Payments.Single().ReversalReason);
+    }
+
+    // El crédito arrastrado ya se cobró en la factura reemplazada, que quedó anulada y no se puede revivir: si se
+    // revierte, la oficina tiene que enterarse de que ese dinero quedó sin aplicar.
+    [Theory]
+    [InlineData(InvoiceStatus.Draft)]
+    [InlineData(InvoiceStatus.Issued)]
+    [InlineData(InvoiceStatus.Sent)]
+    public void Reversing_a_carried_credit_reports_it_as_money_left_unapplied(InvoiceStatus target)
+    {
+        var replacement = ReplacementPaidWithCarriedCredit(10_000);
+
+        var result = replacement.OverrideStatus(target, Why, Now.AddHours(2), ActorUserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, replacement.AmountPaid.AmountCents);
+        var credit = Assert.Single(result.Value.CreditsLeftUnapplied);
+        Assert.Equal(InvoicePaymentSource.CarriedCredit, credit.Source);
+        Assert.Equal(10_000, credit.Amount.AmountCents);
+        Assert.False(credit.IsActive);
+        // No es un cobro del proveedor de esta factura: el aviso es otro.
+        Assert.Empty(result.Value.RefundsDueAtProvider);
+    }
+
+    [Fact]
+    public void Reversing_ordinary_payments_leaves_no_credit_unapplied()
+    {
+        var invoice = PaidInvoice(10_000, InvoicePaymentSource.Online);
+
+        var result = invoice.OverrideStatus(InvoiceStatus.Issued, Why, Now.AddHours(1), ActorUserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(result.Value.CreditsLeftUnapplied);
+    }
+
+    // Factura anterior a la tabla de pagos: lo pagado no tiene fila. Al revertir tiene que quedar constancia del importe.
+    [Fact]
+    public void A_paid_invoice_without_payment_rows_leaves_a_reversed_payment_in_the_history()
+    {
+        var invoice = LegacyPaidInvoice(10_000, 10_000, PaymentMethod.Cash);
+
+        var result = invoice.OverrideStatus(InvoiceStatus.Issued, Why, Now.AddHours(1), ActorUserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, invoice.AmountPaid.AmountCents);
+        Assert.Equal(10_000, invoice.AmountDue.AmountCents);
+        var payment = Assert.Single(invoice.Payments);
+        Assert.Equal(InvoicePaymentSource.Legacy, payment.Source);
+        Assert.Equal(10_000, payment.Amount.AmountCents);
+        Assert.Equal(PaymentMethod.Cash, payment.Method);
+        Assert.Equal(Now, payment.PaidAtUtc);
+        Assert.False(payment.IsActive);
+        Assert.Equal(ActorUserId, payment.ReversedByUserId);
+        Assert.Equal(Why, payment.ReversalReason);
+        Assert.Same(payment, Assert.Single(result.Value.ReversedPayments));
+        Assert.Empty(result.Value.RefundsDueAtProvider);
+    }
+
+    [Fact]
+    public void A_legacy_invoice_paid_online_says_it_must_be_refunded_at_the_provider()
+    {
+        var invoice = LegacyPaidInvoice(10_000, 10_000, PaymentMethod.Online);
+
+        var result = invoice.OverrideStatus(InvoiceStatus.Draft, Why, Now.AddHours(1), ActorUserId);
+
+        Assert.True(result.IsSuccess);
+        var refund = Assert.Single(result.Value.RefundsDueAtProvider);
+        Assert.Equal(InvoicePaymentSource.Legacy, refund.Source);
+        Assert.Equal(10_000, refund.Amount.AmountCents);
+    }
+
+    [Fact]
+    public void Only_the_part_without_payment_rows_gets_a_legacy_row()
+    {
+        var invoice = LegacyPaidInvoice(10_000, 4_000, PaymentMethod.Cash);
+        Assert.True(Apply(invoice, InvoicePaymentSource.Manual, "rest", 6_000).IsSuccess);
+        Assert.Equal(InvoiceStatus.Paid, invoice.Status);
+
+        var result = invoice.OverrideStatus(InvoiceStatus.Sent, Why, Now.AddHours(1), ActorUserId);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(0, invoice.AmountPaid.AmountCents);
+        Assert.Equal(2, result.Value.ReversedPayments.Count);
+        Assert.Equal(6_000, invoice.Payments.Single(p => p.Source == InvoicePaymentSource.Manual).Amount.AmountCents);
+        Assert.Equal(4_000, invoice.Payments.Single(p => p.Source == InvoicePaymentSource.Legacy).Amount.AmountCents);
+        Assert.DoesNotContain(invoice.Payments, p => p.IsActive);
+    }
+
+    [Fact]
+    public void Marking_a_legacy_paid_invoice_as_voided_adds_no_payment_row()
+    {
+        var invoice = LegacyPaidInvoice(10_000, 10_000, PaymentMethod.Cash);
+
+        Assert.True(invoice.OverrideStatus(InvoiceStatus.Voided, Why, Now.AddHours(1), ActorUserId).IsSuccess);
+
+        Assert.Empty(invoice.Payments);
+        Assert.Equal(10_000, invoice.AmountPaid.AmountCents);
+    }
+
+    /// <summary>Reemplazo emitido y saldado con el crédito que arrastró de la original (pagada en línea).</summary>
+    private static Invoice ReplacementPaidWithCarriedCredit(long totalCents)
+    {
+        var original = PaidInvoice(totalCents, InvoicePaymentSource.Online);
+        var replacement = original.CreateReplacementDraft(ActorUserId, Now).Value;
+        Assert.True(original.ReissueAs(replacement, Why, Now, ActorUserId).IsSuccess);
+        Assert.True(
+            replacement
+                .Issue(InvoiceNumber.Create("INV-2026-00002").Value, Now.AddHours(1), Now.AddDays(30), ActorUserId)
+                .IsSuccess
+        );
+        Assert.True(replacement.ApplyCarriedCredit(Now.AddHours(1)).IsSuccess);
+        Assert.Equal(InvoiceStatus.Paid, replacement.Status);
+        return replacement;
+    }
+
+    /// <summary>Factura cobrada antes de que existiera la tabla de pagos: tiene lo pagado pero ninguna fila.</summary>
+    private static Invoice LegacyPaidInvoice(long totalCents, long paidCents, PaymentMethod method)
+    {
+        var invoice = IssuedInvoice(totalCents);
+        Seed(invoice, nameof(Invoice.AmountPaid), Money.Create(paidCents, "USD").Value);
+        Seed(invoice, nameof(Invoice.AmountDue), Money.Create(totalCents - paidCents, "USD").Value);
+        Seed(invoice, nameof(Invoice.PaymentMethod), method);
+        if (paidCents >= totalCents)
+        {
+            Seed(invoice, nameof(Invoice.Status), InvoiceStatus.Paid);
+            Seed(invoice, nameof(Invoice.PaidAtUtc), Now);
+        }
+        else
+        {
+            Seed(invoice, nameof(Invoice.Status), InvoiceStatus.PartiallyPaid);
+        }
+        Assert.Empty(invoice.Payments);
+        return invoice;
+    }
+
+    private static void Seed(Invoice invoice, string property, object? value) =>
+        typeof(Invoice).GetProperty(property)!.SetValue(invoice, value);
 
     private static BuildingBlocks.Results.Result Apply(
         Invoice invoice,

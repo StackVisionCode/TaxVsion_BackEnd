@@ -548,6 +548,7 @@ public sealed class SealingMultiDocumentTests
             Guid sourceFileId,
             Guid customerId,
             int taxYear,
+            SignatureFileSource source,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 

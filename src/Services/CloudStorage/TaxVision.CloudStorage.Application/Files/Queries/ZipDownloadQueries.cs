@@ -144,6 +144,7 @@ public static class PrepareZipDownloadHandler
             .Where(file =>
                 file.Status == FileStatus.Available
                 && !explicitFileIds.Contains(file.Id)
+                && !query.Scope.HidesOwnerMediatedFile(file)
                 && !query.Scope.IsHiddenForPortal(AccessResourceType.File, file.Id)
                 && !query.Scope.IsDeniedForPortal(AccessResourceType.File, file.Id, AccessCapability.Download)
             )

@@ -99,6 +99,7 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkRevokedIntegrationEvent',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.StorageLimitExceededIntegrationEvent',
   'cloudstorage.customer_document_uploaded.v1',
+  'cloudstorage.file_source_declared.v1',
   'BuildingBlocks.Messaging.CloudStorageIntegrationEvents.DmcaCounterNoticeSubmittedIntegrationEvent',
   'cloudstorage.file.restored.v1',
   'cloudstorage.sharelink.accessed.v1',

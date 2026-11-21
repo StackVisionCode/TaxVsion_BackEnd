@@ -3,6 +3,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.TimeZones;
 using TaxVision.Correspondence.Application.Abstractions;
+using TaxVision.Correspondence.Application.Files;
 using TaxVision.Correspondence.Domain.Inbox;
 using Wolverine;
 
@@ -75,6 +76,11 @@ public static class CompleteAttachmentDownloadHandler
                 ContentType = attachment.ContentType,
                 SizeBytes = command.SizeBytes,
                 CorrelationId = command.CorrelationId,
+                // File Library: origen mail; la fila la confirma Correspondence con la regla del buzón.
+                SourceResourceType = IncomingFileSource.ResourceType,
+                SourceResourceId = email.Id,
+                SourceRole = IncomingFileSource.Role,
+                RelatedCustomerId = email.CustomerId,
             }
         );
 

@@ -9,13 +9,13 @@
 
 | Pieza | Cantidad | Evidencia |
 |---|---|---|
-| Servicios .NET de negocio con 4 capas y base propia | 26 (Auth, Billing, Calendar, Campaigns, Catalog, CloudStorage, Connectors, Correspondence, Customer, Documents, FinancialInsights, Growth, Inventory, Notes, Notification, PaymentApp, PaymentClient, Postmaster, Reminder, Scribe, Signature, Sms, Subscription, Tasks, Tenant, Wallet) | 26 `*DbContext` en `src/Services/*/…/Persistence/`; 26 `*DbContextFactory.cs`; 26 `*ModelSnapshot.cs` |
+| Servicios .NET de negocio con 4 capas y base propia | 27 (Auth, Billing, Calendar, Campaigns, Catalog, CloudStorage, Connectors, Correspondence, Customer, Documents, FinancialInsights, Growth, Inventory, Mobile, Notes, Notification, PaymentApp, PaymentClient, Postmaster, Reminder, Scribe, Signature, Sms, Subscription, Tasks, Tenant, Wallet) | 27 `*DbContext` en `src/Services/*/…/Persistence/`; 27 `*DbContextFactory.cs`; 27 `*ModelSnapshot.cs` |
 | Workers .NET sin API pública | 2 (`TaxVision.Connectors.MailboxListener`, `TaxVision.ContentScanner`) | `TaxVision.slnx`; `deploy/docker/docker-compose.yml` (`connectors-mailbox-listener`, `content-scanner`) |
 | Servicios Node/TypeScript | 3 (Communication, CommunicationRecorder, CommunicationTranscriptWorker) | `src/Services/*/package.json` |
 | Gateway | 1 (YARP) | `src/Gateway/TaxVision.Gateway/TaxVision.Gateway.csproj` |
 | Proyectos de BuildingBlocks (csproj) | 10 (núcleo `BuildingBlocks.csproj` + Authorization, Infrastructure, Web, CustomerVisibility, EfCore, Imaging, Jobs, Messaging, TenantTimeZones) | `find src/BuildingBlocks -name *.csproj` |
-| Proyectos de pruebas .NET en la solución | 31 (uno por servicio .NET + BuildingBlocks.Tests, BuildingBlocks.Testing, DataCollection.Engine.Tests, Gateway.Tests, ContentScanner.Tests) | `TaxVision.slnx:218-250` |
-| Bases EF aplicadas por el deploy | 25 + FinancialInsights condicional | `deploy/docker/migrations/apply-migrations.sh` (`if [ -n "${FINANCIAL_INSIGHTS_DB_CONNECTION:-}" ]`) |
+| Proyectos de pruebas .NET en la solución | 32 (uno por servicio .NET + BuildingBlocks.Tests, BuildingBlocks.Testing, DataCollection.Engine.Tests, Gateway.Tests, ContentScanner.Tests) | `TaxVision.slnx:225-257` |
+| Bases EF aplicadas por el deploy | 26 + FinancialInsights condicional | `deploy/docker/migrations/apply-migrations.sh` (`if [ -n "${FINANCIAL_INSIGHTS_DB_CONNECTION:-}" ]` en `:171`; Mobile sin condición en `:179-183`) |
 | Base Prisma | 1 (Communication, SQL Server, 56 migraciones) | `src/Services/Communication/prisma/schema.prisma:23-24` |
 
 **Documentación histórica (superada):** `docs/audit/01-System-Architecture.md` (2026-08-07) habla de "18 áreas" y de SQL Server, Loki y Tempo dentro del compose; hoy SQL Server es externo (`db-ready` solo espera el puerto, `deploy/docker/docker-compose.yml:160-185`) y Loki/Tempo están comentados. `DEVS/Guia_Creacion_Microservicio.md:32` dice "2 servicios Node"; hoy son 3. `src/Services/Communication/README.md` dice "Único servicio en Node.js … Node ≥ 20.11"; hoy `engines.node >= 24.0.0` y la imagen es `node:24.22.2-bookworm-slim`.
@@ -39,6 +39,7 @@ Columnas: puerto dev = destino del cluster en `src/Gateway/TaxVision.Gateway/app
 | FinancialInsights | Insights financieros de la oficina (ver `documents/Financial_Insights.md`) | .NET 10; ClosedXML; CustomerVisibility, TenantTimeZones | `src/Services/FinancialInsights` | 4 | `FinancialInsightsDbContext` · `FINANCIAL_INSIGHTS_DB_CONNECTION` (opcional en migraciones) | 5276 | `TaxVision.FinancialInsights.Tests` |
 | Growth | Dos contextos en un despliegue: Codes (promociones/regalos) y Referrals | .NET 10; Jobs | `src/Services/Growth` | 6: `Codes.{Application,Domain}`, `Referrals.{Application,Domain}`, `Growth.Api`, `Growth.Infrastructure` | `GrowthDbContext` · `GROWTH_DB_CONNECTION` | 5410 | `TaxVision.Growth.Tests` |
 | Inventory | Stock, ledger de movimientos, proveedores; API M2M `internal/stock/commit-sale` | .NET 10 | `src/Services/Inventory` | 4 | `InventoryDbContext` · `INVENTORY_DB_CONNECTION` | 5490 | `TaxVision.Inventory.Tests` |
+| Mobile | Vehículos y viajes con GPS para la app móvil de los clientes del portal: sincronización idempotente, estados, millaje, estadísticas y tarifas de millaje por oficina; purga del recorrido por plazo (`src/Services/Mobile/README.md:5`, `TRACKING_API.md:5-33`) | .NET 10; TenantTimeZones; lock en Redis para la retención | `src/Services/Mobile` | 4 | `MobileDbContext` · `MOBILE_DB_CONNECTION` | 5280 | `TaxVision.Mobile.Tests` |
 | Notes | Notas transversales sobre Customer/Task/Appointment (ADR-018) | .NET 10; HtmlSanitizer 9.1.982; CustomerVisibility | `src/Services/Notes` | 4 | `NotesDbContext` · `NOTES_DB_CONNECTION` | 5440 | `TaxVision.Notes.Tests` |
 | Notification | Orquestador de avisos: email (Scribe+Postmaster), SMS, push FCM, in-app | .NET 10; FirebaseAdmin 3.1.0, MailKit, Fluid.Core **2.14.0**; CustomerVisibility, TenantTimeZones | `src/Services/Notification` | 4 | `NotificationDbContext` · `NOTIFICATION_DB_CONNECTION` | 5320 | `TaxVision.Notification.Tests` |
 | PaymentApp | Cobros de la plataforma a las oficinas (Stripe/PayPal), dunning, webhooks | .NET 10; Stripe.net 47.4.0; Jobs | `src/Services/PaymentApp` | 4 | `PaymentAppDbContext` · `PAYMENTAPP_DB_CONNECTION` | 5430 | `TaxVision.PaymentApp.Tests` |
@@ -81,6 +82,7 @@ Columnas: puerto dev = destino del cluster en `src/Gateway/TaxVision.Gateway/app
 | FinancialInsights | FinancialInsights 1 | 1 | `financial-insights-events` | ~3 | permisos, `CustomerDirectoryProjection`, `TenantDirectoryProjection`, `TenantEntitlementsProjection` | +gate | `/financial` | `financial-insights-api` |
 | Growth | Growth 11 | 4 | `growth-events` | ~6 | permisos, plan | sin gate | `/growth` | `growth-api` |
 | Inventory | — | 0 | `inventory-events` | ~4 | permisos, plan | sin gate | `/inventory` | `inventory-api` |
+| Mobile | — | 0 | `mobile-events` | ~5 | permisos, plan, zona | JWT+denylist+permisos (`CustomerPortal`; tarifas solo admin) +gate `mileage` (`MOBILE_MODULE_GATE_ENFORCE`, apagado por defecto) | `/mobile` (rutas `mobile-tracking`/`mobile-complete` a 256 KiB) | `mobile-api` |
 | Notes | Notes 4 | 4 | `notes-events` | ~12 | permisos, plan, `CustomerDirectoryEntry`, `OffboardedStaffProjection`, asignaciones | +gate | `/notes` | `notes-api` |
 | Notification | Notification 1 | 8 | `notification-events`, `notification-client-form-commands` | ~105 | permisos de destinatarios, plan, directorios de email, políticas de contacto, zona, asignaciones | sin gate | `/notifications` | `notification-api` |
 | PaymentApp | PaymentApp 22 + Payment 5 | 26 | `payment-app-events` | ~22 | permisos, plan, `TenantBillingPreferenceProjection` | sin gate | `/payments-app` | `payment-app-api` |
@@ -103,12 +105,12 @@ Columnas: puerto dev = destino del cluster en `src/Gateway/TaxVision.Gateway/app
 **Notas verificadas:**
 - Todos los eventos se publican a `taxvision-events` (fanout). Excepciones punto a punto para **comandos**: `ToRabbitQueue("cloudstorage-file-deletions")` (`src/Services/Customer/TaxVision.Customer.Api/Program.cs:210`) y colas `*-client-form-commands` sin `BindExchange`.
 - "permisos" = `UserPermissionsProjection`/`RolePermissionsProjection` (o `Authz*` en Billing, Documents, Notification, Signature); "plan" = `TenantPlanCodeProjection`; "zona" = `TenantTimeZoneProjection` del kit `BuildingBlocks.TenantTimeZones`; "asignaciones" = `CustomerAssignmentProjection` del kit `BuildingBlocks.CustomerVisibility`.
-- Gate de módulo: 15 `Program.cs` llaman `AddModuleGate`, pero la fitness se llama `The_fourteen_gated_services_are_still_wired` (`deploy/tests/TaxVision.BuildingBlocks.Tests/ActorTypeAuthorization/ModuleGateWiringFitnessTests.cs:109`). **Decisión pendiente / verificar:** si FinancialInsights quedó fuera del recuento de la prueba o se cuenta distinto. La guía antigua dice "thirteen" (`DEVS/Guia_Creacion_Microservicio.md:904`).
+- Gate de módulo: 16 `Program.cs` llaman `AddModuleGate` (Mobile incluido) y la fitness `The_fourteen_gated_services_are_still_wired` afirma 16 servicios con `AddCachedTenantEntitlementModulesReader` (`deploy/tests/TaxVision.BuildingBlocks.Tests/ActorTypeAuthorization/ModuleGateWiringFitnessTests.cs:109-120`): el número coincide; solo el nombre de la prueba quedó viejo. La guía antigua dice "thirteen" (`DEVS/Guia_Creacion_Microservicio.md:904`).
 - Superficie interna: `internal/*` sin prefijo de servicio no se enruta en el Gateway (ADR-019, `documents/architecture/ADR_019_Internal_Surface_Not_Exposed_At_Gateway.md:33-64`).
 
 ## 4. Adopción de piezas transversales por servicio (Código verificado, `Program.cs` de cada Api)
 
-`1` = presente, `0` = ausente. Todas las columnas no listadas (`UseTaxVisionCodeGeneration`, `UseTaxVisionSerilog`, `AddTaxVisionOpenTelemetry`, `AddTaxVisionJwtAuthentication`, `UseTaxVisionConflictPolicy`, `ApplyStandardFailurePolicies`, `UseTaxVisionRabbitMq`, `AddTimeZoneSelfCheck`, `UseDurableOutboxOnAllSendingEndpoints`, `/health/live` + `/health/ready`, carpeta `Internal/Generated`, `PreGeneratedHandlerCodeTests`, `LayeringRulesBase`) están en **los 26**.
+`1` = presente, `0` = ausente. Todas las columnas no listadas (`UseTaxVisionCodeGeneration`, `UseTaxVisionSerilog`, `AddTaxVisionOpenTelemetry`, `AddTaxVisionJwtAuthentication`, `UseTaxVisionConflictPolicy`, `ApplyStandardFailurePolicies`, `UseTaxVisionRabbitMq`, `AddTimeZoneSelfCheck`, `UseDurableOutboxOnAllSendingEndpoints`, `/health/live` + `/health/ready`, carpeta `Internal/Generated`, `PreGeneratedHandlerCodeTests`, `LayeringRulesBase`) están en **los 27**.
 
 | Servicio | DomainEvents (BB-1) | Colas locales durables (BB-2) | SessionDenylist | Gate módulo | `UseUtcDateTimes` | `UtcDateTimesTests` |
 |---|---|---|---|---|---|---|
@@ -125,6 +127,7 @@ Columnas: puerto dev = destino del cluster en `src/Gateway/TaxVision.Gateway/app
 | FinancialInsights | 1 | 0 | 1 | 1 | 1 | 1 |
 | Growth | 1 | 0 | 1 | 0 | 1 | 1 |
 | Inventory | 0 | 0 | 1 | 0 | 1 | 1 |
+| Mobile | 1 | 0 | 1 | 1 | 1 | 1 |
 | Notes | 0 | 1 | 1 | 1 | 1 | 1 |
 | Notification | 0 | 1 | 1 | 0 | 1 | 1 |
 | PaymentApp | 1 | 1 | 1 | 0 | 1 | 1 |
@@ -139,7 +142,7 @@ Columnas: puerto dev = destino del cluster en `src/Gateway/TaxVision.Gateway/app
 | Tenant | 1 | 1 | 1 | 0 | 1 | 1 |
 | Wallet | 1 | 0 | 1 | 1 | 1 | 1 |
 
-Evidencia de los conversores propios: `src/Services/Calendar/TaxVision.Calendar.Infrastructure/Persistence/CalendarDbContext.cs:85-104` (`ConfigureConventions` + `UtcDateTimeConverter`), `src/Services/Signature/…/SignatureDbContext.cs:112-116`. Contradice el guardrail de zonas "Cada `DbContext` llama `modelBuilder.UseUtcDateTimes()` … Lo prueba `Architecture/UtcDateTimesTests` en cada servicio" (`Implementaciones/Reminder/04_Guardrails_Checklist_Y_Verificacion.md:117`): son 23 de 26.
+Evidencia de los conversores propios: `src/Services/Calendar/TaxVision.Calendar.Infrastructure/Persistence/CalendarDbContext.cs:85-104` (`ConfigureConventions` + `UtcDateTimeConverter`), `src/Services/Signature/…/SignatureDbContext.cs:112-116`. Contradice el guardrail de zonas "Cada `DbContext` llama `modelBuilder.UseUtcDateTimes()` … Lo prueba `Architecture/UtcDateTimesTests` en cada servicio" (`Implementaciones/Reminder/04_Guardrails_Checklist_Y_Verificacion.md:117`): son 24 de 27.
 
 ## 5. Servicios de referencia
 
@@ -246,9 +249,9 @@ No existe `Directory.Packages.props` ni `Directory.Build.props`: **cada `.csproj
 1. Sin gestión central de versiones (`Directory.Packages.props`): versiones repetidas en ~60 archivos; ya existe una divergencia (Fluid.Core 2.14.0 vs 2.31.0).
 2. Dependencias Node con rango (`mediasoup ^3.21.0`, `nanoid ^5.1.16`) y `minio/mc:latest`: no reproducibles.
 3. Tres servicios sin `UseUtcDateTimes`/`UtcDateTimesTests` (Calendar, Signature, Tasks).
-4. Siete servicios sin colas locales durables (Catalog, FinancialInsights, Growth, Inventory, Reminder, Scribe, Wallet) y nueve sin despacho de eventos de dominio BB-1 (Catalog, Documents, Inventory, Notes, Notification, Reminder, Scribe, Signature, Sms).
+4. Ocho servicios sin colas locales durables (Catalog, FinancialInsights, Growth, Inventory, Mobile, Reminder, Scribe, Wallet) y nueve sin despacho de eventos de dominio BB-1 (Catalog, Documents, Inventory, Notes, Notification, Reminder, Scribe, Signature, Sms).
 5. Comentario del compose "como los servicios migran al arrancar" (`docker-compose.yml:160-163`) no coincide con el código: ningún servicio llama `Database.Migrate`; el esquema lo aplica el contenedor `migrations` (ver `Investigaciones/Migraciones.md`).
-6. Recuento del gate de módulo (14 en la prueba vs 15 `AddModuleGate`).
+6. Nombre de la fitness del gate de módulo (`The_fourteen_gated_services_are_still_wired`) distinto del número que fija (16).
 
 ## 9. Riesgos
 

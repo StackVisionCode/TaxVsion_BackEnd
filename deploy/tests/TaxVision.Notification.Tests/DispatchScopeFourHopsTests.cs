@@ -77,12 +77,7 @@ public sealed class DispatchScopeFourHopsTests
             new NotificationDispatcherHarness().Dispatcher,
             NoPortalRecipientResolver.Instance,
             new NoOpCorrelation(),
-            Microsoft
-                .Extensions
-                .Logging
-                .Abstractions
-                .NullLogger<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent>
-                .Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<InvoiceSentLog>.Instance,
             CancellationToken.None
         );
 
@@ -105,12 +100,7 @@ public sealed class DispatchScopeFourHopsTests
             new NotificationDispatcherHarness().Dispatcher,
             NoPortalRecipientResolver.Instance,
             new NoOpCorrelation(),
-            Microsoft
-                .Extensions
-                .Logging
-                .Abstractions
-                .NullLogger<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent>
-                .Instance,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<InvoiceSentLog>.Instance,
             CancellationToken.None
         );
 

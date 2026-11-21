@@ -421,6 +421,7 @@ async function main(): Promise<void> {
     inAppSourcePolicy: config.inAppSource.cloudStoragePolicy,
     cloudStorageMetadata: container.cloudStorageMetadata,
     messages: container.messages,
+    fileSourceClaims: { fileLibrary: container.fileLibrary, publisher: container.publisher },
     recordingFiles: {
       onAvailable: (tenantId, fileId, correlationId) =>
         markRecordingFileAvailable({ tenantId, fileId, correlationId }, recordingLifecycle),

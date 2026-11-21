@@ -578,6 +578,11 @@ public sealed class SignatureRequestFromFormConsumerTests
         var send = Assert.IsType<SendSignatureRequestCommand>(bus.Messages[1]);
         Assert.Equal(tenantId, send.TenantId);
         Assert.Equal(repo.Added!.Id, send.SignatureRequestId);
+        var original = Assert.Single(
+            bus.Messages.OfType<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileSourceDeclaredIntegrationEvent>()
+        );
+        Assert.Equal(fileId, original.FileId);
+        Assert.Equal("original", original.SourceRole);
     }
 
     private static SignatureRequestFromFormRequestedIntegrationEvent WithSigner(
@@ -662,6 +667,7 @@ public sealed class SignatureRequestFromFormConsumerTests
             Guid sourceFileId,
             Guid customerId,
             int taxYear,
+            SignatureFileSource source,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
@@ -739,6 +745,7 @@ public sealed class SignatureRequestFromFormConsumerTests
             Guid sourceFileId,
             Guid customerId,
             int taxYear,
+            SignatureFileSource source,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 

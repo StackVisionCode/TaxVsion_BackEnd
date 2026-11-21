@@ -234,6 +234,14 @@ public static class SignatureRequestFromFormRequestedConsumer
             // veía la solicitud recién guardada (aún sin confirmar la transacción Wolverine del consumer).
             if (command.AutoSend)
                 await bus.PublishAsync(new SendSignatureRequestCommand(command.TenantId, request.Id));
+            // La copia del formulario es un archivo nuevo: nunca es base de una plantilla.
+            await OriginalFileSources.PublishAsync(
+                bus,
+                request,
+                request.Documents.Select(document => document.OriginalFileId),
+                [],
+                correlation.CorrelationId
+            );
         }
     }
 

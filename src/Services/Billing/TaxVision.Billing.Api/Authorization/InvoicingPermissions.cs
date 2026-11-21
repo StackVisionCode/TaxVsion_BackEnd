@@ -24,4 +24,11 @@ public static class InvoicingPermissions
     /// fuera del bundle del empleado) y se puede delegar.
     /// </summary>
     public const string StatusOverride = "invoicing.status.override";
+
+    /// <summary>
+    /// Ver los totales de facturación de la oficina (cobrado, por cobrar, tiempo medio de cobro, borradores). Es
+    /// información del negocio, no trabajo diario: sale de <see cref="View"/>, queda fuera del bundle del empleado y el
+    /// owner lo delega con un rol.
+    /// </summary>
+    public const string SummaryView = "invoicing.summary.view";
 }

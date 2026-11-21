@@ -46,14 +46,40 @@ public static class RefreshAccessTokenHandler
             return Result.Failure<AuthTokensResponse>(invalid);
 
         var stored = await sessions.GetTokenByHashAsync(tokens.Hash(command.RefreshToken), ct);
-        if (stored is null || stored.SessionId is null || stored.Surface != command.Surface)
+        if (stored is null || stored.SessionId is null)
             return Result.Failure<AuthTokensResponse>(invalid);
+
+        // Token de otra superficie (web en la ruta móvil o al revés): solo deja rastro. No se revoca nada, para
+        // que un error de configuración de la app no cierre sesiones.
+        if (stored.Surface != command.Surface)
+        {
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    stored.TenantId,
+                    stored.UserId,
+                    AuthAuditAction.RefreshTokenSurfaceMismatch,
+                    false,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    targetType: "Session",
+                    targetId: stored.SessionId,
+                    detailsJson: $$"""{"tokenSurface":"{{stored.Surface}}","route":"{{command.Surface}}"}"""
+                ),
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            return Result.Failure<AuthTokensResponse>(invalid);
+        }
 
         // Fase 18 — binding de host: un refresh token emitido para tenantA no debe poder canjearse
         // desde el subdominio de tenantB. Solo se puede validar cuando el Host sí resolvió a un
         // tenant candidato; si no resolvió (null), no hay nada contra qué comparar.
         if (command.ResolvedTenantId is { } resolvedTenantId && resolvedTenantId != stored.TenantId)
         {
+            if (await IsSessionRevokedAsync(sessions, stored.SessionId.Value, ct))
+                return Result.Failure<AuthTokensResponse>(invalid);
+
             await sessions.RevokeSessionAsync(stored.SessionId.Value, "refresh_token_host_mismatch", ct);
             await denylist.DenySessionAsync(stored.SessionId.Value, TimeSpan.FromMinutes(20), ct);
             await audit.AddAsync(
@@ -89,7 +115,8 @@ public static class RefreshAccessTokenHandler
         // presentarse se trata como robo — se revoca la sesión completa.
         if (!stored.IsActive)
         {
-            if (stored.RevokedAtUtc is not null)
+            // Una sesión ya revocada no vuelve a auditar ni a alertar: un cliente en bucle llenaría los avisos.
+            if (stored.RevokedAtUtc is not null && !await IsSessionRevokedAsync(sessions, stored.SessionId.Value, ct))
             {
                 await sessions.RevokeSessionAsync(stored.SessionId.Value, "token_reuse", ct);
                 await denylist.DenySessionAsync(stored.SessionId.Value, TimeSpan.FromMinutes(20), ct);
@@ -174,6 +201,12 @@ public static class RefreshAccessTokenHandler
 
         return Result.Success(new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds));
     }
+
+    private static async Task<bool> IsSessionRevokedAsync(
+        ISessionRepository sessions,
+        Guid sessionId,
+        CancellationToken ct
+    ) => (await sessions.GetSessionByIdAsync(sessionId, ct))?.RevokedAtUtc is not null;
 }
 
 public sealed record RevokeRefreshTokenCommand(string RefreshToken);

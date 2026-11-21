@@ -55,6 +55,36 @@ public sealed class ImportBatchRepository(FinancialInsightsDbContext db) : IImpo
         }
     }
 
+    public Task<IReadOnlyList<ImportBatchFile>> ListFilesAsync(Guid tenantId, CancellationToken ct = default) =>
+        FilesOf(tenantId, db.ImportDocuments.IgnoreQueryFilters().Where(document => document.TenantId == tenantId), ct);
+
+    public Task<IReadOnlyList<ImportBatchFile>> ListFilesByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        CancellationToken ct = default
+    ) =>
+        FilesOf(
+            tenantId,
+            db.ImportDocuments.IgnoreQueryFilters()
+                .Where(document => document.TenantId == tenantId && fileIds.Contains(document.FileId)),
+            ct
+        );
+
+    private async Task<IReadOnlyList<ImportBatchFile>> FilesOf(
+        Guid tenantId,
+        IQueryable<ImportDocument> documents,
+        CancellationToken ct
+    ) =>
+        await documents
+            .AsNoTracking()
+            .Join(
+                db.ImportBatches.IgnoreQueryFilters().Where(batch => batch.TenantId == tenantId),
+                document => document.BatchId,
+                batch => batch.Id,
+                (document, batch) => new ImportBatchFile(batch.Id, batch.CustomerId, document.FileId)
+            )
+            .ToListAsync(ct);
+
     public async Task<PagedResult<ImportBatchSummaryView>> ListAsync(
         ImportBatchListFilter filter,
         int page,

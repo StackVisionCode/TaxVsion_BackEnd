@@ -9,6 +9,7 @@ import { ConfigurationAuditScope } from '../../../domain/settings/configuration-
 import { getPlatformSettings, updatePlatformSettings } from '../../../application/use-cases/platform-settings-use-cases.js';
 import { getTenantConstraints, updateTenantConstraints } from '../../../application/use-cases/tenant-constraints-use-cases.js';
 import { listConfigurationAudit } from '../../../application/use-cases/configuration-audit-queries.js';
+import { redeclareFileSources, RedeclareKinds } from '../../../application/use-cases/redeclare-file-sources.js';
 import type { AppContainer } from '../../../infrastructure/container.js';
 
 const PositiveInt = z.number().int().positive();
@@ -167,8 +168,33 @@ function stripUndefined<T extends object>(body: T): Defined<T> {
 }
 
 const RecomposeParams = z.object({ scope: z.enum(['Meeting', 'Call']), id: z.string().uuid() });
+// Backfill de la biblioteca de archivos: dryRun salvo que se pida lo contrario.
+const RedeclareQuery = z.object({
+  tenantId: z.string().uuid(),
+  kind: z.enum(RedeclareKinds),
+  dryRun: z.enum(['true', 'false']).default('true'),
+});
 
 export async function registerAdminSettingsRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
+  // Biblioteca de archivos: vuelve a declarar en CloudStorage el origen de los archivos de una oficina.
+  app.post('/communication/admin/files/redeclare-sources', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal;
+    if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+    const denied = await requirePlatformPermission(principal, CommunicationPermissions.PlatformManage, container);
+    if (denied) return reply.code(denied.status).send(denied.body);
+    const query = RedeclareQuery.safeParse(request.query);
+    if (!query.success) {
+      return reply
+        .code(400)
+        .send({ code: 'Communication.Files.InvalidRedeclare', message: `tenantId (GUID) and kind (${RedeclareKinds.join(', ')}) are required.` });
+    }
+    const result = await redeclareFileSources(
+      { tenantId: query.data.tenantId, kind: query.data.kind, dryRun: query.data.dryRun === 'true', correlationId: request.id },
+      container,
+    );
+    return reply.send(result);
+  });
+
   // F7 (contrato 9.6): recomponer una grabacion server-side desde las pistas del recorder (soporte).
   app.post('/communication/admin/recordings/:scope/:id/recompose', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal;

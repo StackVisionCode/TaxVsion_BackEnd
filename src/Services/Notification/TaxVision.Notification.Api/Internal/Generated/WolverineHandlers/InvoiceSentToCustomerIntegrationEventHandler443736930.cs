@@ -10,12 +10,12 @@ namespace Internal.Generated.WolverineHandlers
     public sealed class InvoiceSentToCustomerIntegrationEventHandler443736930 : Wolverine.Runtime.Handlers.MessageHandler
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
-        private readonly Microsoft.Extensions.Logging.ILogger<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent> _loggerForMessage;
+        private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.Notification.Application.Consumers.InvoiceSentLog> _loggerOfInvoiceSentLog;
 
-        public InvoiceSentToCustomerIntegrationEventHandler443736930(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<BuildingBlocks.Messaging.BillingIntegrationEvents.InvoiceSentToCustomerIntegrationEvent> loggerForMessage)
+        public InvoiceSentToCustomerIntegrationEventHandler443736930(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Notification.Application.Consumers.InvoiceSentLog> loggerOfInvoiceSentLog)
         {
             _serviceScopeFactory = serviceScopeFactory;
-            _loggerForMessage = loggerForMessage;
+            _loggerOfInvoiceSentLog = loggerOfInvoiceSentLog;
         }
 
 
@@ -93,7 +93,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Consumers.InvoiceSentConsumer");
                 
                 // The actual message execution
-                await TaxVision.Notification.Application.Consumers.InvoiceSentConsumer.Handle(invoiceSentToCustomerIntegrationEvent, emailDispatchGateway, scribeRenderClient, customerContactPolicyRepository, notificationDispatcher, recipientResolver, correlationContext, _loggerForMessage, cancellation).ConfigureAwait(false);
+                await TaxVision.Notification.Application.Consumers.InvoiceSentConsumer.Handle(invoiceSentToCustomerIntegrationEvent, emailDispatchGateway, scribeRenderClient, customerContactPolicyRepository, notificationDispatcher, recipientResolver, correlationContext, _loggerOfInvoiceSentLog, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

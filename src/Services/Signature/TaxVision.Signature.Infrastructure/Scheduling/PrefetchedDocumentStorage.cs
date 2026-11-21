@@ -34,6 +34,7 @@ internal sealed class PrefetchedDocumentStorage(IReadOnlyDictionary<Guid, byte[]
         Guid sourceFileId,
         Guid customerId,
         int taxYear,
+        SignatureFileSource source,
         CancellationToken ct = default
     ) => throw new NotSupportedException("CloudStorage is not called inside a job unit.");
 

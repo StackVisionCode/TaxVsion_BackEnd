@@ -6,6 +6,7 @@ using System.Text;
 using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Users;
 
@@ -72,6 +73,10 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
 
         if (surface == SessionSurface.Account)
             claims.Add(new Claim(ClaimNames.Surface, AccessSurface.Account));
+
+        // Solo informa el canal: misma audiencia y sin "surface", así ningún servicio rechaza el token de la app.
+        if (surface == SessionSurface.Mobile)
+            claims.Add(new Claim(SessionChannelClaim.Type, SessionChannelClaim.Mobile));
 
         // Solo para configurar el MFA exigido: audiencia propia, marca y vida corta (ver MfaEnrollmentToken).
         if (mfaEnrollmentOnly)

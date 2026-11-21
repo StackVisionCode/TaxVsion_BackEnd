@@ -26,13 +26,16 @@ public sealed record OverrideInvoiceStatusCommand(
     bool CanViewAll
 );
 
-/// <summary>Un pago que se revirtió. <paramref name="NeedsProviderRefund"/>: era un cobro online, hay que devolverlo en el proveedor.</summary>
+/// <summary>Un pago que se revirtió. <paramref name="NeedsProviderRefund"/>: era un cobro online, hay que devolverlo en el proveedor.
+/// <paramref name="CreditLeftUnapplied"/>: era crédito arrastrado de la factura reemplazada; ese dinero ya se cobró allí y
+/// quedó sin aplicar (la oficina lo devuelve o lo vuelve a aplicar).</summary>
 public sealed record ReversedPaymentInfo(
     Guid PaymentId,
     string Source,
     long AmountCents,
     string Currency,
-    bool NeedsProviderRefund
+    bool NeedsProviderRefund,
+    bool CreditLeftUnapplied = false
 );
 
 public sealed record OverrideInvoiceStatusResult(
@@ -94,19 +97,24 @@ public static class OverrideInvoiceStatusHandler
         switch (invoice.Status)
         {
             case InvoiceStatus.Voided:
+                // Anulación real: lleva autor y cliente, como VoidInvoiceHandler, para la actividad del equipo.
                 await PublishPayableRevokedAsync(
                     bus,
                     correlation,
                     command.TenantId,
                     invoice.Id,
                     invoice.InvoiceNumber,
-                    command.Reason
+                    command.Reason,
+                    voidedByUserId: command.ActorUserId,
+                    customerId: invoice.CustomerId
                 );
                 // El PDF sale con la marca de agua "Void".
                 await bus.PublishAsync(new GenerateInvoicePdfCommand(command.TenantId, invoice.Id));
                 break;
             case InvoiceStatus.Draft:
                 // Un borrador no se puede pagar: se retira el cobro (la reemisión lo reinstala con la misma URL).
+                // Es una revocación de cobro, NO una anulación: la factura queda en Draft. Va sin VoidedByUserId a
+                // propósito, para que la actividad del equipo no la cuente como anulada.
                 await PublishPayableRevokedAsync(
                     bus,
                     correlation,
@@ -135,7 +143,8 @@ public static class OverrideInvoiceStatusHandler
                 p.Source.ToString(),
                 p.Amount.AmountCents,
                 p.Amount.Currency,
-                p.NeedsProviderRefund
+                p.NeedsProviderRefund,
+                p.IsCarriedCredit
             ))
             .ToList();
 
@@ -151,14 +160,16 @@ public static class OverrideInvoiceStatusHandler
     }
 
     // PaymentClient revoca el payable y su enlace al recibirlo. Es el mismo aviso de la anulación: lo único que
-    // importa allí es "esta factura ya no se puede pagar".
+    // importa allí es "esta factura ya no se puede pagar". Solo una anulación real nombra a quien la hizo.
     private static ValueTask PublishPayableRevokedAsync(
         IMessageBus bus,
         ICorrelationContext correlation,
         Guid tenantId,
         Guid invoiceId,
         string? invoiceNumber,
-        string? reason
+        string? reason,
+        Guid? voidedByUserId = null,
+        Guid? customerId = null
     ) =>
         bus.PublishAsync(
             new InvoiceVoidedIntegrationEvent
@@ -168,6 +179,8 @@ public static class OverrideInvoiceStatusHandler
                 InvoiceId = invoiceId,
                 InvoiceNumber = invoiceNumber ?? string.Empty,
                 Reason = reason,
+                VoidedByUserId = voidedByUserId,
+                CustomerId = customerId,
             }
         );
 }

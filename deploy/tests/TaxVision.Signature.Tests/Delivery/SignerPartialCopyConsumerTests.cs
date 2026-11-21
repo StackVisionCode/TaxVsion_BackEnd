@@ -53,6 +53,17 @@ public sealed class SignerPartialCopyConsumerTests
         Assert.Single(setup.Deliveries.All);
     }
 
+    [Fact]
+    public async Task The_partial_copy_is_declared_as_partial_copy_of_the_request()
+    {
+        var setup = new Setup(imageFileId: null, uploadedCopyOutcome: FileScanStatus.Available);
+
+        await setup.HandleAsync();
+
+        var upload = Assert.Single(setup.Storage.Uploads);
+        Assert.Equal(new SignatureFileSource(setup.Request.Id, "partial_copy", null), upload.Source);
+    }
+
     private sealed class Setup
     {
         public SignatureRequest Request { get; }
@@ -185,6 +196,7 @@ public sealed class SignerPartialCopyConsumerTests
     ) : ISignatureCloudStorageClient
     {
         public List<Guid> Downloads { get; } = [];
+        public List<SignatureFileUpload> Uploads { get; } = [];
 
         public Task<Result<byte[]>> DownloadAsync(Guid tenant, Guid fileId, CancellationToken ct = default)
         {
@@ -202,6 +214,7 @@ public sealed class SignerPartialCopyConsumerTests
             CancellationToken ct = default
         )
         {
+            Uploads.Add(upload);
             var fileId = Guid.NewGuid();
             if (copyOutcome == FileScanStatus.Available)
                 files.Available(tenantId, fileId, upload.Content.LongLength);
@@ -218,6 +231,7 @@ public sealed class SignerPartialCopyConsumerTests
             Guid sourceFileId,
             Guid customerId,
             int taxYear,
+            SignatureFileSource source,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 

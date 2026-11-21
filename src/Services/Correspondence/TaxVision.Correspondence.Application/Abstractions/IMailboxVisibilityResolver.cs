@@ -3,10 +3,9 @@ using System.Security.Claims;
 namespace TaxVision.Correspondence.Application.Abstractions;
 
 /// <summary>
-/// Resuelve qué buzones puede ver el usuario, para ocultar el correo del buzón de oficina en los
-/// listados a quien no tiene <c>connectors.accounts.office.read</c>. Devuelve <c>null</c> = ve todo
-/// (tiene office.read o write) → el camino común no filtra nada; si no, el set de AccountIds
-/// visibles (sus personales), que puede ser vacío (sin personal ⇒ no ve correo).
+/// Resuelve qué buzones puede ver el usuario: sus personales y, con <c>connectors.accounts.office.read</c> o write,
+/// también los de oficina. Nunca los personales de otro empleado. El set puede ser vacío (no ve correo); <c>null</c>
+/// (sin filtro de buzón) ya no lo devuelve el resolver real.
 /// </summary>
 public interface IMailboxVisibilityResolver
 {

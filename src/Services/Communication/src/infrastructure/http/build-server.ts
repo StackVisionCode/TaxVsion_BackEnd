@@ -7,6 +7,7 @@ import { logger } from '../logger/logger.js';
 import { CORRELATION_HEADER, normalizeCorrelationId } from '../../domain/shared/correlation.js';
 import { metricsRegistry, httpRequestsTotal, httpRequestDurationSeconds, routeLabelOf } from '../telemetry/metrics.js';
 import { sendRateLimited } from './rate-limit-rejection.js';
+import { globalHttpRateLimitApplies } from './global-http-rate-limit.js';
 import { registerHttpErrorHandler } from './http-error-handler.js';
 import { registerHealthRoutes } from '../../api/http/routes/health.route.js';
 import { registerAuthPlugin } from '../../api/http/plugins/auth.plugin.js';
@@ -25,6 +26,7 @@ import { registerMediaPolicyRoutes } from '../../api/http/routes/media-policy.ro
 import { registerAnalyticsRoutes } from '../../api/http/routes/analytics.route.js';
 import { registerAdminAnalyticsRoutes } from '../../api/http/routes/admin-analytics.route.js';
 import { registerWorkRoutes } from '../../api/http/routes/work.route.js';
+import { registerFileRoutes } from '../../api/http/routes/files.route.js';
 import type { AppContainer } from '../container.js';
 import { isAllowedOrigin } from './cors-origins.js';
 
@@ -68,7 +70,9 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   // plugin de auth. La IP sale de CF-Connecting-IP, que el Gateway siempre reescribe con la real; el
   // X-Real-IP que se leia antes lo manda el propio cliente, asi que se podia falsear para saltarse esto.
   app.addHook('onRequest', async (req, reply) => {
-    const ip = (req.headers['cf-connecting-ip'] as string | undefined) ?? req.ip;
+    const forwardedIp = req.headers['cf-connecting-ip'] as string | undefined;
+    if (!globalHttpRateLimitApplies(req.url, forwardedIp)) return;
+    const ip = forwardedIp ?? req.ip;
     const decision = await container.httpRateLimiter.allow({
       key: `comm:rl:http.global:${ip}`,
       policy: 'communication.global_http_ip',
@@ -123,6 +127,7 @@ export async function buildHttpServer(container: AppContainer): Promise<FastifyI
   await registerNotificationRoutes(app, container);
   await registerSupportRoutes(app, container);
   await registerWorkRoutes(app, container);
+  await registerFileRoutes(app, container);
   await registerSettingsRoutes(app, container);
   await registerAdminSettingsRoutes(app, container);
   await registerPreferencesRoutes(app, container);

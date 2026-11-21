@@ -1,4 +1,6 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Contracts.Work;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.CorrespondenceIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -244,6 +246,7 @@ public static class SendDraftHandler
             async (bus, _) =>
             {
                 await PublishEmailSentAsync(bus, draft, command.ActorId, command.CorrelationId);
+                await PublishAttachmentSourcesAsync(bus, draft, command.CorrelationId);
                 return true;
             },
             ct
@@ -278,6 +281,37 @@ public static class SendDraftHandler
             }
         );
     }
+
+    /// <summary>
+    /// Declara a CloudStorage cada adjunto del enviado como <c>email_message</c>/<c>outgoing_attachment</c> (File
+    /// Library). Todos, también los de un correo sin cliente, y aunque no haya actor staff.
+    /// </summary>
+    internal static async Task PublishAttachmentSourcesAsync(
+        Wolverine.IMessageBus bus,
+        Draft draft,
+        string correlationId
+    )
+    {
+        foreach (var attachment in draft.Attachments)
+            await bus.PublishAsync(AttachmentSource(draft, attachment.FileId, correlationId));
+    }
+
+    internal static FileSourceDeclaredIntegrationEvent AttachmentSource(
+        Draft draft,
+        Guid fileId,
+        string correlationId
+    ) =>
+        new()
+        {
+            TenantId = draft.TenantId,
+            CorrelationId = correlationId,
+            FileId = fileId,
+            SourceService = "correspondence",
+            SourceResourceType = WorkResourceTypes.EmailMessage,
+            SourceResourceId = draft.Id,
+            SourceRole = "outgoing_attachment",
+            RelatedCustomerId = draft.CustomerId,
+        };
 
     /// <summary>
     /// Propaga el MISMO <see cref="Error"/> que devolvió Postmaster (o el cliente HTTP, ante un

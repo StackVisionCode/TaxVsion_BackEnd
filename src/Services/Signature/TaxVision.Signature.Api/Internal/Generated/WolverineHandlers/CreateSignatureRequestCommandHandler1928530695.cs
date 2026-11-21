@@ -23,6 +23,12 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Queries.SignatureTemplateFileQuery is not public, so requires service location
+            */
+            var signatureTemplateFileQuery = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureTemplateFileQuery>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository Lifetime: Scoped ImplementationType: TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository
@@ -56,7 +62,6 @@ namespace Internal.Generated.WolverineHandlers
             */
             var fileMetadataRefRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository>(serviceScope.ServiceProvider);
             var signatureRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureRequestRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
@@ -79,7 +84,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Signature.Application.Requests.Commands.Create.CreateSignatureRequestHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Signature.Application.Requests.Commands.Create.CreateSignatureRequestHandler.Handle(createSignatureRequestCommand, signatureRequestRepository, fileMetadataRefRepository, tenantSignatureSettingsRepository, signatureLimitsResolver, unitOfWork, context, correlationContext, signatureRequestListCacheInvalidator, signatureCategoryResolver, signatureCloudStorageClient, requestDocumentVerifier, _loggerForMessage, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Signature.Application.Requests.Commands.Create.CreateSignatureRequestHandler.Handle(createSignatureRequestCommand, signatureRequestRepository, fileMetadataRefRepository, tenantSignatureSettingsRepository, signatureLimitsResolver, unitOfWork, context, correlationContext, signatureRequestListCacheInvalidator, signatureCategoryResolver, signatureCloudStorageClient, requestDocumentVerifier, _loggerForMessage, signatureTemplateFileQuery, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

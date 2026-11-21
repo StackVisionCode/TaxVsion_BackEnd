@@ -55,6 +55,7 @@ public static class CreateSignatureRequestFromTemplateHandler
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
         await PublishCreatedEventAsync(request, template, correlation, bus);
+        await DeclareOwnOriginalsAsync(request, template, correlation, bus);
 
         return Result.Success(SignatureRequestResponse.From(request));
     }
@@ -73,6 +74,23 @@ public static class CreateSignatureRequestFromTemplateHandler
                 return Result.Failure(DocumentVerificationErrors.Rejected(document, verification.Rejection!));
         }
         return Result.Success();
+    }
+
+    // El PDF base de la plantilla no se declara (E-9); si el usuario puso otro archivo, ese sí.
+    private static Task DeclareOwnOriginalsAsync(
+        SignatureRequest request,
+        SignatureTemplate template,
+        ICorrelationContext correlation,
+        IMessageBus bus
+    )
+    {
+        var templateFiles = template.Documents.Select(document => document.FileId).ToHashSet();
+        if (template.BaseDocumentFileId is { } baseFileId)
+            templateFiles.Add(baseFileId);
+        var own = request
+            .Documents.Select(document => document.OriginalFileId)
+            .Where(fileId => !templateFiles.Contains(fileId));
+        return OriginalFileSources.PublishAsync(bus, request, own, [], correlation.CorrelationId);
     }
 
     private static Task PublishCreatedEventAsync(
