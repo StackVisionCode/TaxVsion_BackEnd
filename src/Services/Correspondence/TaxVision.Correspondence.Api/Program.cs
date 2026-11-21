@@ -74,8 +74,7 @@ BuildingBlocks.Web.ActorTypeAuthorization.ModuleGateRegistration.AddModuleGate(b
 // 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
 builder.Services.AddUserPermissionsSource(builder.Configuration, Assembly.GetExecutingAssembly());
 
-// Gate de buzón de oficina: resuelve qué buzones ve el usuario (office.read) para ocultar el correo
-// de oficina en los listados a quien no tiene el permiso.
+// Gate de buzón: sus personales y, con office.read, los de oficina; nunca el personal de otro empleado.
 builder.Services.AddScoped<IMailboxVisibilityResolver, MailboxVisibilityResolver>();
 builder.Services.AddScoped<ICustomerAccessResolver, CustomerAccessResolver>();
 
@@ -164,6 +163,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<CorrespondenceThreadStateChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CorrespondenceDeliveryNoticeReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<CorrespondenceEmailSentIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileSourceDeclaredIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // RBAC Fase 5 — restaura BuildingBlocks.Web.Tenancy.TenantContext dentro del scope que Wolverine
     // crea para cada handler (bus.InvokeAsync local o consumer de integration event).

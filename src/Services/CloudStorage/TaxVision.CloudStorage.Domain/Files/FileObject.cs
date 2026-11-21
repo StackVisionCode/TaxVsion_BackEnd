@@ -75,6 +75,20 @@ public sealed class FileObject : AggregateRoot
     /// <summary>Reencolados hechos por el rescate de escaneos atascados.</summary>
     public int ScanAttemptCount { get; private set; }
 
+    /// <summary>Servicio que guardó o declaró el archivo. Informativo: no decide autorización.</summary>
+    public string? SourceService { get; private set; }
+
+    /// <summary>Recurso de negocio del que nace el archivo, declarado por su servicio dueño.</summary>
+    public string? SourceResourceType { get; private set; }
+    public Guid? SourceResourceId { get; private set; }
+    public string? SourceRole { get; private set; }
+
+    /// <summary>Cliente al que pertenece. Con dueño Customer es siempre <see cref="OwnerId"/>.</summary>
+    public Guid? RelatedCustomerId { get; private set; }
+
+    /// <summary>Cuándo ocurrió la última declaración aplicada: una más vieja no la pisa.</summary>
+    public DateTime? SourceDeclaredAtUtc { get; private set; }
+
     public byte[] RowVersion { get; private set; } = [];
 
     public const string TakedownReport = "Blocked by DMCA takedown notice.";
@@ -139,6 +153,7 @@ public sealed class FileObject : AggregateRoot
             CreatedBy = createdBy,
             CreatedAtUtc = nowUtc,
             UploadExpiresAtUtc = uploadExpiresAtUtc,
+            RelatedCustomerId = ownerType == OwnerType.Customer ? ownerId : null,
         };
         file.SetTenant(tenantId);
         return Result.Success(file);
@@ -425,7 +440,52 @@ public sealed class FileObject : AggregateRoot
         OwnerId = ownerId;
         FolderId = null;
         FolderAssignedAtUtc = null;
+        if (ownerType == OwnerType.Customer)
+            RelatedCustomerId = ownerId;
         return Result.Success();
+    }
+
+    /// <summary>Anota el servicio que guardó el archivo, si nadie lo declaró antes.</summary>
+    public void RecordSavingService(string? service)
+    {
+        var trimmed = service?.Trim();
+        if (SourceService is not null || string.IsNullOrEmpty(trimmed))
+            return;
+        SourceService =
+            trimmed.Length <= FileSourceDeclaration.ServiceMaxLength
+                ? trimmed
+                : trimmed[..FileSourceDeclaration.ServiceMaxLength];
+    }
+
+    /// <summary>
+    /// Guarda el recurso de origen que declara su servicio dueño. Idempotente; ignora declaraciones viejas.
+    /// El valor dice si cambió algo.
+    /// </summary>
+    public Result<bool> DeclareSource(FileSourceDeclaration declaration, DateTime declaredAtUtc)
+    {
+        if (SourceDeclaredAtUtc is { } applied && applied > declaredAtUtc)
+            return Result.Success(false);
+
+        // Un archivo de cliente nunca cambia de cliente por una declaración.
+        var relatedCustomerId = OwnerType == OwnerType.Customer ? OwnerId : declaration.RelatedCustomerId;
+        // La misma declaración ya guardada no se reescribe.
+        if (
+            SourceDeclaredAtUtc is not null
+            && SourceService == declaration.Service
+            && SourceResourceType == declaration.ResourceType
+            && SourceResourceId == declaration.ResourceId
+            && SourceRole == declaration.Role
+            && RelatedCustomerId == relatedCustomerId
+        )
+            return Result.Success(false);
+
+        SourceService = declaration.Service;
+        SourceResourceType = declaration.ResourceType;
+        SourceResourceId = declaration.ResourceId;
+        SourceRole = declaration.Role;
+        SourceDeclaredAtUtc = declaredAtUtc;
+        RelatedCustomerId = relatedCustomerId;
+        return Result.Success(true);
     }
 
     /// <summary>

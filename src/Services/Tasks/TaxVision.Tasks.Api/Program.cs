@@ -179,6 +179,7 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TaskAttachmentAddedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TaskAttachmentDetachedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TaskAttachmentRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileSourceDeclaredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TaskOverdueIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ClientRequestCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ClientRequestFulfilledIntegrationEvent>().ToRabbitExchange("taxvision-events");

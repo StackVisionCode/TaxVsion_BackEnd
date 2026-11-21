@@ -14,10 +14,12 @@ using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Application.Configuration;
 using TaxVision.CloudStorage.Application.Files.Avatars;
 using TaxVision.CloudStorage.Application.Folders;
+using TaxVision.CloudStorage.Application.Library;
 using TaxVision.CloudStorage.Application.Moderation;
 using TaxVision.CloudStorage.Application.Platform;
 using TaxVision.CloudStorage.Application.Quotas;
 using TaxVision.CloudStorage.Application.RateLimiting.Abstractions;
+using TaxVision.CloudStorage.Infrastructure.Library;
 using TaxVision.CloudStorage.Infrastructure.Permissions;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
 using TaxVision.CloudStorage.Infrastructure.Persistence.Repositories;
@@ -43,6 +45,8 @@ public static class DependencyInjection
         services.AddDbContext<CloudStorageDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<CloudStorageDbContext>());
         services.AddScoped<IFileObjectRepository, FileObjectRepository>();
+        services.AddScoped<ILibraryReadRepository, LibraryReadRepository>();
+        AddLibraryOwnerClients(services, configuration);
         services.AddScoped<IScanClaims, SqlScanClaims>();
         services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();
         services.AddScoped<IStoragePolicyRepository, StoragePolicyRepository>();
@@ -80,6 +84,9 @@ public static class DependencyInjection
         services.AddScoped<IStoragePlatformSettingsProvider, StoragePlatformSettingsProvider>();
 
         services.Configure<CloudStorageOptions>(configuration.GetSection(CloudStorageOptions.SectionName));
+        services
+            .AddOptions<FileSourceClaimOptions>()
+            .Bind(configuration.GetSection(FileSourceClaimOptions.SectionName));
         services
             .AddOptions<TaxVision.CloudStorage.Application.Sharing.PublicShareConflictRetryOptions>()
             .Bind(
@@ -233,6 +240,7 @@ public static class DependencyInjection
         services.AddScoped<SqlStuckScanRescueLock>();
         services.AddScoped<SqlTenantBackupLock>();
         services.AddHostedService<StuckScanRescueService>();
+        services.AddHostedService<FileSourceClaimReconciliationJob>();
         // RBAC Fase 7 (RBAC_Hardening_Plan.md) -- proyeccion local de permisos consultada por
         // ProjectionPermissionsSource cuando Authorization:PermissionsSource="Projection". La misma
         // instancia scoped satisface el puerto local rico (para los consumers) y el puerto
@@ -262,6 +270,14 @@ public static class DependencyInjection
         services
             .AddOptions<CloudStoragePerItemAccessOptions>()
             .Bind(configuration.GetSection(CloudStoragePerItemAccessOptions.SectionName));
+        // Compuerta de lectura por origen: siempre registrada, el flag se lee en tiempo de ejecución.
+        services
+            .AddOptions<CloudStorageSourceReadGateOptions>()
+            .Bind(configuration.GetSection(CloudStorageSourceReadGateOptions.SectionName));
+        // Compuerta "solo por su dueño" (Communication y notas de voz): siempre registrada, flag en tiempo de ejecución.
+        services
+            .AddOptions<CloudStorageOwnerMediatedGateOptions>()
+            .Bind(configuration.GetSection(CloudStorageOwnerMediatedGateOptions.SectionName));
         return services;
     }
 
@@ -333,6 +349,54 @@ public static class DependencyInjection
                 http.Timeout = TimeSpan.FromSeconds(15);
             }
         );
+    }
+
+    // Orígenes por fila de la biblioteca: siempre registrados (codegen estático). Sin URL el cliente contesta
+    // "no disponible" y esos orígenes salen en unavailableSources.
+    private static void AddLibraryOwnerClients(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddHttpContextAccessor();
+        services.Configure<LibraryOwnerOptions>(configuration.GetSection(LibraryOwnerOptions.SectionName));
+        AddOwnerClient(services, configuration, HttpFileOwnerVisibilityClient.TasksClient, "Services:Tasks:BaseUrl");
+        AddOwnerClient(
+            services,
+            configuration,
+            HttpFileOwnerVisibilityClient.CorrespondenceClient,
+            "Services:Correspondence:BaseUrl"
+        );
+        AddOwnerClient(
+            services,
+            configuration,
+            HttpFileOwnerVisibilityClient.CommunicationClient,
+            "Services:Communication:BaseUrl"
+        );
+        AddOwnerClient(services, configuration, HttpFileOwnerVisibilityClient.NotesClient, "Services:Notes:BaseUrl");
+        services.AddScoped<IFileOwnerVisibilityClient, HttpFileOwnerVisibilityClient>();
+    }
+
+    private static void AddOwnerClient(
+        IServiceCollection services,
+        IConfiguration configuration,
+        string name,
+        string key
+    )
+    {
+        services
+            .AddHttpClient(
+                name,
+                (sp, http) =>
+                {
+                    var raw = configuration[key];
+                    if (
+                        !string.IsNullOrWhiteSpace(raw)
+                        && Uri.TryCreate(NormalizeBaseUrl(raw), UriKind.Absolute, out var uri)
+                    )
+                        http.BaseAddress = uri;
+                    var seconds = sp.GetRequiredService<IOptions<LibraryOwnerOptions>>().Value.OwnerTimeoutSeconds;
+                    http.Timeout = TimeSpan.FromSeconds(Math.Max(1, seconds));
+                }
+            )
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

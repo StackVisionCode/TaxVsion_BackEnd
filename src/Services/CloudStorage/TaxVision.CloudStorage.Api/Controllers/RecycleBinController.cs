@@ -24,7 +24,11 @@ namespace TaxVision.CloudStorage.Api.Controllers;
 [Route("storage/recycle-bin")]
 [HasPermission(CloudStoragePermissions.RecycleBinManage)]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class RecycleBinController(IMessageBus bus, ICorrelationContext correlation) : ControllerBase
+public sealed class RecycleBinController(
+    IMessageBus bus,
+    ICorrelationContext correlation,
+    IStorageActorScopeResolver scopeResolver
+) : ControllerBase
 {
     [HttpGet]
     [RateLimit("cloudstorage.f.recycle_bin_list")]
@@ -35,11 +39,12 @@ public sealed class RecycleBinController(IMessageBus bus, ICorrelationContext co
         CancellationToken ct = default
     )
     {
-        if (!User.TryGet(out var tenantId, out _, out _))
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<IReadOnlyList<RecycleBinItemResponse>>(
-            new GetRecycleBinQuery(tenantId, skip, take),
+            new GetRecycleBinQuery(tenantId, scope, skip, take),
             ct
         );
         return Ok(result);
@@ -50,11 +55,12 @@ public sealed class RecycleBinController(IMessageBus bus, ICorrelationContext co
     [ProducesResponseType<FileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Restore(Guid fileId, CancellationToken ct)
     {
-        if (!User.TryGet(out var tenantId, out var actorId, out _))
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result<FileResponse>>(
-            new RestoreFileCommand(tenantId, actorId, fileId, AuditContext()),
+            new RestoreFileCommand(tenantId, actorId, scope, fileId, AuditContext()),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

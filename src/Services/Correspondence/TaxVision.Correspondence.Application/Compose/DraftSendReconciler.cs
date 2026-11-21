@@ -82,7 +82,10 @@ public sealed class DraftSendReconciler(
             {
                 // Lo cerró el job: el autor del borrador es quien apretó Enviar.
                 if (draft.Status == DraftStatus.Sent)
+                {
                     await SendDraftHandler.PublishEmailSentAsync(bus, draft, draft.CreatedByUserId, correlationId);
+                    await SendDraftHandler.PublishAttachmentSourcesAsync(bus, draft, correlationId);
+                }
                 return true;
             },
             ct

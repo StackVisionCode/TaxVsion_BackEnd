@@ -16,7 +16,8 @@ const IdParams = z.object({ id: z.string().uuid() });
 
 /**
  * F7 (contrato 9.6): ficha de la grabacion de una reunion o llamada. El permiso de entrada es el de
- * unirse/llamar (participantes y portal); el de grabar solo amplia la vista al staff que no participo.
+ * unirse/llamar (participantes y portal). E-14: el personal ve lo mismo que en la biblioteca; el de grabar
+ * solo abre llamadas con un cliente que ve, y quien no la ve recibe 404.
  */
 export async function registerRecordingRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
   app.get(

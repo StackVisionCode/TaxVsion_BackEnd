@@ -290,6 +290,8 @@ BuildingBlocks.Messaging.WalletIntegrationEvents.WalletTopUpDueIntegrationEvent
 auth.user.offboarding_step_completed.v1
 billing.invoice.payment_rejected.v1
 cloudstorage.customer_document_uploaded.v1
+cloudstorage.file_source_declared.v1
+cloudstorage.file_sources_claim_requested.v1
 communication.call.missed.v1
 communication.call.recording_failed.v1
 communication.call.recording_ready.v1

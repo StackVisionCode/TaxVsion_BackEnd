@@ -27,7 +27,6 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -36,6 +35,7 @@ namespace Internal.Generated.WolverineHandlers
             var invoiceRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Billing.Application.Abstractions.IInvoiceRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var documentGenerationCompletedIntegrationEvent = (BuildingBlocks.Messaging.DocumentsIntegrationEvents.DocumentGenerationCompletedIntegrationEvent)context.Envelope.Message;
 
@@ -58,7 +58,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Billing.Application.Invoices.IntegrationEvents.DocumentGenerationCompletedConsumer");
                 
                 // The actual message execution
-                await TaxVision.Billing.Application.Invoices.IntegrationEvents.DocumentGenerationCompletedConsumer.Handle(documentGenerationCompletedIntegrationEvent, invoiceRepository, unitOfWork, correlationContext, _timeProvider, _loggerOfInvoice, cancellation).ConfigureAwait(false);
+                await TaxVision.Billing.Application.Invoices.IntegrationEvents.DocumentGenerationCompletedConsumer.Handle(documentGenerationCompletedIntegrationEvent, invoiceRepository, unitOfWork, context, correlationContext, _timeProvider, _loggerOfInvoice, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

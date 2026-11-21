@@ -29,7 +29,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 },
                 values: new object[]
                 {
-                    new Guid("a1000000-0000-0000-0000-000000000230"),
+                    new Guid("a1000000-0000-0000-0000-000000000231"),
                     "TenantEmployee,TenantAdmin,PlatformAdmin",
                     "sms.send_any_number",
                     "Send SMS to numbers that are not clients",
@@ -50,7 +50,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
             migrationBuilder.DeleteData(
                 table: "Permissions",
                 keyColumn: "Id",
-                keyValue: new Guid("a1000000-0000-0000-0000-000000000230")
+                keyValue: new Guid("a1000000-0000-0000-0000-000000000231")
             );
         }
     }

@@ -142,7 +142,9 @@ public sealed record ShareLinkCreatedIntegrationEvent : IntegrationEvent
 /// riesgo que viaja solo por el bus interno (outbox durable) — no se persiste en claro ni se
 /// loggea por encima de Debug.
 /// </summary>
-[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkExternalRecipientInvitedIntegrationEvent")]
+[MessageIdentity(
+    "BuildingBlocks.Messaging.CloudStorageIntegrationEvents.ShareLinkExternalRecipientInvitedIntegrationEvent"
+)]
 public sealed record ShareLinkExternalRecipientInvitedIntegrationEvent : IntegrationEvent
 {
     public required Guid ShareLinkId { get; init; }
@@ -339,6 +341,16 @@ public sealed record SaveFileRequestedIntegrationEvent : IntegrationEvent
     public required string OriginalName { get; init; }
     public required string ContentType { get; init; }
     public required long SizeBytes { get; init; }
+
+    /// <summary>Recurso de negocio del que nace el archivo (p. ej. "signature_request"). Opcional.</summary>
+    public string? SourceResourceType { get; init; }
+    public Guid? SourceResourceId { get; init; }
+
+    /// <summary>Qué es el archivo dentro del recurso (p. ej. "sealed"). Opcional.</summary>
+    public string? SourceRole { get; init; }
+
+    /// <summary>Cliente al que pertenece cuando el dueño no es Customer. Opcional.</summary>
+    public Guid? RelatedCustomerId { get; init; }
 }
 
 /// <summary>
@@ -377,6 +389,34 @@ public sealed record ReassignFileOwnerRequestedIntegrationEvent : IntegrationEve
     public required string NewOwnerType { get; init; }
     public Guid? NewOwnerId { get; init; }
     public required Guid ActorId { get; init; }
+}
+
+/// <summary>
+/// El servicio dueño declara a qué recurso de negocio pertenece un archivo ya catalogado (o cambia su rol).
+/// CloudStorage lo guarda en la fila; no mueve el objeto. Idempotente.
+/// </summary>
+[MessageIdentity("cloudstorage.file_source_declared.v1")]
+public sealed record FileSourceDeclaredIntegrationEvent : IntegrationEvent
+{
+    public required Guid FileId { get; init; }
+    public required string SourceService { get; init; }
+    public required string SourceResourceType { get; init; }
+    public required Guid SourceResourceId { get; init; }
+    public required string SourceRole { get; init; }
+    public Guid? RelatedCustomerId { get; init; }
+}
+
+/// <summary>
+/// CloudStorage pregunta de quién son archivos de la oficina que nadie declaró. Cada dueño publica
+/// <see cref="FileSourceDeclaredIntegrationEvent"/> solo por los suyos e ignora el resto. Idempotente.
+/// </summary>
+[MessageIdentity("cloudstorage.file_sources_claim_requested.v1")]
+public sealed record FileSourcesClaimRequestedIntegrationEvent : IntegrationEvent
+{
+    /// <summary>Máximo de ids por mensaje.</summary>
+    public const int MaxFileIds = 500;
+
+    public required IReadOnlyList<Guid> FileIds { get; init; }
 }
 
 /// <summary>
@@ -432,7 +472,9 @@ public sealed record FileDeletionSkippedIntegrationEvent : IntegrationEvent
 /// consumidor, que avisa a quienes tengan <see cref="AudiencePermission"/>. Resolverla = reconectar con
 /// una cuenta de la oficina o desconectarla.
 /// </summary>
-[MessageIdentity("BuildingBlocks.Messaging.CloudStorageIntegrationEvents.CloudConnectionReviewRequiredIntegrationEvent")]
+[MessageIdentity(
+    "BuildingBlocks.Messaging.CloudStorageIntegrationEvents.CloudConnectionReviewRequiredIntegrationEvent"
+)]
 public sealed record CloudConnectionReviewRequiredIntegrationEvent : IntegrationEvent
 {
     public required Guid ConnectionId { get; init; }

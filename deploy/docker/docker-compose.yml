@@ -656,6 +656,8 @@ services:
       ServiceAuth__Clients__20__Secret: ${NOTES_SERVICE_CLIENT_SECRET:-}
       # NTS-1: Notes consulta el estado del escaneo de sus adjuntos en CloudStorage; sin esto, 403.
       ServiceAuth__Clients__20__Permissions__0: cloudstorage.file.view
+      # File Library: Notes media la descarga de sus adjuntos (pide la URL a CloudStorage tras su regla).
+      ServiceAuth__Clients__20__Permissions__1: cloudstorage.file.download
       # Billing quedó fuera de la tanda 15-19 porque es el único servicio cuya config M2M es un
       # diccionario multi-cliente (Billing:ServiceClients:Clients:<Nombre>) en vez de un
       # ServiceAuthClient único, así que el barrido por nombre de clave no lo tocó. Sin este
@@ -2134,6 +2136,12 @@ services:
       CloudStorage__AssignmentVisibility__Enabled: ${CLOUDSTORAGE_ASSIGNMENT_VISIBILITY_ENABLED:-false}
       # Flag per-item (deny-only) para el portal del cliente: "true" precarga sus reglas y las aplica en runtime.
       CloudStorage__PerItemAccess__Enabled: ${CLOUDSTORAGE_PERITEM_ACCESS_ENABLED:-false}
+      # File Library: CloudStorage pregunta a Tasks, Correspondence, Communication y Notes, con el token
+      # del usuario, qué adjuntos ve cada persona. Sin estas URL esos orígenes salen como no disponibles.
+      Services__Tasks__BaseUrl: http://tasks-api:8080/
+      Services__Correspondence__BaseUrl: http://correspondence-api:8080/
+      Services__Communication__BaseUrl: http://communication-api:5350/
+      Services__Notes__BaseUrl: http://notes-api:8080/
     volumes:
       - taxvision-logs:/app/Logs
       - ${TAXVISION_SECRETS_DIR:-/opt/taxvision/secrets}/jwt-public.pem:/run/secrets/jwt-public.pem:ro

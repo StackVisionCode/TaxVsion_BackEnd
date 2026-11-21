@@ -3,6 +3,7 @@ using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
 using TaxVision.Signature.Application.Documents.Verification;
 using TaxVision.Signature.Application.Limits;
+using Wolverine;
 
 namespace TaxVision.Signature.Application.Requests.Commands.AddDocument;
 
@@ -15,6 +16,8 @@ public static class AddDocumentHandler
         ISignatureLimitsResolver limits,
         IUnitOfWork unitOfWork,
         ISignatureRequestListCacheInvalidator listCache,
+        IMessageBus bus,
+        ISignatureTemplateFileQuery templates,
         CancellationToken ct
     )
     {
@@ -38,6 +41,7 @@ public static class AddDocumentHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
+        await OriginalFileSources.DeclareAsync(bus, templates, request, [added.Value.OriginalFileId], [], "", ct);
 
         return Result.Success(SignatureRequestDocumentResponse.From(added.Value));
     }

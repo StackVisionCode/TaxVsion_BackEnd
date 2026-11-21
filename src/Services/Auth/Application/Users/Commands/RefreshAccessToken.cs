@@ -77,6 +77,9 @@ public static class RefreshAccessTokenHandler
         // tenant candidato; si no resolvió (null), no hay nada contra qué comparar.
         if (command.ResolvedTenantId is { } resolvedTenantId && resolvedTenantId != stored.TenantId)
         {
+            if (await IsSessionRevokedAsync(sessions, stored.SessionId.Value, ct))
+                return Result.Failure<AuthTokensResponse>(invalid);
+
             await sessions.RevokeSessionAsync(stored.SessionId.Value, "refresh_token_host_mismatch", ct);
             await denylist.DenySessionAsync(stored.SessionId.Value, TimeSpan.FromMinutes(20), ct);
             await audit.AddAsync(
@@ -112,7 +115,8 @@ public static class RefreshAccessTokenHandler
         // presentarse se trata como robo — se revoca la sesión completa.
         if (!stored.IsActive)
         {
-            if (stored.RevokedAtUtc is not null)
+            // Una sesión ya revocada no vuelve a auditar ni a alertar: un cliente en bucle llenaría los avisos.
+            if (stored.RevokedAtUtc is not null && !await IsSessionRevokedAsync(sessions, stored.SessionId.Value, ct))
             {
                 await sessions.RevokeSessionAsync(stored.SessionId.Value, "token_reuse", ct);
                 await denylist.DenySessionAsync(stored.SessionId.Value, TimeSpan.FromMinutes(20), ct);
@@ -197,6 +201,12 @@ public static class RefreshAccessTokenHandler
 
         return Result.Success(new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds));
     }
+
+    private static async Task<bool> IsSessionRevokedAsync(
+        ISessionRepository sessions,
+        Guid sessionId,
+        CancellationToken ct
+    ) => (await sessions.GetSessionByIdAsync(sessionId, ct))?.RevokedAtUtc is not null;
 }
 
 public sealed record RevokeRefreshTokenCommand(string RefreshToken);

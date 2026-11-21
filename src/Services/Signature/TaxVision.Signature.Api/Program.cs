@@ -299,6 +299,7 @@ builder.Host.UseWolverine(options =>
     // Fase D1 — reemplaza el HttpClient a CloudStorage para subir el sellado/certificate.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ReassignFileOwnerRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    options.PublishMessage<FileSourceDeclaredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Certificados que quedaron atestiguando un sellado rechazado: borrado verificado, punto a punto como Auth/Customer/Tasks.
     options.PublishMessage<FilesDeletionRequestedIntegrationEvent>().ToRabbitQueue("cloudstorage-file-deletions");
     options.PublishMessage<SignatureSettingsUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");

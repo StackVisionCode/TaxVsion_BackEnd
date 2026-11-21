@@ -43,6 +43,103 @@ public sealed class FileObjectConfiguration : IEntityTypeConfiguration<FileObjec
         builder.HasIndex(file => new { file.Status, file.SoftDeleteExpiresAtUtc });
         // Fase C2 — listar el contenido de una carpeta.
         builder.HasIndex(file => new { file.TenantId, file.FolderId });
+        ConfigureSource(builder);
+    }
+
+    // Origen declarado por el servicio dueño e índices de la biblioteca (solo archivos disponibles).
+    private static void ConfigureSource(EntityTypeBuilder<FileObject> builder)
+    {
+        const string available = "[Status] = N'Available'";
+        builder.Property(file => file.SourceService).HasMaxLength(FileSourceDeclaration.ServiceMaxLength);
+        builder.Property(file => file.SourceResourceType).HasMaxLength(FileSourceDeclaration.ResourceTypeMaxLength);
+        builder.Property(file => file.SourceRole).HasMaxLength(FileSourceDeclaration.RoleMaxLength);
+
+        builder
+            .HasIndex(file => new
+            {
+                file.TenantId,
+                file.CreatedAtUtc,
+                file.Id,
+            })
+            .IsDescending(false, true, true)
+            .IncludeProperties(file => new
+            {
+                file.OriginalName,
+                file.OwnerType,
+                file.OwnerId,
+                file.FolderType,
+                file.SourceResourceType,
+                file.SourceRole,
+                file.RelatedCustomerId,
+                file.CreatedBy,
+                file.TaxYear,
+                file.SizeBytes,
+                file.DetectedContentType,
+                file.DeclaredContentType,
+            })
+            .HasFilter(available)
+            .HasDatabaseName("IX_Files_Library_Recent");
+
+        builder
+            .HasIndex(file => new
+            {
+                file.TenantId,
+                file.RelatedCustomerId,
+                file.CreatedAtUtc,
+                file.Id,
+            })
+            .IsDescending(false, false, true, true)
+            .IncludeProperties(file => new
+            {
+                file.OriginalName,
+                file.OwnerType,
+                file.FolderType,
+                file.SourceResourceType,
+                file.SourceRole,
+                file.CreatedBy,
+                file.TaxYear,
+                file.SizeBytes,
+                file.DetectedContentType,
+                file.DeclaredContentType,
+            })
+            .HasFilter(available + " AND [RelatedCustomerId] IS NOT NULL")
+            .HasDatabaseName("IX_Files_Library_Customer");
+
+        builder
+            .HasIndex(file => new
+            {
+                file.TenantId,
+                file.OriginalName,
+                file.Id,
+            })
+            .IncludeProperties(file => new
+            {
+                file.OwnerType,
+                file.OwnerId,
+                file.FolderType,
+                file.SourceResourceType,
+                file.SourceRole,
+                file.RelatedCustomerId,
+                file.CreatedBy,
+                file.TaxYear,
+                file.SizeBytes,
+                file.CreatedAtUtc,
+                file.DetectedContentType,
+                file.DeclaredContentType,
+            })
+            .HasFilter(available)
+            .HasDatabaseName("IX_Files_Library_Name");
+
+        builder
+            .HasIndex(file => new
+            {
+                file.TenantId,
+                file.SourceResourceType,
+                file.SourceResourceId,
+            })
+            .IncludeProperties(file => new { file.SourceRole, file.Status })
+            .HasFilter("[SourceResourceId] IS NOT NULL")
+            .HasDatabaseName("IX_Files_Source_Resource");
     }
 }
 

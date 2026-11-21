@@ -28,7 +28,13 @@ public sealed class SealingCertificateBuilder(
 
         foreach (var artifact in certificateArtifactsResult.Value)
         {
-            var certificateUpload = SealedFileUpload.For(request, artifact.Bytes, artifact.Title, "_Certificate.pdf");
+            var certificateUpload = SealedFileUpload.For(
+                request,
+                artifact.Bytes,
+                artifact.Title,
+                "_Certificate.pdf",
+                SealedFileRole.Certificate
+            );
             var staged = await storage.StageAsync(request.TenantId, certificateUpload, ct);
             if (staged.IsFailure)
             {

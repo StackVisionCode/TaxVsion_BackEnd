@@ -370,6 +370,9 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<Guid?>("RelatedCustomerId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -397,6 +400,24 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("SoftDeletedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("SourceDeclaredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("SourceResourceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SourceResourceType")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("SourceRole")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("SourceService")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -427,7 +448,33 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "ObjectKey")
                         .IsUnique();
 
+                    b.HasIndex("TenantId", "CreatedAtUtc", "Id")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("IX_Files_Library_Recent")
+                        .HasFilter("[Status] = N'Available'");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "CreatedAtUtc", "Id"), new[] { "OriginalName", "OwnerType", "OwnerId", "FolderType", "SourceResourceType", "SourceRole", "RelatedCustomerId", "CreatedBy", "TaxYear", "SizeBytes", "DetectedContentType", "DeclaredContentType" });
+
+                    b.HasIndex("TenantId", "OriginalName", "Id")
+                        .HasDatabaseName("IX_Files_Library_Name")
+                        .HasFilter("[Status] = N'Available'");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "OriginalName", "Id"), new[] { "OwnerType", "OwnerId", "FolderType", "SourceResourceType", "SourceRole", "RelatedCustomerId", "CreatedBy", "TaxYear", "SizeBytes", "CreatedAtUtc", "DetectedContentType", "DeclaredContentType" });
+
+                    b.HasIndex("TenantId", "SourceResourceType", "SourceResourceId")
+                        .HasDatabaseName("IX_Files_Source_Resource")
+                        .HasFilter("[SourceResourceId] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "SourceResourceType", "SourceResourceId"), new[] { "SourceRole", "Status" });
+
                     b.HasIndex("TenantId", "Status", "CreatedAtUtc");
+
+                    b.HasIndex("TenantId", "RelatedCustomerId", "CreatedAtUtc", "Id")
+                        .IsDescending(false, false, true, true)
+                        .HasDatabaseName("IX_Files_Library_Customer")
+                        .HasFilter("[Status] = N'Available' AND [RelatedCustomerId] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "RelatedCustomerId", "CreatedAtUtc", "Id"), new[] { "OriginalName", "OwnerType", "FolderType", "SourceResourceType", "SourceRole", "CreatedBy", "TaxYear", "SizeBytes", "DetectedContentType", "DeclaredContentType" });
 
                     b.ToTable("Files", (string)null);
                 });

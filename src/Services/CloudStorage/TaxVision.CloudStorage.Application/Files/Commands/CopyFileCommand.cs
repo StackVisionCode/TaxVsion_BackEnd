@@ -69,6 +69,7 @@ public static class CopyFileHandler
             return Result.Failure<CopiedFileResponse>(registered.Error);
 
         var copy = registered.Value;
+        DeclareCopySource(command, copy, clock);
         if (destination.Value is { } folderId)
             copy.MoveToFolder(folderId, clock.UtcNow);
 
@@ -133,6 +134,25 @@ public static class CopyFileHandler
             ct
         );
         return Result.Success(folderId);
+    }
+
+    // Una persona no declara orígenes: su copia es un documento nuevo.
+    private static void DeclareCopySource(CopyFileCommand command, FileObject copy, ISystemClock clock)
+    {
+        if (!command.Scope.IsService || command.Request.Source is not { } source)
+            return;
+        if (!FileSourceCatalog.Accepts(source.ResourceType, source.Role, copy.OwnerType, copy.FolderType))
+            return;
+
+        var declaration = FileSourceDeclaration.Create(
+            FileSourceCatalog.ServiceOf(source.ResourceType),
+            source.ResourceType,
+            source.ResourceId,
+            source.Role,
+            null
+        );
+        if (declaration.IsSuccess)
+            copy.DeclareSource(declaration.Value, clock.UtcNow);
     }
 
     private static bool IsClientFormsFolder(Folder folder) =>

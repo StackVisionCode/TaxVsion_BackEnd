@@ -146,6 +146,9 @@ namespace TaxVision.Notes.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CloudStorageFileId")
+                        .HasDatabaseName("IX_NoteAttachments_CloudStorageFileId");
+
                     b.HasIndex("NoteId", "CloudStorageFileId")
                         .IsUnique();
 

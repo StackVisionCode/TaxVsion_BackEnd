@@ -55,8 +55,12 @@ public sealed record CopyFileRequest(
     Guid? OwnerId,
     FolderType FolderType,
     int? TaxYear,
-    Guid? FolderId = null
+    Guid? FolderId = null,
+    // Solo lo honra un token de servicio (p. ej. Signature al dejar la copia por cliente).
+    FileSourceDeclarationRequest? Source = null
 );
+
+public sealed record FileSourceDeclarationRequest(string ResourceType, Guid ResourceId, string Role);
 
 public sealed record CopiedFileResponse(Guid FileId, FileStatus Status);
 

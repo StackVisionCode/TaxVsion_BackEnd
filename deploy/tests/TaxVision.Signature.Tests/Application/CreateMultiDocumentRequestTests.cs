@@ -60,6 +60,7 @@ public sealed class CreateMultiDocumentRequestTests
             new UnexpectedStorage(),
             AcceptingDocumentVerifier.Instance,
             NullLogger<CreateSignatureRequestCommand>.Instance,
+            TaxVision.Signature.Tests.Requests.TemplateFiles.None,
             CancellationToken.None
         );
 
@@ -74,6 +75,12 @@ public sealed class CreateMultiDocumentRequestTests
         var created = Assert.Single(bus.Messages.OfType<SignatureRequestCreatedIntegrationEvent>());
         Assert.Equal(2, created.DocumentCount);
         Assert.Equal([firstFileId, secondFileId], created.OriginalFileIds);
+        Assert.Equal(
+            [firstFileId, secondFileId],
+            bus.Messages.OfType<BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileSourceDeclaredIntegrationEvent>()
+                .Where(declared => declared.SourceRole == "original")
+                .Select(declared => declared.FileId)
+        );
     }
 
     [Fact]
@@ -105,6 +112,7 @@ public sealed class CreateMultiDocumentRequestTests
             new UnexpectedStorage(),
             AcceptingDocumentVerifier.Instance,
             NullLogger<CreateSignatureRequestCommand>.Instance,
+            TaxVision.Signature.Tests.Requests.TemplateFiles.None,
             CancellationToken.None
         );
 
@@ -140,6 +148,7 @@ public sealed class CreateMultiDocumentRequestTests
             new UnexpectedStorage(),
             AcceptingDocumentVerifier.Instance,
             NullLogger<CreateSignatureRequestCommand>.Instance,
+            TaxVision.Signature.Tests.Requests.TemplateFiles.None,
             CancellationToken.None
         );
 
@@ -176,6 +185,7 @@ public sealed class CreateMultiDocumentRequestTests
             new UnexpectedStorage(),
             AcceptingDocumentVerifier.Instance,
             NullLogger<CreateSignatureRequestCommand>.Instance,
+            TaxVision.Signature.Tests.Requests.TemplateFiles.None,
             CancellationToken.None
         );
 
@@ -362,6 +372,7 @@ public sealed class CreateMultiDocumentRequestTests
             Guid sourceFileId,
             Guid customerId,
             int taxYear,
+            SignatureFileSource source,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 

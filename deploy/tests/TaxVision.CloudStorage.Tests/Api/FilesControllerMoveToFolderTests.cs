@@ -4,7 +4,9 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.CloudStorage.Api.Common;
 using TaxVision.CloudStorage.Api.Controllers;
+using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Domain.Files;
 using Wolverine;
 
@@ -34,7 +36,7 @@ public sealed class FilesControllerMoveToFolderTests
         var bus = DispatchProxy.Create<IMessageBus, FixedResultBus>();
         ((FixedResultBus)(object)bus).Response = response;
         var correlation = DispatchProxy.Create<ICorrelationContext, EmptyProxy>();
-        var controller = new FilesController(bus, correlation, null!, null!, null!)
+        var controller = new FilesController(bus, correlation, null!, null!, new PassThroughResolver())
         {
             ControllerContext = new ControllerContext
             {
@@ -60,6 +62,17 @@ public sealed class FilesControllerMoveToFolderTests
         public Result Response { get; set; } = Result.Success();
 
         protected override object Invoke(MethodInfo? targetMethod, object?[]? args) => Task.FromResult(Response);
+    }
+
+    private sealed class PassThroughResolver : IStorageActorScopeResolver
+    {
+        public Task<StorageActorScope> ResolveAsync(
+            ClaimsPrincipal user,
+            Guid tenantId,
+            Guid actorId,
+            StorageActorScope baseScope,
+            CancellationToken ct
+        ) => Task.FromResult(baseScope);
     }
 
     public class EmptyProxy : DispatchProxy

@@ -9,7 +9,11 @@ import type { CloudStorageDownloadClient } from '../ports/cloudstorage-download-
 import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
 import type { CustomerAssignmentProjectionRepository } from '../ports/customer-assignment-projection-repository.js';
-import { seesAllCustomers } from './customer-visibility.js';
+import {
+  canSeeRecording,
+  participatedInRecording,
+  type RecordingSubject,
+} from '../services/recording-visibility.js';
 import type { RecordingSession } from '../../domain/recording/recording-session.js';
 import { findRecordingTranscript } from '../services/recording-transcript-lookup.js';
 
@@ -67,13 +71,13 @@ export interface RecordingViewer {
   readonly tenantId: string;
   readonly userId: string;
   readonly actorType: string;
-  /** Staff con el permiso de grabar del scope (lo resuelve la ruta con la proyeccion de permisos). */
+  /** Staff con el permiso de grabar del scope; solo cuenta `call.record` en llamadas con cliente (E-14). */
   readonly holdsRecordPermission: boolean;
 }
 
 /**
- * F7 (contrato 9.6). Quien participo ve la grabacion; el staff que no participo necesita el permiso de
- * grabar (y, en llamadas con cliente, verlo segun la asignacion); el cliente del portal solo si la
+ * F7 (contrato 9.6). Personal: la regla de la biblioteca (E-1/E-14), quien participo y, en una llamada con
+ * cliente, quien tiene el permiso de grabar y ve a ese cliente. El cliente del portal, si participo y la
  * oficina las hace visibles (D-29). Las URLs presignadas solo se emiten con la grabacion Ready.
  */
 export async function getRecordingDetails(
@@ -82,26 +86,21 @@ export async function getRecordingDetails(
 ): Promise<Result<RecordingDetailsDto>> {
   const { viewer } = input;
   const notFound = makeError(`${input.scope}.Recording.NotFound`, 'Recording not found.');
-  const forbidden = makeError(`${input.scope}.Recording.Forbidden`, "You don't have access to this recording.");
+  const forbidden = makeError(
+    `${input.scope}.Recording.Forbidden`,
+    "You don't have access to this recording.",
+  );
 
-  if (input.scope === RecordingScope.Meeting) {
-    const meeting = await deps.meetings.findById(viewer.tenantId, input.scopeId);
-    if (!meeting) return Result.fail(notFound);
-    const participated = meeting.hostUserId === viewer.userId || meeting.isKnownParticipant(viewer.userId);
-    if (!participated && !(isStaffActor(viewer.actorType) && viewer.holdsRecordPermission)) {
-      return Result.fail(forbidden);
-    }
+  const subject = await subjectOf(input.scope, input.scopeId, viewer.tenantId, deps);
+  if (!subject) return Result.fail(notFound);
+  if (!isStaffActor(viewer.actorType)) {
+    // Portal (y cualquier actor que no sea personal): solo quien participó, como siempre.
+    if (!participatedInRecording(subject, viewer.userId)) return Result.fail(forbidden);
   } else {
-    const call = await deps.calls.findById(viewer.tenantId, input.scopeId);
-    if (!call) return Result.fail(notFound);
-    if (!call.isParticipant(viewer.userId)) {
-      if (!isStaffActor(viewer.actorType) || !viewer.holdsRecordPermission) return Result.fail(forbidden);
-      const customerIds = call.toSnapshot().participants.map((p) => p.customerId).filter((id): id is string => !!id);
-      if (customerIds.length > 0 && deps.assignmentVisibilityEnabled && !(await seesAllCustomers(viewer, deps.userPermissions))) {
-        const assigned = await Promise.all(customerIds.map((id) => deps.customerAssignments.isAssigned(viewer.tenantId, id, viewer.userId)));
-        if (!assigned.some(Boolean)) return Result.fail(forbidden);
-      }
-    }
+    // E-14: la regla de la biblioteca; quien no la ve recibe lo mismo que para una grabación inexistente.
+    const holdsCallRecordPermission = subject.scope === 'Call' && viewer.holdsRecordPermission;
+    if (!(await canSeeRecording({ ...viewer, holdsCallRecordPermission }, subject, deps)))
+      return Result.fail(notFound);
   }
 
   if (viewer.actorType === 'CustomerPortal') {
@@ -109,16 +108,36 @@ export async function getRecordingDetails(
     if (!effective.recording.visibleInPortal) return Result.fail(forbidden);
   }
 
-  const sessions = (await deps.recordingSessions.listByScope(viewer.tenantId, input.scope, input.scopeId)).filter(
-    (session) => !session.toSnapshot().purgedAtUtc,
-  );
+  const sessions = (
+    await deps.recordingSessions.listByScope(viewer.tenantId, input.scope, input.scopeId)
+  ).filter((session) => !session.toSnapshot().purgedAtUtc);
   const latest = sessions.at(-1);
   if (!latest) return Result.fail(notFound);
-  const recordings = await Promise.all(sessions.map((session) => toRecordingItem(session, viewer.tenantId, deps)));
+  const recordings = await Promise.all(
+    sessions.map((session) => toRecordingItem(session, viewer.tenantId, deps)),
+  );
   return Result.ok({ ...recordings[recordings.length - 1]!, recordings });
 }
 
-async function toRecordingItem(session: RecordingSession, tenantId: string, deps: GetRecordingDetailsDeps): Promise<RecordingItemDto> {
+async function subjectOf(
+  scope: RecordingScope,
+  scopeId: string,
+  tenantId: string,
+  deps: Pick<GetRecordingDetailsDeps, 'meetings' | 'calls'>,
+): Promise<RecordingSubject | null> {
+  if (scope === RecordingScope.Meeting) {
+    const meeting = await deps.meetings.findById(tenantId, scopeId);
+    return meeting ? { scope: 'Meeting', meeting } : null;
+  }
+  const call = await deps.calls.findById(tenantId, scopeId);
+  return call ? { scope: 'Call', call } : null;
+}
+
+async function toRecordingItem(
+  session: RecordingSession,
+  tenantId: string,
+  deps: GetRecordingDetailsDeps,
+): Promise<RecordingItemDto> {
   const s = session.toSnapshot();
   const ready = s.state === 'Ready' && s.recordingFileId !== null;
   const playback = ready ? await presign(deps, tenantId, s.recordingFileId) : null;
@@ -156,7 +175,11 @@ async function toRecordingItem(session: RecordingSession, tenantId: string, deps
 }
 
 /** URL de descarga presignada (Communication autoriza; CloudStorage firma como servicio). */
-async function presign(deps: GetRecordingDetailsDeps, tenantId: string, fileId: string | null): Promise<PresignedUrlDto | null> {
+async function presign(
+  deps: GetRecordingDetailsDeps,
+  tenantId: string,
+  fileId: string | null,
+): Promise<PresignedUrlDto | null> {
   if (!fileId) return null;
   const url = await deps.cloudStorageDownload.getDownloadUrl(tenantId, fileId);
   return url ? { url: url.downloadUrl, expiresAtUtc: url.expiresAtUtc } : null;

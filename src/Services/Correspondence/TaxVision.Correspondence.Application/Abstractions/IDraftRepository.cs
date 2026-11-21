@@ -78,6 +78,24 @@ public interface IDraftRepository
     Task<IReadOnlyList<Draft>> ListSentByThreadAsync(Guid tenantId, Guid emailThreadId, CancellationToken ct = default);
 
     /// <summary>
+    /// Backfill de File Library: una página de enviados (también en la papelera) con adjuntos, por <c>Id</c>. Solo
+    /// lectura, sin tracking.
+    /// </summary>
+    Task<IReadOnlyList<Draft>> ListSentWithAttachmentsAsync(
+        Guid tenantId,
+        int skip,
+        int take,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Reclamo de orígenes: enviados (también en la papelera) con algún adjunto de esos archivos. Sin tracking.</summary>
+    Task<IReadOnlyList<Draft>> ListSentByAttachmentFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
     /// Carpeta "Sent" del cliente final: drafts <see cref="DraftStatus.Sent"/> de un customer,
     /// más reciente primero (<c>UpdatedAtUtc DESC</c> = instante de envío, ver <c>Draft.MarkSent</c>).
     /// Incluye <c>Recipients</c> para mostrar el "Para". Mismo criterio que

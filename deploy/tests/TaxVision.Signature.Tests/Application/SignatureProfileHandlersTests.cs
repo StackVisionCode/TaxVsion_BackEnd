@@ -545,6 +545,7 @@ public sealed class SignatureProfileHandlersTests
             Guid sourceFileId,
             Guid customerId,
             int taxYear,
+            SignatureFileSource source,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 

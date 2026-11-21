@@ -13,6 +13,19 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 3000
     );
 
+    // POST /notes/files/visibility — la llama CloudStorage con el token del usuario (biblioteca de archivos). Cuota
+    // propia para no gastar la de notes.f.list con la que el usuario trabaja en Notes.
+    public static readonly RateLimitPolicyDefinition NotesFileVisibility = Define(
+        "notes.f.file_visibility",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 600,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 6000
+    );
+
     // Compartida por ListByReference + ListMine (NotesController) — mismo perfil de lectura paginada.
     public static readonly RateLimitPolicyDefinition NotesList = Define(
         "notes.f.list",

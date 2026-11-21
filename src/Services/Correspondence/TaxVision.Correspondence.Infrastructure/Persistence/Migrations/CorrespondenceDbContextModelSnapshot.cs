@@ -267,6 +267,9 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "DraftId"), new[] { "Filename" });
 
+                    b.HasIndex("TenantId", "FileId")
+                        .HasDatabaseName("IX_DraftAttachments_TenantId_FileId");
+
                     b.ToTable("DraftAttachments", (string)null);
                 });
 
@@ -637,6 +640,10 @@ namespace TaxVision.Correspondence.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_IncomingEmailAttachments_DownloadStatus");
 
                     b.HasIndex("IncomingEmailId");
+
+                    b.HasIndex("TenantId", "CloudStorageFileId")
+                        .HasDatabaseName("IX_IncomingEmailAttachments_TenantId_CloudStorageFileId")
+                        .HasFilter("[CloudStorageFileId] IS NOT NULL");
 
                     b.HasIndex("TenantId", "IncomingEmailId")
                         .HasDatabaseName("IX_IncomingEmailAttachments_TenantId_IncomingEmailId");

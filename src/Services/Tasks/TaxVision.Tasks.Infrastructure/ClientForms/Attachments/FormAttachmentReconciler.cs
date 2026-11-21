@@ -128,6 +128,11 @@ internal sealed class FormAttachmentReconciler(
             if (outcome == FileVerdictOutcome.Ignored)
                 continue;
             verdicts.Add(ClientFormsMetricValues.Of(verdict.Status));
+            // Sale por el mismo outbox que el veredicto: se declara solo si la transacción confirma.
+            if (attachment.Status == FormAttachmentStatus.Available && before != FormAttachmentStatus.Available)
+                await outbox.PublishAsync(
+                    FormFileSources.ForAttachment(request, attachment, correlation.CorrelationId)
+                );
             if (attachment.Status == FormAttachmentStatus.Rejected && before != FormAttachmentStatus.Rejected)
                 await PublishRejectedAsync(request, attachment, ct);
         }

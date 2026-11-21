@@ -35,6 +35,7 @@ public static class AttachFileToNoteHandler
         IOffboardedStaffRepository offboardedStaff,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICorrelationContext correlation,
         TimeProvider clock,
         CancellationToken ct
     )
@@ -64,6 +65,9 @@ public static class AttachFileToNoteHandler
             return Result.Failure<NoteResponse>(result.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
+        await bus.PublishAsync(
+            NoteFileSources.ForAttachment(note, command.CloudStorageFileId, correlation.CorrelationId)
+        );
 
         // NTS-1: si el veredicto ya salió antes del attach, el consumer lo descartó; se pregunta después.
         await bus.ScheduleAsync(

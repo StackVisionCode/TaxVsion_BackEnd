@@ -1,4 +1,6 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Results;
 using TaxVision.FinancialInsights.Domain.Imports;
 using TaxVision.FinancialInsights.Domain.Projections;
 
@@ -31,6 +33,27 @@ public interface IImportBatchRepository
         int pageSize,
         CancellationToken ct = default
     );
+
+    /// <summary>Archivo de cada documento de los lotes del tenant, para el backfill de orígenes.</summary>
+    Task<IReadOnlyList<ImportBatchFile>> ListFilesAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Documentos de los lotes del tenant cuyo archivo está en <paramref name="fileIds"/>.</summary>
+    Task<IReadOnlyList<ImportBatchFile>> ListFilesByIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        CancellationToken ct = default
+    );
+}
+
+public sealed record ImportBatchFile(Guid BatchId, Guid CustomerId, Guid FileId);
+
+/// <summary>
+/// Publica una página de declaraciones de origen en su propia transacción con outbox: o salen todas o ninguna.
+/// Lo usa el backfill, que recorre todos los lotes del tenant.
+/// </summary>
+public interface IFileSourceDeclarationPublisher
+{
+    Task<Result> PublishAsync(IReadOnlyList<FileSourceDeclaredIntegrationEvent> page, CancellationToken ct = default);
 }
 
 /// <param name="AssignedToUserId">Con valor, solo lotes de clientes asignados a ese usuario.</param>

@@ -19,15 +19,13 @@ public sealed class GetInvoicesSummaryHandlerTests
     [Fact]
     public void Totals_skip_drafts_and_voided_for_outstanding_and_count_every_payment()
     {
-        var summary = GetInvoicesSummaryHandler.Summarize(
-            [
-                Row(InvoiceStatus.Issued, due: 10_000, paid: 0),
-                Row(InvoiceStatus.PartiallyPaid, due: 4_000, paid: 6_000),
-                Row(InvoiceStatus.Paid, due: 0, paid: 15_000, paidAfterDays: 10),
-                Row(InvoiceStatus.Draft, due: 99_000, paid: 0),
-                Row(InvoiceStatus.Voided, due: 77_000, paid: 0),
-            ]
-        );
+        var summary = GetInvoicesSummaryHandler.Summarize([
+            Row(InvoiceStatus.Issued, due: 10_000, paid: 0),
+            Row(InvoiceStatus.PartiallyPaid, due: 4_000, paid: 6_000),
+            Row(InvoiceStatus.Paid, due: 0, paid: 15_000, paidAfterDays: 10),
+            Row(InvoiceStatus.Draft, due: 99_000, paid: 0),
+            Row(InvoiceStatus.Voided, due: 77_000, paid: 0),
+        ]);
 
         Assert.Equal("USD", summary.Currency);
         Assert.Equal(14_000, summary.OutstandingCents);
@@ -51,12 +49,10 @@ public sealed class GetInvoicesSummaryHandlerTests
     [Fact]
     public void Amounts_in_another_currency_are_not_mixed_into_the_totals()
     {
-        var summary = GetInvoicesSummaryHandler.Summarize(
-            [
-                Row(InvoiceStatus.Issued, due: 10_000, paid: 0, createdOffsetDays: 5),
-                Row(InvoiceStatus.Issued, due: 50_000, paid: 0, currency: "DOP", createdOffsetDays: 1),
-            ]
-        );
+        var summary = GetInvoicesSummaryHandler.Summarize([
+            Row(InvoiceStatus.Issued, due: 10_000, paid: 0, createdOffsetDays: 5),
+            Row(InvoiceStatus.Issued, due: 50_000, paid: 0, currency: "DOP", createdOffsetDays: 1),
+        ]);
 
         // Manda la moneda de la factura más reciente.
         Assert.Equal("USD", summary.Currency);

@@ -14,6 +14,18 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 3000
     );
 
+    // POST /correspondence/files/visibility: la llama CloudStorage (File Library) con el token del usuario.
+    public static readonly RateLimitPolicyDefinition CorrespondenceFileVisibility = Define(
+        "correspondence.f.file_visibility",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 600,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 6000
+    );
+
     // GET /correspondence/search: LIKE acotado sobre hilos, enviados, borradores y adjuntos (mismo perfil que customer.h.search).
     public static readonly RateLimitPolicyDefinition CorrespondenceMailSearch = Define(
         "correspondence.h.mail_search",

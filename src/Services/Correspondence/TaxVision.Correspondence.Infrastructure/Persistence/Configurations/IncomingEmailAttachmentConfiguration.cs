@@ -42,5 +42,11 @@ internal sealed class IncomingEmailAttachmentConfiguration : IEntityTypeConfigur
             .HasIndex(x => new { x.TenantId, x.IncomingEmailId })
             .IncludeProperties(x => x.Filename)
             .HasDatabaseName("IX_IncomingEmailAttachments_TenantId_IncomingEmailId");
+
+        // Visibilidad por archivo de File Library: solo los adjuntos ya guardados en CloudStorage.
+        builder
+            .HasIndex(x => new { x.TenantId, x.CloudStorageFileId })
+            .HasFilter("[CloudStorageFileId] IS NOT NULL")
+            .HasDatabaseName("IX_IncomingEmailAttachments_TenantId_CloudStorageFileId");
     }
 }

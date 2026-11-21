@@ -62,6 +62,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         FolderType? folderType,
         int skip,
         int take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     ) =>
         Task.FromResult<IReadOnlyList<FileObject>>(
@@ -107,6 +108,13 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
                 .Take(take)
                 .ToList()
         );
+
+    // Las pruebas del job usan el repositorio real en memoria.
+    public Task<IReadOnlyList<UndeclaredSourceFile>> ListUndeclaredSourceFilesAsync(
+        UndeclaredSourceFile? after,
+        int take,
+        CancellationToken ct
+    ) => throw new NotSupportedException();
 
     public Task<IReadOnlyList<Guid>> DistinctTenantsWithUnfiledFilesAsync(
         IReadOnlyCollection<FolderType> navigableTypes,
@@ -184,6 +192,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         Guid tenantId,
         int skip,
         int take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     ) =>
         Task.FromResult<IReadOnlyList<FileObject>>(
@@ -264,6 +273,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         FolderContentsFilter filter,
         int? skip,
         int? take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     )
     {
@@ -284,6 +294,7 @@ internal sealed class FakeFileObjectRepository : IFileObjectRepository
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
+        bool excludeOwnerMediated,
         CancellationToken ct
     ) => Task.FromResult(FilesInFolder(tenantId, folderId, assignedCustomerIds, ownerType, ownerId, filter).Count());
 
@@ -431,6 +442,7 @@ internal sealed class FakeFolderRepository : IFolderRepository
         FolderContentsFilter filter,
         int? skip,
         int? take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     )
     {
@@ -453,6 +465,7 @@ internal sealed class FakeFolderRepository : IFolderRepository
         IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
+        bool excludeOwnerMediated,
         CancellationToken ct
     ) => Task.FromResult(Subfolders(tenantId, parentFolderId, assignedCustomerIds, ownerType, ownerId).Count());
 
@@ -1031,6 +1044,9 @@ internal sealed class FakeMessageBus : IMessageBus
     /// <summary>Atiende <c>InvokeAsync</c> (p. ej. con el handler real del mensaje); sin esto, revienta.</summary>
     public Func<object, Task>? OnInvoke { get; set; }
 
+    /// <summary>Atiende <c>InvokeAsync&lt;T&gt;</c> devolviendo la respuesta; sin esto, revienta.</summary>
+    public Func<object, Task<object?>>? OnInvokeWithResult { get; set; }
+
     /// <summary>Se llama al publicar (p. ej. para comprobar que ya se guardó).</summary>
     public Action<object>? OnPublish { get; init; }
 
@@ -1088,8 +1104,11 @@ internal sealed class FakeMessageBus : IMessageBus
         TimeSpan? timeout = null
     ) => throw new NotImplementedException();
 
-    public Task<T> InvokeAsync<T>(object message, CancellationToken cancellation = default, TimeSpan? timeout = null) =>
-        throw new NotImplementedException();
+    public async Task<T> InvokeAsync<T>(
+        object message,
+        CancellationToken cancellation = default,
+        TimeSpan? timeout = null
+    ) => OnInvokeWithResult is { } invoke ? (T)(await invoke(message))! : throw new NotImplementedException();
 
     public Task<T> InvokeAsync<T>(
         object message,

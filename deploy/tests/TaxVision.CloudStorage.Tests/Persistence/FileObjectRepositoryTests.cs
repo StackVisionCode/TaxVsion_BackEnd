@@ -43,6 +43,7 @@ public sealed class FileObjectRepositoryTests
             null,
             0,
             1,
+            false,
             CancellationToken.None
         );
 
@@ -66,6 +67,7 @@ public sealed class FileObjectRepositoryTests
             null,
             0,
             50,
+            false,
             CancellationToken.None
         );
 
@@ -90,6 +92,7 @@ public sealed class FileObjectRepositoryTests
             FolderType.Avatars,
             0,
             50,
+            false,
             CancellationToken.None
         );
 
@@ -108,7 +111,7 @@ public sealed class FileObjectRepositoryTests
         await using var db = await SeedAsync(tenantId, document, avatar);
         var repository = new FileObjectRepository(db);
 
-        var bin = await repository.ListSoftDeletedLooseAsync(tenantId, 0, 50, CancellationToken.None);
+        var bin = await repository.ListSoftDeletedLooseAsync(tenantId, 0, 50, false, CancellationToken.None);
         // La purga (ListSoftDeletedAsync) sí los sigue viendo: si no, los bytes no se borrarían nunca.
         var purgeable = await repository.ListSoftDeletedAsync(tenantId, 0, 50, CancellationToken.None);
 
@@ -126,7 +129,18 @@ public sealed class FileObjectRepositoryTests
         await using var db = await SeedAsync(tenantId, document, track);
         var repository = new FileObjectRepository(db);
 
-        var page = await repository.ListAsync(tenantId, null, null, null, null, null, 0, 1, CancellationToken.None);
+        var page = await repository.ListAsync(
+            tenantId,
+            null,
+            null,
+            null,
+            null,
+            null,
+            0,
+            1,
+            false,
+            CancellationToken.None
+        );
         var tracks = await repository.ListAsync(
             tenantId,
             null,
@@ -136,6 +150,7 @@ public sealed class FileObjectRepositoryTests
             FolderType.RecordingTracks,
             0,
             50,
+            false,
             CancellationToken.None
         );
 
@@ -155,7 +170,7 @@ public sealed class FileObjectRepositoryTests
         await using var db = await SeedAsync(tenantId, document, track);
         var repository = new FileObjectRepository(db);
 
-        var bin = await repository.ListSoftDeletedLooseAsync(tenantId, 0, 50, CancellationToken.None);
+        var bin = await repository.ListSoftDeletedLooseAsync(tenantId, 0, 50, false, CancellationToken.None);
         var purgeable = await repository.ListSoftDeletedAsync(tenantId, 0, 50, CancellationToken.None);
 
         Assert.Equal(document.Id, Assert.Single(bin).Id);

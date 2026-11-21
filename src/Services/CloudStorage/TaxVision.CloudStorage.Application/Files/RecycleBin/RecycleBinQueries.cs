@@ -7,7 +7,7 @@ namespace TaxVision.CloudStorage.Application.Files.RecycleBin;
 /// archivos) y luego los archivos borrados individualmente. Los archivos que cayeron junto con su
 /// carpeta NO se listan sueltos — se restauran/purgan con la carpeta.
 /// </summary>
-public sealed record GetRecycleBinQuery(Guid TenantId, int Skip, int Take);
+public sealed record GetRecycleBinQuery(Guid TenantId, StorageActorScope Scope, int Skip, int Take);
 
 public static class GetRecycleBinHandler
 {
@@ -35,9 +35,15 @@ public static class GetRecycleBinHandler
         var remaining = take - folderEntries.Count;
         var looseFiles =
             remaining > 0
-                ? (await files.ListSoftDeletedLooseAsync(query.TenantId, skip, remaining, ct)).Select(
-                    RecycleBinItemMapper.Map
-                )
+                ? (
+                    await files.ListSoftDeletedLooseAsync(
+                        query.TenantId,
+                        skip,
+                        remaining,
+                        query.Scope.ExcludesOwnerMediated,
+                        ct
+                    )
+                ).Select(RecycleBinItemMapper.Map)
                 : [];
 
         return folderEntries.Concat(looseFiles).ToArray();

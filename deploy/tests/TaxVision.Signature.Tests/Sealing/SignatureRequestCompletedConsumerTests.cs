@@ -435,7 +435,8 @@ public sealed partial class SignatureRequestCompletedConsumerTests
         CertificateGenerationMode certificateMode = CertificateGenerationMode.SingleForRequest,
         string? displayTimeZoneId = null,
         DateTime? signedAtUtc = null,
-        bool withDateField = false
+        bool withDateField = false,
+        Guid? signerCustomerId = null
     )
     {
         var limits = TestSignatureLimits.Default;
@@ -461,7 +462,7 @@ public sealed partial class SignatureRequestCompletedConsumerTests
                 limits,
                 SignerEmail.Create("s@example.test").Value,
                 SignerFullName.Create("Signer One").Value,
-                null
+                signerCustomerId
             )
             .Value;
         foreach (var document in request.Documents)
@@ -567,6 +568,7 @@ public sealed partial class SignatureRequestCompletedConsumerTests
             Guid sourceFileId,
             Guid customerId,
             int taxYear,
+            SignatureFileSource source,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 

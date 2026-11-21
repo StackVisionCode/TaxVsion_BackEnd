@@ -937,6 +937,7 @@ public sealed class FolderHandlerTests
                 FolderContentsFilter.None,
                 null,
                 null,
+                false,
                 CancellationToken.None
             )
         );

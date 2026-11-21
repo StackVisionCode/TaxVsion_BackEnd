@@ -6,7 +6,13 @@ namespace TaxVision.Signature.Application.Sealing;
 /// <summary>Cómo se sube a CloudStorage lo que produce el sellado: documento firmado y certificado.</summary>
 internal static class SealedFileUpload
 {
-    public static SignatureFileUpload For(SignatureRequest request, byte[] content, string title, string suffix)
+    public static SignatureFileUpload For(
+        SignatureRequest request,
+        byte[] content,
+        string title,
+        string suffix,
+        string baseRole
+    )
     {
         var (ownerType, ownerId) = SealedDocumentOwner.Resolve(
             request.Signers.Select(signer => signer.MappedCustomerId).ToList(),
@@ -21,7 +27,8 @@ internal static class SealedFileUpload
             OwnerId: ownerId,
             FolderType: "Signatures",
             TaxYear: request.OfficeYearOf(request.CompletedAtUtc ?? request.CreatedAtUtc),
-            ActorId: request.CreatedByUserId
+            ActorId: request.CreatedByUserId,
+            Source: SealedFileRole.For(request, baseRole)
         );
     }
 }

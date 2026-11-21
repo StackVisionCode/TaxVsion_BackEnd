@@ -58,6 +58,12 @@ public sealed class FinancialInsightsControllerArchitectureTests
                 ActorType.CustomerPortal
             },
             {
+                "FinancialAdminController.RedeclareFileSources",
+                "financial.i.import_batch_create",
+                FinancialInsightsPermissions.View,
+                ActorType.PlatformAdmin
+            },
+            {
                 "PortalImportBatchesController.Get",
                 "financial.f.import_batch_read",
                 FinancialInsightsPermissions.PortalImport,

@@ -36,6 +36,9 @@ public sealed class ReconciliationRetryTests
     [InlineData(
         "src/Services/Mobile/TaxVision.Mobile.Infrastructure/RateLimiting/TenantEntitlementsReconciliationJob.cs"
     )]
+    [InlineData(
+        "src/Services/CloudStorage/TaxVision.CloudStorage.Infrastructure/Storage/FileSourceClaimReconciliationJob.cs"
+    )]
     public void Startup_reconciliation_jobs_retry_soon_after_a_failed_pass(string relativePath)
     {
         var source = File.ReadAllText(Path.Combine(RepositoryRoot(), relativePath));

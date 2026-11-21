@@ -609,6 +609,7 @@ internal sealed class RivalStorage : ISignatureCloudStorageClient
         Guid sourceFileId,
         Guid customerId,
         int taxYear,
+        SignatureFileSource source,
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 

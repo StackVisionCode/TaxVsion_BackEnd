@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
@@ -7,6 +8,7 @@ using TaxVision.Tasks.ClientForms.Application.Consents.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
+using Wolverine;
 
 namespace TaxVision.Tasks.ClientForms.Application.Requests.Commands;
 
@@ -21,6 +23,8 @@ public static class RegisterPortalFormAttachmentHandler
         IAnswersProtector protector,
         IFormConsentGate consentGate,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
+        ICorrelationContext correlation,
         CancellationToken ct
     )
     {
@@ -45,6 +49,11 @@ public static class RegisterPortalFormAttachmentHandler
         if (registered.IsFailure)
             return Result.Failure<FormAttachmentResponse>(registered.Error);
         await unitOfWork.SaveChangesAsync(ct);
+        // Con el escaneo ya terminado nace disponible y no pasará por el consumer: se declara aquí.
+        if (registered.Value.Status == FormAttachmentStatus.Available)
+            await bus.PublishAsync(
+                FormFileSources.ForAttachment(found.Value, registered.Value, correlation.CorrelationId)
+            );
         return Result.Success(FormAttachmentResponse.From(registered.Value, found.Value));
     }
 

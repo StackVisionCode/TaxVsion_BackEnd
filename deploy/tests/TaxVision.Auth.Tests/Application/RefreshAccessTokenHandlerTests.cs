@@ -254,10 +254,37 @@ public sealed class RefreshAccessTokenHandlerTests
         Assert.True((await RefreshAsync(world, account.RefreshToken, SessionSurface.Account)).IsFailure);
     }
 
+    // Un cliente en bucle reintentando un token ya rotado: la sesión se revoca una vez y la alerta sale una vez.
+    [Fact]
+    public async Task Retrying_a_reused_token_alerts_only_once_per_session()
+    {
+        var world = new AccountSessionFixture();
+        var mobile = await world.Issuer.StartSessionAsync(
+            world.Admin,
+            "UTC",
+            [],
+            ["pwd"],
+            "iPhone",
+            SessionSurface.Mobile
+        );
+        var rotated = await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile);
+        var bus = new FakeMessageBus();
+
+        await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile, bus);
+        await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile, bus);
+        await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile, bus);
+
+        Assert.True(rotated.IsSuccess);
+        var alert = Assert.IsType<SecurityAlertIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(SecurityAlertType.TokenReuseDetected, alert.AlertType);
+        Assert.False((await world.Sessions.GetSessionByIdAsync(mobile.SessionId))!.IsActive);
+    }
+
     private static Task<BuildingBlocks.Results.Result<AuthTokensResponse>> RefreshAsync(
         AccountSessionFixture world,
         string refreshToken,
-        SessionSurface surface
+        SessionSurface surface,
+        FakeMessageBus? bus = null
     ) =>
         RefreshAccessTokenHandler.Handle(
             new RefreshAccessTokenCommand(refreshToken, ResolvedTenantId: null, surface),
@@ -272,7 +299,7 @@ public sealed class RefreshAccessTokenHandlerTests
             world.Request,
             world.Correlation,
             world.UnitOfWork,
-            new FakeMessageBus(),
+            bus ?? new FakeMessageBus(),
             CancellationToken.None
         );
 

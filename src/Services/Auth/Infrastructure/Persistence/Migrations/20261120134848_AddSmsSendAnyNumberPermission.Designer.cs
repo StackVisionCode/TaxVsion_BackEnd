@@ -1718,7 +1718,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000230"),
+                            Id = new Guid("a1000000-0000-0000-0000-000000000231"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "sms.send_any_number",
                             Description = "Send SMS to numbers that are not clients",

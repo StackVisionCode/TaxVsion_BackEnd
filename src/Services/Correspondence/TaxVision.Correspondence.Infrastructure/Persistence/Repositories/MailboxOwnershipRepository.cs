@@ -26,4 +26,14 @@ internal sealed class MailboxOwnershipRepository(CorrespondenceDbContext db) : I
 
         return await rows.Where(x => x.OwnerUserId == userId).Select(x => x.AccountId).ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyCollection<Guid>> ListOfficeAccountIdsAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .MailboxOwnerships.IgnoreQueryFilters()
+            .Where(x => x.TenantId == tenantId && x.OwnerUserId == null)
+            .Select(x => x.AccountId)
+            .ToListAsync(ct);
 }

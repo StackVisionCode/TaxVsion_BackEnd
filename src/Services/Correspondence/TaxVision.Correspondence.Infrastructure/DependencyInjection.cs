@@ -61,6 +61,7 @@ public static class DependencyInjection
         services.AddScoped<IDraftRepository, DraftRepository>();
         services.AddScoped<IMailSearchRepository, MailSearchRepository>();
         services.AddScoped<IMailTitleReader, MailTitleReader>();
+        services.AddScoped<IMailFileVisibilityReader, MailFileVisibilityReader>();
         services.AddScoped<IDeliveryNoticeRepository, DeliveryNoticeRepository>();
 
         // Visibilidad por cliente (kit compartido): proyección de asignaciones + reconciliación desde Customer.

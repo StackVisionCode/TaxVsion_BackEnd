@@ -122,6 +122,36 @@ internal sealed class FakeDraftRepository : IDraftRepository
                 .ToList()
         );
 
+    public Task<IReadOnlyList<Draft>> ListSentByAttachmentFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<Draft>>(
+            _store
+                .Where(x =>
+                    x.TenantId == tenantId
+                    && x.Status == DraftStatus.Sent
+                    && x.Attachments.Any(a => fileIds.Contains(a.FileId))
+                )
+                .ToList()
+        );
+
+    public Task<IReadOnlyList<Draft>> ListSentWithAttachmentsAsync(
+        Guid tenantId,
+        int skip,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<Draft>>(
+            _store
+                .Where(x => x.TenantId == tenantId && x.Status == DraftStatus.Sent && x.Attachments.Count > 0)
+                .OrderBy(x => x.Id)
+                .Skip(skip)
+                .Take(take)
+                .ToList()
+        );
+
     public Task<IReadOnlyList<Draft>> ListAbandonedAsync(
         DateTime updatedBeforeUtc,
         int limit,

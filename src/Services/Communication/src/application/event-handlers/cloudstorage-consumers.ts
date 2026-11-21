@@ -1,4 +1,6 @@
 import { recordAttachmentMetadata } from '../use-cases/record-attachment-metadata.js';
+import { claimFileSources, type ClaimFileSourcesDeps } from '../use-cases/claim-file-sources.js';
+import { CloudStorageEventTypes } from '../../contracts/events/cloudstorage-events.js';
 import type { CloudStorageMetadataClient } from '../ports/cloudstorage-metadata-client.js';
 import { randomUUID } from 'node:crypto';
 import { pushAndEmitNotification } from '../use-cases/push-notification.js';
@@ -46,6 +48,8 @@ export function bindCloudStorageConsumers(
     cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
     /** Para avisar a quien mandó el adjunto: el archivo lo crea la cuenta de servicio de Communication. */
     messages?: Pick<MessageRepository, 'findById'> | undefined;
+    /** File Library: CloudStorage pregunta de quién son archivos sin origen declarado. */
+    fileSourceClaims?: ClaimFileSourcesDeps | undefined;
   },
 ): void {
   register('cloudstorage.file.available.v1', async (env) => {
@@ -101,6 +105,17 @@ export function bindCloudStorageConsumers(
     if (folder === 'Recordings') await rejectRecording(env, 'StorageRejected', deps.recordingFiles);
     if (folder === 'Transcripts') await rejectTranscript(env, reason, deps.transcriptFiles);
   });
+  const claims = deps.fileSourceClaims;
+  if (claims) {
+    // Solo se declaran los archivos propios de este tenant; los demás ids se ignoran.
+    register(CloudStorageEventTypes.FileSourcesClaimRequested, async (env) => {
+      const raw = env.payload['fileIds'] ?? env.payload['FileIds'];
+      await claimFileSources(
+        { tenantId: env.tenantId, fileIds: Array.isArray(raw) ? raw : [], correlationId: env.correlationId },
+        claims,
+      );
+    });
+  }
 }
 
 /** MNT-01 (E-292): lo que Communication hace cuando cambia el estado del archivo de un transcript. */

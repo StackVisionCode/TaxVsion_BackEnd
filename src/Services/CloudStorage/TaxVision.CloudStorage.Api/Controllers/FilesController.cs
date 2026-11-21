@@ -162,9 +162,10 @@ public sealed class FilesController(
     [ProducesResponseType<FileResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetById(Guid fileId, CancellationToken ct)
     {
-        if (!User.TryGet(out var tenantId, out _, out var scope))
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result<FileResponse>>(new GetFileQuery(tenantId, scope, fileId), ct);
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
@@ -224,6 +225,7 @@ public sealed class FilesController(
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         // `?purpose=preview` = URL para el visor (capacidad Preview, inline); sin él, descarga.
         var forPreview = string.Equals(purpose, "preview", StringComparison.OrdinalIgnoreCase);
         var result = await bus.InvokeAsync<Result<DownloadUrlResponse>>(
@@ -304,6 +306,7 @@ public sealed class FilesController(
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result>(
             new DeleteFileCommand(tenantId, actorId, scope, fileId, AuditContext()),
             ct
@@ -324,6 +327,7 @@ public sealed class FilesController(
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result>(
             new MoveFileToFolderCommand(tenantId, actorId, scope, fileId, request.FolderId, AuditContext()),
             ct
@@ -351,6 +355,7 @@ public sealed class FilesController(
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result<CopiedFileResponse>>(
             new CopyFileCommand(tenantId, actorId, scope, fileId, request, AuditContext()),
             ct

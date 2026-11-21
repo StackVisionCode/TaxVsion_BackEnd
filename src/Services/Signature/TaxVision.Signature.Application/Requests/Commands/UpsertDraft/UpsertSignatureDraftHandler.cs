@@ -7,6 +7,7 @@ using TaxVision.Signature.Application.Platform;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using TaxVision.Signature.Domain.Settings;
+using Wolverine;
 
 namespace TaxVision.Signature.Application.Requests.Commands.UpsertDraft;
 
@@ -27,12 +28,15 @@ public static class UpsertSignatureDraftHandler
         ISignaturePlatformSettingsProvider platform,
         IUnitOfWork unitOfWork,
         ISignatureRequestListCacheInvalidator listCache,
+        IMessageBus bus,
+        ISignatureTemplateFileQuery templates,
         CancellationToken ct
     )
     {
         var request = await repository.GetByIdAsync(cmd.TenantId, cmd.SignatureRequestId, ct);
         if (request is null)
             return NotFound();
+        var originalsBefore = OriginalFileSources.Snapshot(request);
 
         var versionCheck = EnsureNoVersionConflict(request, cmd.ExpectedUpdatedAtUtc);
         if (versionCheck.IsFailure)
@@ -58,6 +62,8 @@ public static class UpsertSignatureDraftHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
+        // Solo lo que cambió: archivos nuevos o reemplazados, y todos si cambió el cliente firmante.
+        await OriginalFileSources.DeclareChangesAsync(bus, templates, originalsBefore, request, "", ct);
         return Result.Success(
             new UpsertSignatureDraftResponse(
                 request.UpdatedAtUtc,

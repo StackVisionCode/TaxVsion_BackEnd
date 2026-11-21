@@ -13,6 +13,7 @@ public sealed class TasksRateLimitPolicyTests
     [
         "task.f.read",
         "task.f.attachment_read",
+        "task.f.file_visibility",
         "task.f.waiting_on_client",
         "task.g.create",
         "task.g.update",

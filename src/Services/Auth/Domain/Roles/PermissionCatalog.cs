@@ -64,6 +64,7 @@ public static class PermissionCatalog
     public const string CloudStorageFileView = CloudStoragePermissions.FileView;
     public const string CloudStorageFileUpload = CloudStoragePermissions.FileUpload;
     public const string CloudStorageFileDownload = CloudStoragePermissions.FileDownload;
+    public const string CloudStorageLibraryView = CloudStoragePermissions.LibraryView;
     public const string CloudStorageFileDelete = CloudStoragePermissions.FileDelete;
     public const string CloudStorageReassignFormParticipant = CloudStoragePermissions.ReassignFormParticipant;
     public const string CloudStorageSettingsManage = CloudStoragePermissions.SettingsManage;
@@ -722,6 +723,14 @@ public static class PermissionCatalog
             true
         ),
         new(
+            // Solo abre la File Library: lo que se ve lo decide el permiso de cada origen.
+            new Guid("a1000000-0000-0000-0000-000000000232"),
+            CloudStorageLibraryView,
+            "cloudstorage",
+            "Use the file library",
+            false
+        ),
+        new(
             // Explícito (no inferido): SystemRoleDefaults(SystemCustomerPortal) ya le otorga
             // este permiso al rol Customer Portal sembrado en cada tenant — un cliente real
             // sube/ve/descarga sus propios archivos hoy. IsCustomerPortal queda en false porque
@@ -1099,7 +1108,7 @@ public static class PermissionCatalog
         // Un número escrito a mano se salta la cartera y la política de contacto. Administrativo: el TenantAdmin
         // lo recibe por su bundle, queda fuera del bundle del empleado y se puede delegar.
         new(
-            new Guid("a1000000-0000-0000-0000-000000000230"),
+            new Guid("a1000000-0000-0000-0000-000000000231"),
             SmsSendAnyNumber,
             "sms",
             "Send SMS to numbers that are not clients",
@@ -2397,6 +2406,7 @@ public static class PermissionCatalog
                 CloudStorageFileView,
                 CloudStorageFileUpload,
                 CloudStorageFileDownload,
+                CloudStorageLibraryView,
                 // Organizar archivos en carpetas es trabajo operativo diario, no
                 // administrativo — a diferencia de recyclebin.manage/settings/audit.
                 CloudStorageFolderManage,

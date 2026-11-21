@@ -160,6 +160,44 @@ public sealed class NoteRepository(NotesDbContext db) : INoteRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<NoteAttachmentFileRow>> ListVisibleAttachmentFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        var wanted = fileIds.Distinct().ToList();
+        if (wanted.Count == 0)
+            return [];
+
+        return await ApplyAssignmentFilter(
+                VisibleTo(tenantId, actorUserId, actorHasViewAll),
+                tenantId,
+                assignedToUserId
+            )
+            .SelectMany(
+                n =>
+                    n.Attachments.Where(a =>
+                        a.Status == NoteAttachmentStatus.Available && wanted.Contains(a.CloudStorageFileId)
+                    ),
+                (n, a) =>
+                    new NoteAttachmentFileRow(
+                        a.CloudStorageFileId,
+                        n.Id,
+                        n.Content.PlainTextPreview,
+                        n.Visibility,
+                        n.CreatedByUserId,
+                        n.Reference.TargetType,
+                        n.Reference.TargetId,
+                        a.LinkedAtUtc
+                    )
+            )
+            .ToListAsync(ct);
+    }
+
     // Predicado de visibilidad de staff común a los listados: tenant explícito, sin borradas y privadas solo del
     // autor o con notes.view_all (NoteVisibilityPolicy.CanStaffView en SQL). IgnoreQueryFilters(): el filtro
     // ambiental por tenant no está garantizado en el scope de DI con que Wolverine despacha la query (Fase 10:

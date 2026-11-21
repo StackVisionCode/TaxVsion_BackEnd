@@ -79,6 +79,24 @@ public sealed class MailboxOwnershipRepositoryIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ListOffice_ReturnsTheTenantOfficeMailboxesInAnyState_WithoutATenantInContext()
+    {
+        var active = Guid.NewGuid();
+        var disconnected = Guid.NewGuid();
+        await SeedAsync(
+            MailboxOwnership.Create(_tenant, active, null, true, _now),
+            MailboxOwnership.Create(_tenant, disconnected, null, false, _now),
+            MailboxOwnership.Create(_tenant, Guid.NewGuid(), Guid.NewGuid(), true, _now),
+            MailboxOwnership.Create(Guid.NewGuid(), Guid.NewGuid(), null, true, _now)
+        );
+
+        await using var db = NewContext();
+        var office = await new MailboxOwnershipRepository(db).ListOfficeAccountIdsAsync(_tenant);
+
+        Assert.Equivalent(new[] { active, disconnected }, office, strict: true);
+    }
+
+    [Fact]
     public async Task ListOwned_TenantWithoutRows_ReturnsNull()
     {
         await using var db = NewContext();

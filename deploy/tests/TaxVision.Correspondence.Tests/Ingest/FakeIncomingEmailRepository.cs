@@ -166,6 +166,35 @@ internal sealed class FakeIncomingEmailRepository : IIncomingEmailRepository
             )
         );
 
+    public Task<IReadOnlyList<IncomingEmail>> ListByStoredAttachmentFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<IncomingEmail>>(
+            _store
+                .Where(x =>
+                    x.TenantId == tenantId
+                    && x.Attachments.Any(a => a.CloudStorageFileId is { } id && fileIds.Contains(id))
+                )
+                .ToList()
+        );
+
+    public Task<IReadOnlyList<IncomingEmail>> ListWithStoredAttachmentsAsync(
+        Guid tenantId,
+        int skip,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<IncomingEmail>>(
+            _store
+                .Where(x => x.TenantId == tenantId && x.Attachments.Any(a => a.CloudStorageFileId != null))
+                .OrderBy(x => x.Id)
+                .Skip(skip)
+                .Take(take)
+                .ToList()
+        );
+
     public Task<IReadOnlyDictionary<Guid, IncomingEmail>> GetLatestByThreadAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> emailThreadIds,

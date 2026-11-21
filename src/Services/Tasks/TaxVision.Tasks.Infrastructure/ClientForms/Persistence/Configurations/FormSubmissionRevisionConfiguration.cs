@@ -40,6 +40,11 @@ public sealed class FormSubmissionRevisionConfiguration : IEntityTypeConfigurati
         builder
             .HasIndex(revision => revision.PdfGenerationId)
             .HasDatabaseName("IX_FormSubmissionRevisions_PdfGenerationId");
+        // La biblioteca pregunta por el PDF de la revisión con su FileId.
+        builder
+            .HasIndex(revision => revision.PdfFileId)
+            .HasFilter("[PdfFileId] IS NOT NULL")
+            .HasDatabaseName("IX_FormSubmissionRevisions_PdfFileId");
         builder
             .HasOne<FormSubmission>()
             .WithMany(submission => submission.Revisions)

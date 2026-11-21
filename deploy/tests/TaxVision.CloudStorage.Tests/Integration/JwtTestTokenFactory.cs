@@ -17,18 +17,25 @@ namespace TaxVision.CloudStorage.Tests.Integration;
 /// </summary>
 public static class JwtTestTokenFactory
 {
-    public static string Mint(CloudStorageApiFactory factory, Guid tenantId, Guid userId)
+    public static string Mint(CloudStorageApiFactory factory, Guid tenantId, Guid userId) =>
+        Mint(factory, tenantId, userId, "PlatformAdmin");
+
+    /// <summary>Token de otro tipo de actor; el portal lleva su cliente.</summary>
+    public static string Mint(CloudStorageApiFactory factory, Guid tenantId, Guid userId, string actorType)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(factory.JwtSecret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim("sub", userId.ToString()),
-            new Claim("tenant_id", tenantId.ToString()),
-            new Claim("actor_type", "PlatformAdmin"),
-            new Claim(ClaimTypes.Role, "PlatformAdmin"),
+            new("sub", userId.ToString()),
+            new("tenant_id", tenantId.ToString()),
+            new("actor_type", actorType),
         };
+        if (actorType == "PlatformAdmin")
+            claims.Add(new Claim(ClaimTypes.Role, "PlatformAdmin"));
+        if (actorType == "CustomerPortal")
+            claims.Add(new Claim("customer_id", Guid.NewGuid().ToString()));
 
         var token = new JwtSecurityToken(
             issuer: factory.JwtIssuer,

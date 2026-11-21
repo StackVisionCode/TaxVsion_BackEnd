@@ -37,6 +37,9 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<BillingDbContext>());
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
         services.AddScoped<IInvoiceTitleReader, InvoiceTitleReader>();
+        // Backfill de orígenes de archivo: lectura de los PDF y publicación por página con outbox.
+        services.AddScoped<IInvoicePdfFileReader, InvoicePdfFileReader>();
+        services.AddScoped<IIntegrationEventPagePublisher, Messaging.OutboxIntegrationEventPagePublisher>();
         services.AddScoped<IInvoiceSummaryReader, InvoiceSummaryReader>();
         services.AddScoped<IIssuerProfileRepository, IssuerProfileRepository>();
         services.AddScoped<ITenantBillingSettingsRepository, TenantBillingSettingsRepository>();

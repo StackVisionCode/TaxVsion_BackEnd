@@ -291,6 +291,42 @@ public sealed class IncomingEmailRepository(CorrespondenceDbContext db) : IIncom
                 ct
             );
 
+    public async Task<IReadOnlyList<IncomingEmail>> ListWithStoredAttachmentsAsync(
+        Guid tenantId,
+        int skip,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .IncomingEmails.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Include(x => x.Attachments)
+            .Where(x => x.TenantId == tenantId && x.Attachments.Any(a => a.CloudStorageFileId != null))
+            .OrderBy(x => x.Id)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<IncomingEmail>> ListByStoredAttachmentFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        CancellationToken ct = default
+    )
+    {
+        Guid[] ids = [.. fileIds.Distinct()];
+        return await db
+            .IncomingEmails.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Include(x => x.Attachments)
+            .Where(x =>
+                x.TenantId == tenantId
+                && x.Attachments.Any(a =>
+                    a.TenantId == tenantId && a.CloudStorageFileId != null && ids.Contains(a.CloudStorageFileId.Value)
+                )
+            )
+            .ToListAsync(ct);
+    }
+
     private static int ClampPageSize(int requested) =>
         requested switch
         {

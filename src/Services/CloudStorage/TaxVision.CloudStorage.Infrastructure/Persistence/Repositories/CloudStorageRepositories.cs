@@ -53,6 +53,7 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         FolderType? folderType,
         int skip,
         int take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     ) =>
         await db
@@ -81,6 +82,16 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                     || assignedCustomerIds == null
                     || file.OwnerType != OwnerType.Customer
                     || (file.OwnerId != null && assignedCustomerIds.Contains(file.OwnerId.Value))
+                )
+                // Lo que solo entrega su dueño no existe para una persona (FileReadGate.IsOwnerMediated).
+                && (
+                    !excludeOwnerMediated
+                    || !(
+                        (file.OwnerType == OwnerType.Communication && file.FolderType != FolderType.Avatars)
+                        || file.FolderType == FolderType.VoiceNotes
+                        || file.SourceResourceType == FileReadGate.NoteResourceType
+                        || (file.OwnerType == OwnerType.User && file.FolderType == FolderType.EmailIncoming)
+                    )
                 )
             )
             .OrderByDescending(file => file.CreatedAtUtc)
@@ -134,6 +145,33 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
             .OrderBy(file => file.ScanQueuedAtUtc ?? file.CreatedAtUtc)
             .Take(take)
             .ToListAsync(ct);
+
+    // Cross-tenant (FileSourceClaimReconciliationJob). Available ya deja fuera la papelera.
+    public async Task<IReadOnlyList<UndeclaredSourceFile>> ListUndeclaredSourceFilesAsync(
+        UndeclaredSourceFile? after,
+        int take,
+        CancellationToken ct
+    )
+    {
+        var query = db
+            .Files.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(file => file.SourceDeclaredAtUtc == null && file.Status == FileStatus.Available);
+        if (after is not null)
+        {
+            var (tenantId, id) = (after.TenantId, after.Id);
+            query = query.Where(file =>
+                file.TenantId.CompareTo(tenantId) > 0 || (file.TenantId == tenantId && file.Id.CompareTo(id) > 0)
+            );
+        }
+
+        return await query
+            .OrderBy(file => file.TenantId)
+            .ThenBy(file => file.Id)
+            .Take(take)
+            .Select(file => new UndeclaredSourceFile(file.TenantId, file.Id))
+            .ToListAsync(ct);
+    }
 
     // Backfill (barrido de plataforma): tenants con archivos sin carpeta navegable. Cross-tenant intencional.
     public async Task<IReadOnlyList<Guid>> DistinctTenantsWithUnfiledFilesAsync(
@@ -232,7 +270,8 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
-        FolderContentsFilter filter
+        FolderContentsFilter filter,
+        bool excludeOwnerMediated
     )
     {
         var query = db
@@ -256,6 +295,15 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                     || assignedCustomerIds == null
                     || file.OwnerType != OwnerType.Customer
                     || (file.OwnerId != null && assignedCustomerIds.Contains(file.OwnerId.Value))
+                )
+                && (
+                    !excludeOwnerMediated
+                    || !(
+                        (file.OwnerType == OwnerType.Communication && file.FolderType != FolderType.Avatars)
+                        || file.FolderType == FolderType.VoiceNotes
+                        || file.SourceResourceType == FileReadGate.NoteResourceType
+                        || (file.OwnerType == OwnerType.User && file.FolderType == FolderType.EmailIncoming)
+                    )
                 )
             );
 
@@ -314,11 +362,21 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         FolderContentsFilter filter,
         int? skip,
         int? take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     )
     {
         var query = OrderFiles(
-            FilesInFolder(tenantId, folderId, restrictedCustomerId, assignedCustomerIds, ownerType, ownerId, filter),
+            FilesInFolder(
+                tenantId,
+                folderId,
+                restrictedCustomerId,
+                assignedCustomerIds,
+                ownerType,
+                ownerId,
+                filter,
+                excludeOwnerMediated
+            ),
             filter
         );
         return take is null
@@ -334,9 +392,19 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
+        bool excludeOwnerMediated,
         CancellationToken ct
     ) =>
-        FilesInFolder(tenantId, folderId, restrictedCustomerId, assignedCustomerIds, ownerType, ownerId, filter)
+        FilesInFolder(
+                tenantId,
+                folderId,
+                restrictedCustomerId,
+                assignedCustomerIds,
+                ownerType,
+                ownerId,
+                filter,
+                excludeOwnerMediated
+            )
             .CountAsync(ct);
 
     public async Task<IReadOnlyList<FileObject>> ListInFoldersAsync(
@@ -387,6 +455,7 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
         Guid tenantId,
         int skip,
         int take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     ) =>
         await db
@@ -399,6 +468,15 @@ public sealed class FileObjectRepository(CloudStorageDbContext db) : IFileObject
                 // Fotos de perfil y pistas de grabación borradas no se listan (ni se restauran); la purga sí las alcanza.
                 && file.FolderType != FolderType.Avatars
                 && file.FolderType != FolderType.RecordingTracks
+                && (
+                    !excludeOwnerMediated
+                    || !(
+                        file.OwnerType == OwnerType.Communication
+                        || file.FolderType == FolderType.VoiceNotes
+                        || file.SourceResourceType == FileReadGate.NoteResourceType
+                        || (file.OwnerType == OwnerType.User && file.FolderType == FolderType.EmailIncoming)
+                    )
+                )
             )
             .OrderByDescending(file => file.SoftDeletedAtUtc)
             .Skip(skip)
@@ -497,7 +575,8 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         Guid? restrictedCustomerId,
         IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
-        Guid? ownerId
+        Guid? ownerId,
+        bool excludeOwnerMediated
     ) =>
         db
             .Folders.IgnoreQueryFilters()
@@ -519,6 +598,8 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
                     || folder.OwnerType != OwnerType.Customer
                     || (folder.OwnerId != null && assignedCustomerIds.Contains(folder.OwnerId.Value))
                 )
+                // La carpeta "Voice Notes" se cierra con sus archivos.
+                && (!excludeOwnerMediated || folder.Category != FileReadGate.VoiceNotesFolderCategory)
             );
 
     public async Task<IReadOnlyList<Folder>> ListSubfoldersAsync(
@@ -531,10 +612,19 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         FolderContentsFilter filter,
         int? skip,
         int? take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     )
     {
-        var query = Subfolders(tenantId, parentFolderId, restrictedCustomerId, assignedCustomerIds, ownerType, ownerId);
+        var query = Subfolders(
+            tenantId,
+            parentFolderId,
+            restrictedCustomerId,
+            assignedCustomerIds,
+            ownerType,
+            ownerId,
+            excludeOwnerMediated
+        );
         var desc = filter.SortDescending;
         // Las carpetas no tienen tamaño: "Size" cae a Name. "Modified" ordena por CreatedAtUtc.
         var ordered =
@@ -554,9 +644,18 @@ public sealed class FolderRepository(CloudStorageDbContext db) : IFolderReposito
         IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
+        bool excludeOwnerMediated,
         CancellationToken ct
     ) =>
-        Subfolders(tenantId, parentFolderId, restrictedCustomerId, assignedCustomerIds, ownerType, ownerId)
+        Subfolders(
+                tenantId,
+                parentFolderId,
+                restrictedCustomerId,
+                assignedCustomerIds,
+                ownerType,
+                ownerId,
+                excludeOwnerMediated
+            )
             .CountAsync(ct);
 
     public async Task<IReadOnlyList<Folder>> ListByPathPrefixAsync(

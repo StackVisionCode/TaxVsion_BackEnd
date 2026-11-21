@@ -133,6 +133,7 @@ public sealed class DocumentGenerationCompletedConsumerTests
             },
             new SingleInvoice(invoice),
             new CountingUnitOfWork(),
+            new FakeMessageBus(),
             new NoopCorrelationContext(),
             TimeProvider.System,
             NullLogger<Invoice>.Instance,

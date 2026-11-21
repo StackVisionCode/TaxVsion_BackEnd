@@ -41,13 +41,17 @@ public sealed class AttachFileToNoteHandlerTests
             new FakeOffboardedStaffRepository(),
             uow,
             bus,
+            new NoOpCorrelationContext(),
             TimeProvider.System,
             CancellationToken.None
         );
 
         Assert.True(result.IsSuccess);
         Assert.Equal(1, uow.SaveCount);
-        var (message, options) = Assert.Single(bus.PublishedWithOptions);
+        var (message, options) = Assert.Single(
+            bus.PublishedWithOptions,
+            published => published.Message is ReconcilePendingAttachmentCommand
+        );
         var scheduled = Assert.IsType<ReconcilePendingAttachmentCommand>(message);
         Assert.Equal(new ReconcilePendingAttachmentCommand(tenantId, note.Id, fileId), scheduled);
         Assert.Equal(TimeSpan.FromSeconds(30), options?.ScheduleDelay);
@@ -86,6 +90,7 @@ public sealed class AttachFileToNoteHandlerTests
             new FakeOffboardedStaffRepository(),
             new NoOpUnitOfWork(),
             new FakeMessageBus(),
+            new NoOpCorrelationContext(),
             new FixedClock(nowUtc),
             CancellationToken.None
         );
@@ -115,6 +120,7 @@ public sealed class AttachFileToNoteHandlerTests
             new FakeOffboardedStaffRepository(),
             new NoOpUnitOfWork(),
             bus,
+            new NoOpCorrelationContext(),
             TimeProvider.System,
             CancellationToken.None
         );

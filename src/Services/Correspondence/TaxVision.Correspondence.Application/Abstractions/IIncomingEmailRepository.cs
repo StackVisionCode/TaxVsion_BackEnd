@@ -136,6 +136,24 @@ public interface IIncomingEmailRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Backfill de File Library: una página de correos (también en la papelera) con algún adjunto ya guardado en
+    /// CloudStorage, por <c>Id</c>. Solo lectura, sin tracking.
+    /// </summary>
+    Task<IReadOnlyList<IncomingEmail>> ListWithStoredAttachmentsAsync(
+        Guid tenantId,
+        int skip,
+        int take,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Reclamo de orígenes: correos (también en la papelera) con algún adjunto guardado como esos archivos.</summary>
+    Task<IReadOnlyList<IncomingEmail>> ListByStoredAttachmentFileIdsAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        CancellationToken ct = default
+    );
+
     /// <summary>Reposición (COR-02): correos tracked cuyo cliente no es el de su hilo.</summary>
     Task<IReadOnlyList<IncomingEmail>> ListInForeignThreadsAsync(Guid tenantId, CancellationToken ct = default);
 }

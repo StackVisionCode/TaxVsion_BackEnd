@@ -287,18 +287,21 @@ internal sealed class RecordingStorage : ISignatureCloudStorageClient
     public List<Guid> Presigned { get; } = [];
     public List<(Guid Source, Guid Customer)> Copies { get; } = [];
     public HashSet<Guid> FailCopiesOf { get; } = [];
+    public List<(Guid SourceFileId, Guid CustomerId, SignatureFileSource Source)> CopySources { get; } = [];
 
     public Task<Result<Guid>> CopyToCustomerAsync(
         Guid tenantId,
         Guid sourceFileId,
         Guid customerId,
         int taxYear,
+        SignatureFileSource source,
         CancellationToken ct = default
     )
     {
         if (FailCopiesOf.Contains(sourceFileId))
             return Task.FromResult(Result.Failure<Guid>(new Error("Storage.Copy", "copy failed")));
         Copies.Add((sourceFileId, customerId));
+        CopySources.Add((sourceFileId, customerId, source));
         return Task.FromResult(Result.Success(Guid.NewGuid()));
     }
 
@@ -530,7 +533,14 @@ internal sealed class SingleRequestRepository(SignatureRequest request) : ISigna
     public Task<IReadOnlyList<SignatureRequest>> ListCompletedWithSealedFileAsync(
         Guid tenantId,
         CancellationToken ct = default
-    ) => Empty();
+    ) =>
+        Task.FromResult<IReadOnlyList<SignatureRequest>>(
+            request.TenantId == tenantId
+            && request.Status == SignatureRequestStatus.Completed
+            && request.Documents.Any(document => document.SealedFileId != null)
+                ? [request]
+                : []
+        );
 
     public Task<IReadOnlyList<SignatureRequest>> ListScheduledReadyToSendAsync(
         DateTime nowUtc,

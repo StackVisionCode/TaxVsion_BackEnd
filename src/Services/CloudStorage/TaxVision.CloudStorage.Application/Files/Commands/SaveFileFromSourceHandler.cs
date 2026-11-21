@@ -204,6 +204,8 @@ public static class SaveFileFromSourceHandler
 
             var file = registered.Value;
             file.MarkPendingScan(clock.UtcNow);
+            file.RecordSavingService(evt.RequestingService);
+            DeclareSourceFromEvent(file, evt, logger);
 
             // Coloca el archivo en su carpeta de sistema segun FolderType (get-or-create por
             // category, idempotente). Tipos internos devuelven null y se quedan en raiz. Cierra
@@ -302,6 +304,36 @@ public static class SaveFileFromSourceHandler
                 actualSize
             );
         return actualSize;
+    }
+
+    /// <summary>El origen es opcional: si no encaja en el catálogo, el archivo se guarda igual, sin declarar.</summary>
+    private static void DeclareSourceFromEvent(FileObject file, SaveFileRequestedIntegrationEvent evt, ILogger logger)
+    {
+        if (evt.SourceResourceType is null)
+            return;
+
+        var declaration = FileSourceDeclaration.Create(
+            evt.RequestingService,
+            evt.SourceResourceType,
+            evt.SourceResourceId ?? Guid.Empty,
+            evt.SourceRole,
+            evt.RelatedCustomerId
+        );
+        if (
+            declaration.IsFailure
+            || !FileSourceCatalog.Accepts(evt.SourceResourceType, evt.SourceRole, file.OwnerType, file.FolderType)
+        )
+        {
+            logger.LogWarning(
+                "SaveFileRequested {FileId} from {Service}: source {ResourceType}/{Role} not accepted; saved undeclared.",
+                evt.FileId,
+                evt.RequestingService,
+                evt.SourceResourceType,
+                evt.SourceRole
+            );
+            return;
+        }
+        file.DeclareSource(declaration.Value, evt.OccurredOn);
     }
 
     /// <summary>

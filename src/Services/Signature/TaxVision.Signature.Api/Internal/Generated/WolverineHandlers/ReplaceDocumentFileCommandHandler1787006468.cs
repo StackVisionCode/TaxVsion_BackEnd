@@ -23,6 +23,11 @@ namespace Internal.Generated.WolverineHandlers
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
+            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Queries.SignatureTemplateFileQuery is not public, so requires service location
+            */
+            var signatureTemplateFileQuery = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureTemplateFileQuery>(serviceScope.ServiceProvider);
+            
+            /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
@@ -63,7 +68,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Signature.Application.Requests.Commands.ReplaceDocumentFile.ReplaceDocumentFileHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Signature.Application.Requests.Commands.ReplaceDocumentFile.ReplaceDocumentFileHandler.Handle(replaceDocumentFileCommand, signatureRequestRepository, requestDocumentVerifier, unitOfWork, signatureRequestListCacheInvalidator, context, correlationContext, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Signature.Application.Requests.Commands.ReplaceDocumentFile.ReplaceDocumentFileHandler.Handle(replaceDocumentFileCommand, signatureRequestRepository, requestDocumentVerifier, unitOfWork, signatureRequestListCacheInvalidator, context, correlationContext, signatureTemplateFileQuery, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

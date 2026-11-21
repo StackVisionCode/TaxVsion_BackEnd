@@ -163,7 +163,11 @@ internal sealed class SingleFormRequestRepository(params FormRequest[] requests)
     ) => Task.FromResult<Guid?>(null);
 
     public Task<FormRequest?> GetByPdfGenerationIdAsync(Guid generationId, CancellationToken ct = default) =>
-        Task.FromResult<FormRequest?>(null);
+        Task.FromResult(
+            requests.FirstOrDefault(item =>
+                item.Submission?.Revisions.Any(revision => revision.PdfGenerationId == generationId) == true
+            )
+        );
 
     public Task<FormRequest?> GetLatestIntakeRequestAsync(
         Guid tenantId,

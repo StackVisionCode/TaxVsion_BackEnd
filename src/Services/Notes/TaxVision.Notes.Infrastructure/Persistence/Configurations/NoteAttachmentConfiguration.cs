@@ -25,5 +25,8 @@ public sealed class NoteAttachmentConfiguration : IEntityTypeConfiguration<NoteA
         builder.Property(a => a.LinkedAtUtc).IsRequired();
 
         builder.HasIndex(a => new { a.NoteId, a.CloudStorageFileId }).IsUnique();
+
+        // La biblioteca pregunta por adjunto con su FileId, sin la nota.
+        builder.HasIndex(a => a.CloudStorageFileId).HasDatabaseName("IX_NoteAttachments_CloudStorageFileId");
     }
 }

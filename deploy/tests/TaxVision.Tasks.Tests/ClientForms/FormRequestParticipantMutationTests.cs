@@ -261,6 +261,8 @@ public sealed class FormRequestParticipantMutationTests
             new PlainFormAnswersProtector(),
             ConsentGate(),
             unitOfWork,
+            new TaxVision.Tasks.Tests.Dependencies.FakeMessageBus(),
+            new TestCorrelationContext(),
             default
         );
 

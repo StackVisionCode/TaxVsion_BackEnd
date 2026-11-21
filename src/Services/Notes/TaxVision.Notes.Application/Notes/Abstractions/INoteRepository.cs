@@ -95,6 +95,19 @@ public interface INoteRepository
     );
 
     /// <summary>
+    /// Adjuntos <c>Available</c> con esos FileId en notas que el feed le mostraría al actor (mismo predicado de
+    /// visibilidad y asignación): una fila por adjunto y nota. Borradas y otros tenants nunca.
+    /// </summary>
+    Task<IReadOnlyList<NoteAttachmentFileRow>> ListVisibleAttachmentFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
     /// ¿El cliente <paramref name="customerId"/> está asignado a <paramref name="actorUserId"/> en la
     /// proyección local de asignaciones (P2)? Gate del detalle de una nota cuyo target es un Customer.
     /// </summary>
@@ -125,3 +138,15 @@ public interface INoteRepository
 
 /// <summary>Id y texto plano visible (preview) de una nota, para derivar su título.</summary>
 public sealed record NoteTitleRow(Guid Id, string Text);
+
+/// <summary>Un adjunto visible con lo justo de su nota para armar la fila de la biblioteca.</summary>
+public sealed record NoteAttachmentFileRow(
+    Guid FileId,
+    Guid NoteId,
+    string Text,
+    NoteVisibility Visibility,
+    Guid AuthorUserId,
+    NoteTargetType TargetType,
+    Guid? TargetId,
+    DateTime LinkedAtUtc
+);

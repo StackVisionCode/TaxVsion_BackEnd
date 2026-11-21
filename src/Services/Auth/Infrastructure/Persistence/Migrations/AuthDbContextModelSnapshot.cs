@@ -1206,6 +1206,20 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000232"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "cloudstorage.library.view",
+                            Description = "Use the file library",
+                            GatedModule = "documents",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "cloudstorage",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000023"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin,CustomerPortal",
                             Code = "cloudstorage.file.view",
@@ -1735,7 +1749,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
-                            Id = new Guid("a1000000-0000-0000-0000-000000000230"),
+                            Id = new Guid("a1000000-0000-0000-0000-000000000231"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "sms.send_any_number",
                             Description = "Send SMS to numbers that are not clients",

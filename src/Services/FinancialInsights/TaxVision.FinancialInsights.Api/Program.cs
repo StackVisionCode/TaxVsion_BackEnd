@@ -5,6 +5,7 @@ using BuildingBlocks.Infrastructure.Caching;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Redis;
 using BuildingBlocks.Messaging;
+using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using BuildingBlocks.Messaging.FinancialInsightsIntegrationEvents;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
@@ -110,6 +111,8 @@ builder.Host.UseWolverine(options =>
 
     // PUBLICADOS — sin ruta, Wolverine descarta el evento.
     options.PublishMessage<FinancialImportBatchCompletedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Origen de los estados de cuenta adoptados (biblioteca de archivos de CloudStorage).
+    options.PublishMessage<FileSourceDeclaredIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     // Tenant del mensaje en el scope del handler (consumers y comandos locales).
     options

@@ -91,6 +91,7 @@ public sealed class PortalImportBatchHandlerTests
             h.Entitlements,
             h.Files,
             h.Db,
+            h.Bus,
             CancellationToken.None
         );
 
@@ -142,6 +143,7 @@ public sealed class PortalImportBatchHandlerTests
             h.Entitlements,
             h.Files,
             h.Db,
+            h.Bus,
             CancellationToken.None
         );
 }

@@ -1,4 +1,7 @@
 import type { UserCommunicationPreferencesRepository } from '../ports/user-communication-preferences-repository.js';
+import { declareFileSource, recordingResourceType, relatedCustomerOf } from '../services/file-source-declarer.js';
+import { recordingClientCandidates, type RecordingSubject } from '../services/recording-visibility.js';
+import { FileSourceRoles } from '../../contracts/events/cloudstorage-events.js';
 import { speakerTranscriptLanguage } from './speaker-transcript-language.js';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../infrastructure/logger/logger.js';
@@ -539,6 +542,7 @@ export async function markRecordingFileAvailable(
       hostUserId: snap.hostUserId,
     };
     await deps.publisher.enqueue(event);
+    await declareRecordingFile(deps, { scope: 'Meeting', meeting }, s.scopeId, s.recordingFileId ?? input.fileId, correlationId);
   } else {
     const call = await deps.calls.findById(input.tenantId, s0.scopeId);
     if (!call) return;
@@ -561,9 +565,29 @@ export async function markRecordingFileAvailable(
       calleeUserId: snap.calleeUserId,
     };
     await deps.publisher.enqueue(event);
+    await declareRecordingFile(deps, { scope: 'Call', call }, s.scopeId, s.recordingFileId ?? input.fileId, correlationId);
   }
   await logRecordingEvent(deps, session, MeetingEventType.RecordingReady, correlationId, { fileId: input.fileId });
   emitRecordingState(deps, session, correlationId);
+}
+
+/** Biblioteca de archivos: la grabación lista nace de su llamada o reunión. */
+async function declareRecordingFile(
+  deps: Pick<RecordingLifecycleDeps, 'publisher'>,
+  subject: RecordingSubject,
+  scopeId: string,
+  fileId: string,
+  correlationId: string,
+): Promise<void> {
+  await declareFileSource(deps.publisher, {
+    tenantId: subject.scope === 'Call' ? subject.call.tenantId : subject.meeting.tenantId,
+    correlationId,
+    fileId,
+    resourceType: recordingResourceType(subject.scope),
+    resourceId: scopeId,
+    role: FileSourceRoles.Recording,
+    relatedCustomerId: relatedCustomerOf(recordingClientCandidates(subject)),
+  });
 }
 
 /** CloudStorage rechazo el archivo (virus, escaneo fallido, politica, cuota) → Failed. */

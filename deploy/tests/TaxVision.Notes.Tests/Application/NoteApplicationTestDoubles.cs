@@ -26,6 +26,32 @@ internal sealed class FakeNoteRepository : INoteRepository
 
     public void Seed(Note note) => _byId[note.Id] = note;
 
+    // Filas que devuelve ListVisibleAttachmentFilesAsync (la regla SQL se prueba en integración) y cada llamada.
+    public List<NoteAttachmentFileRow> VisibleFiles { get; } = [];
+
+    public List<(
+        Guid TenantId,
+        IReadOnlyCollection<Guid> FileIds,
+        Guid ActorUserId,
+        bool ActorHasViewAll,
+        Guid? AssignedToUserId
+    )> VisibleFileCalls { get; } = [];
+
+    public Task<IReadOnlyList<NoteAttachmentFileRow>> ListVisibleAttachmentFilesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> fileIds,
+        Guid actorUserId,
+        bool actorHasViewAll,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        VisibleFileCalls.Add((tenantId, fileIds, actorUserId, actorHasViewAll, assignedToUserId));
+        return Task.FromResult<IReadOnlyList<NoteAttachmentFileRow>>(
+            VisibleFiles.Where(row => fileIds.Contains(row.FileId)).ToList()
+        );
+    }
+
     public Task<bool> IsCustomerAssignedAsync(
         Guid tenantId,
         Guid customerId,

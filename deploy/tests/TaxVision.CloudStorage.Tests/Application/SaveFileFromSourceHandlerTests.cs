@@ -151,6 +151,71 @@ public sealed class SaveFileFromSourceHandlerTests
         Assert.Equal(2, unitOfWork.SaveChangesCallCount);
     }
 
+    [Fact]
+    public async Task The_saving_service_is_recorded_and_no_source_is_declared_without_fields()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+
+        await HandleAsync(
+            Evt(tenantId, fileId),
+            Limit(tenantId),
+            new FakeObjectStorage { SizeToReturn = 1024 },
+            files: files
+        );
+
+        var stored = await files.GetAsync(tenantId, fileId, CancellationToken.None);
+        Assert.Equal("signature", stored!.SourceService);
+        Assert.Null(stored.SourceResourceType);
+        Assert.Null(stored.SourceRole);
+    }
+
+    [Fact]
+    public async Task A_save_with_source_fields_leaves_the_file_declared()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var requestId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var evt = Evt(tenantId, fileId) with
+        {
+            SourceResourceType = "signature_request",
+            SourceResourceId = requestId,
+            SourceRole = "sealed_master",
+            RelatedCustomerId = customerId,
+        };
+
+        await HandleAsync(evt, Limit(tenantId), new FakeObjectStorage { SizeToReturn = 1024 }, files: files);
+
+        var stored = await files.GetAsync(tenantId, fileId, CancellationToken.None);
+        Assert.Equal("signature_request", stored!.SourceResourceType);
+        Assert.Equal(requestId, stored.SourceResourceId);
+        Assert.Equal("sealed_master", stored.SourceRole);
+        Assert.Equal(customerId, stored.RelatedCustomerId);
+    }
+
+    [Fact]
+    public async Task An_unknown_source_pair_still_saves_the_file_undeclared()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var files = new FakeFileObjectRepository();
+        var evt = Evt(tenantId, fileId) with
+        {
+            SourceResourceType = "signature_request",
+            SourceResourceId = Guid.NewGuid(),
+            SourceRole = "invoice_pdf",
+        };
+
+        await HandleAsync(evt, Limit(tenantId), new FakeObjectStorage { SizeToReturn = 1024 }, files: files);
+
+        var stored = await files.GetAsync(tenantId, fileId, CancellationToken.None);
+        Assert.NotNull(stored);
+        Assert.Null(stored!.SourceResourceType);
+    }
+
     /// <summary>
     /// El recibo de la suscripción llegaba de Documents y CloudStorage lo tiraba: su dueño y su carpeta no
     /// existían en los enums, así que el PDF se generaba y se perdía en silencio, y la columna "Receipt"

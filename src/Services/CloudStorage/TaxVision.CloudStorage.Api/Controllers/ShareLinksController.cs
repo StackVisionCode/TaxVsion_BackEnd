@@ -34,7 +34,8 @@ public sealed class ShareLinksController(
     IShareLinkRepository shareLinks,
     IAuthorizationService authorizationService,
     IOptionsMonitor<ResourceOwnershipOptions> ownershipOptions,
-    IUserPermissionsSource permissionsSource
+    IUserPermissionsSource permissionsSource,
+    IStorageActorScopeResolver scopeResolver
 ) : ControllerBase
 {
     /// <summary>
@@ -96,6 +97,8 @@ public sealed class ShareLinksController(
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        // Compartir es otra forma de leer: mismo alcance que la descarga por id.
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result<CreatedShareLinkResponse>>(
             new CreateShareLinkCommand(
                 tenantId,
@@ -134,9 +137,10 @@ public sealed class ShareLinksController(
     [ProducesResponseType<IReadOnlyList<ShareLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListForFile(Guid fileId, CancellationToken ct)
     {
-        if (!User.TryGet(out var tenantId, out _, out var scope))
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<ShareLinkResponse>>>(
             new ListShareLinksForFileQuery(tenantId, scope, fileId),
             ct
@@ -172,6 +176,8 @@ public sealed class ShareLinksController(
         if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        // Compartir una carpeta es otra forma de leerla: mismo alcance que la descarga por id.
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result<CreatedShareLinkResponse>>(
             new CreateFolderShareLinkCommand(
                 tenantId,
@@ -210,9 +216,10 @@ public sealed class ShareLinksController(
     [ProducesResponseType<IReadOnlyList<ShareLinkResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListForFolder(Guid folderId, CancellationToken ct)
     {
-        if (!User.TryGet(out var tenantId, out _, out var scope))
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
             return Unauthorized();
 
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<ShareLinkResponse>>>(
             new ListShareLinksForFolderQuery(tenantId, scope, folderId),
             ct

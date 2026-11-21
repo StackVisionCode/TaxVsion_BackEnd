@@ -18,6 +18,7 @@ public static class ReplaceDocumentFileHandler
         ISignatureRequestListCacheInvalidator listCache,
         IMessageBus bus,
         ICorrelationContext correlation,
+        ISignatureTemplateFileQuery templates,
         CancellationToken ct
     )
     {
@@ -46,6 +47,15 @@ public static class ReplaceDocumentFileHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
+        await OriginalFileSources.DeclareAsync(
+            bus,
+            templates,
+            request,
+            [outcome.NewFileId],
+            [outcome.OldFileId],
+            correlation.CorrelationId,
+            ct
+        );
 
         var replacedAt = DateTime.UtcNow;
         await bus.PublishAsync(

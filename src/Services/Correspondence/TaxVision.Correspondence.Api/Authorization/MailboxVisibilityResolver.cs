@@ -7,10 +7,10 @@ using TaxVision.Correspondence.Application.Abstractions;
 namespace TaxVision.Correspondence.Api.Authorization;
 
 /// <summary>
-/// Con office.read (o write) el usuario ve todo → <c>null</c> (el hot path no filtra). Sin él, ve sus buzones
-/// personales: los lee de la proyección local y, si el tenant aún no tiene filas, de Connectors. Fail-closed: si no
-/// hay userId o Connectors no responde, devuelve un set VACÍO en vez de abrir el buzón de oficina. Vive en la capa Api
-/// porque depende del <see cref="ClaimsPrincipal"/> y de <see cref="IUserPermissionsSource"/> (BuildingBlocks.Web).
+/// Buzones visibles: los personales del usuario y, con office.read (o write), los de oficina; nunca el personal de
+/// otro empleado. Los lee de la proyección local y, si el tenant aún no tiene filas, de Connectors. Fail-closed: si no
+/// hay userId o Connectors no responde, devuelve un set VACÍO. Vive en la capa Api porque depende del
+/// <see cref="ClaimsPrincipal"/> y de <see cref="IUserPermissionsSource"/> (BuildingBlocks.Web).
 /// </summary>
 public sealed class MailboxVisibilityResolver(
     IUserPermissionsSource permissions,
@@ -30,17 +30,14 @@ public sealed class MailboxVisibilityResolver(
         var canSeeOffice =
             await permissions.HasPermissionAsync(user, ConnectorsPermissions.AccountsOfficeRead, ct)
             || await permissions.HasPermissionAsync(user, ConnectorsPermissions.AccountsWrite, ct);
-        if (canSeeOffice)
-            return null;
-
         if (!user.TryGetUserId(out var userId))
             return None;
 
         var owned = await ownership.ListOwnedAccountIdsAsync(tenantId, userId, ct);
         if (owned is not null)
-            return owned;
+            return canSeeOffice ? [.. owned.Union(await ownership.ListOfficeAccountIdsAsync(tenantId, ct))] : owned;
 
-        var visible = await connectorsClient.GetVisibleAccountIdsAsync(tenantId, userId, includeOffice: false, ct);
+        var visible = await connectorsClient.GetVisibleAccountIdsAsync(tenantId, userId, canSeeOffice, ct);
         if (visible.IsFailure)
         {
             logger.LogWarning(

@@ -122,6 +122,28 @@ public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
     }
 
     /// <summary>
+    /// Backfill de la biblioteca de archivos: re-declara en CloudStorage sellados, certificados, maestros y copias
+    /// por cliente de las solicitudes completadas. <c>dryRun=true</c> (default) solo cuenta. Idempotente.
+    /// </summary>
+    [HttpPost("/signature/admin/redeclare-file-sources")]
+    [HasPermission(SignaturePermissions.PlanConstraintsManage)]
+    [RateLimit("signature.g.admin_constraints_manage")]
+    [ProducesResponseType<RedeclaredFileSourcesReport>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> RedeclareFileSources(
+        [FromQuery] Guid tenantId,
+        [FromQuery] bool dryRun = true,
+        CancellationToken ct = default
+    )
+    {
+        var result = await bus.InvokeAsync<Result<RedeclaredFileSourcesReport>>(
+            new RedeclareFileSourcesCommand(tenantId, dryRun),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
     /// Migración (una sola vez): las solicitudes de VARIOS clientes firmantes completadas antes de que
     /// existieran las copias de portal no las tienen. Genera la copia de cada documento firmado (y sus
     /// certificados) en la carpeta "Signed Documents" de cada cliente. <c>dryRun=true</c> (default) solo

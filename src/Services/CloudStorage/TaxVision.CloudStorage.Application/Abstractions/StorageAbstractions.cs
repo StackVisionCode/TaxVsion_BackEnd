@@ -13,6 +13,9 @@ namespace TaxVision.CloudStorage.Application.Abstractions;
 /// <summary>Un grupo de archivos sin carpeta del backfill: mismo dueno + tipo, con su conteo.</summary>
 public sealed record UnfiledFileGroup(OwnerType OwnerType, Guid? OwnerId, FolderType FolderType, int Count);
 
+/// <summary>Archivo disponible que ningún servicio declaró; también es la llave del keyset.</summary>
+public sealed record UndeclaredSourceFile(Guid TenantId, Guid Id);
+
 public interface IFileObjectRepository
 {
     void Add(FileObject file);
@@ -43,12 +46,20 @@ public interface IFileObjectRepository
         FolderType? folderType,
         int skip,
         int take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     );
     Task<IReadOnlyList<FileObject>> ListExpiredUploadsAsync(DateTime nowUtc, int take, CancellationToken ct);
 
     /// <summary>Cross-tenant: PendingScan/Scanning encolados (o creados) antes de <paramref name="olderThanUtc"/>.</summary>
     Task<IReadOnlyList<FileObject>> ListStuckScansAsync(DateTime olderThanUtc, int take, CancellationToken ct);
+
+    /// <summary>Cross-tenant: disponibles sin origen declarado, ordenados por (TenantId, Id) después de <paramref name="after"/>.</summary>
+    Task<IReadOnlyList<UndeclaredSourceFile>> ListUndeclaredSourceFilesAsync(
+        UndeclaredSourceFile? after,
+        int take,
+        CancellationToken ct
+    );
 
     /// <summary>CST-5: lo mínimo para calcular la cuota de un tenant (incluye la papelera).</summary>
     Task<IReadOnlyList<QuotaFootprintInput>> ListQuotaInputsAsync(Guid tenantId, CancellationToken ct);
@@ -110,6 +121,7 @@ public interface IFileObjectRepository
         FolderContentsFilter filter,
         int? skip,
         int? take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     );
 
@@ -122,6 +134,7 @@ public interface IFileObjectRepository
         OwnerType? ownerType,
         Guid? ownerId,
         FolderContentsFilter filter,
+        bool excludeOwnerMediated,
         CancellationToken ct
     );
 
@@ -151,7 +164,14 @@ public interface IFileObjectRepository
     );
 
     /// <summary>Papelera: archivos borrados INDIVIDUALMENTE (DeletedBatchId null) — los de carpeta se listan como su carpeta.</summary>
-    Task<IReadOnlyList<FileObject>> ListSoftDeletedLooseAsync(Guid tenantId, int skip, int take, CancellationToken ct);
+    /// <summary><paramref name="excludeOwnerMediated"/>: oculta lo que solo media su dueño (<see cref="FileReadGate.IsOwnerMediated(FileObject)"/>).</summary>
+    Task<IReadOnlyList<FileObject>> ListSoftDeletedLooseAsync(
+        Guid tenantId,
+        int skip,
+        int take,
+        bool excludeOwnerMediated,
+        CancellationToken ct
+    );
 
     /// <summary>Archivos de un batch de borrado de carpeta (TRACKED, para restaurarlos con la carpeta).</summary>
     Task<IReadOnlyList<FileObject>> ListByDeletedBatchAsync(Guid tenantId, Guid batchId, CancellationToken ct);
@@ -216,6 +236,7 @@ public interface IFolderRepository
         FolderContentsFilter filter,
         int? skip,
         int? take,
+        bool excludeOwnerMediated,
         CancellationToken ct
     );
 
@@ -227,6 +248,7 @@ public interface IFolderRepository
         IReadOnlyCollection<Guid>? assignedCustomerIds,
         OwnerType? ownerType,
         Guid? ownerId,
+        bool excludeOwnerMediated,
         CancellationToken ct
     );
 
@@ -687,18 +709,37 @@ public sealed record StorageActorScope(bool IsCustomerPortal, Guid? CustomerId)
     > DenyRules { get; init; } =
         new Dictionary<(AccessResourceType, Guid), IReadOnlyCollection<CustomerAccessRuleView>>();
 
+    /// <summary>Módulos que el personal puede leer (<see cref="FileReadGate"/>). Null = sin compuerta (flag off, portal o servicio).</summary>
+    public IReadOnlySet<FileReadSurface>? ReadableSurfaces { get; init; }
+
+    /// <summary>Persona con la compuerta "solo por su dueño" encendida (<see cref="FileReadGate.IsOwnerMediated(FileObject)"/>). Nunca para un servicio.</summary>
+    public bool HidesOwnerMediated { get; init; }
+
+    /// <summary>Lo que esta persona no puede ver aunque tenga los permisos de CloudStorage: lo media su dueño.</summary>
+    public bool HidesOwnerMediatedFile(FileObject file) =>
+        HidesOwnerMediated && !IsService && FileReadGate.IsOwnerMediated(file);
+
+    public bool HidesOwnerMediatedFolder(Folder folder) =>
+        HidesOwnerMediated && !IsService && FileReadGate.IsOwnerMediated(folder);
+
+    /// <summary>Valor para los listados del repositorio: excluir en SQL lo que media su dueño.</summary>
+    public bool ExcludesOwnerMediated => HidesOwnerMediated && !IsService;
+
     public bool CanCreate(OwnerType ownerType, Guid? ownerId) =>
         !IsCustomerPortal || (CustomerId.HasValue && ownerType == OwnerType.Customer && ownerId == CustomerId);
 
     public bool CanAccess(FileObject file) =>
         CanCreate(file.OwnerType, file.OwnerId)
         && IsAllowedByAssignment(file.OwnerType, file.OwnerId)
+        && IsAllowedBySource(file.OwnerType)
+        && !HidesOwnerMediatedFile(file)
         && !IsHiddenForPortal(AccessResourceType.File, file.Id);
 
     /// <summary>Fase C2 — misma regla de aislamiento que los archivos, aplicada a carpetas.</summary>
     public bool CanAccess(Folder folder) =>
         CanCreate(folder.OwnerType, folder.OwnerId)
         && IsAllowedByAssignment(folder.OwnerType, folder.OwnerId)
+        && !HidesOwnerMediatedFolder(folder)
         && !IsHiddenForPortal(AccessResourceType.Folder, folder.Id);
 
     /// <summary>
@@ -764,4 +805,11 @@ public sealed record StorageActorScope(bool IsCustomerPortal, Guid? CustomerId)
         || BypassAssignmentFilter
         || ownerType != OwnerType.Customer
         || (ownerId.HasValue && AssignedCustomerIds.Contains(ownerId.Value));
+
+    private bool IsAllowedBySource(OwnerType ownerType) =>
+        IsCustomerPortal
+        || IsService
+        || ReadableSurfaces is null
+        || FileReadGate.SurfaceOf(ownerType) is not { } surface
+        || ReadableSurfaces.Contains(surface);
 }

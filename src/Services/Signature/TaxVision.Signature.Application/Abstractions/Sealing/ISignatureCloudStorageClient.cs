@@ -11,8 +11,30 @@ public sealed record SignatureFileUpload(
     Guid OwnerId,
     string FolderType,
     int? TaxYear,
-    Guid ActorId
+    Guid ActorId,
+    SignatureFileSource? Source = null
 );
+
+/// <summary>Recurso del que nace el archivo, declarado a CloudStorage para la biblioteca de archivos.</summary>
+public sealed record SignatureFileSource(Guid RequestId, string Role, Guid? RelatedCustomerId)
+{
+    /// <summary>Valor de <c>SourceResourceType</c> de todo lo que declara Signature.</summary>
+    public const string ResourceType = "signature_request";
+
+    /// <summary>Evento con que se declara (o re-declara) este origen para un archivo ya catalogado.</summary>
+    public FileSourceDeclaredIntegrationEvent ToDeclaration(Guid tenantId, Guid fileId, string correlationId) =>
+        new()
+        {
+            TenantId = tenantId,
+            CorrelationId = correlationId,
+            FileId = fileId,
+            SourceService = SignatureStorage.RequestingService,
+            SourceResourceType = ResourceType,
+            SourceResourceId = RequestId,
+            SourceRole = Role,
+            RelatedCustomerId = RelatedCustomerId,
+        };
+}
 
 /// <summary>Cómo se identifica Signature ante CloudStorage al pedir guardar un archivo.</summary>
 public static class SignatureStorage
@@ -84,13 +106,15 @@ public interface ISignatureCloudStorageClient
 
     /// <summary>
     /// Copia en servidor (sin bajar bytes) de un archivo final a la carpeta "Signed Documents" del portal de
-    /// un cliente (owner Customer, FolderType Signatures). CloudStorage la escanea como cualquier archivo.
+    /// un cliente (owner Customer, FolderType Signatures). CloudStorage la escanea como cualquier archivo y la
+    /// declara con <paramref name="source"/>.
     /// </summary>
     Task<Result<Guid>> CopyToCustomerAsync(
         Guid tenantId,
         Guid sourceFileId,
         Guid customerId,
         int taxYear,
+        SignatureFileSource source,
         CancellationToken ct = default
     );
 

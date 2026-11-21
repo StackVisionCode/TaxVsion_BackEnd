@@ -30,6 +30,7 @@ using TaxVision.Signature.Application.Templates.Commands.Instantiate;
 using TaxVision.Signature.Infrastructure.Audit;
 using TaxVision.Signature.Infrastructure.Consents;
 using TaxVision.Signature.Infrastructure.Locking;
+using TaxVision.Signature.Infrastructure.Messaging;
 using TaxVision.Signature.Infrastructure.Permissions;
 using TaxVision.Signature.Infrastructure.Persistence;
 using TaxVision.Signature.Infrastructure.Persistence.Queries;
@@ -115,6 +116,9 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(DeliveryIssuanceLockOptions.SectionName));
         services.AddScoped<IDeliveryIssuanceLock, SqlDeliveryIssuanceLock>();
         services.AddScoped<CustomerPortalCopier>();
+        services.AddScoped<IFileSourceDeclarationPublisher, FileSourceDeclarationPublisher>();
+        services.AddScoped<ISignatureOriginalFileQuery, SignatureOriginalFileQuery>();
+        services.AddScoped<ISignatureTemplateFileQuery, SignatureTemplateFileQuery>();
         services.AddScoped<DeliverableFiles>();
         // El token de la entrega viaja cifrado a Notification (misma clave ENCRYPTION_MASTER_KEY).
         services.AddProtectedPayloadProtection(configuration);

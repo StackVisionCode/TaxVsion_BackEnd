@@ -1356,6 +1356,10 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("PdfFileId")
+                        .HasDatabaseName("IX_FormSubmissionRevisions_PdfFileId")
+                        .HasFilter("[PdfFileId] IS NOT NULL");
+
                     b.HasIndex("PdfGenerationId")
                         .HasDatabaseName("IX_FormSubmissionRevisions_PdfGenerationId");
 

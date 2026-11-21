@@ -4,9 +4,8 @@ import { HttpCloudStorageUploadClient } from '../../src/infrastructure/cloudstor
 import type { ServiceTokenClient } from '../../src/infrastructure/auth/service-token-client.js';
 
 /**
- * F1 — routing del owner en el upload: una nota de voz (contentType audio/*) va a la carpeta navegable
- * "Voice Notes" del TENANT (owner Tenant, ownerId null); cualquier otro adjunto sigue anclado a la
- * conversación (owner Communication). Se valida el body del POST a CloudStorage stubbeando fetch.
+ * Routing del owner en el upload: un adjunto normal queda anclado a la conversación (owner Communication).
+ * La nota de voz se cubre en voice-note-upload-owner.test.ts. Se valida el body del POST stubbeando fetch.
  */
 function tokens(): ServiceTokenClient {
   return { async getToken() {
@@ -36,38 +35,10 @@ function stubFetchOk(): { bodies: Record<string, unknown>[] } {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('voice-note upload routing (owner=Tenant)', () => {
+describe('attachment upload routing (owner=Communication)', () => {
   const client = new HttpCloudStorageUploadClient(tokens());
   const conversationId = randomUUID();
   const uploadedByUserId = randomUUID();
-
-  it('routes an audio/* upload to the tenant VoiceNotes folder (ownerId null)', async () => {
-    const captured = stubFetchOk();
-    await client.initiate(randomUUID(), {
-      originalName: 'voice_1.webm',
-      contentType: 'audio/webm',
-      sizeBytes: 2048,
-      conversationId,
-      uploadedByUserId,
-    });
-    expect(captured.bodies[0]).toMatchObject({
-      ownerType: 'Tenant',
-      ownerId: null,
-      folderType: 'VoiceNotes',
-    });
-  });
-
-  it('routes an mp4 audio (Safari) the same way', async () => {
-    const captured = stubFetchOk();
-    await client.initiate(randomUUID(), {
-      originalName: 'voice_1.mp4',
-      contentType: 'audio/mp4',
-      sizeBytes: 2048,
-      conversationId,
-      uploadedByUserId,
-    });
-    expect(captured.bodies[0]).toMatchObject({ ownerType: 'Tenant', folderType: 'VoiceNotes' });
-  });
 
   it('keeps a regular attachment anchored to the conversation (owner Communication/Other)', async () => {
     const captured = stubFetchOk();

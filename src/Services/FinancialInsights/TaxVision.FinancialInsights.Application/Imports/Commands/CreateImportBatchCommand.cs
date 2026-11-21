@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.FinancialInsights.Application.Imports.Abstractions;
 using TaxVision.FinancialInsights.Domain.Imports;
+using Wolverine;
 
 namespace TaxVision.FinancialInsights.Application.Imports.Commands;
 
@@ -23,6 +24,7 @@ public static class CreateImportBatchHandler
         TenantEntitlementsResolver entitlements,
         IImportFileGateway files,
         IOptions<FinancialCustomerVisibilityOptions> visibility,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -70,6 +72,7 @@ public static class CreateImportBatchHandler
 
         if (!await batches.TryAddAsync(batch, ct))
             return Result.Failure<ImportBatchView>(FinancialInsightsErrors.FileAlreadyRegistered);
+        await ImportFileSources.DeclareAsync(bus, batch);
         return Result.Success(ImportBatchView.From(batch));
     }
 }
