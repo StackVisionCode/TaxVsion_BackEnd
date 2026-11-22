@@ -29,6 +29,15 @@ public interface ICampaignRunRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Últimos <paramref name="take"/> runs de la oficina (más nuevo primero) sin destinatarios, con el
+    /// próximo disparo Active desde <paramref name="nowUtc"/>, general y por campaña.</summary>
+    Task<RecentCampaignRunsResponse> ListRecentAsync(
+        Guid tenantId,
+        int take,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    );
+
     Task AddAsync(CampaignRun run, CancellationToken ct = default);
 
     /// <summary>Runs en <c>Dispatching</c> creados antes de <paramref name="createdBeforeUtc"/> (todos los tenants), para el barrido.</summary>

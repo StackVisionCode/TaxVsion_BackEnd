@@ -208,6 +208,58 @@ public sealed class WorkControllerTests
         );
     }
 
+    [Fact]
+    public async Task Office_waiting_without_users_work_view_is_forbidden()
+    {
+        var (controller, bus) = Controller(TasksPermissions.Read, TasksPermissions.FormRequestsRead);
+
+        var result = await controller.OfficeWaiting(default);
+
+        Assert.Equal(StatusCodes.Status403Forbidden, Assert.IsType<ObjectResult>(result).StatusCode);
+        var query = Assert.IsType<GetOfficeWaitingQuery>(Assert.Single(bus.Invoked));
+        Assert.False(query.CanViewOffice);
+    }
+
+    [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    public async Task Office_waiting_adds_forms_only_with_their_permission_and_module(
+        bool canReadForms,
+        bool moduleOn,
+        bool withForms
+    )
+    {
+        var granted = new List<string> { TasksPermissions.Read, UserManagementPermissions.UsersWorkView };
+        if (canReadForms)
+            granted.Add(TasksPermissions.FormRequestsRead);
+        var (controller, bus) = Controller(moduleOn, [.. granted]);
+
+        var result = await controller.OfficeWaiting(default);
+
+        var response = Assert.IsType<OfficeWaitingResponse>(Assert.IsType<OkObjectResult>(result).Value);
+        var kinds = response.Counts.Select(c => c.Kind).ToList();
+        Assert.Equal(withForms, kinds.Contains(WorkKinds.FormRequests));
+        var tasks = Assert.Single(bus.Invoked.OfType<GetOfficeWaitingQuery>());
+        Assert.Equal(
+            (Tenant, Actor, true, false),
+            (tasks.TenantId, tasks.ActorUserId, tasks.CanViewOffice, tasks.CanViewAll)
+        );
+        Assert.Equal(withForms ? 1 : 0, bus.Invoked.OfType<GetFormRequestOfficeWaitingQuery>().Count());
+    }
+
+    [Fact]
+    public void Office_waiting_uses_the_read_permission_and_the_work_rate_limit()
+    {
+        var method = typeof(WorkController).GetMethod(nameof(WorkController.OfficeWaiting))!;
+        Assert.Equal(
+            [$"perm:{TasksPermissions.Read}"],
+            method.GetCustomAttributes<HasPermissionAttribute>().Select(a => a.Policy)
+        );
+        Assert.Equal("task.f.read", method.GetCustomAttribute<RateLimitAttribute>()!.PolicyName);
+        Assert.Equal("office/waiting", method.GetCustomAttribute<HttpGetAttribute>()!.Template);
+    }
+
     private static (WorkController Controller, RecordingBus Bus) Controller(params string[] granted) =>
         Controller(true, granted);
 
@@ -247,6 +299,13 @@ public sealed class WorkControllerTests
                         [new WorkTitle(WorkResourceTypes.FormRequest, q.Ids[0], "form title")],
                     GetWorkItemsQuery q => Result.Success(new PagedResult<WorkItem>([], q.Page, q.Size, 0)),
                     GetFormRequestWorkItemsQuery q => new PagedResult<WorkItem>([], q.Page, q.Size, 0),
+                    GetOfficeWaitingQuery q => q.CanViewOffice
+                        ? Result.Success<IReadOnlyList<OfficeWaitingCount>>([
+                            new OfficeWaitingCount(WorkKinds.Tasks, 2),
+                            new OfficeWaitingCount(WorkKinds.ClientRequests, 1),
+                        ])
+                        : Result.Failure<IReadOnlyList<OfficeWaitingCount>>(WorkErrors.Forbidden),
+                    GetFormRequestOfficeWaitingQuery => 4,
                     _ => throw new InvalidOperationException(message.GetType().Name),
                 };
             };

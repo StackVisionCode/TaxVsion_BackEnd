@@ -141,6 +141,57 @@
           }
         },
         {
+          "name": "Mi agenda (participantUserId)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/calendar/appointments?from=2026-11-21T00:00:00Z&to=2026-11-28T00:00:00Z&participantUserId={{userId}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "calendar",
+                "appointments"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-11-21T00:00:00Z"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-28T00:00:00Z"
+                },
+                {
+                  "key": "participantUserId",
+                  "value": "{{userId}}"
+                }
+              ]
+            },
+            "description": "Citas que el usuario organiza o a las que asiste. El filtro por participante se aplica en SQL junto al recorte por asignación (sin customers.view_all no aparecen las citas de clientes no asignados). Mismo contrato que el rango."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "pm.test(\"es una lista\", () => pm.expect(pm.response.json()).to.be.an(\"array\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Mi dia",
           "request": {
             "method": "GET",

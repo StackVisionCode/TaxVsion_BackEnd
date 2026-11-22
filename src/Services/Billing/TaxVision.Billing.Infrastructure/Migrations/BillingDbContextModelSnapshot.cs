@@ -45,6 +45,10 @@ namespace TaxVision.Billing.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "CustomerId");
 
+                    b.HasIndex("TenantId", "UserId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "UserId"), new[] { "CustomerId" });
+
                     b.HasIndex("TenantId", "CustomerId", "UserId")
                         .IsUnique();
 
@@ -83,10 +87,20 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<long>("AmountDueCents")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasComputedColumnSql("CAST(LEFT([AmountDue], CHARINDEX('|', [AmountDue]) - 1) AS bigint)", true);
+
                     b.Property<string>("AmountPaid")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
+
+                    b.Property<long>("AmountPaidCents")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasComputedColumnSql("CAST(LEFT([AmountPaid], CHARINDEX('|', [AmountPaid]) - 1) AS bigint)", true);
 
                     b.Property<long>("CarriedCreditCents")
                         .ValueGeneratedOnAdd()
@@ -238,6 +252,11 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<long>("TotalCents")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasComputedColumnSql("CAST(LEFT([Total], CHARINDEX('|', [Total]) - 1) AS bigint)", true);
+
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -250,13 +269,23 @@ namespace TaxVision.Billing.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("TenantId", "CreatedAtUtc");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "CreatedAtUtc"), new[] { "Status", "Currency", "CustomerId", "DeletedAtUtc" });
+
                     b.HasIndex("TenantId", "CustomerId");
 
                     b.HasIndex("TenantId", "InvoiceNumber")
                         .IsUnique()
                         .HasFilter("[InvoiceNumber] IS NOT NULL");
 
+                    b.HasIndex("TenantId", "IssueDateUtc");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "IssueDateUtc"), new[] { "Status", "TotalCents", "Currency", "CustomerId", "DeletedAtUtc" });
+
                     b.HasIndex("TenantId", "Status");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "Status"), new[] { "AmountDueCents", "AmountDue", "DueDateUtc", "IssueDateUtc", "Currency", "CustomerId", "InvoiceNumber", "DeletedAtUtc" });
 
                     b.ToTable("Invoices", "billing");
                 });
@@ -270,6 +299,11 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
+
+                    b.Property<long>("AmountCents")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("bigint")
+                        .HasComputedColumnSql("CAST(LEFT([Amount], CHARINDEX('|', [Amount]) - 1) AS bigint)", true);
 
                     b.Property<long>("ExceedsDueCents")
                         .HasColumnType("bigint");
@@ -308,7 +342,15 @@ namespace TaxVision.Billing.Infrastructure.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "PaidAtUtc")
+                        .HasFilter("[ReversedAtUtc] IS NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "PaidAtUtc"), new[] { "AmountCents", "Source", "InvoiceId", "ReversedAtUtc" });
 
                     b.HasIndex("InvoiceId", "Source", "SourceReference")
                         .IsUnique();

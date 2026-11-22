@@ -1479,11 +1479,502 @@
           }
         }
       ]
+    },
+    {
+      "name": "Workspace Preferences (/team)",
+      "description": "Preferencias del espacio de trabajo (layout del dashboard del CRM), dueño Tenant módulo Team. Clave crm-dashboard-layout, schemaVersion 1. Tenant y usuario salen del token. Concurrencia por expectedVersion (409 Team.Preference.VersionConflict). Cuotas tenant.f.preferences_read y tenant.g.preferences_write.",
+      "item": [
+        {
+          "name": "GetMyWorkspacePreference",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/team/me/workspace-preferences/crm-dashboard-layout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "me",
+                "workspace-preferences",
+                "crm-dashboard-layout"
+              ]
+            },
+            "description": "Layout efectivo del que llama (staff: TenantEmployee/TenantAdmin). source = user | office | default; version = la de su fila (0 = no existe); officeDefault viaja aunque la plantilla esté vacía. Nunca 404. Guarda las versiones para los PUT/DELETE."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "pm.test(\"source válido\", () => pm.expect([\"user\",\"office\",\"default\"]).to.include(pm.response.json().source));",
+                  "const v = pm.response.json();",
+                  "pm.collectionVariables.set(\"workspacePreferenceVersion\", v.version);",
+                  "pm.collectionVariables.set(\"officeDefaultVersion\", v.officeDefault ? v.officeDefault.version : 0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SaveMyWorkspacePreference",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/team/me/workspace-preferences/crm-dashboard-layout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "me",
+                "workspace-preferences",
+                "crm-dashboard-layout"
+              ]
+            },
+            "description": "Guarda el layout propio con expectedVersion (obligatorio). Sin fila: 0 crea con versión 1. Contenido idéntico: 200 sin subir versión. Tope 50 widgets y 16 KB de cuerpo (413). schemaVersion 1 o 2; en la 2 cada widget puede llevar scope (me u office; otro valor: 400 Team.Preference.InvalidWidgetScope). Cuota tenant.g.preferences_write.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaVersion\": 2,\n  \"expectedVersion\": {{workspacePreferenceVersion}},\n  \"payload\": [\n    { \"id\": \"needs-attention\", \"size\": \"l\", \"hidden\": false },\n    { \"id\": \"tasks\", \"size\": \"m\", \"hidden\": false, \"scope\": \"office\" },\n    { \"id\": \"revenue\", \"size\": \"m\", \"hidden\": true }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "pm.test(\"source user\", () => pm.expect(pm.response.json().source).to.eql(\"user\"));",
+                  "const v = pm.response.json();",
+                  "pm.collectionVariables.set(\"workspacePreferenceVersion\", v.version);",
+                  "pm.collectionVariables.set(\"officeDefaultVersion\", v.officeDefault ? v.officeDefault.version : 0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SaveMyWorkspacePreference stale version (409)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/team/me/workspace-preferences/crm-dashboard-layout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "me",
+                "workspace-preferences",
+                "crm-dashboard-layout"
+              ]
+            },
+            "description": "Correr después de SaveMyWorkspacePreference: expectedVersion 0 sobre una fila existente → 409 Team.Preference.VersionConflict.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaVersion\": 1,\n  \"expectedVersion\": 0,\n  \"payload\": [ { \"id\": \"tasks\", \"size\": \"s\", \"hidden\": false } ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 409\", () => pm.response.code === 409 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "pm.test(\"VersionConflict\", () => pm.expect(pm.response.json().code).to.eql(\"Team.Preference.VersionConflict\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SaveMyWorkspacePreference unknown key (400)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/team/me/workspace-preferences/crm-other",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "me",
+                "workspace-preferences",
+                "crm-other"
+              ]
+            },
+            "description": "Clave fuera de la lista blanca → 400 Team.Preference.UnknownKey.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaVersion\": 1,\n  \"expectedVersion\": 0,\n  \"payload\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 400\", () => pm.response.code === 400 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "pm.test(\"UnknownKey\", () => pm.expect(pm.response.json().code).to.eql(\"Team.Preference.UnknownKey\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ClearMyWorkspacePreference",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/team/me/workspace-preferences/crm-dashboard-layout?expectedVersion={{workspacePreferenceVersion}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "me",
+                "workspace-preferences",
+                "crm-dashboard-layout"
+              ],
+              "query": [
+                {
+                  "key": "expectedVersion",
+                  "value": "{{workspacePreferenceVersion}}"
+                }
+              ]
+            },
+            "description": "Restablece el layout propio: la fila queda sin contenido y con versión + 1 (no se borra). Sin fila y expectedVersion=0: 200 sin efecto. Otra versión → 409."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "pm.test(\"ya no es user\", () => pm.expect(pm.response.json().source).to.not.eql(\"user\"));",
+                  "const v = pm.response.json();",
+                  "pm.collectionVariables.set(\"workspacePreferenceVersion\", v.version);",
+                  "pm.collectionVariables.set(\"officeDefaultVersion\", v.officeDefault ? v.officeDefault.version : 0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "SetOfficeDefault",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/team/workspace-preferences/crm-dashboard-layout/office-default",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "workspace-preferences",
+                "crm-dashboard-layout",
+                "office-default"
+              ]
+            },
+            "description": "Fija o actualiza la plantilla de la oficina. Permiso settings.manage. Responde OfficeDefaultView (version, updatedAtUtc, payload). Se puede volver a fijar tras quitarla con su versión.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaVersion\": 1,\n  \"expectedVersion\": {{officeDefaultVersion}},\n  \"payload\": [\n    { \"id\": \"needs-attention\", \"size\": \"l\", \"hidden\": false },\n    { \"id\": \"tasks\", \"size\": \"m\", \"hidden\": false },\n    { \"id\": \"revenue\", \"size\": \"m\", \"hidden\": true }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "pm.collectionVariables.set(\"officeDefaultVersion\", pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "RemoveOfficeDefault",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/team/workspace-preferences/crm-dashboard-layout/office-default?expectedVersion={{officeDefaultVersion}}",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "workspace-preferences",
+                "crm-dashboard-layout",
+                "office-default"
+              ],
+              "query": [
+                {
+                  "key": "expectedVersion",
+                  "value": "{{officeDefaultVersion}}"
+                }
+              ]
+            },
+            "description": "Quita la plantilla: payload null y versión + 1; la fila queda para poder volver a fijarla. Permiso settings.manage."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "pm.test(\"payload null\", () => pm.expect(pm.response.json().payload).to.eql(null));",
+                  "pm.collectionVariables.set(\"officeDefaultVersion\", pm.response.json().version);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "NEG no token (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/team/me/workspace-preferences/crm-dashboard-layout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "me",
+                "workspace-preferences",
+                "crm-dashboard-layout"
+              ]
+            },
+            "description": "Sin token → 401 del servicio (no 404 del Gateway ni 200 text/html del Tunnel)."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 401\", () => pm.response.code === 401 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "NEG employee without settings.manage — SetOfficeDefault (403)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{employeeAccessToken}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/team/workspace-preferences/crm-dashboard-layout/office-default",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "workspace-preferences",
+                "crm-dashboard-layout",
+                "office-default"
+              ]
+            },
+            "description": "Token de un empleado SIN settings.manage (variable de colección employeeAccessToken) → 403.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"schemaVersion\": 1,\n  \"expectedVersion\": {{officeDefaultVersion}},\n  \"payload\": [\n    { \"id\": \"needs-attention\", \"size\": \"l\", \"hidden\": false },\n    { \"id\": \"tasks\", \"size\": \"m\", \"hidden\": false },\n    { \"id\": \"revenue\", \"size\": \"m\", \"hidden\": true }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.code === 403 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "NEG CustomerPortal rejected — GetMyWorkspacePreference (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customerPortalAccessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/team/me/workspace-preferences/crm-dashboard-layout",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "team",
+                "me",
+                "workspace-preferences",
+                "crm-dashboard-layout"
+              ]
+            },
+            "description": "Un token del portal no entra a las preferencias del staff → 403."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 403\", () => pm.response.code === 403 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
     {
       "key": "platformSettingsVersion",
+      "value": ""
+    },
+    {
+      "key": "workspacePreferenceVersion",
+      "value": "0"
+    },
+    {
+      "key": "officeDefaultVersion",
+      "value": "0"
+    },
+    {
+      "key": "employeeAccessToken",
       "value": ""
     }
   ]

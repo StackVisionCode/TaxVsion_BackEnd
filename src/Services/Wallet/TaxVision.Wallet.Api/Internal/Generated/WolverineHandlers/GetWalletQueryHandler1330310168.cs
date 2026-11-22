@@ -26,6 +26,7 @@ namespace Internal.Generated.WolverineHandlers
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Wallet.Infrastructure.Persistence.WalletDbContext walletDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Wallet.Infrastructure.Persistence.WalletDbContext.");
+            var walletSettingsRepository = new TaxVision.Wallet.Infrastructure.Persistence.Repositories.WalletSettingsRepository(walletDbContext);
             var walletRepository = new TaxVision.Wallet.Infrastructure.Persistence.Repositories.WalletRepository(walletDbContext);
             var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
@@ -48,7 +49,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Wallet.Application.Wallet.Queries.GetWalletHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Wallet.Application.Wallet.Queries.GetWalletHandler.Handle(getWalletQuery, walletRepository, unitOfWork, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Wallet.Application.Wallet.Queries.GetWalletHandler.Handle(getWalletQuery, walletRepository, walletSettingsRepository, unitOfWork, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

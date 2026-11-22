@@ -1,4 +1,3 @@
-using BuildingBlocks.CustomerVisibility;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using TaxVision.Signature.Application.Abstractions;
@@ -48,6 +47,11 @@ internal sealed class SignatureRequestReadService(
         // La request no tiene CustomerId: el cliente vive en Signers.MappedCustomerId.
         if (query.CustomerId is { } customerId)
             baseQuery = baseQuery.Where(r => r.Signers.Any(s => s.MappedCustomerId == customerId));
+        // Filtros del dashboard: mismas reglas que sus números (resumen y My work).
+        if (query.ExpiringSoon)
+            baseQuery = baseQuery.ExpiringSoon(query.NowUtc ?? DateTime.UtcNow);
+        if (query.MineOnly)
+            baseQuery = baseQuery.AwaitingOthersFor(query.ActorUserId);
 
         // Visibilidad por asignación (P2): solo solicitudes cuyo cliente está asignado al actor. La request
         // no tiene CustomerId → se atraviesa Signers.MappedCustomerId. IgnoreQueryFilters + tenant explícito
@@ -58,16 +62,7 @@ internal sealed class SignatureRequestReadService(
         // lista de su propio creador. CanViewAll sigue siendo la única puerta global (guardrail #12).
         var assignedTo = visibility.Value.Enabled && !query.CanViewAll ? query.ActorUserId : (Guid?)null;
         if (assignedTo is { } assignee)
-            baseQuery = baseQuery.Where(r =>
-                (r.Status == SignatureRequestStatus.Draft && r.CreatedByUserId == assignee)
-                || db.Set<CustomerAssignmentProjection>()
-                    .IgnoreQueryFilters()
-                    .Any(a =>
-                        a.TenantId == query.TenantId
-                        && a.UserId == assignee
-                        && r.Signers.Any(s => s.MappedCustomerId == a.CustomerId)
-                    )
-            );
+            baseQuery = baseQuery.VisibleTo(db, query.TenantId, assignee);
 
         var total = await baseQuery.CountAsync(ct);
 

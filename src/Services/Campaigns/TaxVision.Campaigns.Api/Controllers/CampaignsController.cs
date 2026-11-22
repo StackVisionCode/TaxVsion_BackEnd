@@ -439,6 +439,24 @@ public sealed class CampaignsController(IMessageBus bus, IUserPermissionsSource 
         return Ok(result);
     }
 
+    // ---------- GET /campaigns/runs/recent?take=5 ----------
+    // Widget del dashboard: últimos runs de la oficina sin destinatarios y el próximo disparo.
+    [HttpGet("runs/recent")]
+    [HasPermission(CampaignsPermissions.View)]
+    [RateLimit("campaigns.f.list")]
+    [ProducesResponseType<RecentCampaignRunsResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListRecentRuns([FromQuery] int take, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<RecentCampaignRunsResponse>(
+            new ListRecentCampaignRunsQuery(tenantId, take, DateTime.UtcNow),
+            ct
+        );
+        return Ok(result);
+    }
+
     [HttpGet("runs/{runId:guid}")]
     [HasPermission(CampaignsPermissions.View)]
     [RateLimit("campaigns.f.get")]

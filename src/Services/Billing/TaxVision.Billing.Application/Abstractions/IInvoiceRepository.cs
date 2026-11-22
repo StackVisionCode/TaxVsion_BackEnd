@@ -19,16 +19,22 @@ public interface IInvoiceRepository
 
     /// <summary>Facturas del tenant, más recientes primero (para la tabla del frontend).
     /// <paramref name="assignedToUserId"/> no null → solo las de clientes asignados a ese usuario.
-    /// <paramref name="customerId"/> no null → solo las de ese cliente (se compone con la asignación).</summary>
+    /// <paramref name="customerId"/> no null → solo las de ese cliente (se compone con la asignación).
+    /// <paramref name="open"/> no null → solo las pendientes del aging del dashboard.</summary>
     Task<IReadOnlyList<Invoice>> ListByTenantAsync(
         Guid tenantId,
         int take,
         CancellationToken ct = default,
         Guid? assignedToUserId = null,
-        Guid? customerId = null
+        Guid? customerId = null,
+        OpenInvoicesFilter? open = null
     );
     Task AddAsync(Invoice invoice, CancellationToken ct = default);
 }
+
+/// <summary>Pendientes como en el aging (Issued, Sent o PartiallyPaid con saldo). Con
+/// <paramref name="PastDueBeforeUtc"/>, solo las de fecha base anterior a ese corte (vencidas).</summary>
+public sealed record OpenInvoicesFilter(DateTime? PastDueBeforeUtc = null);
 
 /// <summary>Perfil del emisor (proyección del perfil de la oficina) — uno por tenant.</summary>
 public interface IIssuerProfileRepository

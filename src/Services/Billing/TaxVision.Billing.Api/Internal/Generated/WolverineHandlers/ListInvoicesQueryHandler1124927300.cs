@@ -2,7 +2,7 @@
 #pragma warning disable
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using System.Collections.Generic;
+using System;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -12,13 +12,13 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Options.IOptions<TaxVision.Billing.Application.Abstractions.BillingVisibilityOptions> _optionsOfBillingVisibilityOptions;
-        private readonly System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper> _domainEventScraperIEnumerable;
+        private readonly System.TimeProvider _timeProvider;
 
-        public ListInvoicesQueryHandler1124927300(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Options.IOptions<TaxVision.Billing.Application.Abstractions.BillingVisibilityOptions> optionsOfBillingVisibilityOptions, System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper> domainEventScraperIEnumerable)
+        public ListInvoicesQueryHandler1124927300(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Options.IOptions<TaxVision.Billing.Application.Abstractions.BillingVisibilityOptions> optionsOfBillingVisibilityOptions, System.TimeProvider timeProvider)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _optionsOfBillingVisibilityOptions = optionsOfBillingVisibilityOptions;
-            _domainEventScraperIEnumerable = domainEventScraperIEnumerable;
+            _timeProvider = timeProvider;
         }
 
 
@@ -26,16 +26,22 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Billing.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Billing.Application.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
+            var invoiceRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Billing.Application.Abstractions.IInvoiceRepository>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var billingDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Billing.Infrastructure.Persistence.BillingDbContext>(serviceScope.ServiceProvider);
-            var invoiceRepository = new TaxVision.Billing.Infrastructure.Persistence.Repositories.InvoiceRepository(billingDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var listInvoicesQuery = (TaxVision.Billing.Application.Invoices.ListInvoices.ListInvoicesQuery)context.Envelope.Message;
 
             
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
-            var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(billingDbContext, context, _domainEventScraperIEnumerable);
+            var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(billingDbContext, context, domainEventScraperIEnumerable);
             await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
             // Start the actual database transaction if one does not already exist
             if (billingDbContext.Database.CurrentTransaction == null)
@@ -50,7 +56,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Billing.Application.Invoices.ListInvoices.ListInvoicesHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Billing.Application.Invoices.ListInvoices.ListInvoicesHandler.Handle(listInvoicesQuery, invoiceRepository, _optionsOfBillingVisibilityOptions, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Billing.Application.Invoices.ListInvoices.ListInvoicesHandler.Handle(listInvoicesQuery, invoiceRepository, _optionsOfBillingVisibilityOptions, officeTimeZone, _timeProvider, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

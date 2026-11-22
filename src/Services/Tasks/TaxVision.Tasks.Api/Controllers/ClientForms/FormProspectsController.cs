@@ -50,6 +50,22 @@ public sealed class FormProspectsController(IMessageBus bus, IUserPermissionsSou
         return Ok(result);
     }
 
+    /// <summary>Un conteo por estado para el dashboard, con el mismo recorte que el listado.</summary>
+    [HttpGet("summary")]
+    [HasPermission(TasksPermissions.FormRequestsRead)]
+    [RateLimit("task.f.form_read")]
+    [ProducesResponseType<ProspectStatusCountsResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Summary(CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+        var result = await bus.InvokeAsync<ProspectStatusCountsResponse>(
+            new CountProspectsByStatusQuery(tenantId, userId, await CanViewAllAsync(ct)),
+            ct
+        );
+        return Ok(result);
+    }
+
     [HttpPost("{participantId:guid}/lost")]
     [HasPermission(TasksPermissions.FormRequestsSendExternal)]
     [RateLimit("task.h.form_requests_write")]

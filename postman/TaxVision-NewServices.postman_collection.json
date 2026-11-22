@@ -1320,6 +1320,36 @@
           "response": []
         },
         {
+          "name": "List invoices (status=open|past-due del dashboard)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/billing/invoices?take=200&status=past-due",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "billing",
+                "invoices"
+              ],
+              "query": [
+                {
+                  "key": "take",
+                  "value": "200"
+                },
+                {
+                  "key": "status",
+                  "value": "past-due",
+                  "description": "open = pendientes del aging (Issued, Sent o PartiallyPaid con saldo); past-due = de esas, vencidas antes de hoy en la zona de la oficina. Otro valor se ignora."
+                }
+              ]
+            },
+            "description": "Mismo listado de siempre con el filtro opcional del Invoice aging del dashboard: el total coincide con openCount / pastDueCount de GET billing/invoices/dashboard-summary para el mismo actor (mismo recorte por asignacion). Sin status la respuesta no cambia."
+          },
+          "response": []
+        },
+        {
           "name": "Change invoice status (manual, matriz legal: Issued <-> Sent)",
           "request": {
             "method": "POST",

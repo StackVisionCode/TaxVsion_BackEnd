@@ -556,6 +556,10 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CampaignId")
                         .HasDatabaseName("IX_CampaignRuns_TenantId_CampaignId");
 
+                    b.HasIndex("TenantId", "CreatedAtUtc")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_CampaignRuns_TenantId_CreatedAtUtc");
+
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("IX_CampaignRuns_TenantId_Status");
 
@@ -675,6 +679,9 @@ namespace TaxVision.Campaigns.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CampaignId")
                         .HasDatabaseName("IX_CampaignSchedules_TenantId_CampaignId");
+
+                    b.HasIndex("TenantId", "Status", "NextFireAtUtc")
+                        .HasDatabaseName("IX_CampaignSchedules_TenantId_Status_NextFireAtUtc");
 
                     b.ToTable("CampaignSchedules", (string)null);
                 });

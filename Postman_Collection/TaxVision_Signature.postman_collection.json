@@ -348,6 +348,18 @@
                   "value": "true",
                   "description": "Solo borradores editables (Draft/Ready) — la pestaña Drafts del front.",
                   "disabled": true
+                },
+                {
+                  "key": "expiring",
+                  "value": "true",
+                  "description": "En curso que vencen dentro de 48 h (expiringWithin48h del resumen del dashboard).",
+                  "disabled": true
+                },
+                {
+                  "key": "assignee",
+                  "value": "me",
+                  "description": "Creadas por mí que esperan a los firmantes (waiting de GET /signature/work/{userId}).",
+                  "disabled": true
                 }
               ]
             },
@@ -361,6 +373,66 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GetSignatureRequestsSummary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/signature/requests/summary",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "signature",
+                "requests",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-11-01",
+                  "description": "Día de la oficina (inclusive). Por defecto, el primero del mes de 'to'.",
+                  "disabled": true
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-21",
+                  "description": "Día de la oficina (inclusive). Por defecto, hoy en la zona de la oficina.",
+                  "disabled": true
+                },
+                {
+                  "key": "scope",
+                  "value": "office",
+                  "description": "Opcional. Vacío = como siempre; me = solo las que creó quien llama (todo en vivo); office = toda la oficina con el recorte del actor (exige users.work.view, si no 403). Otro valor: 400.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Resumen del widget de firmas del dashboard con el mismo recorte por asignación que la lista. Sin customers.view_all (y con Signature:AssignmentVisibility:Enabled) todo sale en vivo de las solicitudes visibles para el actor; con view_all, sent/completed/expired/canceled salen del snapshot diario y draft/inProgress/expiringWithin48h/avgMinutesToSign en vivo. 400 Signature.Summary.RangeInvalid si to < from o el rango pasa de 366 días. Requiere signature.request.read; cuota signature.f.request_read."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+                  "const s = pm.response.json();",
+                  "pm.test(\"trae los contadores\", () => [\"draft\",\"inProgress\",\"expiringWithin48h\",\"sent\",\"completed\",\"expired\",\"canceled\"].forEach(k => pm.expect(s[k]).to.be.a(\"number\")));",
+                  "pm.test(\"avgMinutesToSign número o null\", () => pm.expect(s.avgMinutesToSign === null || typeof s.avgMinutesToSign === \"number\").to.be.true);"
                 ]
               }
             }

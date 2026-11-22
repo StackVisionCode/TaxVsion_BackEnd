@@ -41,3 +41,20 @@ public static class ListCampaignRunsHandler
         );
     }
 }
+
+public sealed record ListRecentCampaignRunsQuery(Guid TenantId, int Take, DateTime NowUtc);
+
+public static class ListRecentCampaignRunsHandler
+{
+    private const int DefaultTake = 5;
+    private const int MaxTake = 20;
+
+    public static Task<RecentCampaignRunsResponse> Handle(
+        ListRecentCampaignRunsQuery query,
+        ICampaignRunRepository runs,
+        CancellationToken ct
+    ) => runs.ListRecentAsync(query.TenantId, ClampTake(query.Take), query.NowUtc, ct);
+
+    // Sin valor (o inválido) = 5; más de 20 = 20.
+    private static int ClampTake(int take) => take < 1 ? DefaultTake : Math.Min(take, MaxTake);
+}

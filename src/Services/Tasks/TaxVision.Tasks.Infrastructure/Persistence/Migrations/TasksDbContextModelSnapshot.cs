@@ -44,6 +44,10 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CustomerId");
 
+                    b.HasIndex("TenantId", "UserId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "UserId"), new[] { "CustomerId" });
+
                     b.HasIndex("TenantId", "CustomerId", "UserId")
                         .IsUnique();
 

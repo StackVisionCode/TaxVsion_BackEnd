@@ -204,6 +204,29 @@ public sealed class FilesController(
         return Ok(result);
     }
 
+    // Resumen del widget Documents: rama Documents de la biblioteca, mismo recorte que el listado, días de la oficina.
+    [HttpGet("summary")]
+    [HasPermission(CloudStoragePermissions.FileView)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("cloudstorage.f.file_list")]
+    [ProducesResponseType<FileSummaryResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Summary(
+        [FromQuery] int days = FileSummaryLimits.DefaultDays,
+        CancellationToken ct = default
+    )
+    {
+        if (!User.TryGet(out var tenantId, out var actorId, out var scope))
+            return Unauthorized();
+
+        scope = await scopeResolver.ResolveAsync(User, tenantId, actorId, scope, ct);
+        var result = await bus.InvokeAsync<Result<FileSummaryResponse>>(
+            new GetFileSummaryQuery(tenantId, scope, days),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     [HttpPost("{fileId:guid}/download-url")]
     [HasPermission(CloudStoragePermissions.FileDownload)]
     [AllowActorTypes(

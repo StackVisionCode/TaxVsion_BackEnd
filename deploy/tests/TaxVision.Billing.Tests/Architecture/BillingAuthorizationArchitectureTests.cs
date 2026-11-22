@@ -56,6 +56,27 @@ public sealed class BillingAuthorizationArchitectureTests
         );
     }
 
+    // Los totales del dashboard son información del negocio: el mismo permiso que las tarjetas de Billing, no invoicing.view.
+    [Fact]
+    public void El_resumen_del_dashboard_exige_invoicing_summary_view()
+    {
+        var action = typeof(TaxVision.Billing.Api.Controllers.InvoicesController)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .SingleOrDefault(method =>
+                method.GetCustomAttributes<HttpGetAttribute>().Any(get => get.Template == "dashboard-summary")
+            );
+
+        Assert.NotNull(action);
+        Assert.Equal(
+            HasPermissionAttribute.PolicyPrefix + "invoicing.summary.view",
+            action.GetCustomAttribute<HasPermissionAttribute>()?.Policy
+        );
+        Assert.Equal(
+            "billing.f.invoice_read",
+            action.GetCustomAttribute<BuildingBlocks.Web.RateLimiting.RateLimitAttribute>()?.PolicyName
+        );
+    }
+
     [Fact]
     public void Los_controllers_internos_solo_admiten_tokens_de_servicio()
     {

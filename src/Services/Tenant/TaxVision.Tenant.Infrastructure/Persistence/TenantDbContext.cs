@@ -48,6 +48,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options, I
     public DbSet<OfficeCompliance> OfficeCompliances => Set<OfficeCompliance>();
     public DbSet<EfinRevealRecord> EfinRevealRecords => Set<EfinRevealRecord>();
     public DbSet<ActivityEntry> ActivityEntries => Set<ActivityEntry>();
+    public DbSet<WorkspacePreference> WorkspacePreferences => Set<WorkspacePreference>();
 
     // Asignaciones cliente↔staff (kit compartido de Customer): ABAC de la actividad del equipo.
     public DbSet<CustomerAssignmentProjection> CustomerAssignmentProjections => Set<CustomerAssignmentProjection>();

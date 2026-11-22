@@ -77,6 +77,12 @@ public sealed class SignerConfiguration : IEntityTypeConfiguration<Signer>
         // en BD llega en una migration posterior con un unique index computado sobre el
         // shadow property del owned Email.
         builder.HasIndex(signer => new { signer.SignatureRequestId, signer.Order }).IsUnique();
+        // Recorte por cliente asignado (lista y resumen): semi-join por MappedCustomerId.
+        builder
+            .HasIndex(signer => signer.MappedCustomerId)
+            .HasDatabaseName("IX_Signers_MappedCustomerId_SignatureRequestId")
+            .IncludeProperties(signer => signer.SignatureRequestId)
+            .HasFilter("[MappedCustomerId] IS NOT NULL");
 
         builder
             .HasMany(signer => signer.Fields)

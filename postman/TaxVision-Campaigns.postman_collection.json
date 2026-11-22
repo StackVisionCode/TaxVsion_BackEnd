@@ -1161,6 +1161,44 @@
           ]
         },
         {
+          "name": "List recent runs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gateway}}/campaigns/runs/recent?take=5",
+              "host": [
+                "{{gateway}}"
+              ],
+              "path": [
+                "campaigns",
+                "runs",
+                "recent"
+              ],
+              "query": [
+                {
+                  "key": "take",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Widget del dashboard: los últimos runs de la oficina (take 1..20, por defecto 5) sin destinatarios, con nextFireAtUtc (agendado Active más próximo) y campaignNextFireAtUtc por fila. Permiso campaigns.view. Cuota campaigns.f.list."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('2xx', () => pm.expect(pm.response.code).to.be.below(300));",
+                  "pm.test('sin destinatarios', () => pm.expect(pm.response.text()).to.not.include('recipients'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Get run",
           "request": {
             "method": "GET",

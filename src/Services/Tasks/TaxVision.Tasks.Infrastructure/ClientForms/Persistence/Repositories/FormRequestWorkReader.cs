@@ -106,6 +106,13 @@ internal sealed class FormRequestWorkReader(TasksDbContext context) : IFormReque
             .ToList();
     }
 
+    public Task<int> CountOfficeWaitingAsync(Guid tenantId, Guid actorUserId, bool canViewAll, CancellationToken ct) =>
+        Open(tenantId, actorUserId, canViewAll)
+            .CountAsync(
+                item => item.Status == FormRequestStatus.Pending || item.Status == FormRequestStatus.Returned,
+                ct
+            );
+
     public async Task<IReadOnlyList<WorkBatchRow>> CountByUserAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> userIds,

@@ -323,6 +323,9 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
             rows = rows.Where(item => item.ParticipantKind == query.ParticipantKind.Value);
         if (query.ResponsibleUserId.HasValue)
             rows = rows.Where(item => item.ResponsibleUserId == query.ResponsibleUserId.Value);
+        // A cargo = el criterio de FormRequestWorkReader (My work).
+        if (query.AssignedToMe)
+            rows = rows.Where(item => (item.ResponsibleUserId ?? item.RequestedByUserId) == query.ActorUserId);
         if (query.Statuses is { Count: > 0 })
             rows = rows.Where(item => query.Statuses.Contains(item.Status));
         if (query.TemplateId.HasValue)

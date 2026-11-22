@@ -44,10 +44,35 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CustomerId");
 
+                    b.HasIndex("TenantId", "UserId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "UserId"), new[] { "CustomerId" });
+
                     b.HasIndex("TenantId", "CustomerId", "UserId")
                         .IsUnique();
 
                     b.ToTable("CustomerAssignmentProjections", (string)null);
+                });
+
+            modelBuilder.Entity("BuildingBlocks.TenantTimeZones.TenantTimeZoneProjection", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SourceUpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("SourceVersion")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("TenantId");
+
+                    b.ToTable("TenantTimeZoneProjections", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.CloudStorage.Domain.Audit.StorageAccessLog", b =>
@@ -312,6 +337,12 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("Category")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasComputedColumnSql("CAST(CASE WHEN LOWER(CASE WHEN CHARINDEX(N'.', [OriginalName]) = 0 THEN [OriginalName] ELSE RIGHT([OriginalName], CHARINDEX(N'.', REVERSE([OriginalName])) - 1) END) IN (N'pdf', N'doc', N'docx', N'xls', N'xlsx', N'ppt', N'pptx', N'txt', N'csv', N'rtf', N'xml', N'json', N'html', N'md') THEN N'Documents' WHEN LOWER(CASE WHEN CHARINDEX(N'.', [OriginalName]) = 0 THEN [OriginalName] ELSE RIGHT([OriginalName], CHARINDEX(N'.', REVERSE([OriginalName])) - 1) END) IN (N'jpg', N'jpeg', N'png', N'gif', N'webp', N'tif', N'tiff', N'bmp', N'svg', N'heic') THEN N'Images' WHEN LOWER(CASE WHEN CHARINDEX(N'.', [OriginalName]) = 0 THEN [OriginalName] ELSE RIGHT([OriginalName], CHARINDEX(N'.', REVERSE([OriginalName])) - 1) END) IN (N'mp3', N'wav', N'm4a', N'ogg', N'aac', N'flac', N'mp4', N'webm', N'mov', N'avi', N'mkv') THEN N'Video & Audio' ELSE N'Others' END AS nvarchar(16))", false);
+
                     b.Property<string>("ChecksumSha256")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
@@ -441,6 +472,12 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Status", "SoftDeleteExpiresAtUtc");
 
+                    b.HasIndex("TenantId", "CreatedAtUtc")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("IX_Files_Tenant_Created");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "CreatedAtUtc"), new[] { "Status", "OwnerType", "OwnerId", "FolderType", "SourceResourceType", "OriginalName" });
+
                     b.HasIndex("TenantId", "FolderId");
 
                     b.HasIndex("TenantId", "Id");
@@ -467,7 +504,14 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
 
                     SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "SourceResourceType", "SourceResourceId"), new[] { "SourceRole", "Status" });
 
+                    b.HasIndex("TenantId", "Status", "Category")
+                        .HasDatabaseName("IX_Files_Tenant_Status_Category");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "Status", "Category"), new[] { "SizeBytes", "StatusBeforeSoftDelete" });
+
                     b.HasIndex("TenantId", "Status", "CreatedAtUtc");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "Status", "CreatedAtUtc"), new[] { "OwnerType", "OwnerId", "FolderType", "SourceResourceType" });
 
                     b.HasIndex("TenantId", "RelatedCustomerId", "CreatedAtUtc", "Id")
                         .IsDescending(false, false, true, true)

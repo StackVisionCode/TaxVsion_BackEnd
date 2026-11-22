@@ -33,6 +33,17 @@ public sealed record ListProspectsQuery(
     int Size
 );
 
+public sealed record CountProspectsByStatusQuery(Guid TenantId, Guid ActorUserId, bool CanViewAll);
+
+public sealed record ProspectStatusCountsResponse(
+    int Invited,
+    int Verified,
+    int Submitted,
+    int Converted,
+    int Duplicate,
+    int Lost
+);
+
 public sealed record MarkProspectLostCommand(
     Guid TenantId,
     Guid ByUserId,
@@ -103,6 +114,14 @@ public interface IProspectReadRepository
         Guid actorUserId,
         bool canViewAll,
         Guid participantId,
+        CancellationToken ct = default
+    );
+
+    // Conteo por estado derivado con el mismo ABAC que el listado; los estados sin filas no vienen.
+    Task<IReadOnlyDictionary<ProspectStatus, int>> CountByStatusAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        bool canViewAll,
         CancellationToken ct = default
     );
 }

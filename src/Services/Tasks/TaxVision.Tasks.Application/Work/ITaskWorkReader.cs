@@ -18,6 +18,16 @@ public interface ITaskWorkReader
         CancellationToken ct
     );
 
+    /// <summary>
+    /// Lo que espera al cliente en toda la oficina, sin filtro de responsable: tareas en <c>WaitingOnClient</c> y
+    /// pedidos pendientes, con el ABAC de quien mira.
+    /// </summary>
+    Task<IReadOnlyList<OfficeWaitingCount>> CountOfficeWaitingAsync(
+        Guid tenantId,
+        Guid? visibleTo,
+        CancellationToken ct
+    );
+
     /// <summary>Hasta <paramref name="take"/> por tipo, el vencimiento más viejo primero.</summary>
     Task<IReadOnlyList<WorkItem>> TopAsync(Guid tenantId, Guid userId, Guid? visibleTo, int take, CancellationToken ct);
 

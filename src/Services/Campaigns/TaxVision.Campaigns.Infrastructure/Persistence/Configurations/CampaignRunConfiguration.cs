@@ -39,6 +39,11 @@ public sealed class CampaignRunConfiguration : IEntityTypeConfiguration<Campaign
 
         builder.HasIndex(r => new { r.TenantId, r.CampaignId }).HasDatabaseName("IX_CampaignRuns_TenantId_CampaignId");
         builder.HasIndex(r => new { r.TenantId, r.Status }).HasDatabaseName("IX_CampaignRuns_TenantId_Status");
+        // Runs recientes del dashboard (Top N por fecha de la oficina).
+        builder
+            .HasIndex(r => new { r.TenantId, r.CreatedAtUtc })
+            .IsDescending(false, true)
+            .HasDatabaseName("IX_CampaignRuns_TenantId_CreatedAtUtc");
 
         // Red final contra el doble disparo: un solo run por (agendado, slot).
         builder

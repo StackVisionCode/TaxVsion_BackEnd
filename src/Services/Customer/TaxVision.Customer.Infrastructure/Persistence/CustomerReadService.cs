@@ -170,7 +170,18 @@ public sealed class CustomerReadService(
                     .Any(a => a.TenantId == tenantId && a.CustomerId == c.Id && a.UserId == assignee)
             );
 
-        var totalCount = await scoped.CountAsync(ct);
+        // Un GROUP BY por estado; el total es la suma (sin un COUNT aparte).
+        var byStatus = await scoped
+            .GroupBy(c => c.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        int CountOf(CustomerStatus status) => byStatus.Where(s => s.Status == status).Sum(s => s.Count);
+        var statusCounts = new CustomerStatusCounts(
+            CountOf(CustomerStatus.Active),
+            CountOf(CustomerStatus.Inactive),
+            CountOf(CustomerStatus.Archived)
+        );
+        var totalCount = byStatus.Sum(s => s.Count);
 
         // Solo fechas de la ventana: el mes de la oficina se calcula aquí (SQL no conoce zonas IANA).
         var createdInWindow = await scoped
@@ -214,7 +225,7 @@ public sealed class CustomerReadService(
             ))
             .ToList();
 
-        return new CustomerDirectoryOverviewResponse(totalCount, monthly, recent);
+        return new CustomerDirectoryOverviewResponse(totalCount, monthly, recent, statusCounts);
     }
 
     public async Task<PagedResult<CustomerReconciliationResponse>> ListForReconciliationAsync(

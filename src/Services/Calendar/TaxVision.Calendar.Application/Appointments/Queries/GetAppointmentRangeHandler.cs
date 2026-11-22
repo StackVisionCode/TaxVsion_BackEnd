@@ -44,13 +44,17 @@ public static class GetAppointmentRangeHandler
             return Result.Failure<IReadOnlyList<OccurrenceResponse>>(AppointmentErrors.RangeInvalid);
 
         var assignedTo = visibility.Value.Enabled && !query.CanViewAll ? query.ActorUserId : (Guid?)null;
-        var candidates = await appointments.ListVisibleForRangeAsync(
-            query.TenantId,
-            query.FromUtc,
-            query.ToUtc,
-            assignedTo,
-            ct
-        );
+        // Con participante, el filtro va en SQL junto al recorte; sin él, la agenda visible de la oficina.
+        var candidates = query.ParticipantUserId is { } user
+            ? await appointments.ListVisibleForUserRangeAsync(
+                query.TenantId,
+                user,
+                query.FromUtc,
+                query.ToUtc,
+                assignedTo,
+                ct
+            )
+            : await appointments.ListVisibleForRangeAsync(query.TenantId, query.FromUtc, query.ToUtc, assignedTo, ct);
         // Una sola lectura de tipos por consulta, no una por cita.
         var typesById = (await types.ListAsync(query.TenantId, onlyActive: false, ct)).ToDictionary(t => t.Id);
         var results = new List<OccurrenceResponse>();

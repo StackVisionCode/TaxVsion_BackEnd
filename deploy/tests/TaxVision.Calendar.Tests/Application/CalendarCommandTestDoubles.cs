@@ -90,6 +90,15 @@ internal sealed class InMemoryAppointments : IAppointmentRepository
         CancellationToken ct = default
     ) => GetByIdAsync(tenantId, appointmentId, ct);
 
+    public Task<IReadOnlyList<Appointment>> ListVisibleForUserRangeAsync(
+        Guid tenantId,
+        Guid userId,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    ) => ListForUserRangeAsync(tenantId, userId, rangeStartUtc, rangeEndUtc, ct);
+
     public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
         Guid tenantId,
         DateTime rangeStartUtc,

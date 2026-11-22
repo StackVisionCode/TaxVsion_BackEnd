@@ -1,5 +1,6 @@
 using TaxVision.Wallet.Application.Activity;
 using TaxVision.Wallet.Application.Activity.Abstractions;
+using TaxVision.Wallet.Domain.Settings;
 using TaxVision.Wallet.Domain.Wallet;
 
 namespace TaxVision.Wallet.Application.Wallet;
@@ -14,15 +15,42 @@ public sealed record WalletView(
     long AvailableMicros,
     string Currency,
     string Status,
-    DateTime UpdatedAtUtc
+    DateTime UpdatedAtUtc,
+    // Señales del navbar, al final para no mover el contrato: umbral 0 = sin aviso.
+    long LowBalanceThresholdMicros,
+    bool IsLowBalance,
+    string AutoRechargeStatus,
+    string? AutoRechargePausedReason
 )
 {
-    public static WalletView From(Domain.Wallet.Wallet w) =>
-        new(w.PostedMicros, w.HeldMicros, w.AvailableMicros, w.Currency, w.Status.ToString(), w.UpdatedAtUtc);
+    public static WalletView From(Domain.Wallet.Wallet w, WalletSettings s) =>
+        new(
+            w.PostedMicros,
+            w.HeldMicros,
+            w.AvailableMicros,
+            w.Currency,
+            w.Status.ToString(),
+            w.UpdatedAtUtc,
+            s.LowBalanceThresholdMicros,
+            s.LowBalanceThresholdMicros > 0 && w.AvailableMicros < s.LowBalanceThresholdMicros,
+            s.AutoRechargeStatus.ToString(),
+            s.AutoRechargePausedReason?.ToString()
+        );
 
-    /// <summary>Saldo cero para un tenant sin monedero aún (zero-balance view).</summary>
+    /// <summary>Saldo cero para un tenant sin monedero aún (zero-balance view), con los ajustes de fábrica.</summary>
     public static WalletView Zero() =>
-        new(0, 0, 0, Domain.Wallet.Wallet.DefaultCurrency, WalletStatus.Active.ToString(), DateTime.UtcNow);
+        new(
+            0,
+            0,
+            0,
+            Domain.Wallet.Wallet.DefaultCurrency,
+            WalletStatus.Active.ToString(),
+            DateTime.UtcNow,
+            WalletSettings.DefaultLowBalanceThresholdMicros,
+            true,
+            Domain.Settings.AutoRechargeStatus.Off.ToString(),
+            null
+        );
 }
 
 /// <summary>

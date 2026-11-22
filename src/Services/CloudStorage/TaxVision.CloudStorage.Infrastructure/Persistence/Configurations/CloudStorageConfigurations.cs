@@ -32,18 +32,58 @@ public sealed class FileObjectConfiguration : IEntityTypeConfiguration<FileObjec
         builder.Property(file => file.RowVersion).IsRowVersion();
         builder.HasIndex(file => new { file.TenantId, file.Id });
         builder.HasIndex(file => new { file.TenantId, file.ObjectKey }).IsUnique();
-        builder.HasIndex(file => new
-        {
-            file.TenantId,
-            file.Status,
-            file.CreatedAtUtc,
-        });
+        // El INCLUDE cubre la rama Documents del resumen (pendientes de revisión) sin lookups.
+        builder
+            .HasIndex(file => new
+            {
+                file.TenantId,
+                file.Status,
+                file.CreatedAtUtc,
+            })
+            .IncludeProperties(file => new
+            {
+                file.OwnerType,
+                file.OwnerId,
+                file.FolderType,
+                file.SourceResourceType,
+            });
         // Fase C1 — el job de purga de la papelera escanea cross-tenant por vencimiento;
         // la papelera por tenant ya usa el indice {TenantId, Status, CreatedAtUtc} de arriba.
         builder.HasIndex(file => new { file.Status, file.SoftDeleteExpiresAtUtc });
         // Fase C2 — listar el contenido de una carpeta.
         builder.HasIndex(file => new { file.TenantId, file.FolderId });
+        // Resumen del widget Documents: rango por fecha con las columnas del predicado, en cualquier estado. OriginalName
+        // cubre los últimos: sin él el plan prefiere recorrer la tabla entera.
+        builder
+            .HasIndex(file => new { file.TenantId, file.CreatedAtUtc })
+            .IsDescending(false, true)
+            .IncludeProperties(file => new
+            {
+                file.Status,
+                file.OwnerType,
+                file.OwnerId,
+                file.FolderType,
+                file.SourceResourceType,
+                file.OriginalName,
+            })
+            .HasDatabaseName("IX_Files_Tenant_Created");
+        ConfigureCategory(builder);
         ConfigureSource(builder);
+    }
+
+    /// <summary>Columna calculada no persistida: los valores viven solo en el índice del desglose de uso.</summary>
+    public const string CategoryColumn = "Category";
+
+    private static void ConfigureCategory(EntityTypeBuilder<FileObject> builder)
+    {
+        builder
+            .Property<string>(CategoryColumn)
+            .HasMaxLength(StorageCategories.MaxLength)
+            .HasComputedColumnSql(StorageCategories.ComputedColumnSql, stored: false);
+        builder
+            .HasIndex(nameof(FileObject.TenantId), nameof(FileObject.Status), CategoryColumn)
+            .IncludeProperties(nameof(FileObject.SizeBytes), nameof(FileObject.StatusBeforeSoftDelete))
+            .HasDatabaseName("IX_Files_Tenant_Status_Category");
     }
 
     // Origen declarado por el servicio dueño e índices de la biblioteca (solo archivos disponibles).

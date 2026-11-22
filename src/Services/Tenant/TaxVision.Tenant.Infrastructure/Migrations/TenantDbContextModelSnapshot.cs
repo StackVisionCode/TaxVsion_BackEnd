@@ -508,6 +508,43 @@ namespace TaxVision.Tenant.Infrastructure.Migrations
                     b.ToTable("ActivityEntries", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Tenant.Domain.Team.WorkspacePreference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PreferenceKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "UserId", "PreferenceKey")
+                        .IsUnique();
+
+                    b.ToTable("WorkspacePreferences", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Tenant.Domain.Tenant", b =>
                 {
                     b.Property<Guid>("Id")

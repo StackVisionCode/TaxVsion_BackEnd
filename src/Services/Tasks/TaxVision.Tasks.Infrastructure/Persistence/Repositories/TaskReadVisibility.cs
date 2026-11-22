@@ -27,29 +27,46 @@ internal static class TaskReadVisibility
             .Where(a => a.TenantId == tenantId && a.UserId == me);
         var tasks = context.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId);
 
-        return query.Where(t =>
-            t.AssigneeUserId == me
-            || t.CreatedByUserId == me
-            || myClients.Any(a => a.CustomerId == t.Reference.CustomerId)
-            || (t.ParentTaskId == null && t.Reference.CustomerId == null && t.AssigneeUserId == null)
-            || tasks.Any(p =>
-                p.Id == t.ParentTaskId
-                && (
-                    p.AssigneeUserId == me
-                    || p.CreatedByUserId == me
-                    || myClients.Any(a => a.CustomerId == p.Reference.CustomerId)
-                    || (p.ParentTaskId == null && p.Reference.CustomerId == null && p.AssigneeUserId == null)
-                    || tasks.Any(g =>
-                        g.Id == p.ParentTaskId
-                        && (
-                            g.AssigneeUserId == me
-                            || g.CreatedByUserId == me
-                            || myClients.Any(a => a.CustomerId == g.Reference.CustomerId)
-                            || (g.Reference.CustomerId == null && g.AssigneeUserId == null)
+        // Madre y abuela por LEFT JOIN a su clave y "cliente mío" por LEFT JOIN a la proyección (única por cliente y
+        // usuario): ninguna fila se duplica y SQL Server lo resuelve en una pasada, sin EXISTS anidados por fila.
+        return from t in query
+            join parentRow in tasks on t.ParentTaskId equals (Guid?)parentRow.Id into parents
+            from p in parents.DefaultIfEmpty()
+            join grandparentRow in tasks on p.ParentTaskId equals (Guid?)grandparentRow.Id into grandparents
+            from g in grandparents.DefaultIfEmpty()
+            join ownClient in myClients on t.Reference.CustomerId equals (Guid?)ownClient.CustomerId into ownClients
+            from mt in ownClients.DefaultIfEmpty()
+            join parentClient in myClients
+                on p.Reference.CustomerId equals (Guid?)parentClient.CustomerId
+                into parentClients
+            from mp in parentClients.DefaultIfEmpty()
+            join grandparentClient in myClients
+                on g.Reference.CustomerId equals (Guid?)grandparentClient.CustomerId
+                into grandparentClients
+            from mg in grandparentClients.DefaultIfEmpty()
+            where
+                t.AssigneeUserId == me
+                || t.CreatedByUserId == me
+                || mt != null
+                || (t.ParentTaskId == null && t.Reference.CustomerId == null && t.AssigneeUserId == null)
+                || (
+                    p != null
+                    && (
+                        p.AssigneeUserId == me
+                        || p.CreatedByUserId == me
+                        || mp != null
+                        || (p.ParentTaskId == null && p.Reference.CustomerId == null && p.AssigneeUserId == null)
+                        || (
+                            g != null
+                            && (
+                                g.AssigneeUserId == me
+                                || g.CreatedByUserId == me
+                                || mg != null
+                                || (g.Reference.CustomerId == null && g.AssigneeUserId == null)
+                            )
                         )
                     )
                 )
-            )
-        );
+            select t;
     }
 }

@@ -9,6 +9,7 @@ import {
 } from '../../domain/conversations/conversation.js';
 import type { GroupRole } from '../../domain/conversations/conversation-participant.js';
 import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
+import type { ConversationActivityReader, ConversationLastMessage } from '../ports/conversation-activity-reader.js';
 
 export interface ListConversationsQuery {
   readonly tenantId: string;
@@ -39,6 +40,18 @@ export interface DepartedParticipantItem {
   readonly avatarFileId?: string | null;
 }
 
+/** Último mensaje visible para quien lista (en grupos, desde su ingreso). */
+export interface ConversationLastMessageItem {
+  readonly senderId: string;
+  readonly senderDisplayName: string;
+  readonly kind: string;
+  /** Hasta 200 caracteres; null si se borró o no tiene texto. */
+  readonly preview: string | null;
+  readonly isVoiceNote: boolean;
+  readonly isDeleted: boolean;
+  readonly createdAtUtc: string;
+}
+
 export interface ConversationListItem {
   readonly id: string;
   readonly kind: 'Direct' | 'Group' | 'Support' | 'Meeting';
@@ -58,6 +71,8 @@ export interface ConversationListItem {
   readonly isClosedForWriting: boolean;
   readonly closedReason: ConversationClosedReason | null;
   readonly departedParticipant: DepartedParticipantItem | null;
+  /** Solo en GET /communication/conversations con lector de actividad. */
+  readonly lastMessage?: ConversationLastMessageItem | null;
 }
 
 /** Una fila del listado; la usan el listado y el ack de `start_group` (T-12). */
@@ -128,7 +143,7 @@ export interface ListConversationsResult {
 
 export async function listConversations(
   query: ListConversationsQuery,
-  deps: { conversations: ConversationRepository; avatars?: AvatarResolver },
+  deps: { conversations: ConversationRepository; avatars?: AvatarResolver; conversationActivity?: ConversationActivityReader },
 ): Promise<Result<ListConversationsResult>> {
   const size = Math.min(Math.max(query.size, 1), 100);
   const page = Math.max(query.page, 1);
@@ -152,6 +167,25 @@ export async function listConversations(
     snapshots.flatMap(avatarUserIdsOf),
   );
 
+  const avatarOf = avatars ? (id: string) => avatars.of(id) : undefined;
+  if (deps.conversationActivity) {
+    // No leídos y último mensaje de toda la página en una sola lectura.
+    const activity = await deps.conversationActivity.readForUser({
+      tenantId: query.tenantId,
+      userId: query.userId,
+      conversationIds: snapshots.map((s) => s.id),
+      historyFloor: true,
+    });
+    const items = snapshots.map((snapshot): ConversationListItem => {
+      const row = activity.get(snapshot.id);
+      return {
+        ...toConversationListItem(snapshot, query.userId, row?.unreadCount ?? 0, avatarOf),
+        lastMessage: row?.lastMessage ? toLastMessageItem(row.lastMessage) : null,
+      };
+    });
+    return Result.ok({ items, page, size, totalCount, unreadByKind });
+  }
+
   const items = await Promise.all(
     snapshots.map(async (snapshot): Promise<ConversationListItem> => {
       const unread = await deps.conversations.countUnreadForUser({
@@ -159,9 +193,21 @@ export async function listConversations(
         conversationId: snapshot.id,
         userId: query.userId,
       });
-      return toConversationListItem(snapshot, query.userId, unread, avatars ? (id) => avatars.of(id) : undefined);
+      return toConversationListItem(snapshot, query.userId, unread, avatarOf);
     }),
   );
 
   return Result.ok({ items, page, size, totalCount, unreadByKind });
+}
+
+function toLastMessageItem(message: ConversationLastMessage): ConversationLastMessageItem {
+  return {
+    senderId: message.senderId,
+    senderDisplayName: message.senderDisplayName ?? '',
+    kind: message.kind,
+    preview: message.isDeleted ? null : message.body,
+    isVoiceNote: message.audioDurationMs !== null && message.audioDurationMs !== undefined,
+    isDeleted: message.isDeleted,
+    createdAtUtc: message.createdAtUtc.toISOString(),
+  };
 }

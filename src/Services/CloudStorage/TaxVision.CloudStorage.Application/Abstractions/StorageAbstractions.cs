@@ -699,6 +699,9 @@ public sealed record StorageActorScope(bool IsCustomerPortal, Guid? CustomerId)
     /// <summary>Clientes visibles cuando <see cref="BypassAssignmentFilter"/>=false; set vacío ⇒ solo recursos no-Customer.</summary>
     public IReadOnlyCollection<Guid> AssignedCustomerIds { get; init; } = [];
 
+    /// <summary>Usuario de esas asignaciones: el resumen Documents lo cruza en SQL contra la proyección. Null fuera del recorte.</summary>
+    public Guid? AssignedUserId { get; init; }
+
     /// <summary>Default true = sin filtro de asignación (flag off, view_all, o portal); false solo cuando el resolver cargó <see cref="AssignedCustomerIds"/>.</summary>
     public bool BypassAssignmentFilter { get; init; } = true;
 

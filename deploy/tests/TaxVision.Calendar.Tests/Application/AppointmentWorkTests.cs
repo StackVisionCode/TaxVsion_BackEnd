@@ -323,6 +323,26 @@ public sealed class AppointmentWorkTests
     {
         public List<Guid?> Assignees { get; } = [];
 
+        public Task<IReadOnlyList<Appointment>> ListVisibleForUserRangeAsync(
+            Guid tenantId,
+            Guid userId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        )
+        {
+            Assignees.Add(assignedToUserId);
+            return inner.ListVisibleForUserRangeAsync(
+                tenantId,
+                userId,
+                rangeStartUtc,
+                rangeEndUtc,
+                assignedToUserId,
+                ct
+            );
+        }
+
         public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
             Guid tenantId,
             DateTime rangeStartUtc,

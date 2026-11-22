@@ -22,11 +22,12 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var cloudStorageDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.CloudStorage.Infrastructure.Persistence.CloudStorageDbContext>(serviceScope.ServiceProvider);
+            var storageBreakdownReader = new TaxVision.CloudStorage.Infrastructure.Persistence.Repositories.StorageBreakdownReader(cloudStorageDbContext);
             var storageLimitRepository = new TaxVision.CloudStorage.Infrastructure.Persistence.Repositories.StorageLimitRepository(cloudStorageDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var getStorageUsageQuery = (TaxVision.CloudStorage.Application.Administration.GetStorageUsageQuery)context.Envelope.Message;
 
@@ -47,7 +48,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.CloudStorage.Application.Administration.GetStorageUsageHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.CloudStorage.Application.Administration.GetStorageUsageHandler.Handle(getStorageUsageQuery, storageLimitRepository, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.CloudStorage.Application.Administration.GetStorageUsageHandler.Handle(getStorageUsageQuery, storageLimitRepository, storageBreakdownReader, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

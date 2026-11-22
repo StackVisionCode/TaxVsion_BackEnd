@@ -614,7 +614,17 @@ public sealed class Invoice : AggregateRoot
         var exceedsCents = Math.Min(amount.AmountCents, Math.Max(0, paidCents - totalCents));
 
         _payments.Add(
-            new InvoicePayment(Id, source, sourceReference, amount, method, paidAtUtc, actorUserId, exceedsCents)
+            new InvoicePayment(
+                Id,
+                TenantId,
+                source,
+                sourceReference,
+                amount,
+                method,
+                paidAtUtc,
+                actorUserId,
+                exceedsCents
+            )
         );
         AmountPaid = Money.Create(paidCents, Currency).Value;
         AmountDue = Money.Create(Math.Max(0, totalCents - paidCents), Currency).Value;
@@ -786,6 +796,7 @@ public sealed class Invoice : AggregateRoot
                 _payments.Add(
                     new InvoicePayment(
                         Id,
+                        TenantId,
                         InvoicePaymentSource.Legacy,
                         $"legacy:{Guid.NewGuid():N}",
                         Money.Create(untrackedCents, Currency).Value,

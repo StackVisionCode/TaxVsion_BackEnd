@@ -147,5 +147,7 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<DomainCusto
         });
         b.HasIndex(c => new { c.TenantId, c.OccupationId });
         b.HasIndex(c => new { c.TenantId, c.AssignedPreparerUserId });
+        // Overview del dashboard: ventana de altas y últimas altas.
+        b.HasIndex(c => new { c.TenantId, c.CreatedAtUtc }).HasDatabaseName("IX_Customers_TenantId_CreatedAtUtc");
     }
 }

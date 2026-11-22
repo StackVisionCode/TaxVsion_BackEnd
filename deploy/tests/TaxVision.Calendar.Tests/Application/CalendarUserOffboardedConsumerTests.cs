@@ -531,6 +531,15 @@ public sealed class CalendarUserOffboardedConsumerTests
             CancellationToken ct = default
         ) => throw new NotSupportedException();
 
+        public Task<IReadOnlyList<Appointment>> ListVisibleForUserRangeAsync(
+            Guid tenantId,
+            Guid userId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
             Guid tenantId,
             DateTime rangeStartUtc,

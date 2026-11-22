@@ -21,12 +21,16 @@ public sealed class StorageAdministrationController(IMessageBus bus) : Controlle
     [HasPermission(CloudStoragePermissions.SettingsManage)]
     [RateLimit("cloudstorage.f.admin_read")]
     [ProducesResponseType<StorageUsageResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetUsage(CancellationToken ct)
+    // ?breakdown=true suma byCategory y trash (widget Storage); sin él, la respuesta de siempre.
+    public async Task<IActionResult> GetUsage([FromQuery] bool breakdown = false, CancellationToken ct = default)
     {
         if (!User.TryGetTenantId(out var tenantId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result<StorageUsageResponse>>(new GetStorageUsageQuery(tenantId), ct);
+        var result = await bus.InvokeAsync<Result<StorageUsageResponse>>(
+            new GetStorageUsageQuery(tenantId, breakdown),
+            ct
+        );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 

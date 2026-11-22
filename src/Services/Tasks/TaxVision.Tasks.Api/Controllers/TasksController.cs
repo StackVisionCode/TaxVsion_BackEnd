@@ -248,6 +248,7 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         [FromQuery] int? taxYear,
         [FromQuery] int page,
         [FromQuery] int size,
+        [FromQuery] TaskDueBucket? due,
         CancellationToken ct
     )
     {
@@ -256,8 +257,9 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
 
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var filter = new TaskQueryFilter(q, status, assigneeUserId, customerId, taxYear);
+        var (pageNumber, pageSize) = (NormalizePage(page), NormalizeSize(size));
         var result = await bus.InvokeAsync<PagedResult<TaskResponse>>(
-            new SearchTasksQuery(tenantId, filter, NormalizePage(page), NormalizeSize(size), userId, canViewAll),
+            new SearchTasksQuery(tenantId, filter, pageNumber, pageSize, userId, canViewAll, due, DateTime.UtcNow),
             ct
         );
         return Ok(result);
@@ -284,7 +286,55 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
             new GetTaskBoardQuery(tenantId, filter, BoardTake, userId, canViewAll),
             ct
         );
+        // R4: el cuerpo no cambia; el corte va en la misma cabecera que el calendario.
+        if (result.Truncated)
+            Response.Headers["X-Result-Truncated"] = "true";
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Conteos del dashboard por el día civil de la oficina, con la misma visibilidad que el tablero. <c>scope</c>:
+    /// vacío = como siempre; <c>me</c> = asignadas a quien llama; <c>office</c> = toda la oficina (users.work.view).
+    /// </summary>
+    [HttpGet("summary")]
+    [HasPermission(TasksPermissions.Read)]
+    [RateLimit("task.f.read")]
+    [ProducesResponseType<TaskSummaryResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Summary(
+        [FromQuery] Guid? assigneeUserId,
+        [FromQuery] Guid? customerId,
+        [FromQuery] int? taxYear,
+        [FromQuery] string? scope,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+        if (!DashboardScopes.TryParse(scope, out var parsed))
+            return StatusCode(StatusCodes.Status400BadRequest, DashboardScopes.Invalid);
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        // El permiso de oficina sale del token; el handler decide con él.
+        var canViewOffice =
+            parsed == DashboardScope.Office
+            && await permissions.HasPermissionAsync(User, UserManagementPermissions.UsersWorkView, ct);
+        var result = await bus.InvokeAsync<Result<TaskSummaryResponse>>(
+            new GetTaskSummaryQuery(
+                tenantId,
+                userId,
+                canViewAll,
+                assigneeUserId,
+                customerId,
+                taxYear,
+                DateTime.UtcNow,
+                parsed,
+                canViewOffice
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     [HttpGet("calendar")]

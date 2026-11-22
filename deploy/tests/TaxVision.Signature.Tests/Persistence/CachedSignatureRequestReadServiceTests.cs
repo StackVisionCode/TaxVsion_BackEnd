@@ -84,6 +84,32 @@ public sealed class CachedSignatureRequestReadServiceTests
         Assert.Equal(1, inner.Calls);
     }
 
+    [Fact]
+    public async Task Expiring_and_mine_do_not_share_the_plain_list_entry()
+    {
+        var inner = new CountingReadService();
+        var service = new CachedSignatureRequestReadService(inner, new InMemoryDistributedCache());
+
+        await service.ListAsync(Query(editableOnly: false));
+        await service.ListAsync(Query(editableOnly: false) with { ExpiringSoon = true });
+        await service.ListAsync(Query(editableOnly: false) with { MineOnly = true });
+
+        Assert.Equal(3, inner.Calls);
+    }
+
+    [Fact]
+    public async Task Mine_never_shares_an_entry_between_view_all_actors()
+    {
+        var inner = new CountingReadService();
+        var service = new CachedSignatureRequestReadService(inner, new InMemoryDistributedCache());
+
+        await service.ListAsync(Query(editableOnly: false, actor: Guid.NewGuid()) with { MineOnly = true });
+        await service.ListAsync(Query(editableOnly: false, actor: Guid.NewGuid()) with { MineOnly = true });
+
+        // "Mías" depende del actor aunque vea todo: cada uno su propia entrada.
+        Assert.Equal(2, inner.Calls);
+    }
+
     private sealed class CountingReadService : ISignatureRequestReadService
     {
         public int Calls { get; private set; }

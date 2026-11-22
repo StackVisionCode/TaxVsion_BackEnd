@@ -41,6 +41,15 @@ public sealed class CampaignScheduleConfiguration : IEntityTypeConfiguration<Cam
         builder
             .HasIndex(s => new { s.Status, s.NextFireAtUtc })
             .HasDatabaseName("IX_CampaignSchedules_Status_NextFireAtUtc");
+        // Próximo disparo Active de una oficina (dashboard); el de arriba no tiene TenantId.
+        builder
+            .HasIndex(s => new
+            {
+                s.TenantId,
+                s.Status,
+                s.NextFireAtUtc,
+            })
+            .HasDatabaseName("IX_CampaignSchedules_TenantId_Status_NextFireAtUtc");
         builder
             .HasIndex(s => new { s.TenantId, s.CampaignId })
             .HasDatabaseName("IX_CampaignSchedules_TenantId_CampaignId");

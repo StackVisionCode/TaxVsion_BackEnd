@@ -45,9 +45,44 @@ public sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         // facturas por cliente para la visibilidad por-asignación (P2).
         b.Property(i => i.CustomerId).IsRequired();
 
+        // Centavos sumables en SQL (el Money va como texto): columnas calculadas persistidas, sombra de solo lectura.
+        b.Property<long>(InvoiceCentsColumns.Total).HasComputedColumnSql(InvoiceCentsColumns.CentsOf("Total"), true);
+        b.Property<long>(InvoiceCentsColumns.AmountPaid)
+            .HasComputedColumnSql(InvoiceCentsColumns.CentsOf("AmountPaid"), true);
+        b.Property<long>(InvoiceCentsColumns.AmountDue)
+            .HasComputedColumnSql(InvoiceCentsColumns.CentsOf("AmountDue"), true);
+
         b.HasIndex(i => new { i.TenantId, i.InvoiceNumber }).IsUnique().HasFilter("[InvoiceNumber] IS NOT NULL");
-        b.HasIndex(i => new { i.TenantId, i.Status });
+        // Aging del dashboard: pendientes por estado sin lookups. AmountDue va porque SQL Server expande la calculada.
+        b.HasIndex(i => new { i.TenantId, i.Status })
+            .IncludeProperties(
+                InvoiceCentsColumns.AmountDue,
+                nameof(Invoice.AmountDue),
+                nameof(Invoice.DueDateUtc),
+                nameof(Invoice.IssueDateUtc),
+                nameof(Invoice.Currency),
+                nameof(Invoice.CustomerId),
+                nameof(Invoice.InvoiceNumber),
+                nameof(Invoice.DeletedAtUtc)
+            );
         b.HasIndex(i => new { i.TenantId, i.CustomerId });
+        // Facturado por mes del dashboard.
+        b.HasIndex(i => new { i.TenantId, i.IssueDateUtc })
+            .IncludeProperties(
+                nameof(Invoice.Status),
+                InvoiceCentsColumns.Total,
+                nameof(Invoice.Currency),
+                nameof(Invoice.CustomerId),
+                nameof(Invoice.DeletedAtUtc)
+            );
+        // Orden del listado y moneda de la factura más reciente.
+        b.HasIndex(i => new { i.TenantId, i.CreatedAtUtc })
+            .IncludeProperties(
+                nameof(Invoice.Status),
+                nameof(Invoice.Currency),
+                nameof(Invoice.CustomerId),
+                nameof(Invoice.DeletedAtUtc)
+            );
 
         // Totales Money como escalar "cents|CUR".
         var money = new MoneyToStringConverter();
@@ -119,9 +154,12 @@ public sealed class InvoicePaymentConfiguration : IEntityTypeConfiguration<Invoi
         // Id asignado por el dominio: sin esto EF marca la fila nueva como Modified (ver InvoiceStatusChange).
         b.Property(p => p.Id).ValueGeneratedNever();
         b.Property(p => p.InvoiceId).IsRequired();
+        // Oficina copiada de la factura: "cobrado por mes" filtra pagos sin recorrer las facturas.
+        b.Property(p => p.TenantId).IsRequired();
         b.Property(p => p.Source).HasConversion<string>().HasMaxLength(32).IsRequired();
         b.Property(p => p.SourceReference).HasMaxLength(InvoicePayment.ReferenceMaxLength).IsRequired();
         b.Property(p => p.Amount).HasConversion(new MoneyToStringConverter()).HasMaxLength(32).IsRequired();
+        b.Property<long>(InvoiceCentsColumns.Payment).HasComputedColumnSql(InvoiceCentsColumns.CentsOf("Amount"), true);
         b.Property(p => p.Method).HasConversion<string>().HasMaxLength(32).IsRequired();
         b.Property(p => p.PaidAtUtc).IsRequired();
         b.Property(p => p.RecordedByUserId);
@@ -140,7 +178,28 @@ public sealed class InvoicePaymentConfiguration : IEntityTypeConfiguration<Invoi
                 p.SourceReference,
             })
             .IsUnique();
+        // Cobrado por mes del dashboard: solo pagos vigentes. ReversedAtUtc va incluida porque, con un filtro IS NULL,
+        // SQL Server vuelve a evaluarlo y sin la columna haría un lookup por fila.
+        b.HasIndex(p => new { p.TenantId, p.PaidAtUtc })
+            .HasFilter("[ReversedAtUtc] IS NULL")
+            .IncludeProperties(
+                InvoiceCentsColumns.Payment,
+                nameof(InvoicePayment.Source),
+                nameof(InvoicePayment.InvoiceId),
+                nameof(InvoicePayment.ReversedAtUtc)
+            );
     }
+}
+
+/// <summary>Columnas calculadas con los centavos de cada Money ("cents|CUR"). Las lee el dashboard en SQL.</summary>
+internal static class InvoiceCentsColumns
+{
+    public const string Total = "TotalCents";
+    public const string AmountPaid = "AmountPaidCents";
+    public const string AmountDue = "AmountDueCents";
+    public const string Payment = "AmountCents";
+
+    public static string CentsOf(string column) => $"CAST(LEFT([{column}], CHARINDEX('|', [{column}]) - 1) AS bigint)";
 }
 
 /// <summary>Mapeo del rastro de auditoría de estado (item 6.2). Tabla propia, append-only.</summary>

@@ -59,6 +59,19 @@ public interface IAppointmentRepository
     );
 
     /// <summary>
+    /// Agenda de <paramref name="userId"/> (organiza o asiste) en SQL, con la misma visibilidad por asignación que
+    /// <see cref="ListVisibleForRangeAsync"/>. Para "mi agenda": no materializa la agenda de toda la oficina.
+    /// </summary>
+    Task<IReadOnlyList<Appointment>> ListVisibleForUserRangeAsync(
+        Guid tenantId,
+        Guid userId,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
     /// Lo mismo, acotado a las citas de un usuario: las que organiza y aquellas a las que lo invitaron.
     /// Es la consulta del feed, y no puede reusar la de rango porque esa devuelve la agenda del tenant
     /// entero.

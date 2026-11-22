@@ -44,6 +44,10 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CustomerId");
 
+                    b.HasIndex("TenantId", "UserId");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "UserId"), new[] { "CustomerId" });
+
                     b.HasIndex("TenantId", "CustomerId", "UserId")
                         .IsUnique();
 
@@ -1131,6 +1135,10 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "Status");
 
+                    b.HasIndex("TenantId", "Status", "CompletedAtUtc");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("TenantId", "Status", "CompletedAtUtc"), new[] { "SentAtUtc", "ExpiresAtUtc", "ExpiredAtUtc", "CanceledAtUtc", "CreatedByUserId" });
+
                     b.ToTable("SignatureRequests", (string)null);
                 });
 
@@ -1256,6 +1264,12 @@ namespace TaxVision.Signature.Infrastructure.Persistence.Migrations
                         .HasColumnType("nvarchar(500)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("MappedCustomerId")
+                        .HasDatabaseName("IX_Signers_MappedCustomerId_SignatureRequestId")
+                        .HasFilter("[MappedCustomerId] IS NOT NULL");
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex("MappedCustomerId"), new[] { "SignatureRequestId" });
 
                     b.HasIndex("SignatureRequestId", "Order")
                         .IsUnique();

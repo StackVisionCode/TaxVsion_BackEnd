@@ -200,7 +200,8 @@ public sealed class InvoicePaidPublishingTests
             int take,
             CancellationToken ct = default,
             Guid? assignedToUserId = null,
-            Guid? customerId = null
+            Guid? customerId = null,
+            OpenInvoicesFilter? open = null
         ) => Task.FromResult<IReadOnlyList<Invoice>>([invoice]);
 
         public Task AddAsync(Invoice value, CancellationToken ct = default) => Task.CompletedTask;

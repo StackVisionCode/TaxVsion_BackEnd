@@ -24,6 +24,17 @@ public sealed class InvoicePaymentTests
     }
 
     [Fact]
+    public void ApplyPayment_CarriesTheInvoiceTenant()
+    {
+        var invoice = IssuedInvoice(15_000);
+
+        Assert.True(Apply(invoice, InvoicePaymentSource.Manual, "a", 5_000).IsSuccess);
+
+        // El dashboard filtra los pagos por oficina sin pasar por la factura.
+        Assert.Equal(TenantId, invoice.Payments.Single().TenantId);
+    }
+
+    [Fact]
     public void ApplyPayment_SameSourceReferenceTwice_IsNoOp()
     {
         var invoice = IssuedInvoice(15_000);

@@ -48,6 +48,21 @@ internal sealed class ProspectReadRepository(TasksDbContext context) : IProspect
         return row is null ? null : (await AssembleAsync(tenantId, actorUserId, canViewAll, [row], ct))[0];
     }
 
+    public async Task<IReadOnlyDictionary<ProspectStatus, int>> CountByStatusAsync(
+        Guid tenantId,
+        Guid actorUserId,
+        bool canViewAll,
+        CancellationToken ct = default
+    ) =>
+        await StatusCounts(tenantId, actorUserId, canViewAll)
+            .ToDictionaryAsync(item => item.Status, item => item.Count, ct);
+
+    // Separada para que la prueba de traducción a SQL Server cubra la consulta real.
+    internal IQueryable<StatusCount> StatusCounts(Guid tenantId, Guid actorUserId, bool canViewAll) =>
+        Query(tenantId, actorUserId, canViewAll, null)
+            .GroupBy(item => item.Status)
+            .Select(group => new StatusCount { Status = group.Key, Count = group.Count() });
+
     // Consulta componible: ABAC, búsqueda y estado derivado.
     internal IQueryable<ProspectRow> Query(Guid tenantId, Guid actorUserId, bool canViewAll, string? search)
     {
@@ -222,5 +237,11 @@ internal sealed class ProspectReadRepository(TasksDbContext context) : IProspect
         public ProspectStatus Status { get; init; }
         public Guid? DuplicateOf { get; init; }
         public DateTime LastActivityAtUtc { get; init; }
+    }
+
+    internal sealed class StatusCount
+    {
+        public ProspectStatus Status { get; init; }
+        public int Count { get; init; }
     }
 }

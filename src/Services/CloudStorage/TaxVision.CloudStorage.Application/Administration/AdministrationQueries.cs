@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using BuildingBlocks.Results;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Domain.Quotas;
@@ -12,10 +13,14 @@ public sealed record StorageUsageResponse(
     long AvailableBytes,
     long MaxFileSizeBytes,
     bool IsSuspended,
-    bool AllowPublicShareLinks
+    bool AllowPublicShareLinks,
+    // Solo con ?breakdown=true; sin él la respuesta queda igual que antes.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<CategoryUsage>? ByCategory =
+        null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] TrashUsage? Trash = null
 );
 
-public sealed record GetStorageUsageQuery(Guid TenantId);
+public sealed record GetStorageUsageQuery(Guid TenantId, bool IncludeBreakdown = false);
 
 public sealed record StoragePolicyResponse(
     string ProviderId,
@@ -63,12 +68,14 @@ public static class GetStorageUsageHandler
     public static async Task<Result<StorageUsageResponse>> Handle(
         GetStorageUsageQuery query,
         IStorageLimitRepository limits,
+        IStorageBreakdownReader breakdowns,
         CancellationToken ct
     )
     {
         var limit = await limits.GetAsync(query.TenantId, ct);
         if (limit is null)
             return Result.Failure<StorageUsageResponse>(QuotaErrors.NotProvisioned);
+        var breakdown = query.IncludeBreakdown ? await breakdowns.ReadAsync(query.TenantId, ct) : null;
         return Result.Success(
             new StorageUsageResponse(
                 limit.PlanCode,
@@ -78,7 +85,9 @@ public static class GetStorageUsageHandler
                 Math.Max(0, limit.MaxBytes - limit.UsedBytes - limit.ReservedBytes),
                 limit.MaxFileSizeBytes,
                 limit.IsSuspended,
-                limit.AllowPublicShareLinks
+                limit.AllowPublicShareLinks,
+                breakdown?.ByCategory,
+                breakdown?.Trash
             )
         );
     }

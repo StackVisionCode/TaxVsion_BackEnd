@@ -8,11 +8,13 @@ namespace TaxVision.Tasks.Application.Tasks.Abstractions;
 /// </summary>
 /// <param name="Text">Coincidencia parcial sobre el título; vacío significa «sin filtro».</param>
 /// <param name="OnlyOpen">Excluye completadas y canceladas.</param>
+/// <param name="Due">Solo abiertas con ese vencimiento, con la regla del resumen del dashboard.</param>
 public sealed record TaskQueryFilter(
     string? Text = null,
     TaskItemStatus? Status = null,
     Guid? AssigneeUserId = null,
     Guid? CustomerId = null,
     int? TaxYear = null,
-    bool OnlyOpen = false
+    bool OnlyOpen = false,
+    TaskDueFilter? Due = null
 );

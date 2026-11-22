@@ -279,6 +279,72 @@ public sealed class ProspectListTests
         Assert.Contains("SELECT", filtered.ToQueryString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task The_summary_counts_each_status_with_the_same_scope_as_the_list()
+    {
+        await using var db = await SeedAsync();
+        Seed(db, "own@example.com", "Own", responsible: Employee);
+        Seed(db, "own-submitted@example.com", "Own Submitted", submitted: true, responsible: Employee);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var employee = await SummaryAsync(db, Employee, canViewAll: false);
+        var office = await SummaryAsync(db, Responsible, canViewAll: true);
+
+        foreach (var status in Enum.GetValues<ProspectStatus>())
+        {
+            var listed = await ListAsync(db, Employee, canViewAll: false, status: status);
+            Assert.Equal(listed.TotalCount, CountOf(employee, status));
+        }
+        Assert.Equal(new ProspectStatusCountsResponse(0, 1, 1, 0, 0, 0), employee);
+        Assert.Equal(new ProspectStatusCountsResponse(1, 2, 2, 1, 1, 1), office);
+    }
+
+    // El GROUP BY va sobre el estado derivado (CASE con subconsultas): solo SQL Server dice si traduce.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_summary_query_translates_to_sql_server(bool canViewAll)
+    {
+        using var db = new TasksDbContext(
+            new DbContextOptionsBuilder<TasksDbContext>()
+                .UseSqlServer(
+                    "Server=localhost;Database=translation_only;Trusted_Connection=True;TrustServerCertificate=True"
+                )
+                .Options,
+            new NoTenant()
+        );
+        var repository = Reads(db);
+
+        var counts = (IQueryable)
+            repository
+                .GetType()
+                .GetMethod("StatusCounts", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(repository, [TenantId, Employee, canViewAll])!;
+
+        var sql = counts.ToQueryString();
+        Assert.Contains("FormParticipants", sql, StringComparison.Ordinal);
+        Assert.Contains("COUNT", sql, StringComparison.Ordinal);
+    }
+
+    private static Task<ProspectStatusCountsResponse> SummaryAsync(TasksDbContext db, Guid actor, bool canViewAll) =>
+        CountProspectsByStatusHandler.Handle(
+            new CountProspectsByStatusQuery(TenantId, actor, canViewAll),
+            Reads(db),
+            default
+        );
+
+    private static int CountOf(ProspectStatusCountsResponse counts, ProspectStatus status) =>
+        status switch
+        {
+            ProspectStatus.Invited => counts.Invited,
+            ProspectStatus.Verified => counts.Verified,
+            ProspectStatus.Submitted => counts.Submitted,
+            ProspectStatus.Converted => counts.Converted,
+            ProspectStatus.Duplicate => counts.Duplicate,
+            _ => counts.Lost,
+        };
+
     private static Task<ProspectPageResponse> ListAsync(
         TasksDbContext db,
         Guid actor,

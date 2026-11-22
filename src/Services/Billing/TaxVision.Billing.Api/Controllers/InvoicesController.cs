@@ -13,6 +13,7 @@ using TaxVision.Billing.Application.Invoices.DeleteInvoice;
 using TaxVision.Billing.Application.Invoices.EditInvoice;
 using TaxVision.Billing.Application.Invoices.GetInvoice;
 using TaxVision.Billing.Application.Invoices.GetInvoiceDetail;
+using TaxVision.Billing.Application.Invoices.GetInvoicesDashboardSummary;
 using TaxVision.Billing.Application.Invoices.GetInvoicesSummary;
 using TaxVision.Billing.Application.Invoices.IssueInvoice;
 using TaxVision.Billing.Application.Invoices.ListInvoices;
@@ -117,15 +118,21 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
     [RateLimit("billing.f.invoice_read")]
     [HasPermission(InvoicingPermissions.View)]
     [ProducesResponseType<IReadOnlyList<InvoiceSummaryResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> List([FromQuery] int take, [FromQuery] Guid? customerId, CancellationToken ct)
+    public async Task<IActionResult> List(
+        [FromQuery] int take,
+        [FromQuery] Guid? customerId,
+        [FromQuery] string? status,
+        CancellationToken ct
+    )
     {
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
         // Bypass admin: customers.view_all (PlatformAdmin/TenantAdmin/supervisor) ve todas las facturas.
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        // status=open|past-due (aging del dashboard); otro valor se ignora.
         var result = await bus.InvokeAsync<Result<IReadOnlyList<InvoiceSummaryResponse>>>(
-            new ListInvoicesQuery(tenantId, userId, canViewAll, take, customerId),
+            new ListInvoicesQuery(tenantId, userId, canViewAll, take, customerId, InvoiceListStatuses.Parse(status)),
             ct
         );
 
@@ -148,6 +155,28 @@ public sealed class InvoicesController(IMessageBus bus, IUserPermissionsSource p
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<InvoicesSummaryResponse>>(
             new GetInvoicesSummaryQuery(tenantId, userId, canViewAll),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Revenue e Invoice aging del dashboard, sumados en SQL: cobrado por mes y por día de la oficina, facturado, tasa
+    /// de cobro en 6 meses y pendiente por días vencida. Mismo permiso que las tarjetas de Billing.
+    /// </summary>
+    [HttpGet("dashboard-summary")]
+    [RateLimit("billing.f.invoice_read")]
+    [HasPermission(InvoicingPermissions.SummaryView)]
+    [ProducesResponseType<InvoicesDashboardSummaryResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> DashboardSummary(CancellationToken ct)
+    {
+        if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<InvoicesDashboardSummaryResponse>>(
+            new GetInvoicesDashboardSummaryQuery(tenantId, userId, canViewAll),
             ct
         );
 

@@ -81,6 +81,8 @@ public static class DependencyInjection
         // Gate de visibilidad por asignación para el detalle (mismo criterio que el filtro de lista).
         services.AddScoped<ISignatureRequestVisibilityGate, SignatureRequestVisibilityGate>();
         services.AddScoped<ISignatureWorkReadService, SignatureWorkReadService>();
+        // Resumen del widget de firmas: sin caché (decisión del dueño).
+        services.AddScoped<ISignatureRequestsSummaryReader, SignatureRequestsSummaryReader>();
         services.AddScoped<ISignatureTemplateRepository, SignatureTemplateRepository>();
         services.AddScoped<ITenantSignatureCategoryRepository, TenantSignatureCategoryRepository>();
         services.AddScoped<ISignatureCategoryResolver, SignatureCategoryResolver>();
