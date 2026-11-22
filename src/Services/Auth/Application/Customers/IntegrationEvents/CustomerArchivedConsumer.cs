@@ -4,6 +4,7 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Domain.Audit;
 using Wolverine;
 
@@ -39,7 +40,7 @@ public static class CustomerArchivedConsumer
             return;
 
         // Mismo corte que la baja y el retiro: denylist, anuncio y revocación. Repetirlo no cambia nada.
-        await accessCutoff.ForUserAsync(user, CutoffReason, ct);
+        var revokedSessions = await accessCutoff.ForUserAsync(user, CutoffReason, ct);
         if (wasActive)
         {
             await audit.AddAsync(
@@ -73,5 +74,16 @@ public static class CustomerArchivedConsumer
                 }
             );
         }
+        if (revokedSessions > 0)
+            await bus.PublishAsync(
+                SessionEndedEvents.ForUser(
+                    user.TenantId,
+                    user.Id,
+                    null,
+                    CutoffReason,
+                    DateTime.UtcNow,
+                    correlation.CorrelationId
+                )
+            );
     }
 }

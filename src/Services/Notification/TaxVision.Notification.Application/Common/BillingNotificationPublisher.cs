@@ -1,6 +1,3 @@
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
-
 namespace TaxVision.Notification.Application.Common;
 
 internal static class BillingNotificationPublisher
@@ -24,28 +21,24 @@ internal static class BillingNotificationPublisher
     {
         foreach (var userId in recipients)
         {
-            await dispatcher.RecordInAppAsync(
-                tenantId,
-                NotificationRecipient.ForUser(userId),
-                title,
-                NotificationCategory.Billing,
-                kind,
-                eventId,
-                correlationId,
-                recipientUserId: userId,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     kind,
-                    userId,
+                    tenantId,
+                    new NotificationTarget(userId),
                     eventId,
                     sourceEventType,
                     occurredOn,
-                    title,
-                    FallbackBody: body,
-                    ResourceId: resourceId,
-                    Params: parameters,
-                    GroupKey: groupKey
+                    correlationId,
+                    InApp: new InAppContent(
+                        Params: parameters,
+                        ResourceId: resourceId,
+                        GroupKey: groupKey,
+                        FallbackTitle: title,
+                        FallbackBody: body
+                    )
                 ),
-                ct: ct
+                ct
             );
         }
     }

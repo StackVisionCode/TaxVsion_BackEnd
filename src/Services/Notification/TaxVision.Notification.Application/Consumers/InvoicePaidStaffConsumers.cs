@@ -4,8 +4,6 @@ using BuildingBlocks.Messaging.BillingIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -48,56 +46,34 @@ public static class InvoicePaidStaffConsumer
             if (recipients.Count == 0)
                 return;
 
-            var title = $"Factura {evt.InvoiceNumber} pagada";
-            var body = BuildBody(evt);
-
+            var parameters = new Dictionary<string, string>
+            {
+                ["invoiceNumber"] = evt.InvoiceNumber,
+                ["amount"] = FormatAmount(evt.AmountPaidCents, evt.Currency),
+                ["customerName"] = evt.CustomerName ?? string.Empty,
+                ["paymentSource"] = evt.PaymentSource ?? string.Empty,
+            };
             foreach (var userId in recipients)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.Billing,
-                    "billing.invoice_paid",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
                         NotificationKinds.BillingInvoicePaid,
-                        userId,
+                        evt.TenantId,
+                        new NotificationTarget(userId),
                         evt.EventId,
                         EventKey,
                         evt.OccurredOn,
-                        title,
-                        FallbackBody: body,
-                        ResourceId: evt.InvoiceId.ToString(),
-                        ResourceContext: new Dictionary<string, string> { ["invoiceId"] = evt.InvoiceId.ToString() },
-                        Params: new Dictionary<string, string>
-                        {
-                            ["invoiceNumber"] = evt.InvoiceNumber,
-                            ["amount"] = FormatAmount(evt.AmountPaidCents, evt.Currency),
-                            ["customerName"] = evt.CustomerName ?? string.Empty,
-                        }
+                        correlation.CorrelationId,
+                        InApp: new InAppContent(
+                            Params: parameters,
+                            ResourceId: evt.InvoiceId.ToString(),
+                            ResourceContext: new Dictionary<string, string> { ["invoiceId"] = evt.InvoiceId.ToString() }
+                        )
                     ),
-                    ct: ct
+                    ct
                 );
             }
         }
-    }
-
-    internal static string BuildBody(InvoicePaidIntegrationEvent evt)
-    {
-        var who = string.IsNullOrWhiteSpace(evt.CustomerName) ? "El cliente" : evt.CustomerName.Trim();
-        var how = evt.PaymentSource switch
-        {
-            "Online" => "por el enlace de pago",
-            "Manual" => "con un pago registrado a mano",
-            _ => string.Empty,
-        };
-        var amount = FormatAmount(evt.AmountPaidCents, evt.Currency);
-        return string.IsNullOrEmpty(how)
-            ? $"{who} saldó la factura {evt.InvoiceNumber} ({amount})."
-            : $"{who} pagó la factura {evt.InvoiceNumber} ({amount}) {how}.";
     }
 
     internal static string FormatAmount(long cents, string currency) =>
@@ -133,33 +109,24 @@ public static class InvoicePaymentRejectedStaffConsumer
                 return;
 
             var amount = InvoicePaidStaffConsumer.FormatAmount(evt.AmountCents, evt.Currency);
-            var title = $"Cobro de {amount} sin aplicar";
-            var body =
-                $"Se cobró {amount} pero no se pudo aplicar a su factura ({evt.Reason}). Resuélvelo en Facturación.";
-
+            var parameters = new Dictionary<string, string> { ["amount"] = amount, ["reason"] = evt.Reason };
             foreach (var userId in recipients)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.Billing,
-                    "billing.invoice_payment_rejected",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
                         NotificationKinds.BillingInvoicePaymentRejected,
-                        userId,
+                        evt.TenantId,
+                        new NotificationTarget(userId),
                         evt.EventId,
                         EventKey,
                         evt.OccurredOn,
-                        title,
-                        FallbackBody: body,
-                        ResourceId: evt.InvoiceId?.ToString() ?? evt.UnappliedPaymentId.ToString(),
-                        Params: new Dictionary<string, string> { ["amount"] = amount, ["reason"] = evt.Reason }
+                        correlation.CorrelationId,
+                        InApp: new InAppContent(
+                            Params: parameters,
+                            ResourceId: evt.InvoiceId?.ToString() ?? evt.UnappliedPaymentId.ToString()
+                        )
                     ),
-                    ct: ct
+                    ct
                 );
             }
         }

@@ -107,6 +107,7 @@ describe('getSupportAgentMessages', () => {
       markInactive: vi.fn(),
       markActive: vi.fn(),
       searchByDisplayNameOrEmail: vi.fn(),
+      findActiveAdmins: vi.fn().mockResolvedValue([]),
     } satisfies UserDirectoryRepository;
 
     const result = await getSupportAgentMessages(

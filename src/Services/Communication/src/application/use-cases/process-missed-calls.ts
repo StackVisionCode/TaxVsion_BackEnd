@@ -129,6 +129,8 @@ export async function processMissedCalls(
       kind: snapshot.kind,
       ringingAtUtc: snapshot.ringingAtUtc.toISOString(),
       missedAtUtc: now.toISOString(),
+      reason: 'Timeout',
+      conversationId: snapshot.conversationId,
     };
     await deps.publisher.enqueue(missedEvent);
     processed += 1;

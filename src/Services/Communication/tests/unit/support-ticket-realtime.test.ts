@@ -44,6 +44,33 @@ describe('Support: sala del chat del ticket en vivo', () => {
     });
   });
 
+  it('the conversation keeps the id of the saved ticket', async () => {
+    const saved: { conversation?: { supportTicketId: string | null }; ticket?: SupportTicket } = {};
+    const deps = {
+      conversations: { save: vi.fn(async (c: { supportTicketId: string | null }) => void (saved.conversation = c)) },
+      supportTickets: { save: vi.fn(async (t: SupportTicket) => void (saved.ticket = t)) },
+      publisher: { enqueue: vi.fn() },
+      platform: { getPlatformTenantId: () => randomUUID() },
+      settings: { get: vi.fn().mockResolvedValue({ chatEnabled: true }) },
+      userPermissions: { findActiveSupportRecipients: vi.fn().mockResolvedValue([]) },
+      emitter: { addUserToConversation: vi.fn() },
+    } as unknown as OpenSupportTicketDeps;
+
+    const result = await openSupportTicket(
+      {
+        tenantId: randomUUID(),
+        correlationId: 'corr',
+        opener: { userId: randomUUID(), displayName: 'Ana', actorType: 'TenantAdmin' },
+        subject: 'Push notifications',
+        category: 'Technical',
+      },
+      deps,
+    );
+
+    expect(result.isSuccess).toBe(true);
+    expect(saved.conversation?.supportTicketId).toBe(saved.ticket?.id);
+  });
+
   it('reabrir un ticket cerrado vuelve a unir a quien lo abrió', async () => {
     const tenantId = randomUUID();
     const opener = randomUUID();

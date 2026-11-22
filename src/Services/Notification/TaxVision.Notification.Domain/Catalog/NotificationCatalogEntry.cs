@@ -1,4 +1,5 @@
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Domain.Catalog;
 
@@ -13,6 +14,8 @@ public sealed record NotificationCatalogEntry(
     string? BodyKey,
     NotificationResourceType ResourceType,
     NotificationAction Action,
+    // Interruptor de preferencias que apaga este aviso.
+    NotificationCategory PreferenceCategory,
     IReadOnlySet<NotificationChannel>? MandatoryChannels = null
 )
 {

@@ -24,6 +24,45 @@ public sealed class ScreenReferralHandlerTests
         Options.Create(new CodeTokenHashingOptions { Pepper = new string('p', 48) })
     );
 
+    private static readonly TaxVision.Growth.Api.IntegrationEvents.ReferralNoticeEvents Events = new();
+
+    /// <summary>
+    /// El aviso de premio cancelado vuelve como mensaje en cascada y sale por el outbox de la misma transacción que
+    /// el rechazo; repetir el screening (atribución ya rechazada) no lo repite. Una revisión abierta no avisa.
+    /// </summary>
+    [Fact]
+    public async Task Rejected_notice_is_published_in_the_same_unit()
+    {
+        var f = new Fixture();
+        f.Link(ReferrerUser);
+
+        var first = await f.RunWithNoticeAsync();
+        var again = await f.RunWithNoticeAsync();
+
+        var notice =
+            Assert.IsType<BuildingBlocks.Messaging.GrowthIntegrationEvents.ReferralRewardRejectedIntegrationEvent>(
+                first.Notice
+            );
+        Assert.Equal("SelfReferral", notice.ReasonCode);
+        Assert.Equal(f.Reward.Id, notice.RewardCaseId);
+        Assert.Equal(GrowthTestData.ReferrerTenantId, notice.TenantId);
+        Assert.Equal("corr-screen", notice.CorrelationId);
+        Assert.Null(again.Notice);
+    }
+
+    [Fact]
+    public async Task A_review_hold_does_not_notify()
+    {
+        var f = new Fixture();
+        f.Owners.Signals[f.Office] = new OfficeOwnerSignals("v1:referee", OwnerEmailDisposable: true);
+        f.Link(OtherUser);
+
+        var held = await f.RunWithNoticeAsync();
+
+        Assert.Equal(ReferralFraudVerdict.Review, held.Result.Value.Verdict);
+        Assert.Null(held.Notice);
+    }
+
     [Fact]
     public async Task A_signup_by_the_referrer_user_loses_the_reward()
     {
@@ -122,14 +161,15 @@ public sealed class ScreenReferralHandlerTests
     {
         var f = new Fixture();
 
-        var screened = await ScreenReferralHandler.Handle(
-            new ScreenReferralCommand(Guid.NewGuid()),
+        var (screened, _) = await ScreenReferralHandler.Handle(
+            new ScreenReferralCommand(Guid.NewGuid(), "corr-screen"),
             f.Attributions,
             f.Rewards,
             f.Reviews,
             f.Owners,
             f.Tenant,
             f.UnitOfWork,
+            Events,
             new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc)),
             CancellationToken.None
         );
@@ -178,15 +218,22 @@ public sealed class ScreenReferralHandlerTests
         public void Link(Guid refereeUser) =>
             Assert.True(Attribution.LinkRefereeTenant(Office, GrowthTestData.NowUtc, refereeUser).IsSuccess);
 
-        public Task<BuildingBlocks.Results.Result<ReferralScreeningResult>> RunAsync() =>
+        public async Task<BuildingBlocks.Results.Result<ReferralScreeningResult>> RunAsync() =>
+            (await RunWithNoticeAsync()).Result;
+
+        public Task<(
+            BuildingBlocks.Results.Result<ReferralScreeningResult> Result,
+            object? Notice
+        )> RunWithNoticeAsync() =>
             ScreenReferralHandler.Handle(
-                new ScreenReferralCommand(Onboarding),
+                new ScreenReferralCommand(Onboarding, "corr-screen"),
                 Attributions,
                 Rewards,
                 Reviews,
                 Owners,
                 Tenant,
                 UnitOfWork,
+                Events,
                 new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc.AddMinutes(5))),
                 CancellationToken.None
             );

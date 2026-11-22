@@ -44,6 +44,7 @@ import {
 import { RedisCachedTenantSettingsProvider } from './persistence/tenant-settings-provider-impl.js';
 import { ConfigPlatformTenantProvider } from './config-platform-tenant-provider.js';
 import { RedisPresenceService } from './redis/redis-presence-service.js';
+import { RedisConversationFocusStore } from './redis/redis-conversation-focus-store.js';
 import { HmacTurnCredentialFactory } from './turn/hmac-turn-credential-factory.js';
 import { Argon2PasscodeHasher } from './security/argon2-passcode-hasher.js';
 import { SpeakingThrottle } from './redis/speaking-throttle.js';
@@ -78,6 +79,7 @@ import type { IntegrationEventPublisher } from '../application/ports/integration
 import type { IdempotencyStore } from '../application/ports/idempotency-store.js';
 import type { TenantSettingsProvider } from '../application/ports/tenant-settings-provider.js';
 import type { PresenceService } from '../application/ports/presence-service.js';
+import type { ConversationFocusStore } from '../application/ports/conversation-focus-store.js';
 import type { CallRepository } from '../application/ports/call-repository.js';
 import type { TurnCredentialFactory } from '../application/ports/turn-credential-factory.js';
 import type { MeetingRepository } from '../application/ports/meeting-repository.js';
@@ -171,6 +173,10 @@ export interface AppContainer {
   readonly idempotency: IdempotencyStore;
   readonly settings: TenantSettingsProvider;
   readonly presence: PresenceService;
+  /** Foco del chat por sesión (push solo si no lo está viendo). */
+  readonly conversationFocus: ConversationFocusStore;
+  /** D-N30: sin push a quien tiene la app visible. */
+  readonly chatPushSuppressWhenActive: boolean;
   readonly turn: TurnCredentialFactory;
   readonly passcodes: PasscodeHasher;
   /** F5 (T-69): tope de `meeting.speaking` por segundo. */
@@ -341,6 +347,8 @@ export function buildContainer(): AppContainer {
     conversationAudit: new PrismaConversationAuditRepository(prisma),
     effectiveSettings,
     presence: new RedisPresenceService(redis),
+    conversationFocus: new RedisConversationFocusStore(redis),
+    chatPushSuppressWhenActive: config.chatPush.suppressWhenActive,
     turn: new HmacTurnCredentialFactory(),
     passcodes: new Argon2PasscodeHasher(),
     speakingThrottle: new SpeakingThrottle(redis),

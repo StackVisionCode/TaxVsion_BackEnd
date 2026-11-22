@@ -1,4 +1,4 @@
-﻿using BuildingBlocks.Common;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
@@ -21,10 +21,10 @@ public static class AppointmentCancelledConsumer
 
     public static async Task Handle(
         AppointmentCancelledIntegrationEvent evt,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -44,11 +44,11 @@ public static class AppointmentCancelledConsumer
         {
             await CalendarRecipients.PushAsync(
                 dispatcher,
+                locales,
                 evt.Recipients,
                 evt.TenantId,
-                "Appointment cancelled",
-                "It was taken off your calendar.",
                 NotificationKinds.CalendarAppointmentCancelled,
+                evt.AppointmentId,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct
@@ -74,7 +74,7 @@ public static class AppointmentCancelledConsumer
                 evt.TenantId,
                 TemplateKey,
                 NotificationKinds.CalendarAppointmentCancelled,
-                new Dictionary<string, object?>
+                _ => new Dictionary<string, object?>
                 {
                     ["scope"] = evt.Scope,
                     // Qué se canceló: sin esto, en una serie semanal el cliente no sabe cuál.
@@ -84,7 +84,8 @@ public static class AppointmentCancelledConsumer
                     ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
                 },
                 scribeClient,
-                gateway,
+                dispatcher,
+                locales,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct,

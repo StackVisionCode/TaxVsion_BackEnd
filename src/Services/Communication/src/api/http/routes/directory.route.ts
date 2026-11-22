@@ -23,6 +23,8 @@ const SearchQuery = z.object({
 });
 
 const STAFF_ONLY = { code: 'Auth.Forbidden', message: 'Directory search is staff-only.' } as const;
+// my-office es del cliente del portal: lista a su propio equipo, no a la plantilla.
+const PORTAL_ONLY = { code: 'Auth.Forbidden', message: 'Only client portal accounts can list their office contacts.' } as const;
 // Sin eco del valor recibido: el término no debe volver en errores ni en logs.
 const INVALID_SEARCH = {
   code: 'Directory.InvalidSearch',
@@ -39,10 +41,16 @@ const INVALID_SEARCH = {
  * conversacion ya sembrada), no por este autocomplete abierto.
  */
 export async function registerDirectoryRoutes(app: FastifyInstance, container: AppContainer): Promise<void> {
- app.get('/communication/directory/my-office',{preHandler:[app.authenticate,requirePermission(container,CommunicationPermissions.ChatStart)]},async(request,reply)=>{
-   if(request.principal!.actorType!=='CustomerPortal')return reply.code(403).send(STAFF_ONLY);
-   return reply.send(await getMyOfficeContact(request.principal!,container));
- });
+  // Portal: staff asignado + admins de su oficina con quienes puede abrir chat.
+  app.get(
+    '/communication/directory/my-office',
+    { preHandler: [app.authenticate, requirePermission(container, CommunicationPermissions.ChatStart)] },
+    async (request, reply) => {
+      const principal = request.principal;
+      if (!principal || principal.actorType !== 'CustomerPortal') return reply.code(403).send(PORTAL_ONLY);
+      return reply.send(await getMyOfficeContact(principal, container));
+    },
+  );
   app.get(
     '/communication/directory/employees',
     {

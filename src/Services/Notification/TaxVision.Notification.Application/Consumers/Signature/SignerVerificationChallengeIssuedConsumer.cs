@@ -17,10 +17,11 @@ namespace TaxVision.Notification.Application.Consumers.Signature;
 ///
 /// <para>
 /// Refactor Notifications Fase 3: las 2 ramas de email (EmailOtp, KbaQuiz) pasan por
-/// <see cref="IEmailDispatchGateway"/>. Las ramas SMS/WhatsApp/AppPush siguen con el flujo manual
+/// <see cref="IEmailDispatchGateway"/>. Las ramas SMS/WhatsApp siguen con el flujo manual
 /// (log + sender + SaveChanges) porque el gateway hoy solo cubre email — los otros canales tienen
 /// pendiente su propio abstracto (Fase 9+).
 /// </para>
+/// <para>Sin push "por app": el firmante externo no tiene dispositivos (D-N45).</para>
 /// </summary>
 public static class SignerVerificationChallengeIssuedConsumer
 {
@@ -34,8 +35,6 @@ public static class SignerVerificationChallengeIssuedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         ISmsSender smsSender,
-        IPushSender pushSender,
-        IPushDeviceTokenRepository pushDeviceTokens,
         INotificationLogRepository logRepository,
         IUnitOfWork unitOfWork,
         ICorrelationContext correlation,
@@ -54,19 +53,8 @@ public static class SignerVerificationChallengeIssuedConsumer
                 return;
             }
 
-            // Canales SMS/Push: se maneja con log manual + sender directo hasta que exista abstracto.
-            await DispatchNonEmailAsync(
-                evt,
-                brand,
-                smsSender,
-                pushSender,
-                pushDeviceTokens,
-                logRepository,
-                unitOfWork,
-                correlationId,
-                logger,
-                ct
-            );
+            // Canales SMS: se maneja con log manual + sender directo hasta que exista abstracto.
+            await DispatchNonEmailAsync(evt, brand, smsSender, logRepository, unitOfWork, correlationId, logger, ct);
         }
     }
 
@@ -149,15 +137,13 @@ public static class SignerVerificationChallengeIssuedConsumer
     }
 
     // ------------------------------------------------------------------
-    // Non-email path — SMS / WhatsApp / AppPush con log manual (legacy)
+    // Non-email path — SMS / WhatsApp con log manual (legacy)
     // ------------------------------------------------------------------
 
     private static async Task DispatchNonEmailAsync(
         SignerVerificationChallengeIssuedIntegrationEvent evt,
         string brand,
         ISmsSender smsSender,
-        IPushSender pushSender,
-        IPushDeviceTokenRepository pushDeviceTokens,
         INotificationLogRepository logRepository,
         IUnitOfWork unitOfWork,
         string correlationId,
@@ -166,11 +152,7 @@ public static class SignerVerificationChallengeIssuedConsumer
     )
     {
         var channel = ChannelFor(evt.Method);
-        // AppPush no tiene "dirección" de entrega — el destino son los tokens del signer.
-        var recipient =
-            channel == NotificationChannel.Push
-                ? Result.Success(NotificationRecipient.ForPushTarget(evt.SignerId))
-                : NotificationRecipient.ForPhone(evt.DeliveryAddress);
+        var recipient = NotificationRecipient.ForPhone(evt.DeliveryAddress);
         var logResult = recipient.IsFailure
             ? Result.Failure<NotificationLog>(recipient.Error)
             : NotificationLog.Create(
@@ -196,7 +178,7 @@ public static class SignerVerificationChallengeIssuedConsumer
         var log = logResult.Value;
         await logRepository.AddAsync(log, ct);
 
-        var deliver = await DispatchOtherAsync(evt, brand, smsSender, pushSender, pushDeviceTokens, ct);
+        var deliver = await DispatchOtherAsync(evt, brand, smsSender, ct);
         ApplyOutcomeToLog(deliver, log, logger, evt);
         await unitOfWork.SaveChangesAsync(ct);
     }
@@ -205,15 +187,12 @@ public static class SignerVerificationChallengeIssuedConsumer
         SignerVerificationChallengeIssuedIntegrationEvent evt,
         string brand,
         ISmsSender smsSender,
-        IPushSender pushSender,
-        IPushDeviceTokenRepository pushDeviceTokens,
         CancellationToken ct
     ) =>
         evt.Method switch
         {
             "SmsOtp" => SendSmsAsync(evt, brand, smsSender, ct),
             "WhatsAppOtp" => SendSmsAsync(evt, brand, smsSender, ct), // fallback provisional hasta ms WhatsApp
-            "AppPush" => SendAppPushAsync(evt, brand, pushSender, pushDeviceTokens, ct),
             _ => Task.FromResult(
                 Result.Failure(new Error("Notification.UnknownMethod", "Verification method not supported."))
             ),
@@ -233,7 +212,6 @@ public static class SignerVerificationChallengeIssuedConsumer
             "WhatsAppOtp" => NotificationChannel.Sms,
             "EmailOtp" => NotificationChannel.Email,
             "KbaQuiz" => NotificationChannel.Email,
-            "AppPush" => NotificationChannel.Push,
             _ => NotificationChannel.InApp,
         };
 
@@ -277,52 +255,6 @@ public static class SignerVerificationChallengeIssuedConsumer
             SignatureTemplateCatalog.VerificationChallengeKey,
             evt.EventId.ToString("N")
         );
-    }
-
-    private static async Task<Result> SendAppPushAsync(
-        SignerVerificationChallengeIssuedIntegrationEvent evt,
-        string brand,
-        IPushSender pushSender,
-        IPushDeviceTokenRepository pushDeviceTokens,
-        CancellationToken ct
-    )
-    {
-        var devices = await pushDeviceTokens.ListActiveForUserAsync(evt.TenantId, evt.SignerId, ct);
-        if (devices.Count == 0)
-            return Result.Failure(
-                new Error(
-                    "Notification.NoPushDevices",
-                    "Signer has no registered push devices — public signer device registration is not implemented yet."
-                )
-            );
-
-        var title =
-            evt.SignerLanguage == "Es" ? $"{brand} — Verificación requerida" : $"{brand} — Verification required";
-        var body =
-            evt.SignerLanguage == "Es"
-                ? "Abre la app para aprobar tu firma."
-                : "Open the app to approve your signature.";
-
-        var anySucceeded = false;
-        var lastError = new Error("Notification.PushFailed", "All device deliveries failed.");
-        foreach (var device in devices)
-        {
-            var result = await pushSender.SendAsync(new PushMessage(device.Token, device.Platform, title, body), ct);
-            if (result.IsSuccess)
-            {
-                anySucceeded = true;
-            }
-            else
-            {
-                lastError = result.Error;
-                // Fase 7 — mismo criterio que NotificationDispatcher.SendPushAsync: token muerto
-                // confirmado por el proveedor, se revoca para no reintentar contra un
-                // dispositivo fantasma en el próximo challenge.
-                if (result.Error.Code == PushErrorCodes.TokenInvalid)
-                    await pushDeviceTokens.RevokeAsync(evt.TenantId, device.Id, ct);
-            }
-        }
-        return anySucceeded ? Result.Success() : Result.Failure(lastError);
     }
 
     private static void ApplyOutcomeToLog(

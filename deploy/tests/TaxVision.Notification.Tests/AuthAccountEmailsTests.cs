@@ -50,6 +50,7 @@ public sealed class AuthAccountEmailsTests
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             Tokens(),
+            FixedRecipientLocale.English,
             new Correlation(),
             CancellationToken.None
         );
@@ -89,6 +90,7 @@ public sealed class AuthAccountEmailsTests
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             Tokens(),
+            FixedRecipientLocale.English,
             new Correlation(),
             CancellationToken.None
         );
@@ -97,6 +99,45 @@ public sealed class AuthAccountEmailsTests
         Assert.Equal($"https://{Host}/reset-password?token=tok", variables["reset_link"]);
         Assert.Equal("workspace", variables["account_kind"]);
         Assert.Equal(ScribeRenderAudience.Staff, scribe.Rendered.Single().Audience);
+    }
+
+    /// <summary>Los dos correos del cambio de correo, en el idioma del usuario (la frase del aviso también).</summary>
+    [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var scribe = new CapturingScribe();
+
+        await EmailChangeRequestedConsumer.Handle(
+            new EmailChangeRequestedIntegrationEvent
+            {
+                TenantId = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                CurrentEmail = "ana@example.com",
+                NewEmail = "ana.new@example.com",
+                RawToken = "tok",
+                ExpiresAtUtc = DateTime.UtcNow.AddHours(1),
+                ActorType = "CustomerPortal",
+                TenantName = "Acme Tax",
+            },
+            new CapturingGateway(),
+            scribe,
+            Portal,
+            TestPlatform.Settings,
+            new FakeTenantHostResolver(Host),
+            Tokens(),
+            new FixedRecipientLocale("es"),
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        Assert.Equal(2, scribe.Rendered.Count);
+        Assert.All(scribe.Rendered, render => Assert.Equal("Es", render.Variables["language"]));
+        Assert.Equal(
+            "Alguien pidió cambiar el correo de tu cuenta del portal de clientes de Acme Tax a ana.new@example.com.",
+            scribe.Rendered.Single(render => render.EventKey == "auth.email_change_security_alert.v1").Variables[
+                "description"
+            ]
+        );
     }
 
     [Fact]
@@ -123,6 +164,7 @@ public sealed class AuthAccountEmailsTests
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             Tokens(),
+            FixedRecipientLocale.English,
             new Correlation(),
             CancellationToken.None
         );
@@ -161,6 +203,7 @@ public sealed class AuthAccountEmailsTests
             Portal,
             TestPlatform.Settings,
             Tokens(),
+            FixedRecipientLocale.English,
             new Correlation(),
             CancellationToken.None
         );
@@ -196,6 +239,7 @@ public sealed class AuthAccountEmailsTests
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             Tokens(),
+            FixedRecipientLocale.English,
             new Correlation(),
             CancellationToken.None
         );
@@ -223,6 +267,7 @@ public sealed class AuthAccountEmailsTests
             Portal,
             TestPlatform.Settings,
             Tokens(),
+            FixedRecipientLocale.English,
             new Correlation(),
             CancellationToken.None
         );
@@ -252,6 +297,7 @@ public sealed class AuthAccountEmailsTests
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             Tokens(),
+            FixedRecipientLocale.English,
             new Correlation(),
             CancellationToken.None
         );
@@ -294,6 +340,7 @@ public sealed class AuthAccountEmailsTests
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             Tokens(codec),
+            FixedRecipientLocale.English,
             new Correlation(),
             CancellationToken.None
         );
@@ -333,6 +380,7 @@ public sealed class AuthAccountEmailsTests
             TestPlatform.Settings,
             new FakeTenantHostResolver(Host),
             Tokens(codec),
+            FixedRecipientLocale.English,
             new Correlation(),
             CancellationToken.None
         );

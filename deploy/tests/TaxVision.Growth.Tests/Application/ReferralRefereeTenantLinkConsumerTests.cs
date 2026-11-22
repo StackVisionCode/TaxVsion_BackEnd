@@ -87,8 +87,12 @@ public sealed class ReferralRefereeTenantLinkConsumerTests
         Assert.Empty(bus.Published);
     }
 
+    /// <summary>
+    /// El aviso de premio cancelado por autorreferido lo devuelve el screening en su transacción: el consumer ya no lo
+    /// busca ni lo publica.
+    /// </summary>
     [Fact]
-    public async Task A_blocked_self_referral_tells_the_referrer_the_reward_was_cancelled()
+    public async Task Rejected_notice_is_published_in_the_same_unit()
     {
         var onboardingId = Guid.NewGuid();
         var referrer = Guid.NewGuid();
@@ -122,10 +126,9 @@ public sealed class ReferralRefereeTenantLinkConsumerTests
 
         await HandleCompletedAsync(bus, onboardingId, Guid.NewGuid());
 
-        var rejected = Assert.IsType<ReferralRewardRejectedIntegrationEvent>(Assert.Single(bus.Published));
-        Assert.Equal("SelfReferral", rejected.ReasonCode);
-        Assert.Equal(referrer, rejected.TenantId);
-        Assert.Equal(referrer.ToString(), bus.TenantIdDuring[2]);
+        Assert.Equal("corr-screen", Assert.IsType<ScreenReferralCommand>(bus.Invoked[1]).CorrelationId);
+        Assert.Empty(bus.Published);
+        Assert.DoesNotContain(bus.Invoked, message => message is GetReferralRewardNoticeQuery);
         Assert.Null(bus.TenantId);
     }
 

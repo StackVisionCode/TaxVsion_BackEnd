@@ -12,6 +12,10 @@ public static class TenantConnectAccountOnboardingRequiredNotificationConsumer
         TenantConnectAccountOnboardingRequiredIntegrationEvent evt,
         NotificationDispatcher dispatcher,
         IRecipientResolver resolver,
+        PushLinks links,
+        IRecipientLocale locales,
+        IUserEmailResolver emails,
+        IScribeRenderClient scribe,
         ICorrelationContext correlation,
         CancellationToken ct
     ) =>
@@ -25,6 +29,14 @@ public static class TenantConnectAccountOnboardingRequiredNotificationConsumer
             NotificationKinds.PaymentClientConnectAccountOnboardingRequired,
             "paymentclient.tenant_connect_account_onboarding_required.v1",
             "Finish setting up your payments account",
+            new OfficeAlertEmail(
+                "payments.connect_account_onboarding_required.v1",
+                new Dictionary<string, object?>(),
+                links,
+                locales,
+                emails,
+                scribe
+            ),
             dispatcher,
             resolver,
             correlation,

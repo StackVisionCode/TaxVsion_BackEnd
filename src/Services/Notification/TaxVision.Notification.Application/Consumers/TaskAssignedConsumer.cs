@@ -2,8 +2,6 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -30,27 +28,23 @@ public static class TaskAssignedConsumer
             var title = $"You were assigned a task: {evt.Title}";
             var body = CivilDue.Text(evt.DueOn, evt.DueAtUtc) is { } due ? $"Due {due}." : null;
 
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(evt.AssigneeUserId),
-                title,
-                NotificationCategory.Collaboration,
-                "tasks.task_assigned",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.AssigneeUserId,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.TasksTaskAssigned,
-                    evt.AssigneeUserId,
+                    evt.TenantId,
+                    new NotificationTarget(evt.AssigneeUserId),
                     evt.EventId,
                     "tasks.task_assigned.v1",
                     evt.OccurredOn,
-                    title,
-                    FallbackBody: body,
-                    ResourceId: evt.TaskId.ToString(),
-                    Params: new Dictionary<string, string> { ["taskTitle"] = evt.Title }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(
+                        Params: new Dictionary<string, string> { ["taskTitle"] = evt.Title },
+                        ResourceId: evt.TaskId.ToString(),
+                        FallbackTitle: title,
+                        FallbackBody: body
+                    )
                 ),
-                ct: ct
+                ct
             );
         }
     }

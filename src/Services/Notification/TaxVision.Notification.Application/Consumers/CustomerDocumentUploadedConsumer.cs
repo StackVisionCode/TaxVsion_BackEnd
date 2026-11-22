@@ -4,8 +4,6 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -48,28 +46,24 @@ public static class CustomerDocumentUploadedConsumer
 
             foreach (var userId in recipients.Value)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.DocumentsAndSignatures,
-                    "cloudstorage.customer_document_uploaded",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
                         NotificationKinds.CloudStorageCustomerDocumentUploaded,
-                        userId,
+                        evt.TenantId,
+                        new NotificationTarget(userId),
                         evt.EventId,
                         "cloudstorage.customer_document_uploaded.v1",
                         evt.OccurredOn,
-                        title,
-                        ResourceId: evt.FileId.ToString(),
-                        ResourceContext: context,
-                        Params: new Dictionary<string, string> { ["customerId"] = evt.CustomerId.ToString() },
-                        GroupKey: $"customer_uploads:{evt.CustomerId:N}:{evt.OccurredOn:yyyyMMdd}"
+                        correlation.CorrelationId,
+                        InApp: new InAppContent(
+                            Params: new Dictionary<string, string> { ["customerId"] = evt.CustomerId.ToString() },
+                            ResourceId: evt.FileId.ToString(),
+                            ResourceContext: context,
+                            GroupKey: $"customer_uploads:{evt.CustomerId:N}:{evt.OccurredOn:yyyyMMdd}",
+                            FallbackTitle: title
+                        )
                     ),
-                    ct: ct
+                    ct
                 );
             }
         }

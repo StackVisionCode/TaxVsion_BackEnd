@@ -287,6 +287,7 @@ BuildingBlocks.Messaging.TenantIntegrationEvents.TenantUpdatedIntegrationEvent
 BuildingBlocks.Messaging.TenantStatusChangedIntegrationEvent
 BuildingBlocks.Messaging.WalletIntegrationEvents.WalletBalanceChangedIntegrationEvent
 BuildingBlocks.Messaging.WalletIntegrationEvents.WalletTopUpDueIntegrationEvent
+auth.session.ended.v1
 auth.user.offboarding_step_completed.v1
 billing.invoice.payment_rejected.v1
 cloudstorage.customer_document_uploaded.v1
@@ -303,6 +304,7 @@ communication.meeting.recording_failed.v1
 communication.meeting.recording_ready.v1
 communication.meeting.reminder.v1
 communication.meeting.rescheduled.v1
+communication.notification.inapp_rejected.v1
 communication.support.opened.v1
 connectors.delivery_report_detected.v1
 connectors.mailbox_auth_failed.v1

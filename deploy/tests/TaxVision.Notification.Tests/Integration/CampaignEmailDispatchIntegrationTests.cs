@@ -7,6 +7,7 @@ using JasperFx.CodeGeneration.Model;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Application.Email.Sending.Campaign;
 using TaxVision.Notification.Application.Email.Sending.Consumers;
@@ -82,7 +83,7 @@ public sealed class CampaignEmailDispatchIntegrationTests : IAsyncLifetime
         };
 
     private Task DeliverAsync(CampaignDispatchRequestedIntegrationEvent evt) =>
-        _host.Services.GetRequiredService<IMessageBus>().InvokeAsync(evt);
+        _host.Services.GetRequiredService<IMessageBus>().InvokeAsync(new DispatchCampaignMessage(evt.TenantId, evt));
 
     [Fact]
     public async Task RedeliveredDispatch_DoesNotResend()

@@ -3,8 +3,6 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -31,26 +29,18 @@ public static class FilePendingReviewConsumer
             const string title = "File under review";
             const string body =
                 "One of your files is being reviewed against our content policy. It will be available once approved.";
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(userId),
-                title,
-                NotificationCategory.StorageAndQuota,
-                NotificationKinds.CloudStorageFilePendingReview,
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: userId,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.CloudStorageFilePendingReview,
-                    userId,
+                    evt.TenantId,
+                    new NotificationTarget(userId),
                     evt.EventId,
                     "cloudstorage.file.pending_review.v1",
                     evt.OccurredOn,
-                    title,
-                    FallbackBody: body,
-                    ResourceId: evt.FileId.ToString()
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(ResourceId: evt.FileId.ToString(), FallbackTitle: title, FallbackBody: body)
                 ),
-                ct: ct
+                ct
             );
         }
     }

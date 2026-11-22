@@ -17,6 +17,7 @@ public static class GiftcardShareConsumer
         GiftcardShareRequestedIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        IOfficeTimeZone officeZone,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -31,7 +32,8 @@ public static class GiftcardShareConsumer
                 evt.ExpiresAtUtc is not { } until ? "No expiry"
                 // P30: vence al final del día en la zona comercial, escrita ("Expires Dec 31, 2026 (New York time, GMT-5)").
                 : evt.ExpiresTimeZoneId is { } zoneId ? CommercialExpiry(until, ResolvedTimeZone.Resolve(zoneId))
-                : $"Valid until {until.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)}";
+                // Sin zona comercial, la de la oficina, escrita.
+                : CommercialExpiry(until, await officeZone.ResolveAsync(evt.TenantId, ct));
 
             var render = (
                 await scribeClient.RenderAsync(

@@ -17,4 +17,8 @@ public sealed class RecordingDispatchMetrics : INotificationDispatchMetrics
     public void RecordFailed(string kind, string channel) => Records.Add($"failed:{kind}:{channel}");
 
     public void RecordNoRecipient(string kind, string channel) => Records.Add($"none:{kind}:{channel}");
+
+    public void RecordNotAllowedByCatalog(string kind, string channel) => Records.Add($"not_allowed:{kind}:{channel}");
+
+    public void RecordDelivered(string kind, string channel) => Records.Add($"delivered:{kind}:{channel}");
 }

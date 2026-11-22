@@ -211,11 +211,14 @@ public sealed class ReferralRewardNotificationConsumerTests
 
     private sealed class Harness(string? host = null, bool withOwner = true)
     {
-        public NotificationDispatcherHarness Dispatcher { get; } = new();
-        public OwnerResolver Resolver { get; } = new(withOwner);
         public RecordingScribeRenderClient Scribe { get; } = new();
         public RecordingEmailGateway Gateway { get; } = new();
+        public OwnerResolver Resolver { get; } = new(withOwner);
         public PassThroughCorrelation Correlation { get; } = new();
+
+        // El correo sale por el dispatcher: después del gateway y Scribe.
+        public NotificationDispatcherHarness Dispatcher => dispatcher ??= new(emailGateway: Gateway, scribe: Scribe);
+        private NotificationDispatcherHarness? dispatcher;
 
         public IReadOnlyList<InAppNotificationRequestedIntegrationEvent> InAppRows =>
             Dispatcher.Publisher.Published.OfType<InAppNotificationRequestedIntegrationEvent>().ToArray();
@@ -226,10 +229,10 @@ public sealed class ReferralRewardNotificationConsumerTests
                 Dispatcher.Dispatcher,
                 Resolver,
                 new OwnerEmail(),
-                Gateway,
                 Scribe,
                 new FakeTenantHostResolver(host),
                 Options.Create(new PortalOptions()),
+                FixedRecipientLocale.English,
                 Correlation,
                 NullLogger<ReferralRewardGrantedIntegrationEvent>.Instance,
                 default

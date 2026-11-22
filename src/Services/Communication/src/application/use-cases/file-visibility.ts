@@ -28,7 +28,7 @@ import type { FileLibraryViewer } from './file-scope.js';
 export interface FileVisibilityDeps extends ClosedClientChatAccessDeps {
   readonly fileLibrary: Pick<FileLibraryReadRepository, 'findChatAttachments' | 'findRecordingFiles'>;
   readonly conversations: Pick<ConversationRepository, 'findById'>;
-  readonly supportTickets?: Pick<SupportTicketRepository, 'findById'> | undefined;
+  readonly supportTickets?: Pick<SupportTicketRepository, 'findById' | 'findByConversationId'> | undefined;
   // Rama de grabaciones: sin estos datos no responde.
   readonly meetings?: Pick<MeetingRepository, 'findById'> | undefined;
   readonly calls?: Pick<CallRepository, 'findById'> | undefined;
@@ -131,7 +131,11 @@ async function titleOf(
 ): Promise<string | null> {
   if (conversation.kind === ConversationKind.Support) {
     const ticketId = conversation.supportTicketId;
-    const ticket = ticketId ? await deps.supportTickets?.findById(ticketId) : null;
+    // Tickets viejos: la conversación guarda un id que no es el del ticket.
+    const ticket =
+      (ticketId ? await deps.supportTickets?.findById(ticketId) : null) ??
+      (await deps.supportTickets?.findByConversationId?.(conversation.id)) ??
+      null;
     return ticket?.toSnapshot().subject ?? null;
   }
   if (conversation.kind !== ConversationKind.Direct) return conversation.title;

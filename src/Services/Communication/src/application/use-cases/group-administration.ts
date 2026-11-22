@@ -415,6 +415,13 @@ export async function notifyAddedToGroup(
       priority: 'Normal',
       title: `Added to ${group}`,
       body: `${input.actor.displayName} added you to ${group}.`,
+      titleKey: 'notif.communication.chat.group_member_added.title',
+      bodyKey: 'notif.communication.chat.group_member_added.body',
+      // Sin título de grupo no se manda `group`: el front cae al texto del servidor.
+      params: {
+        ...(input.groupTitle ? { group: input.groupTitle } : {}),
+        actorName: input.actor.displayName,
+      },
       metadata: { conversationId: input.conversationId },
       category: 'Work',
       actorUserId: input.actor.userId,

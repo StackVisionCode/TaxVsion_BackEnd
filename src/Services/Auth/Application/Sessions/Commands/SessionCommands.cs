@@ -3,6 +3,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Domain.Audit;
+using Wolverine;
 
 namespace TaxVision.Auth.Application.Sessions.Commands;
 
@@ -19,6 +20,7 @@ public static class LogoutHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -46,6 +48,10 @@ public static class LogoutHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        // Aviso de bus (no de socket): Notification revoca el push de esta sesión.
+        await bus.PublishAsync(
+            SessionEndedEvents.ForSession(session, "user_logout", DateTime.UtcNow, correlation.CorrelationId)
+        );
         return Result.Success();
     }
 }
@@ -73,6 +79,7 @@ public static class RevokeSessionHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -109,6 +116,14 @@ public static class RevokeSessionHandler
             isOwner ? "user_logout" : "admin_revoke",
             ct
         );
+        await bus.PublishAsync(
+            SessionEndedEvents.ForSession(
+                session,
+                isOwner ? "user_logout" : "admin_revoke",
+                DateTime.UtcNow,
+                correlation.CorrelationId
+            )
+        );
         return Result.Success();
     }
 }
@@ -127,6 +142,7 @@ public static class RevokeAllMySessionsHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -163,6 +179,19 @@ public static class RevokeAllMySessionsHandler
                 session.Id,
                 "user_logout_all",
                 ct
+            );
+        }
+        if (active.Any(session => session.Id != command.ExceptSessionId))
+        {
+            await bus.PublishAsync(
+                SessionEndedEvents.ForUser(
+                    command.TenantId,
+                    command.UserId,
+                    command.ExceptSessionId,
+                    "user_logout_all",
+                    DateTime.UtcNow,
+                    correlation.CorrelationId
+                )
             );
         }
         return Result.Success();

@@ -11,7 +11,13 @@ public interface IUserEmailDirectoryRepository
 }
 
 /// <summary>Correo de un usuario tal como lo conoce Auth, para poblar o reparar el directorio.</summary>
-public sealed record RemoteUserContact(string Email, bool IsActive);
+public sealed record RemoteUserContact(
+    string Email,
+    bool IsActive,
+    string? DisplayName = null,
+    string? Language = null,
+    string? TimeZoneId = null
+);
 
 /// <summary>
 /// Recuperación pull contra el endpoint interno de Auth. <b>Nunca lanza</b>: devuelve <c>null</c>

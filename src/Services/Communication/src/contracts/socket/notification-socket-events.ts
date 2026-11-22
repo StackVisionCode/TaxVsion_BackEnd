@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { NotificationListFilter } from '../../domain/notifications/notification-category.js';
 
 /**
  * Notifications realtime. SEPARADO explicitamente de session events (session.revoked
@@ -54,6 +55,21 @@ export interface NotificationUnreadCountDto {
   asOfUtc: string;
 }
 
+export type NotificationBulkAction = 'read' | 'unread' | 'dismissed';
+
+/** Qué filas cambió una acción masiva o un descarte; va a todas las sesiones del mismo usuario. */
+export interface NotificationBulkAppliedDto {
+  action: NotificationBulkAction;
+  /** Ids pedidos, ya sin repetidos (1..200). Vacío con `scope: 'filter'`. */
+  notificationIds: readonly string[];
+  asOfUtc: string;
+  /** Ausente = 'ids'. Con 'filter' el cliente vuelve a pedir su página. */
+  scope?: 'ids' | 'filter';
+  filter?: NotificationListFilter;
+  cutoffUtc?: string;
+  affectedCount?: number;
+}
+
 export interface SessionRevokedDto {
   sessionId: string | null;
   jti: string | null;
@@ -82,6 +98,7 @@ export const NotificationSocketEvents = {
   Received: 'notification.received',
   Updated: 'notification.updated',
   UnreadCountChanged: 'notification.unread_count.changed',
+  BulkApplied: 'notification.bulk.applied',
   ReadConfirmed: 'notification.read.confirmed',
   ReadAllConfirmed: 'notification.read_all.confirmed',
   // s -> c (SESSION — canal propio, jamas mezclado con notifications de negocio)

@@ -33,7 +33,7 @@ public static class CampaignEmailDispatchConsumer
 
     [NonTransactional]
     public static async Task<CampaignDispatchResultIntegrationEvent?> Handle(
-        CampaignDispatchRequestedIntegrationEvent evt,
+        DispatchCampaignMessage command,
         ICampaignEmailProvider emailProvider,
         ICustomerContactPolicyRepository contactPolicies,
         ICampaignDispatchSendRepository sends,
@@ -43,6 +43,8 @@ public static class CampaignEmailDispatchConsumer
         CancellationToken ct
     )
     {
+        // Llega por el carril masivo (N8-03).
+        var evt = command.Request;
         if (!string.Equals(evt.Channel, "Email", StringComparison.OrdinalIgnoreCase))
             return null; // otro canal — no es lo nuestro
 

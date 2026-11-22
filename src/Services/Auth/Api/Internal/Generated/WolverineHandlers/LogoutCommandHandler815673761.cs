@@ -62,7 +62,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Auth.Application.Sessions.Commands.LogoutHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Auth.Application.Sessions.Commands.LogoutHandler.Handle(logoutCommand, sessionRepository, accessTokenDenylist, authAuditWriter, requestContext, correlationContext, unitOfWork, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Auth.Application.Sessions.Commands.LogoutHandler.Handle(logoutCommand, sessionRepository, accessTokenDenylist, authAuditWriter, requestContext, correlationContext, unitOfWork, context, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

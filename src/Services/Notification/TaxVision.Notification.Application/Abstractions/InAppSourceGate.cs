@@ -14,7 +14,6 @@ public enum InAppSourceGroup
     CloudStorageLegal,
     CloudStoragePolicy,
     Support,
-    Signature,
 }
 
 public sealed class InAppRoutingOptions
@@ -30,7 +29,6 @@ public sealed class InAppRoutingOptions
     public SourceSettings CloudStorageLegal { get; set; } = new();
     public SourceSettings CloudStoragePolicy { get; set; } = new();
     public SourceSettings Support { get; set; } = new();
-    public SourceSettings Signature { get; set; } = new();
 
     public sealed class SourceSettings
     {
@@ -60,7 +58,6 @@ public sealed class InAppSourceGate(IOptions<InAppRoutingOptions> options) : IIn
             InAppSourceGroup.CloudStorageLegal => _options.CloudStorageLegal,
             InAppSourceGroup.CloudStoragePolicy => _options.CloudStoragePolicy,
             InAppSourceGroup.Support => _options.Support,
-            InAppSourceGroup.Signature => _options.Signature,
             _ => new InAppRoutingOptions.SourceSettings(),
         };
 }

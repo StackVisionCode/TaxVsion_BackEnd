@@ -22,15 +22,18 @@ using BuildingBlocks.Web.Session;
 using JasperFx.CodeGeneration.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Serilog;
 using StackExchange.Redis;
 using TaxVision.Notification.Api.Common;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Infrastructure;
 using TaxVision.Notification.Infrastructure.Onboarding;
 using TaxVision.Notification.Infrastructure.Persistence;
+using TaxVision.Notification.Infrastructure.Push;
 using TaxVision.Notification.Infrastructure.Scribe;
 using TaxVision.Notification.Infrastructure.Storage;
 using Wolverine;
@@ -197,7 +200,8 @@ var rabbitUri = new Uri(
 builder
     .Services.AddHealthChecks()
     .AddDbContextCheck<NotificationDbContext>("sql-server", tags: ["ready"])
-    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(rabbitUri.Host, rabbitUri.Port), tags: ["ready"]);
+    .AddCheck("rabbitmq", new TcpEndpointHealthCheck(rabbitUri.Host, rabbitUri.Port), tags: ["ready"])
+    .AddCheck<FcmPushHealthCheck>("fcm-push", failureStatus: HealthStatus.Degraded, tags: ["ready"]);
 
 builder.Host.UseWolverine(options =>
 {
@@ -229,25 +233,29 @@ builder.Host.UseWolverine(options =>
         .PublishMessage<BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchResultIntegrationEvent>()
         .ToRabbitExchange("taxvision-events");
 
-    // Evento hacia Postmaster. Dos productores comparten el mismo mensaje y el mismo flag
-    // Notification:UsePostmasterDispatch: EventBasedEmailDispatchGateway (path IEmailDispatchGateway) y
-    // PostmasterEmailDeliveryService (path IEmailDeliveryService, el que había atrás de /notifications/
-    // email/send y de EmailCampaigns). El PublishMessage se declara siempre para no romper el binding
-    // aun cuando el flag esté OFF; el runtime simplemente no genera envíos hasta que alguno lo invoque.
-    options.PublishMessage<NotificationsEmailSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // El correo renderizado (con códigos y enlaces) va directo a la cola de Postmaster, nunca al fanout.
+    options.PublishMessage<NotificationsEmailSendRequestedIntegrationEvent>().ToRabbitQueue("postmaster-events");
 
     // Avisos del webhook único de SMTP2GO que son de correos del sistema: los traduce Postmaster.
     options.PublishMessage<EmailProviderFeedbackReceivedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
-    // Puente SMS real: el IntegrationEventSmsSender publica esto y el microservicio Sms lo entrega
-    // (Infobip). Se declara siempre para no romper el binding aunque el flag UseSmsBridge esté OFF.
-    options.PublishMessage<SmsSendRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // El SMS (teléfono y texto final) va directo a la cola del servicio Sms, nunca al fanout.
+    options.PublishMessage<SmsSendRequestedIntegrationEvent>().ToRabbitQueue("sms-events");
     options.PublishMessage<InAppNotificationRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
 
     options.ListenToRabbitQueue("notification-client-form-commands").UseDurableInbox();
 
     // Reintento programado del push de Client Forms: cola local durable, sobrevive a un reinicio (P-21.3.1).
     options.LocalQueueFor<TaxVision.Notification.Application.Common.RetryClientFormPushRequested>().UseDurableInbox();
+
+    // D-N44 (opción A): chat y campañas en su carril; notification-events queda para lo crítico y lo normal.
+    options.PublishMessage<DispatchChatPush>().ToLocalQueue(NotificationLanes.Bulk);
+    options.PublishMessage<DispatchCampaignMessage>().ToLocalQueue(NotificationLanes.Bulk);
+    options.LocalQueue(NotificationLanes.Bulk).MaximumParallelMessages(2).UseDurableInbox();
+
+    // N8-04: la llamada a FCM, sin transacción y con un solo tope de concurrencia.
+    options.PublishMessage<DeliverPush>().ToLocalQueue(NotificationLanes.Push);
+    options.LocalQueue(NotificationLanes.Push).MaximumParallelMessages(8).UseDurableInbox();
 
     // Consume los eventos de Auth (invitaciones, resets, OTP, alertas).
     options

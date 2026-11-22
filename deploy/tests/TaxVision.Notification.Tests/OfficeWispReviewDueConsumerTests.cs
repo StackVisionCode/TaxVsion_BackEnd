@@ -46,6 +46,21 @@ public sealed class OfficeWispReviewDueConsumerTests
         Assert.Single(harness.Scribe.Calls);
     }
 
+    /// <summary>Un render por idioma: el admin en español y el resto en inglés comparten cada uno el suyo.</summary>
+    [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var locales = new FixedRecipientLocale("en", "America/Chicago");
+        locales.ByUser[Admin] = "es";
+        var harness = new Harness(active: [Coordinator, Admin, CoAdmin], admins: [Admin, CoAdmin], locales: locales);
+
+        await harness.HandleAsync(Event(OfficeWispReviewStages.DueSoon, Coordinator));
+
+        Assert.Equal(["En", "Es"], harness.Scribe.Calls.Select(call => call.Variables["language"]).Order());
+        Assert.All(harness.Scribe.Readers, reader => Assert.Equal("America/Chicago", reader?.TimeZoneId));
+        Assert.Equal(3, harness.Queued.Count);
+    }
+
     [Fact]
     public async Task El_responsable_inactivo_se_omite_y_los_admins_reciben_igual()
     {
@@ -95,7 +110,9 @@ public sealed class OfficeWispReviewDueConsumerTests
         var variables = Assert.Single(harness.Scribe.Calls);
         Assert.Equal(OfficeWispReviewDueConsumer.EmailEventKey, variables.EventKey);
         Assert.False((bool)variables.Variables["is_overdue"]!);
-        Assert.Equal("November 30, 2026", variables.Variables["due_date"]);
+        // Fecha tipada: Scribe la imprime en el idioma de quien lee.
+        var due = Assert.IsAssignableFrom<IReadOnlyDictionary<string, object?>>(variables.Variables["due_date"]);
+        Assert.Equal("2026-11-30", due["$date"]);
         Assert.Equal("https://manfer.taxoffix.io/company/settings#compliance", variables.Variables["settings_url"]);
 
         var email = Assert.Single(harness.Queued);
@@ -211,21 +228,23 @@ public sealed class OfficeWispReviewDueConsumerTests
         private readonly CapturingIntegrationEventPublisher _gatewayPublisher = new();
         private readonly bool _withEmails;
         private readonly ITenantHostResolver _hosts;
+        private readonly IRecipientLocale _locales;
 
         public Harness(
             IReadOnlyList<Guid> active,
             IReadOnlyList<Guid> admins,
             string? host = null,
             bool scribeFails = false,
-            bool withEmails = true
+            bool withEmails = true,
+            IRecipientLocale? locales = null
         )
         {
+            _locales = locales ?? FixedRecipientLocale.English;
             Resolver = new FakeResolver(active, admins);
             Scribe = new RecordingScribe(scribeFails);
             _withEmails = withEmails;
             _hosts = new FakeTenantHostResolver(host);
             var devices = new FakeDevices([Coordinator, Admin, CoAdmin]);
-            _dispatcher = new NotificationDispatcherHarness(pushSender: _push, pushDeviceTokens: devices, logs: _logs);
             _gateway = new EventBasedEmailDispatchGateway(
                 _gatewayPublisher,
                 _logs,
@@ -234,6 +253,12 @@ public sealed class OfficeWispReviewDueConsumerTests
                 NullLogger<EventBasedEmailDispatchGateway>.Instance
             );
             Queued = new List<EmailDispatchRequest>();
+            _dispatcher = new NotificationDispatcherHarness(
+                pushSender: _push,
+                pushDeviceTokens: devices,
+                logs: _logs,
+                emailGateway: new RecordingGateway(_gateway, Queued)
+            );
         }
 
         public FakeResolver Resolver { get; }
@@ -256,10 +281,10 @@ public sealed class OfficeWispReviewDueConsumerTests
                 _dispatcher.Dispatcher,
                 Resolver,
                 new FakeEmails(_withEmails),
-                new RecordingGateway(_gateway, Queued),
                 Scribe,
                 _hosts,
                 Options.Create(new PortalOptions()),
+                _locales,
                 new TestCorrelationContext(),
                 NullLogger<OfficeWispReviewDueIntegrationEvent>.Instance,
                 CancellationToken.None
@@ -297,8 +322,23 @@ public sealed class OfficeWispReviewDueConsumerTests
             Task.FromResult(withEmails ? Harness.EmailOf(userId) : null);
     }
 
-    private sealed class RecordingScribe(bool fails) : IScribeRenderClient
+    private sealed class RecordingScribe(bool fails) : IScribeRenderClient, IScribeReaderRenderClient
     {
+        public List<ScribeReader?> Readers { get; } = [];
+
+        public Task<Result<ScribeRenderedEmail>> RenderForReaderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            ScribeReader reader,
+            CancellationToken ct = default
+        )
+        {
+            Readers.Add(reader);
+            return RenderAsync(eventKey, tenantId, variables, ct);
+        }
+
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
             string eventKey,
             Guid tenantId,
@@ -411,6 +451,26 @@ public sealed class OfficeWispReviewDueConsumerTests
 
     private sealed class FakeDevices(IReadOnlyList<Guid> users) : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

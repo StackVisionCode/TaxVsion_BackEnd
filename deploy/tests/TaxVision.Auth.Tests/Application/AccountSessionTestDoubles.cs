@@ -13,7 +13,7 @@ using TaxVision.Auth.Domain.Users;
 namespace TaxVision.Auth.Tests.Application;
 
 /// <summary>Sesiones y refresh tokens en memoria con la misma semántica de revocación que el repositorio real.</summary>
-internal sealed class InMemorySessionRepository : ISessionRepository
+internal sealed class InMemorySessionRepository : ISessionRepository, IExpiredSessionQuery
 {
     public Task<IReadOnlyList<UserSession>> GetActiveSessionsByTenantAsync(
         Guid tenantId,
@@ -82,6 +82,25 @@ internal sealed class InMemorySessionRepository : ISessionRepository
 
     public Task<int> RevokeAllForTenantAsync(Guid tenantId, string reason, CancellationToken ct = default) =>
         throw new NotSupportedException();
+
+    // Misma regla que la consulta real: sesión viva sin ningún refresh vigente.
+    public Task<IReadOnlyList<Guid>> FindExpiredSessionIdsAsync(
+        DateTime now,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<Guid>>(
+            Sessions
+                .Where(session =>
+                    session.RevokedAtUtc is null
+                    && !Tokens.Any(token =>
+                        token.SessionId == session.Id && token.RevokedAtUtc is null && token.ExpiresAtUtc > now
+                    )
+                )
+                .Select(session => session.Id)
+                .Take(take)
+                .ToList()
+        );
 
     private int RevokeTokens(Func<RefreshToken, bool> match, string reason)
     {

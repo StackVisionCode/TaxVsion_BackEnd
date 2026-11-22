@@ -1711,6 +1711,38 @@
 					]
 				},
 				{
+					"name": "Detalle de notificación",
+					"request": {
+						"method": "GET",
+						"description": "Same object as one item of the list. No side effects (does not mark it read). Unknown, foreign, dismissed or malformed id: same 404.",
+						"url": {
+							"raw": "{{UrlBase}}/communication/notifications/{{notificationId}}",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"communication",
+								"notifications",
+								"{{notificationId}}"
+							]
+						}
+					},
+					"response": [
+						{
+							"name": "200 — Notification",
+							"status": "OK",
+							"code": 200,
+							"body": "{\n  \"id\": \"7c9e6679-7425-40de-944b-e07fc1f90ae7\",\n  \"kind\": \"signature.completed\",\n  \"priority\": \"High\",\n  \"title\": \"Document signed\",\n  \"body\": \"The client signed the engagement letter.\",\n  \"metadata\": {},\n  \"category\": \"documents\",\n  \"actorUserId\": null,\n  \"actorDisplayName\": null,\n  \"actorType\": \"System\",\n  \"resourceType\": \"signature-request\",\n  \"resourceId\": \"a3bb189e-8bf9-3888-9912-ace4e6543002\",\n  \"resourceContext\": {},\n  \"titleKey\": null,\n  \"bodyKey\": null,\n  \"params\": {\n    \"documentName\": \"Engagement letter\"\n  },\n  \"action\": null,\n  \"groupKey\": null,\n  \"occurredAtUtc\": \"2026-11-20T10:00:00.000Z\",\n  \"createdAtUtc\": \"2026-11-20T10:00:01.000Z\",\n  \"readAtUtc\": null\n}"
+						},
+						{
+							"name": "404 — Not found (unknown, foreign, dismissed or malformed id)",
+							"status": "Not Found",
+							"code": 404,
+							"body": "{\n  \"code\": \"Notification.NotFound\",\n  \"message\": \"Notification not found.\"\n}"
+						}
+					]
+				},
+				{
 					"name": "Marcar notificación como leída",
 					"request": {
 						"method": "POST",

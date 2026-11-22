@@ -24,7 +24,8 @@ public static class ConnectorsOAuthRefreshFailedConsumer
             if (!inAppSource.PublishesInApp(InAppSourceGroup.Connectors))
                 return;
 
-            var title = "Tu cuenta de correo necesita reconexión";
+            var parameters = new Dictionary<string, string> { ["providerCode"] = evt.ProviderCode };
+            var (title, body) = InAppFallback.For(NotificationKinds.ConnectorsOAuthRefreshFailed, parameters);
             var recipients = await MailboxAlertRecipients.ResolveAsync(
                 evt.TenantId,
                 evt.CreatedByUserId,
@@ -52,9 +53,9 @@ public static class ConnectorsOAuthRefreshFailedConsumer
                         "connectors.oauth.refresh_failed.v1",
                         evt.FailedAtUtc,
                         title,
-                        FallbackBody: $"No pudimos renovar el acceso a tu cuenta {evt.ProviderCode}. Reconéctala para seguir recibiendo correo.",
+                        FallbackBody: body,
                         ResourceId: evt.AccountId.ToString(),
-                        Params: new Dictionary<string, string> { ["providerCode"] = evt.ProviderCode },
+                        Params: parameters,
                         // Mientras haya un aviso sin leer de esta cuenta, Communication lo actualiza
                         // en lugar de crear otra fila: un productor que repita el evento no llena la campana.
                         GroupKey: $"connectors.oauth.refresh_failed:{evt.AccountId:N}"

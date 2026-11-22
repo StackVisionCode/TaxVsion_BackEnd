@@ -32,7 +32,7 @@ public static class ReferralAttributedNotificationConsumer
                 return;
 
             var via = string.IsNullOrWhiteSpace(evt.Channel) ? string.Empty : $" via {evt.Channel}";
-            await BillingNotificationPublisher.RecordAsync(
+            await ReferralRewardText.NotifyAsync(
                 dispatcher,
                 recipients,
                 evt.TenantId,

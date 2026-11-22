@@ -269,7 +269,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignatureRequestSentIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestCanceledIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestExpirationExtendedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignerInvitedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Lleva el token del enlace en claro y solo lo consume Notification: directo a su cola, no al fanout.
+    options.PublishMessage<SignerInvitedIntegrationEvent>().ToRabbitQueue("notification-events");
     options.PublishMessage<SignerConsentAcceptedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // F5 — document viewed por el firmante (semántica distinta a FirstViewed del enlace).
     options.PublishMessage<SignerDocumentViewedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -287,7 +288,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignatureRequestSealingFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinVerifiedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerPinFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignerVerificationChallengeIssuedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Lleva la respuesta del reto en claro y solo lo consume Notification: directo a su cola, no al fanout.
+    options.PublishMessage<SignerVerificationChallengeIssuedIntegrationEvent>().ToRabbitQueue("notification-events");
     options.PublishMessage<SignerVerificationSucceededIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignerVerificationFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<PreparerSignedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -295,7 +297,8 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<SignaturePreparerAttentionRequiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestExpiredIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<SignatureRequestPurgedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<SignatureRequestReminderDueIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Lleva el token del enlace en claro y solo lo consume Notification: directo a su cola, no al fanout.
+    options.PublishMessage<SignatureRequestReminderDueIntegrationEvent>().ToRabbitQueue("notification-events");
     // Fase D1 — reemplaza el HttpClient a CloudStorage para subir el sellado/certificate.
     options.PublishMessage<SaveFileRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ReassignFileOwnerRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");

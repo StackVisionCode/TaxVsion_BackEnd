@@ -36,6 +36,9 @@ public sealed class User : AggregateRoot
 
     // Perfil y credenciales
     public string? TimeZoneId { get; private set; }
+
+    /// <summary>Idioma de los avisos ("en" o "es"); null = sin preferencia.</summary>
+    public string? Language { get; private set; }
     public string? PhoneNumber { get; private set; }
     public bool EmailVerified { get; private set; }
     public bool PhoneVerified { get; private set; }
@@ -225,6 +228,26 @@ public sealed class User : AggregateRoot
         }
 
         TimeZoneId = normalized;
+        return Result.Success();
+    }
+
+    /// <summary>Idiomas admitidos para los avisos (D-N39).</summary>
+    public static readonly IReadOnlyList<string> SupportedLanguages = ["en", "es"];
+
+    /// <summary>Null quita la preferencia; cualquier otro valor fuera de la lista se rechaza.</summary>
+    public Result SetLanguage(string? language)
+    {
+        if (language is null)
+        {
+            Language = null;
+            return Result.Success();
+        }
+
+        var normalized = language.Trim().ToLowerInvariant();
+        if (!SupportedLanguages.Contains(normalized))
+            return Result.Failure(new Error("User.Language", "Language must be 'en' or 'es'."));
+
+        Language = normalized;
         return Result.Success();
     }
 

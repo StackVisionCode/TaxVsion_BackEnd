@@ -72,6 +72,7 @@ public sealed class EndAccountSessionHandlerTests
             world.Request,
             world.Correlation,
             world.UnitOfWork,
+            new FakeMessageBus(),
             CancellationToken.None
         );
 }

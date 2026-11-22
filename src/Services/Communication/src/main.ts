@@ -20,6 +20,8 @@ import { registerCallHandlers } from './api/socket/handlers/call-handlers.js';
 import { registerMeetingHandlers } from './api/socket/handlers/meeting-handlers.js';
 import { registerNotificationHandlers } from './api/socket/handlers/notification-handlers.js';
 import { startMissedCallScheduler } from './infrastructure/schedulers/missed-call-scheduler.js';
+import { startMissedMessagesScheduler } from './infrastructure/schedulers/missed-messages-scheduler.js';
+import { PrismaMissedMessagesStore } from './infrastructure/persistence/prisma-missed-messages-store.js';
 import { startPurgeScheduler } from './infrastructure/schedulers/purge-scheduler.js';
 import { startRecordingConsentTimeoutScheduler } from './infrastructure/schedulers/recording-consent-timeout-scheduler.js';
 import { startMeetingLifecycleScheduler } from './infrastructure/schedulers/meeting-lifecycle-scheduler.js';
@@ -202,6 +204,10 @@ async function main(): Promise<void> {
       effectiveSettings: container.effectiveSettings,
     },
   );
+  const missedMessages = startMissedMessagesScheduler(
+    { intervalSeconds: 60, afterMinutes: config.missedMessages.afterMinutes },
+    { store: new PrismaMissedMessagesStore(prisma), lock: container.distributedLock },
+  );
   const outbox = startOutboxDrainer({ intervalMs: 2000 }, { lock: container.distributedLock });
   const purge = startPurgeScheduler(
     {
@@ -315,6 +321,7 @@ async function main(): Promise<void> {
   bindInAppNotificationConsumers(consumers.register.bind(consumers), {
     notifications: container.inAppNotifications,
     emitter,
+    publisher: container.publisher,
   });
   bindSignatureConsumers(consumers.register.bind(consumers), {
     notifications: container.notifications,
@@ -335,6 +342,7 @@ async function main(): Promise<void> {
     rolePermissions: container.rolePermissions,
     customerPortalAccounts: container.customerPortalAccounts,
     emitter,
+    sessionTerminator: container.sessionTerminator,
   });
   bindTenantHostConsumers(consumers.register.bind(consumers), {
     hostCache: container.tenantHostCache,
@@ -359,6 +367,7 @@ async function main(): Promise<void> {
     supportTickets: container.supportTickets,
     settings: container.settings,
     recordingLifecycle,
+    sessionTerminator: container.sessionTerminator,
   });
   bindSubscriptionConsumers(consumers.register.bind(consumers), {
     limits: container.limits,
@@ -545,6 +554,7 @@ async function main(): Promise<void> {
         io,
         container,
         missedCalls,
+        missedMessages,
         outbox,
         purge,
         recordingConsentTimeout,
@@ -572,6 +582,7 @@ async function shutdown(
   io: ReturnType<typeof buildSocketServer>,
   container: ReturnType<typeof buildContainer>,
   missedCalls: ReturnType<typeof startMissedCallScheduler>,
+  missedMessages: ReturnType<typeof startMissedMessagesScheduler>,
   outbox: ReturnType<typeof startOutboxDrainer>,
   purge: ReturnType<typeof startPurgeScheduler>,
   recordingConsentTimeout: ReturnType<typeof startRecordingConsentTimeoutScheduler>,
@@ -590,6 +601,7 @@ async function shutdown(
   logger.info({ signal }, 'Shutting down (graceful drain up to 30s)');
   try {
     missedCalls.stop();
+    missedMessages.stop();
     outbox.stop();
     purge.stop();
     recordingConsentTimeout.stop();

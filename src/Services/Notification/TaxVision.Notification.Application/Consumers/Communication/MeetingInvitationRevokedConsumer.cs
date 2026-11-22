@@ -53,7 +53,8 @@ public static class MeetingInvitationRevokedConsumer
                     ["invitationId"] = evt.InvitationId.ToString(),
                     ["ejected"] = evt.Ejected ? "true" : "false",
                 },
-                ct
+                ct,
+                new Dictionary<string, string> { ["meetingTitle"] = meetingTitle }
             );
         }
     }

@@ -1,5 +1,6 @@
 using BuildingBlocks.Results;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -9,10 +10,17 @@ public sealed record NotificationPreferenceItem(
     NotificationCategory Category,
     NotificationChannel Channel,
     bool Enabled,
-    bool Locked
+    bool Locked,
+    // Hay al menos un aviso que este interruptor apaga (o la celda está bloqueada).
+    bool Available = true,
+    IReadOnlyList<string>? Covers = null
 );
 
-public sealed record GetNotificationPreferencesQuery(Guid TenantId, Guid UserId);
+public sealed record GetNotificationPreferencesQuery(
+    Guid TenantId,
+    Guid UserId,
+    PreferenceAudience Audience = PreferenceAudience.Staff
+);
 
 /// <summary>
 /// Devuelve el producto completo Categoría×Canal (ver <see cref="NotificationCategory"/>): las
@@ -28,7 +36,20 @@ public static class GetNotificationPreferencesHandler
         CancellationToken ct
     )
     {
+        // El portal no tiene pantalla de preferencias.
+        if (query.Audience == PreferenceAudience.CustomerPortal)
+            return Result.Success<IReadOnlyList<NotificationPreferenceItem>>([]);
+
         var stored = await repository.ListForUserAsync(query.TenantId, query.UserId, ct);
+        return Result.Success(Build(query, stored, NotificationCatalog.Availability));
+    }
+
+    public static IReadOnlyList<NotificationPreferenceItem> Build(
+        GetNotificationPreferencesQuery query,
+        IReadOnlyList<UserNotificationPreference> stored,
+        NotificationPreferenceAvailability availability
+    )
+    {
         var storedByKey = stored.ToDictionary(p => (p.Category, p.Channel), p => p.Enabled);
 
         var items = new List<NotificationPreferenceItem>();
@@ -39,10 +60,19 @@ public static class GetNotificationPreferencesHandler
             {
                 var enabled =
                     locked || !storedByKey.TryGetValue((category, channel), out var stateEnabled) || stateEnabled;
-                items.Add(new NotificationPreferenceItem(category, channel, enabled, locked));
+                items.Add(
+                    new NotificationPreferenceItem(
+                        category,
+                        channel,
+                        enabled,
+                        locked,
+                        locked || availability.IsAvailable(category, channel, query.Audience),
+                        availability.Covers(category, channel, query.Audience)
+                    )
+                );
             }
         }
 
-        return Result.Success<IReadOnlyList<NotificationPreferenceItem>>(items);
+        return items;
     }
 }

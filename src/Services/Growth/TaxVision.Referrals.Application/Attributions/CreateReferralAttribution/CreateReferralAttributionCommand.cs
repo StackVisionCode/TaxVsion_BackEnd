@@ -3,6 +3,10 @@ using TaxVision.Referrals.Domain.Shares;
 
 namespace TaxVision.Referrals.Application.Attributions.CreateReferralAttribution;
 
+/// <param name="NoticeCorrelationId">
+/// Con valor, el caso de uso devuelve el aviso al referidor con esta correlación (alta por evento). Sin valor no
+/// hay aviso, como en el alta manual.
+/// </param>
 public sealed record CreateReferralAttributionCommand(
     Guid TenantId,
     Guid ProgramId,
@@ -12,7 +16,8 @@ public sealed record CreateReferralAttributionCommand(
     string IdempotencyKey,
     Guid ActorUserId,
     ReferralShareChannel? Channel = null,
-    Guid? ShareId = null
+    Guid? ShareId = null,
+    string? NoticeCorrelationId = null
 )
 {
     public override string ToString() =>

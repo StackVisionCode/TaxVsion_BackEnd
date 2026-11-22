@@ -3,13 +3,12 @@ using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Common;
 
 /// <summary>Un aviso del Wallet: el mismo texto va a la campana y el correo de cada destinatario.</summary>
 /// <param name="DeliveryKey">Hecho de negocio que deduplica el correo (la recarga o el evento).</param>
+/// <param name="LocalizedEmailVariables">Variables del correo que dependen del idioma de quien lee; null = las fijas.</param>
 public sealed record WalletAlert(
     Guid TenantId,
     Guid EventId,
@@ -22,7 +21,8 @@ public sealed record WalletAlert(
     string Body,
     IReadOnlyDictionary<string, object?> EmailVariables,
     string ResourceId,
-    string GroupKey
+    string GroupKey,
+    Func<RecipientLocale, IReadOnlyDictionary<string, object?>>? LocalizedEmailVariables = null
 );
 
 /// <summary>
@@ -35,11 +35,11 @@ public sealed class WalletAlertSender(
     IRecipientResolver resolver,
     ITenantOwnerProjectionRepository offices,
     IUserEmailResolver emails,
-    IEmailDispatchGateway gateway,
     IScribeRenderClient scribe,
     ITenantHostResolver hosts,
     IOptions<PortalOptions> portal,
-    ICorrelationContext correlation
+    ICorrelationContext correlation,
+    IRecipientLocale locales
 )
 {
     public const string WalletPath = "/wallet";
@@ -99,50 +99,60 @@ public sealed class WalletAlertSender(
         if (addresses.Count == 0)
             return;
 
-        var render = (
-            await scribe.RenderAsync(alert.EmailEventKey, alert.TenantId, alert.EmailVariables, ct)
-        ).EnsureRendered(alert.EmailEventKey);
-
+        // Un render por idioma y lector; todos antes de encolar.
+        var renders = new RecipientRenders(
+            scribe,
+            alert.EmailEventKey,
+            alert.TenantId,
+            ScribeRenderAudience.Staff,
+            alert.LocalizedEmailVariables ?? (_ => alert.EmailVariables)
+        );
+        var languages = new RecipientLocaleCache(locales, alert.TenantId);
+        var targets = new List<NotificationTarget>(addresses.Count);
         foreach (var (userId, address) in addresses)
-            await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
-                    alert.TenantId,
-                    address,
-                    alert.EmailEventKey,
-                    alert.EventId,
-                    correlation.CorrelationId
-                ) with
+        {
+            var locale = await languages.ForUserAsync(userId, ct);
+            await renders.ForAsync(locale, ct);
+            targets.Add(new NotificationTarget(userId, address, Locale: locale));
+        }
+
+        foreach (var target in targets)
+            await dispatcher.DispatchAsync(
+                Intent(alert, target) with
                 {
-                    RecipientUserId = userId,
-                    Category = NotificationCategory.Billing,
-                    NotificationKind = alert.Kind,
-                    IdempotencyKey = $"{alert.Kind}:{alert.DeliveryKey}:{address.Trim().ToLowerInvariant()}",
+                    Email = new EmailContent(
+                        alert.EmailEventKey,
+                        alert.EmailVariables,
+                        IdempotencyKey: $"{alert.Kind}:{alert.DeliveryKey}:{target.Email!.Trim().ToLowerInvariant()}",
+                        Render: renders.ForAsync
+                    ),
                 },
                 ct
             );
     }
 
     private Task RecordInAppAsync(WalletAlert alert, Guid userId, CancellationToken ct) =>
-        dispatcher.RecordInAppAsync(
-            alert.TenantId,
-            NotificationRecipient.ForUser(userId),
-            alert.Title,
-            NotificationCategory.Billing,
+        dispatcher.DispatchAsync(
+            Intent(alert, new NotificationTarget(userId)) with
+            {
+                InApp = new InAppContent(
+                    ResourceId: alert.ResourceId,
+                    GroupKey: alert.GroupKey,
+                    FallbackTitle: alert.Title,
+                    FallbackBody: alert.Body
+                ),
+            },
+            ct
+        );
+
+    private NotificationIntent Intent(WalletAlert alert, NotificationTarget target) =>
+        new(
             alert.Kind,
+            alert.TenantId,
+            target,
             alert.EventId,
-            correlation.CorrelationId,
-            recipientUserId: userId,
-            inApp: new InAppNotificationRequest(
-                alert.Kind,
-                userId,
-                alert.EventId,
-                alert.SourceEventType,
-                alert.OccurredOn,
-                alert.Title,
-                FallbackBody: alert.Body,
-                ResourceId: alert.ResourceId,
-                GroupKey: alert.GroupKey
-            ),
-            ct: ct
+            alert.SourceEventType,
+            alert.OccurredOn,
+            correlation.CorrelationId
         );
 }

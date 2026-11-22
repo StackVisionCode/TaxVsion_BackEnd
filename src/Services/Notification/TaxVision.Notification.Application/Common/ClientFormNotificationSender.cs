@@ -55,7 +55,8 @@ public sealed class ClientFormNotificationSender(
     INotificationDispatchMetrics metrics,
     ICorrelationContext correlation,
     IClientFormPushRetryScheduler retryScheduler,
-    ILogger<ClientFormNotificationSender> logger
+    ILogger<ClientFormNotificationSender> logger,
+    IRecipientLocale locales
 )
 {
     // Null cuando el catálogo no permite email para el kind.
@@ -118,22 +119,31 @@ public sealed class ClientFormNotificationSender(
     )
     {
         if (!request.CustomerRecipient || request.CustomerId is not { } customerId)
+        {
+            // Staff: su idioma y su zona.
+            var staff = request.RecipientUserId is { } staffId
+                ? await locales.ForUserAsync(request.TenantId, staffId, ct)
+                : RecipientLocale.English;
             return new(
                 needsEmail && request.RecipientUserId is { } userId
                     ? await userEmails.ResolveAsync(request.TenantId, userId, ct)
                     : null,
-                "En",
+                staff.TemplateLanguage,
                 true,
-                null
+                null,
+                staff.Reader
             );
+        }
 
         var customer = needsEmail ? await customers.GetByCustomerIdAsync(request.TenantId, customerId, ct) : null;
         var policy = await contactPolicies.GetByCustomerIdAsync(request.TenantId, customerId, ct);
+        var language = policy?.Language ?? "En";
         return new(
             customer is { IsActive: true } ? customer.NormalizedEmail : null,
-            policy?.Language ?? "En",
+            language,
             policy?.EmailEnabled ?? true,
-            customer?.DisplayName
+            customer?.DisplayName,
+            ScribeReader.From(language)
         );
     }
 
@@ -163,7 +173,7 @@ public sealed class ClientFormNotificationSender(
                 request.TenantId,
                 variables,
                 audience,
-                ScribeReader.From(destination.Language),
+                destination.Reader,
                 ct
             )
         ).EnsureRendered(request.EmailTemplateKey);
@@ -234,6 +244,19 @@ public sealed class ClientFormNotificationSender(
         if (rendered is null)
             return;
         var identifiers = PushIdentifiers(request.EventId);
+        var target = new PushTarget(
+            request.Kind,
+            request.FormRequestId.ToString(),
+            request.CustomerId,
+            request.EventId
+        );
+        // El cliente abre /n/open en el portal; el staff, en el CRM.
+        var link = PushPayloads.Link(
+            request.CustomerRecipient
+                ? TenantEmailLinks.ClientBase(host, portal.Value)
+                : TenantEmailLinks.StaffBase(host, portal.Value),
+            target
+        );
         var pushRequest = new PushDispatchRequest(
             request.TenantId,
             userId,
@@ -244,10 +267,10 @@ public sealed class ClientFormNotificationSender(
             request.PushTemplateKey,
             request.EventId,
             correlation.CorrelationId,
-            PushData(request),
+            PushPayloads.Data(target, request.TenantId, userId, link),
             identifiers.Topic,
             identifiers.Tag,
-            PushLink(request, host),
+            link,
             SkipWhenNoDevices: true
         );
         await ScheduleRetryAsync(pushRequest, await DispatchPushAsync(pushRequest, ct), 0);
@@ -362,29 +385,6 @@ public sealed class ClientFormNotificationSender(
         );
     }
 
-    private static IReadOnlyDictionary<string, string> PushData(ClientFormNotificationRequest request)
-    {
-        var data = new Dictionary<string, string>
-        {
-            ["kind"] = request.Kind,
-            ["resourceType"] = "form_request",
-            ["resourceId"] = request.FormRequestId.ToString(),
-        };
-        if (request.CustomerId is { } customerId)
-            data["customerId"] = customerId.ToString();
-        return data;
-    }
-
-    // El cliente abre /n/open en el portal; el staff, en el CRM.
-    private string PushLink(ClientFormNotificationRequest request, string? host)
-    {
-        var baseUrl = request.CustomerRecipient
-            ? TenantEmailLinks.ClientBase(host, portal.Value)
-            : TenantEmailLinks.StaffBase(host, portal.Value);
-        var link = $"{baseUrl}/n/open?rt=form_request&rid={request.FormRequestId:D}";
-        return request.CustomerId is { } customerId ? $"{link}&cid={customerId:D}" : link;
-    }
-
     internal static (string Topic, string Tag) PushIdentifiers(Guid eventId)
     {
         var hash = SHA256.HashData(eventId.ToByteArray());
@@ -392,5 +392,11 @@ public sealed class ClientFormNotificationSender(
         return (value[..32], $"cf-{value[..22]}");
     }
 
-    private sealed record Destination(string? Email, string Language, bool EmailAllowed, string? DisplayName);
+    private sealed record Destination(
+        string? Email,
+        string Language,
+        bool EmailAllowed,
+        string? DisplayName,
+        ScribeReader Reader
+    );
 }

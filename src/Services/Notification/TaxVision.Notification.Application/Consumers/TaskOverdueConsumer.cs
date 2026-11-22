@@ -2,8 +2,6 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -41,45 +39,31 @@ public static class TaskOverdueConsumer
             if (evt.CustomerId is { } customerId)
                 resourceContext["customerId"] = customerId.ToString();
 
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(assignee),
-                title,
-                NotificationCategory.Collaboration,
-                "task.overdue",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: assignee,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.TasksTaskOverdue,
-                    assignee,
+                    evt.TenantId,
+                    new NotificationTarget(assignee, CustomerId: evt.CustomerId),
                     evt.EventId,
                     "tasks.task_overdue.v1",
                     evt.OccurredOn,
-                    title,
-                    FallbackBody: body,
-                    ResourceId: evt.TaskId.ToString(),
-                    ResourceContext: resourceContext,
-                    Params: new Dictionary<string, string>
-                    {
-                        ["taskTitle"] = evt.Title,
-                        ["dueAtUtc"] = evt.DueAtUtc.ToString("O"),
-                        // Fecha civil: el instante (fin del día de la oficina) cae al día siguiente en UTC.
-                        ["dueOn"] = CivilDue.Of(evt.DueOn, evt.DueAtUtc)!.Value.ToString("yyyy-MM-dd"),
-                    }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(
+                        Params: new Dictionary<string, string>
+                        {
+                            ["taskTitle"] = evt.Title,
+                            ["dueAtUtc"] = evt.DueAtUtc.ToString("O"),
+                            // Fecha civil: el instante (fin del día de la oficina) cae al día siguiente en UTC.
+                            ["dueOn"] = CivilDue.Of(evt.DueOn, evt.DueAtUtc)!.Value.ToString("yyyy-MM-dd"),
+                        },
+                        ResourceId: evt.TaskId.ToString(),
+                        ResourceContext: resourceContext,
+                        TemplateKey: "task.overdue",
+                        FallbackTitle: title,
+                        FallbackBody: body
+                    ),
+                    Push: new PushContent()
                 ),
-                ct: ct
-            );
-
-            await dispatcher.SendPushAsync(
-                evt.TenantId,
-                assignee,
-                title,
-                body,
-                NotificationCategory.Collaboration,
-                "task.overdue",
-                evt.EventId,
-                correlation.CorrelationId,
                 ct
             );
         }

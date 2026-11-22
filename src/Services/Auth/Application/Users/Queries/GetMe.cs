@@ -38,7 +38,9 @@ public sealed record MeResponse(
     bool AvatarPending = false,
     // T-20: "under_review" | "blocked" para AvatarModerationFileId (la última foto subida), o null.
     string? AvatarModerationStatus = null,
-    Guid? AvatarModerationFileId = null
+    Guid? AvatarModerationFileId = null,
+    // Idioma de los avisos ("en" | "es"); null = sin preferencia.
+    string? Language = null
 );
 
 public sealed record GetMeQuery(Guid UserId);
@@ -102,7 +104,8 @@ public static class GetMeHandler
                 user.AvatarFileId,
                 user.HasLivePendingAvatar(DateTime.UtcNow),
                 AvatarModerationStatusName.Of(user.AvatarModerationState),
-                user.AvatarModerationFileId
+                user.AvatarModerationFileId,
+                user.Language
             )
         );
     }

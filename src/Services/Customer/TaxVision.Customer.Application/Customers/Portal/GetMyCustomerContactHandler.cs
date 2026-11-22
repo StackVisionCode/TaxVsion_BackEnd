@@ -34,7 +34,8 @@ public static class GetMyCustomerContactHandler
                 upload.PendingAvatarFileId,
                 upload.UploadStatus,
                 upload.ModerationStatus,
-                upload.ModerationFileId
+                upload.ModerationFileId,
+                customer.Language.ToString()
             )
         );
     }

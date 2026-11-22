@@ -13,7 +13,8 @@ namespace TaxVision.Reminder.Application.Reminders.Commands;
 /// tolerancia del <b>scheduler</b>, y el scheduler es quien la tiene configurada; la <b>decisión</b>
 /// de descartar el aviso sigue siendo del aggregate (<c>FireOrMiss</c>), no de este handler.
 /// </param>
-public sealed record FireReminderCommand(Guid TenantId, Guid ReminderId, TimeSpan MisfireGrace);
+/// <param name="CorrelationId">La fija el job: el scope del handler nace sin correlación.</param>
+public sealed record FireReminderCommand(Guid TenantId, Guid ReminderId, TimeSpan MisfireGrace, string CorrelationId);
 
 /// <summary>
 /// El disparo. Lo invoca el job de Quartz vía <c>bus.InvokeAsync</c>, igual que un controller invoca
@@ -51,6 +52,7 @@ public static class FireReminderHandler
         CancellationToken ct
     )
     {
+        using var trace = correlation.Push(command.CorrelationId);
         var found = await reminders.GetForSchedulerAsync(command.TenantId, command.ReminderId, ct);
         if (found.IsFailure)
         {

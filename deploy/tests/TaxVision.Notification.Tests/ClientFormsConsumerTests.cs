@@ -229,6 +229,27 @@ public sealed class ClientFormsConsumerTests
         Assert.Single(harness.Publisher.Published);
     }
 
+    /// <summary>Al staff también se le escribe en su idioma y su zona (antes, siempre inglés).</summary>
+    [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var render = new RenderClient();
+        var gateway = new EmailGateway(null);
+        var sender = Sender(
+            new NotificationDispatcherHarness(),
+            render,
+            gateway,
+            userEmails: new UserEmailResolver("staff@example.com"),
+            locales: new FixedRecipientLocale("es", "America/Chicago")
+        );
+
+        await sender.SendAsync(StaffRequest(NotificationKinds.TasksFormRequestSubmitted), CancellationToken.None);
+
+        Assert.Equal("Es", render.Variables["language"]);
+        Assert.Equal(new ScribeReader("es", "America/Chicago"), render.Reader);
+        Assert.Single(gateway.Queued);
+    }
+
     [Fact]
     public async Task Disabled_tenant_push_flag_stops_before_rendering_push_content()
     {
@@ -338,20 +359,29 @@ public sealed class ClientFormsConsumerTests
                 ["token"] = "secret-token",
             },
         };
-        var dataMethod = typeof(ClientFormNotificationSender).GetMethod(
-            "PushData",
-            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic
+        var userId = Guid.NewGuid();
+        var target = new PushTarget(
+            request.Kind,
+            request.FormRequestId.ToString(),
+            request.CustomerId,
+            request.EventId
         );
-        var linkMethod = typeof(ClientFormNotificationSender).GetMethod(
-            "PushLink",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic
+        var link = PushPayloads.Link("https://office.taxproffice.com", target);
+        var data = PushPayloads.Data(target, request.TenantId, userId, link);
+
+        Assert.Equal(
+            [
+                "customerId",
+                "kind",
+                "link",
+                "recipientUserId",
+                "resourceId",
+                "resourceType",
+                "sourceEventId",
+                "tenantId",
+            ],
+            data.Keys.Order().ToArray()
         );
-        var sender = Sender(new NotificationDispatcherHarness());
-
-        var data = Assert.IsAssignableFrom<IReadOnlyDictionary<string, string>>(dataMethod!.Invoke(null, [request]));
-        var link = Assert.IsType<string>(linkMethod!.Invoke(sender, [request, "office.taxproffice.com"]));
-
-        Assert.Equal(["customerId", "kind", "resourceId", "resourceType"], data.Keys.Order().ToArray());
         Assert.Equal("form_request", data["resourceType"]);
         Assert.Equal(request.FormRequestId.ToString(), data["resourceId"]);
         Assert.Equal(customerId.ToString(), data["customerId"]);
@@ -722,7 +752,7 @@ public sealed class ClientFormsConsumerTests
             push.Messages[0].Link,
             StringComparison.Ordinal
         );
-        Assert.EndsWith($"&cid={customerId:D}", push.Messages[0].Link, StringComparison.Ordinal);
+        Assert.Contains($"&cid={customerId:D}&ev=", push.Messages[0].Link, StringComparison.Ordinal);
         Assert.StartsWith(
             "https://office.taxproffice.com/n/open?rt=form_request&rid=",
             push.Messages[1].Link,
@@ -954,7 +984,8 @@ public sealed class ClientFormsConsumerTests
         IClientFormPushRetryScheduler? retryScheduler = null,
         Microsoft.Extensions.Logging.ILogger<ClientFormNotificationSender>? logger = null,
         INotificationDispatchMetrics? metrics = null,
-        ITenantHostResolver? hosts = null
+        ITenantHostResolver? hosts = null,
+        IRecipientLocale? locales = null
     ) =>
         new(
             customers ?? new CustomerDirectory(null),
@@ -969,7 +1000,8 @@ public sealed class ClientFormsConsumerTests
             metrics ?? new NoOpMetrics(),
             new Correlation(),
             retryScheduler ?? new NoOpRetryScheduler(),
-            logger ?? NullLogger<ClientFormNotificationSender>.Instance
+            logger ?? NullLogger<ClientFormNotificationSender>.Instance,
+            locales ?? FixedRecipientLocale.English
         );
 
     private static ClientFormNotificationRequest StaffRequest(string kind)
@@ -1269,6 +1301,10 @@ public sealed class ClientFormsConsumerTests
     {
         public void RecordClientFormPushFailure(string code) { }
 
+        public void RecordNotAllowedByCatalog(string kind, string channel) { }
+
+        public void RecordDelivered(string kind, string channel) { }
+
         public void RecordSent(string kind, string channel) { }
 
         public void RecordSuppressedByPreference(string kind, string channel) { }
@@ -1292,6 +1328,10 @@ public sealed class ClientFormsConsumerTests
         public void RecordNoRecipient(string kind, string channel) => NoRecipient.Add(channel);
 
         public void RecordClientFormPushFailure(string code) => PushFailures.Add(code);
+
+        public void RecordNotAllowedByCatalog(string kind, string channel) { }
+
+        public void RecordDelivered(string kind, string channel) { }
     }
 
     private sealed class CountingUserEmailResolver : IUserEmailResolver
@@ -1396,6 +1436,26 @@ public sealed class ClientFormsConsumerTests
 
     private sealed class SinglePushDeviceRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

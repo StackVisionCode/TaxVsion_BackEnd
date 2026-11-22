@@ -12,8 +12,6 @@ using TaxVision.Referrals.Application.Codes.AutoIssueTenantReferralCode;
 using TaxVision.Referrals.Application.Fraud.ScreenReferral;
 using TaxVision.Referrals.Application.Programs.GetActiveReferralProgram;
 using TaxVision.Referrals.Application.Qualifications.QualifyReferral;
-using TaxVision.Referrals.Application.Rewards;
-using TaxVision.Referrals.Application.Rewards.GetReferralRewardNotice;
 using TaxVision.Referrals.Domain.Participants;
 using TaxVision.Referrals.Domain.Programs;
 using Wolverine;
@@ -86,7 +84,9 @@ public static class OnboardingReferralDeclaredConsumer
                         $"onboarding-referral:{message.OnboardingId:N}",
                         SystemActor,
                         ParseChannel(message.Channel),
-                        message.ShareId
+                        message.ShareId,
+                        // El aviso al referidor lo devuelve el comando y sale en su misma transacción.
+                        NoticeCorrelationId: message.CorrelationId
                     ),
                     ct
                 )
@@ -101,23 +101,6 @@ public static class OnboardingReferralDeclaredConsumer
                 attributed.Error.Code
             );
             await RecordRejectionAsync(bus, message.OnboardingId, attributed.Error.Code, logger, ct);
-            return;
-        }
-
-        // Aviso al referidor (por el outbox); una reentrega idempotente no avisa dos veces.
-        if (!attributed.Value.WasReplay && attributed.Value.ReferrerTenantId != Guid.Empty)
-        {
-            await bus.PublishAsync(
-                new ReferralAttributedIntegrationEvent
-                {
-                    TenantId = attributed.Value.ReferrerTenantId,
-                    CorrelationId = message.CorrelationId,
-                    AggregateId = attributed.Value.AttributionId,
-                    AttributionId = attributed.Value.AttributionId,
-                    ReferrerUserId = attributed.Value.ReferrerUserId,
-                    Channel = attributed.Value.Channel,
-                }
-            );
         }
     }
 
@@ -203,7 +186,9 @@ public static class OnboardingPaymentQualifiesReferralConsumer
                         IsFirstSuccessfulPayment: true,
                         message.PaidAtUtc,
                         $"event:{message.EventId:N}",
-                        SystemActor
+                        SystemActor,
+                        // El aviso de premio en espera lo devuelve el comando y sale en su misma transacción.
+                        message.CorrelationId
                     ),
                     ct
                 )
@@ -217,14 +202,7 @@ public static class OnboardingPaymentQualifiesReferralConsumer
                 message.OnboardingId,
                 qualified.Error.Code
             );
-            return;
         }
-
-        // Aviso al referidor: su premio está en espera.
-        if (qualified.Value.Reward is { } reward)
-            await bus.PublishAsync(
-                ReferralRewardEvents.Qualified(reward, message.SaaSPaymentId, message.CorrelationId)
-            );
     }
 
     // Si el comprador declaró un código y la atribución no está, la declaración puede seguir en camino: se reintenta
@@ -299,10 +277,15 @@ public static class ReferralRefereeTenantLinkConsumer
             return;
         }
 
+        // Autorreferido bloqueado (G8): el aviso de premio cancelado lo devuelve el comando, en su misma transacción.
         var screened = await OnboardingReferralTenant.InAsync(
             bus,
             message.OnboardingId,
-            () => bus.InvokeAsync<Result<ReferralScreeningResult>>(new ScreenReferralCommand(message.OnboardingId), ct)
+            () =>
+                bus.InvokeAsync<Result<ReferralScreeningResult>>(
+                    new ScreenReferralCommand(message.OnboardingId, message.CorrelationId),
+                    ct
+                )
         );
         if (screened.IsFailure)
         {
@@ -311,36 +294,6 @@ public static class ReferralRefereeTenantLinkConsumer
                 message.OnboardingId,
                 screened.Error.Code
             );
-            return;
-        }
-
-        if (screened.Value is { RewardCancelled: true, RewardCaseId: { } rewardCaseId, RewardTenantId: { } referrer })
-            await NotifyCancelledAsync(bus, referrer, rewardCaseId, message.CorrelationId, ct);
-    }
-
-    // Autorreferido bloqueado: el referidor recibe el aviso de premio cancelado (G8).
-    private static async Task NotifyCancelledAsync(
-        IMessageBus bus,
-        Guid referrer,
-        Guid rewardCaseId,
-        string correlationId,
-        CancellationToken ct
-    )
-    {
-        var caller = bus.TenantId;
-        bus.TenantId = referrer.ToString();
-        try
-        {
-            var reward = await bus.InvokeAsync<Result<ReferralRewardNotice?>>(
-                new GetReferralRewardNoticeQuery(referrer, rewardCaseId),
-                ct
-            );
-            if (reward.IsSuccess && reward.Value is { } found)
-                await bus.PublishAsync(ReferralRewardEvents.Rejected(found, "SelfReferral", correlationId));
-        }
-        finally
-        {
-            bus.TenantId = caller;
         }
     }
 }

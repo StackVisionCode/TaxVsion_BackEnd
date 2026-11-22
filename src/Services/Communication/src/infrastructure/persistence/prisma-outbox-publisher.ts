@@ -15,16 +15,19 @@ export class PrismaOutboxPublisher implements IntegrationEventPublisher {
   constructor(private readonly prisma: PrismaClient) {}
 
   async enqueue(event: IntegrationEvent): Promise<void> {
-    await this.prisma.outboxMessage.create({
-      data: {
-        EventId: event.eventId,
-        TenantId: event.tenantId,
-        EventType: event.eventType,
-        Payload: JSON.stringify(event),
-        // La columna es NVarChar(64) y .NET acepta X-Correlation-Id de hasta 128: se recorta, como el consumer in-app.
-        CorrelationId: event.correlationId?.slice(0, 64) ?? null,
-        OccurredAtUtc: new Date(event.occurredOnUtc),
-      },
-    });
+    await this.prisma.outboxMessage.create({ data: outboxRowOf(event) });
   }
+}
+
+/** Fila de OutboxMessage de un evento; la usan también las transacciones que guardan y encolan juntos. */
+export function outboxRowOf(event: IntegrationEvent) {
+  return {
+    EventId: event.eventId,
+    TenantId: event.tenantId,
+    EventType: event.eventType,
+    Payload: JSON.stringify(event),
+    // La columna es NVarChar(64) y .NET acepta X-Correlation-Id de hasta 128: se recorta, como el consumer in-app.
+    CorrelationId: event.correlationId?.slice(0, 64) ?? null,
+    OccurredAtUtc: new Date(event.occurredOnUtc),
+  };
 }

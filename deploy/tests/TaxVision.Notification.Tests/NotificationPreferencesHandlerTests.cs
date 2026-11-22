@@ -2,6 +2,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Notifications.Preferences;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -127,6 +128,123 @@ public sealed class NotificationPreferencesHandlerTests
         var row = Assert.Single(stored);
         Assert.True(row.Enabled);
     }
+
+    [Fact]
+    public async Task Sms_cells_are_not_available_for_staff()
+    {
+        var items = await StaffGridAsync();
+
+        Assert.All(
+            items.Where(item => item.Channel == NotificationChannel.Sms && !item.Locked),
+            item => Assert.False(item.Available, $"{item.Category} x Sms")
+        );
+    }
+
+    [Fact]
+    public async Task Billing_push_is_not_available()
+    {
+        var items = await StaffGridAsync();
+
+        var cell = items.Single(item =>
+            item.Category == NotificationCategory.Billing && item.Channel == NotificationChannel.Push
+        );
+        Assert.False(cell.Available);
+        Assert.True(Cell(items, NotificationCategory.Billing, NotificationChannel.Email).Available);
+    }
+
+    [Fact]
+    public async Task Locked_cells_stay_locked_and_available()
+    {
+        var items = await StaffGridAsync();
+
+        Assert.All(
+            items.Where(item => item.Category == NotificationCategory.AccountSecurity),
+            item =>
+            {
+                Assert.True(item.Locked);
+                Assert.True(item.Available);
+            }
+        );
+    }
+
+    [Fact]
+    public void Availability_follows_the_catalog()
+    {
+        var query = new GetNotificationPreferencesQuery(Guid.NewGuid(), Guid.NewGuid());
+        var before = GetNotificationPreferencesHandler.Build(query, [], new NotificationPreferenceAvailability([]));
+        Assert.False(Cell(before, NotificationCategory.Reminders, NotificationChannel.Sms).Available);
+
+        // Un kind ficticio con SMS no obligatorio, dirigido al staff, enciende esa celda.
+        var fictitious = new NotificationCatalogEntry(
+            "test.reminder_sms",
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            new HashSet<NotificationChannel> { NotificationChannel.Sms },
+            false,
+            "notif.test.reminder_sms.title",
+            null,
+            NotificationResourceType.Reminder,
+            NotificationAction.Open,
+            NotificationCategory.Reminders
+        );
+        var after = GetNotificationPreferencesHandler.Build(
+            query,
+            [],
+            new NotificationPreferenceAvailability([fictitious])
+        );
+
+        var cell = Cell(after, NotificationCategory.Reminders, NotificationChannel.Sms);
+        Assert.True(cell.Available);
+        Assert.Equal(["reminder"], cell.Covers);
+    }
+
+    [Fact]
+    public async Task Portal_account_cannot_change_preferences()
+    {
+        var repository = new InMemoryUserNotificationPreferenceRepository();
+        var unitOfWork = new NoOpUnitOfWork();
+
+        var set = await SetNotificationPreferenceHandler.Handle(
+            new SetNotificationPreferenceCommand(
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                NotificationCategory.Billing,
+                NotificationChannel.Email,
+                false,
+                PreferenceAudience.CustomerPortal
+            ),
+            repository,
+            unitOfWork,
+            CancellationToken.None
+        );
+        var get = await GetNotificationPreferencesHandler.Handle(
+            new GetNotificationPreferencesQuery(Guid.NewGuid(), Guid.NewGuid(), PreferenceAudience.CustomerPortal),
+            repository,
+            CancellationToken.None
+        );
+
+        Assert.True(set.IsFailure);
+        Assert.Equal("Notification.Preferences.NotAvailable", set.Error.Code);
+        Assert.Equal(0, unitOfWork.SaveCount);
+        Assert.Empty(get.Value);
+    }
+
+    private static async Task<IReadOnlyList<NotificationPreferenceItem>> StaffGridAsync()
+    {
+        var result = await GetNotificationPreferencesHandler.Handle(
+            new GetNotificationPreferencesQuery(Guid.NewGuid(), Guid.NewGuid()),
+            new InMemoryUserNotificationPreferenceRepository(),
+            CancellationToken.None
+        );
+        return result.Value;
+    }
+
+    private static NotificationPreferenceItem Cell(
+        IReadOnlyList<NotificationPreferenceItem> items,
+        NotificationCategory category,
+        NotificationChannel channel
+    ) => items.Single(item => item.Category == category && item.Channel == channel);
 
     private sealed class InMemoryUserNotificationPreferenceRepository : IUserNotificationPreferenceRepository
     {

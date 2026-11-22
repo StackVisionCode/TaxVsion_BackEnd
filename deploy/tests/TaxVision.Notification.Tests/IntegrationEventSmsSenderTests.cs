@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SmsIntegrationEvents;
 using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Infrastructure.Messaging;
 using TaxVision.Notification.Infrastructure.Sms;
 using Wolverine;
@@ -38,6 +39,31 @@ public sealed class IntegrationEventSmsSenderTests
         Assert.Equal("Your code: 123456", evt.Body);
         Assert.NotEqual(Guid.Empty, evt.CustomerId);
         Assert.False(string.IsNullOrWhiteSpace(evt.IdempotencyKey));
+    }
+
+    [Fact]
+    public async Task Source_context_carries_the_log_id()
+    {
+        var logId = Guid.NewGuid();
+        var bus = new CapturingBus();
+        ISmsSender sender = new IntegrationEventSmsSender(
+            new HandlerBus(bus),
+            new StubTenant(Guid.NewGuid()),
+            new NoOpCorrelation(),
+            NullLogger<IntegrationEventSmsSender>.Instance
+        );
+
+        await sender.SendAsync(
+            "+17865550123",
+            "Your code: 123456",
+            CancellationToken.None,
+            "auth.otp_code",
+            "token",
+            SmsSourceContext.ForLog(logId)
+        );
+
+        var evt = Assert.IsType<SmsSendRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal($"notification:log:{logId:N}", evt.SourceContext);
     }
 
     [Fact]

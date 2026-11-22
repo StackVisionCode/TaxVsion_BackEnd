@@ -1,8 +1,6 @@
 ﻿using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
@@ -11,27 +9,18 @@ using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
-// Fase 4 del plan de notificaciones dinámicas: estos 2 consumers son los únicos migrados al
-// mecanismo de fan-out por permiso (NotificationAudience/IRecipientResolver) — antes usaban el
-// placeholder de texto "role:TenantAdmin" como Recipient, que NotificationDispatcher solo
-// persistía tal cual en NotificationLog sin resolver a ningún usuario real. El resto de los
-// consumers de Notification ya tenían un destinatario explícito real y quedan sin tocar (ver
-// plan, Fase 4, alcance explícito).
-//
-// Fase 8 (piloto de punta a punta): además del in-app, ahora también despachan push
-// (SendPushAsync) por cada destinatario resuelto — el mismo IsAllowedAsync interno del
-// dispatcher aplica la preferencia de canal Push de la Fase 5, y si el usuario no tiene ningún
-// PushDeviceToken activo, SendPushAsync falla en silencio con Notification.NoPushDevices sin
-// interrumpir el resto del fan-out (mismo criterio best-effort que el resto del dispatcher).
-// Este par de consumers es el caso de uso elegido por el plan para demostrar las Fases 4+5+7
-// funcionando juntas de punta a punta.
-
+// Avisos de almacenamiento a owner + suscriptores de alertas: campana y push por destinatario; el archivo
+// infectado lleva además su correo obligatorio.
 public static class FileInfectedDetectedConsumer
 {
     public static async Task Handle(
         FileInfectedDetectedIntegrationEvent evt,
         NotificationDispatcher dispatcher,
+        PushLinks links,
+        IRecipientLocale locales,
         IRecipientResolver recipientResolver,
+        IUserEmailResolver emails,
+        IScribeRenderClient scribe,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -48,110 +37,52 @@ public static class FileInfectedDetectedConsumer
                 recipientResolver,
                 ct
             );
-            var title = $"Archivo malicioso bloqueado ({evt.FileId:N})";
-            foreach (var userId in recipients)
+            if (recipients.Count == 0)
+                return;
+
+            var intent = new NotificationIntent(
+                NotificationKinds.CloudStorageFileInfected,
+                evt.TenantId,
+                new NotificationTarget(),
+                evt.EventId,
+                "cloudstorage.file.infected.v1",
+                evt.OccurredOn,
+                correlation.CorrelationId
+            );
+            var variables = new Dictionary<string, object?>
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.StorageAndQuota,
-                    "cloudstorage.file_infected",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
-                        NotificationKinds.CloudStorageFileInfected,
-                        userId,
-                        evt.EventId,
-                        "cloudstorage.file.infected.v1",
-                        evt.OccurredOn,
-                        title,
-                        ResourceId: evt.FileId.ToString()
-                    ),
-                    ct: ct
-                );
-                await dispatcher.SendPushAsync(
-                    evt.TenantId,
-                    userId,
-                    title,
-                    "Revisá el panel de almacenamiento para más detalles.",
-                    NotificationCategory.StorageAndQuota,
-                    "cloudstorage.file_infected",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    ct
-                );
-            }
-        }
-    }
-}
-
-/// <summary>
-/// Emaila la página pública branded de un share-link a un destinatario externo (visibility
-/// ExternalRecipients). Un evento por destinatario; el link lleva el <c>?email</c> que el backend
-/// valida. Mismo patrón que SignerInvitedConsumer: render en Scribe + despacho por el gateway,
-/// idempotente por RelatedEventId (EventId único por destinatario).
-/// </summary>
-public static class ShareLinkExternalRecipientInvitedConsumer
-{
-    private const string TemplateKey = "storage.share_invited.v1";
-
-    public static async Task Handle(
-        ShareLinkExternalRecipientInvitedIntegrationEvent evt,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribeClient,
-        IOptions<PortalOptions> portal,
-        ITenantHostResolver hostResolver,
-        ICorrelationContext correlation,
-        ILogger<ShareLinkExternalRecipientInvitedIntegrationEvent> logger,
-        CancellationToken ct
-    )
-    {
-        var correlationId = string.IsNullOrWhiteSpace(evt.CorrelationId)
-            ? evt.EventId.ToString("N")
-            : evt.CorrelationId;
-        using (correlation.Push(correlationId))
-        {
-            // El destinatario abre la página branded en el subdominio de la oficina.
-            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
-            var openLink = TenantEmailLinks.PublicSharePageLink(tenantHost, portal.Value, evt.PlainToken, evt.Email);
-
-            var render = (
-                await scribeClient.RenderAsync(
-                    TemplateKey,
-                    evt.TenantId,
-                    new Dictionary<string, object?>
-                    {
-                        ["file_name"] = evt.FileName,
-                        ["open_link"] = openLink,
-                        ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
-                        ["permission"] = evt.Permission,
-                        ["language"] = evt.Language,
-                    },
-                    ScribeRenderAudience.Client,
-                    ScribeReader.From(evt.Language),
-                    ct
-                )
-            ).EnsureRendered(TemplateKey);
-
-            var result = await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
-                    tenantId: evt.TenantId,
-                    to: evt.Email,
-                    templateKey: TemplateKey,
-                    relatedEventId: evt.EventId,
-                    correlationId: correlationId
-                ),
+                ["detected_at"] = ScribeDates.Instant(evt.OccurredOn),
+                ["action_url"] = await OfficeAlertEmails.FileUrlAsync(links, evt.TenantId, evt.FileId, ct),
+            };
+            if (!string.IsNullOrWhiteSpace(evt.ScanReport))
+                variables["scan_result"] = evt.ScanReport;
+            await OfficeAlertEmails.SendAsync(
+                intent,
+                "storage.file_infected.v1",
+                variables,
+                recipients,
+                dispatcher,
+                emails,
+                scribe,
+                locales,
                 ct
             );
 
-            if (!result.IsSuccess)
-                logger.LogWarning(
-                    "ShareLinkExternalRecipientInvited email failed for share {ShareLinkId}: {Error}",
-                    evt.ShareLinkId,
-                    result.Error
+            foreach (var userId in recipients)
+            {
+                await dispatcher.DispatchAsync(
+                    intent with
+                    {
+                        Target = new NotificationTarget(userId),
+                        InApp = new InAppContent(
+                            ResourceId: evt.FileId.ToString(),
+                            TemplateKey: "cloudstorage.file_infected"
+                        ),
+                        Push = new PushContent(),
+                    },
+                    ct
                 );
+            }
         }
     }
 }
@@ -178,37 +109,20 @@ public static class StorageLimitExceededConsumer
                 recipientResolver,
                 ct
             );
-            const string title = "Límite de almacenamiento alcanzado";
             foreach (var userId in recipients)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.StorageAndQuota,
-                    "cloudstorage.quota_exceeded",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
                         NotificationKinds.CloudStorageStorageLimitExceeded,
-                        userId,
+                        evt.TenantId,
+                        new NotificationTarget(userId),
                         evt.EventId,
                         "cloudstorage.storage_limit_exceeded.v1",
                         evt.OccurredOn,
-                        title
+                        correlation.CorrelationId,
+                        InApp: new InAppContent(TemplateKey: "cloudstorage.quota_exceeded"),
+                        Push: new PushContent()
                     ),
-                    ct: ct
-                );
-                await dispatcher.SendPushAsync(
-                    evt.TenantId,
-                    userId,
-                    title,
-                    "El tenant alcanzó su cuota de almacenamiento contratada.",
-                    NotificationCategory.StorageAndQuota,
-                    "cloudstorage.quota_exceeded",
-                    evt.EventId,
-                    correlation.CorrelationId,
                     ct
                 );
             }

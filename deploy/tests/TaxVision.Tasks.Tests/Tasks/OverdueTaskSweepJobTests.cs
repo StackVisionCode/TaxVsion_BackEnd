@@ -2,6 +2,7 @@ using System.Reflection;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
@@ -84,6 +85,42 @@ public sealed class OverdueTaskSweepJobTests
         Assert.Empty(recorder.Pending);
     }
 
+    [Fact]
+    public async Task Job_publishes_with_a_correlation_id()
+    {
+        var databaseName = await SeedAsync(2);
+        await using var db = NewContext(databaseName);
+        var (outbox, recorder) = RecordingDbContextOutbox.Create(db);
+        var tasks = await db.Tasks.IgnoreQueryFilters().ToListAsync();
+        var services = new ServiceCollection()
+            .AddSingleton(OverdueTasks.Create(tasks))
+            .AddSingleton(outbox)
+            .AddScoped<ICorrelationContext, CorrelationContext>()
+            .AddSingleton<ITaskMetrics>(new RecordingTaskMetrics())
+            .BuildServiceProvider();
+
+        var (job, type) = NewJob(services);
+        var sweep = type.GetMethod("SweepAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        await (Task)sweep.Invoke(job, [100, CancellationToken.None])!;
+
+        var events = recorder.Flushed.OfType<TaskOverdueIntegrationEvent>().ToList();
+        Assert.Equal(2, events.Count);
+        Assert.All(events, evt => Assert.False(string.IsNullOrWhiteSpace(evt.CorrelationId)));
+        Assert.Single(events.Select(evt => evt.CorrelationId).Distinct());
+    }
+
+    private static (object Job, Type Type) NewJob(IServiceProvider services)
+    {
+        var type = typeof(TasksDbContext).Assembly.GetType(JobType, throwOnError: true)!;
+        var job = Activator.CreateInstance(
+            type,
+            services.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new OverdueTaskSweepOptions()),
+            Activator.CreateInstance(typeof(NullLogger<>).MakeGenericType(type))
+        )!;
+        return (job, type);
+    }
+
     private static async Task<int> AnnounceChunkAsync(
         TasksDbContext db,
         IDbContextOutbox<TasksDbContext> outbox,
@@ -98,15 +135,9 @@ public sealed class OverdueTaskSweepJobTests
             .AddSingleton<ITaskMetrics>(metrics)
             .BuildServiceProvider();
 
-        var type = typeof(TasksDbContext).Assembly.GetType(JobType, throwOnError: true)!;
-        var job = Activator.CreateInstance(
-            type,
-            services.GetRequiredService<IServiceScopeFactory>(),
-            Options.Create(new OverdueTaskSweepOptions()),
-            Activator.CreateInstance(typeof(NullLogger<>).MakeGenericType(type))
-        )!;
+        var (job, type) = NewJob(services);
         var method = type.GetMethod("AnnounceChunkAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return await (Task<int>)method.Invoke(job, [Now, CancellationToken.None])!;
+        return await (Task<int>)method.Invoke(job, [Now, "test", CancellationToken.None])!;
     }
 
     private static async Task<string> SeedAsync(int count, bool alreadyNotified = false)

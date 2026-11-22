@@ -49,6 +49,34 @@ public sealed class UserEmailDirectoryEntry : TenantEntity
     /// </summary>
     public DateTime? LastSourceEventAtUtc { get; private set; }
 
+    /// <summary>Idioma elegido por el usuario (<c>en</c>/<c>es</c>). Null = sin preferencia (respaldo).</summary>
+    public string? Language { get; private set; }
+
+    /// <summary>Zona propia del usuario; solo se usa como zona del lector en correos (D-N40).</summary>
+    public string? TimeZoneId { get; private set; }
+
+    public string? DisplayName { get; private set; }
+
+    /// <summary><c>OccurredOn</c> de la última foto de perfil aplicada: descarta las más viejas.</summary>
+    public DateTime? ProfileSourceAtUtc { get; private set; }
+
+    private static readonly string[] SupportedLanguages = ["en", "es"];
+
+    /// <returns><c>false</c> si la foto es más vieja que la guardada (no cambia nada).</returns>
+    public bool ApplyProfile(string? language, string? timeZoneId, string? displayName, DateTime occurredOnUtc)
+    {
+        if (ProfileSourceAtUtc is { } last && occurredOnUtc < last)
+            return false;
+        var normalized = language?.Trim().ToLowerInvariant();
+        Language = normalized is not null && SupportedLanguages.Contains(normalized) ? normalized : null;
+        TimeZoneId = string.IsNullOrWhiteSpace(timeZoneId) ? null : timeZoneId.Trim();
+        if (!string.IsNullOrWhiteSpace(displayName))
+            DisplayName = displayName.Trim().Length > 160 ? displayName.Trim()[..160] : displayName.Trim();
+        ProfileSourceAtUtc = occurredOnUtc;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return true;
+    }
+
     public static UserEmailDirectoryEntry Create(
         Guid tenantId,
         Guid userId,

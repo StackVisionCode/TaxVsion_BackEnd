@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -56,12 +57,15 @@ public sealed class SeatSlotEmailConsumerTests
                 TenantName = gated.TenantName,
                 TenantSubdomain = gated.TenantSubdomain,
             },
-            gateway,
+            new NotificationDispatcherHarness(emailGateway: gateway).Dispatcher,
+            new FixedOffices(),
+            new InMemoryUserEmailDirectoryRepository(),
             new Scribe(),
             logs,
             new UnitOfWork(),
             new OptionsMonitor(true),
             TestPlatform.Settings,
+            FixedRecipientLocale.English,
             new Correlation(),
             new FixedTimeProvider(),
             NullLogger<UserSlotUnlockedIntegrationEvent>.Instance,
@@ -95,11 +99,14 @@ public sealed class SeatSlotEmailConsumerTests
     ) =>
         UserSlotGatedEmailConsumer.Handle(
             evt,
-            gateway,
+            new NotificationDispatcherHarness(emailGateway: gateway).Dispatcher,
+            new FixedOffices(),
+            new InMemoryUserEmailDirectoryRepository(),
             new Scribe(),
             logs,
             new OptionsMonitor(emitNotifications),
             TestPlatform.Settings,
+            FixedRecipientLocale.English,
             new Correlation(),
             new FixedTimeProvider(),
             NullLogger<UserSlotGatedIntegrationEvent>.Instance,

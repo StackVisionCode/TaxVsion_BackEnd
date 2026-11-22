@@ -41,6 +41,7 @@ function setup() {
     getVersion: vi.fn().mockResolvedValue(null),
     replace: vi.fn(),
     isAssigned: vi.fn(),
+    getAssignedUserIds: vi.fn().mockResolvedValue([]),
   } as unknown as CustomerAssignmentProjectionRepository;
 
   bindCustomerConsumers(register, {

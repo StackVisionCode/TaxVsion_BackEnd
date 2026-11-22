@@ -5,6 +5,11 @@ import type { UserDirectoryRepository } from '../../src/application/ports/user-d
 import type { RolePermissionsProjectionRepository } from '../../src/application/ports/role-permissions-projection-repository.js';
 import type { CustomerPortalAccountRepository } from '../../src/application/ports/customer-portal-account-repository.js';
 import type { IncomingEnvelope } from '../../src/application/ports/event-consumer.js';
+import { checkPermission, CommunicationPermissions } from '../../src/domain/shared/permissions.js';
+import {
+  createFakeProjectionRepository,
+  fakeSnapshot,
+} from '../helpers/fake-user-permissions-projection-repository.js';
 
 /**
  * Test de contrato (regla de la Fase 0 del plan de notificaciones): el payload de
@@ -38,6 +43,7 @@ function setup() {
     markInactive: vi.fn(),
     markActive: vi.fn(),
     searchByDisplayNameOrEmail: vi.fn(),
+    findActiveAdmins: vi.fn().mockResolvedValue([]),
   };
   const rolePermissions: RolePermissionsProjectionRepository = {
     upsert: vi.fn(),
@@ -327,5 +333,63 @@ describe('bindAuthConsumers — auth.role.permissions_changed.v1 (Fase 2)', () =
 
     expect(rolePermissions.upsert).toHaveBeenCalledTimes(1); // el cache del rol siempre se actualiza
     expect(userPermissions.upsert).not.toHaveBeenCalled();
+  });
+});
+
+// N8-08: la baja corta el acceso en el acto (caché y sockets) y la reactivación lo devuelve.
+describe('bindAuthConsumers — baja y reactivación cortan y devuelven el acceso', () => {
+  function setupLive(userId: string) {
+    const base = setup();
+    const userPermissions = createFakeProjectionRepository([
+      fakeSnapshot({ userId, tenantId: 'tenant-1', permissions: [CommunicationPermissions.NotificationRead] }),
+    ]);
+    const sessionTerminator = { disconnectUser: vi.fn(async () => {}) };
+    const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
+    bindAuthConsumers((t, h) => handlers.set(t, h), {
+      userPermissions,
+      userDirectory: base.userDirectory,
+      rolePermissions: base.rolePermissions,
+      customerPortalAccounts: base.customerPortalAccounts,
+      emitter: base.emitter,
+      sessionTerminator,
+    });
+    const check = () =>
+      checkPermission(
+        { userId, tenantId: 'tenant-1', actorType: 'TenantEmployee', permissionVersion: 1 },
+        CommunicationPermissions.NotificationRead,
+        userPermissions,
+      );
+    return { handlers, sessionTerminator, check };
+  }
+
+  it("deactivation drops the cached snapshot and terminates the user's sockets", async () => {
+    const userId = crypto.randomUUID();
+    const { handlers, sessionTerminator, check } = setupLive(userId);
+    expect((await check()).allowed).toBe(true);
+
+    await handlers.get('auth.user.deactivated.v1')!({
+      ...envelope({ userId }),
+      eventType: 'auth.user.deactivated.v1',
+    });
+
+    expect(await check()).toMatchObject({ allowed: false, code: 'Auth.UserInactive' });
+    expect(sessionTerminator.disconnectUser).toHaveBeenCalledWith('tenant-1', userId);
+  });
+
+  it('reactivation restores access', async () => {
+    const userId = crypto.randomUUID();
+    const { handlers, check } = setupLive(userId);
+    await handlers.get('auth.user.deactivated.v1')!({
+      ...envelope({ userId }),
+      eventType: 'auth.user.deactivated.v1',
+    });
+    expect((await check()).allowed).toBe(false);
+
+    await handlers.get('auth.user.reactivated.v1')!({
+      ...envelope({ userId }),
+      eventType: 'auth.user.reactivated.v1',
+    });
+
+    expect((await check()).allowed).toBe(true);
   });
 });

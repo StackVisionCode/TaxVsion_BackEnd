@@ -1,10 +1,9 @@
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Platform;
 using BuildingBlocks.TimeZones;
 using BuildingBlocks.TimeZones.Formatting;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
@@ -19,11 +18,23 @@ internal static class MeetingNotifications
     public static string? Describe(DateTime? utc, string? timeZone) =>
         utc is { } value ? ZonedTimeFormatter.DateTime(value, ResolvedTimeZone.Resolve(timeZone)) : null;
 
-    public static string TimeZoneLabel(string? timeZone) =>
-        string.IsNullOrWhiteSpace(timeZone) ? "UTC" : timeZone.Trim();
+    /// <summary>Rótulo legible del kit ("New York time, GMT-5"), en el idioma del lector; sin zona válida, el de UTC.</summary>
+    public static string TimeZoneLabel(string? timeZone, DateTime? atUtc, string? language = null) =>
+        ZonedTimeFormatter.ZoneLabel(ResolvedTimeZone.Resolve(timeZone), atUtc ?? DateTime.UtcNow, language);
 
     public static string Title(string? meetingTitle) =>
         string.IsNullOrWhiteSpace(meetingTitle) ? "Meeting" : meetingTitle.Trim();
+
+    /// <summary>Título para el correo: sin título, "Reunión"/"Meeting" en el idioma del lector.</summary>
+    public static string EmailTitle(string? meetingTitle, RecipientLocale locale) =>
+        string.IsNullOrWhiteSpace(meetingTitle) ? EmailText.For("meeting.untitled", locale) : meetingTitle.Trim();
+
+    /// <summary>Externo sin cuenta (el evento no trae su idioma): inglés, con la hora en la zona de la reunión.</summary>
+    public static RecipientLocale ExternalLocale(IRecipientLocale locales, string? timeZone) =>
+        locales.FromEventLanguage(null) with
+        {
+            TimeZoneId = string.IsNullOrWhiteSpace(timeZone) ? null : timeZone,
+        };
 
     /// <summary>In-app a cada usuario (sin repetir y sin el actor, que ya sabe lo que hizo).</summary>
     public static async Task PublishInAppAsync(
@@ -40,7 +51,8 @@ internal static class MeetingNotifications
         string? body,
         string? correlationId,
         IReadOnlyDictionary<string, string>? context,
-        CancellationToken ct
+        CancellationToken ct,
+        IReadOnlyDictionary<string, string>? parameters = null
     )
     {
         foreach (var userId in userIds.Distinct())
@@ -48,30 +60,46 @@ internal static class MeetingNotifications
             if (userId == Guid.Empty || userId == exclude)
                 continue;
 
-            await dispatcher.RecordInAppAsync(
-                tenantId,
-                NotificationRecipient.ForUser(userId),
-                title,
-                NotificationCategory.Calendar,
-                kind,
-                sourceEventId,
-                correlationId,
-                recipientUserId: userId,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     kind,
-                    userId,
+                    tenantId,
+                    new NotificationTarget(userId),
                     sourceEventId,
                     sourceEventType,
                     occurredAtUtc,
-                    title,
-                    FallbackBody: body,
-                    ResourceId: meetingId.ToString(),
-                    ResourceContext: context
+                    correlationId,
+                    InApp: new InAppContent(
+                        Params: parameters,
+                        ResourceId: meetingId.ToString(),
+                        ResourceContext: context,
+                        FallbackTitle: title,
+                        FallbackBody: body
+                    )
                 ),
-                ct: ct
+                ct
             );
         }
     }
+
+    /// <summary>Correo ya renderizado (una vez para todos los externos o por invitado), con su .ics si lo hay.</summary>
+    public static EmailContent Rendered(
+        string eventKey,
+        ScribeRenderedEmail render,
+        EmailInlineAttachment? invite,
+        ScribeRenderAudience audience = ScribeRenderAudience.Client,
+        string? templateKey = null
+    ) =>
+        new(
+            eventKey,
+            NoVariables,
+            audience,
+            TemplateKey: templateKey,
+            Render: (_, _) => Task.FromResult(render),
+            InlineAttachments: invite is null ? null : [invite]
+        );
+
+    private static readonly IReadOnlyDictionary<string, object?> NoVariables = new Dictionary<string, object?>();
 
     /// <summary>
     /// El <c>.ics</c> de la reunión para un destinatario. Organizador = el host con el correo de soporte

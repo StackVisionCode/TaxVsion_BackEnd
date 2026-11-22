@@ -37,6 +37,9 @@ async function oauthRefreshFailedHandler(
     priority: 'High',
     title: `Reconnect ${providerCode}`,
     body: `We could not renew access to your ${providerCode} mailbox. Reconnect it to keep receiving mail.`,
+    titleKey: 'notif.connectors.oauth.refresh_failed.title',
+    bodyKey: 'notif.connectors.oauth.refresh_failed.body',
+    params: providerParams(providerCode),
     metadata: { accountId, providerCode },
     category: 'Work',
     actorUserId: null,
@@ -64,6 +67,9 @@ async function watchExpiredHandler(
     priority: 'High',
     title: 'Mailbox connection expired',
     body: `We stopped receiving new mail from your ${providerCode} mailbox. Reconnect it to resume syncing.`,
+    titleKey: 'notif.connectors.watch.expired.title',
+    bodyKey: 'notif.connectors.watch.expired.body',
+    params: providerParams(providerCode),
     metadata: { accountId, providerCode },
     category: 'Work',
     actorUserId: null,
@@ -82,6 +88,11 @@ async function push(
   deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
 ): Promise<void> {
   await pushAndEmitNotification(env, input, deps);
+}
+
+// Sin proveedor no se manda el parámetro: el front cae al texto del servidor.
+function providerParams(providerCode: string): Record<string, string> {
+  return providerCode ? { providerCode } : {};
 }
 
 function getString(source: Record<string, unknown>, key: string): string | undefined {

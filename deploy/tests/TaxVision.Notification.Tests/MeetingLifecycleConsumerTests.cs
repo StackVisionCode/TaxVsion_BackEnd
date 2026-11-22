@@ -49,10 +49,10 @@ public sealed class MeetingLifecycleConsumerTests
         await MeetingCancelledConsumer.Handle(
             evt,
             harness.Dispatcher.Dispatcher,
-            harness.Gateway,
             harness.Render,
             harness.Invites,
             TestPlatform.Settings,
+            FixedRecipientLocale.English,
             new TestCorrelationContext(),
             NullLogger<MeetingCancelledIntegrationEvent>.Instance,
             CancellationToken.None
@@ -104,10 +104,10 @@ public sealed class MeetingLifecycleConsumerTests
         await MeetingRescheduledConsumer.Handle(
             evt,
             harness.Dispatcher.Dispatcher,
-            harness.Gateway,
             harness.Render,
             harness.Invites,
             TestPlatform.Settings,
+            FixedRecipientLocale.English,
             new TestCorrelationContext(),
             NullLogger<MeetingRescheduledIntegrationEvent>.Instance,
             CancellationToken.None
@@ -158,10 +158,10 @@ public sealed class MeetingLifecycleConsumerTests
                 InvitedEmails = ["externo@example.com"],
             },
             harness.Dispatcher.Dispatcher,
-            harness.Gateway,
             harness.Render,
             harness.Invites,
             TestPlatform.Settings,
+            FixedRecipientLocale.English,
             new TestCorrelationContext(),
             NullLogger<MeetingRescheduledIntegrationEvent>.Instance,
             CancellationToken.None
@@ -196,8 +196,8 @@ public sealed class MeetingLifecycleConsumerTests
                 PortalJoinUrl = "https://manfer.taxoffix.io/portal/client/meetings",
             },
             harness.Dispatcher.Dispatcher,
-            harness.Gateway,
             harness.Render,
+            FixedRecipientLocale.English,
             new TestCorrelationContext(),
             NullLogger<MeetingReminderIntegrationEvent>.Instance,
             CancellationToken.None
@@ -277,6 +277,6 @@ public sealed class MeetingLifecycleConsumerTests
         internal CalendarInviteBuilder Invites { get; } = new(TestPlatform.Settings);
         internal NotificationDispatcherHarness Dispatcher { get; }
 
-        internal Harness() => Dispatcher = new NotificationDispatcherHarness(logs: Logs);
+        internal Harness() => Dispatcher = new NotificationDispatcherHarness(logs: Logs, emailGateway: Gateway);
     }
 }

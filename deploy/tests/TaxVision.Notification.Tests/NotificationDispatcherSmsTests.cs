@@ -43,6 +43,17 @@ public sealed class NotificationDispatcherSmsTests
     }
 
     [Fact]
+    public async Task The_sms_carries_its_log_id_as_source()
+    {
+        var (harness, sms, logs, _) = Build();
+
+        await Send(harness, recipientUserId: UserId);
+
+        var log = Assert.Single(logs.Logs);
+        Assert.Equal($"notification:log:{log.Id:N}", sms.SourceRef);
+    }
+
+    [Fact]
     public async Task The_explicit_token_wins()
     {
         var (harness, sms, _, _) = Build();
@@ -157,16 +168,24 @@ public sealed class NotificationDispatcherSmsTests
         public string? Text { get; private set; }
         public string? TemplateKey { get; private set; }
         public string? Token { get; private set; }
+        public string? SourceRef { get; private set; }
 
         public Task<Result> SendAsync(
             string phoneNumber,
             string text,
             CancellationToken ct,
             string? templateKey,
-            string? idempotencyToken
+            string? idempotencyToken,
+            string? sourceRef = null
         )
         {
-            (Phone, Text, TemplateKey, Token) = (phoneNumber, text, templateKey, idempotencyToken);
+            (Phone, Text, TemplateKey, Token, SourceRef) = (
+                phoneNumber,
+                text,
+                templateKey,
+                idempotencyToken,
+                sourceRef
+            );
             return Task.FromResult(failure is null ? Result.Success() : Result.Failure(failure));
         }
     }

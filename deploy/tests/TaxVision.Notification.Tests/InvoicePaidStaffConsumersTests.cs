@@ -65,10 +65,18 @@ public sealed class InvoicePaidStaffConsumersTests
         Assert.Equal("INV-2026-00007", row.Params["invoiceNumber"]);
         Assert.Equal("125.00 USD", row.Params["amount"]);
         Assert.Equal("Jane Client", row.Params["customerName"]);
-        Assert.Contains("INV-2026-00007", row.FallbackTitle);
-        Assert.Contains("INV-2026-00007", row.FallbackBody);
-        Assert.Contains("125.00 USD", row.FallbackBody);
-        Assert.Contains("Jane Client", row.FallbackBody);
+    }
+
+    [Fact]
+    public async Task Fallback_comes_from_the_copy_catalog()
+    {
+        var h = new Harness(WholeOffice());
+
+        await h.PaidAsync(Paid());
+
+        var row = h.InApp[0];
+        Assert.Equal("Invoice INV-2026-00007 paid", row.FallbackTitle);
+        Assert.Equal("125.00 USD received for this invoice.", row.FallbackBody);
     }
 
     [Fact]
@@ -80,23 +88,17 @@ public sealed class InvoicePaidStaffConsumersTests
 
         var row = h.InApp[0];
         Assert.Equal(string.Empty, row.Params["customerName"]);
-        Assert.Contains("INV-2026-00007", row.FallbackBody);
+        Assert.Contains("INV-2026-00007", row.FallbackTitle);
         Assert.Contains("125.00 USD", row.FallbackBody);
     }
 
     [Fact]
-    public async Task The_paid_notice_says_how_it_was_paid_only_when_it_knows()
+    public async Task The_paid_notice_carries_how_it_was_paid()
     {
-        var online = await BodyOfPaidAsync("Online");
-        var manual = await BodyOfPaidAsync("Manual");
-        var carried = await BodyOfPaidAsync("CarriedCredit");
-        var unknown = await BodyOfPaidAsync(null);
-
-        Assert.NotEqual(online, manual);
-        Assert.NotEqual(online, unknown);
-        Assert.NotEqual(manual, unknown);
-        // Un origen que el aviso no explica se cuenta igual que no tenerlo.
-        Assert.Equal(unknown, carried);
+        // El texto por origen lo decide el archivo de textos; aquí solo viaja el dato.
+        Assert.Equal("Online", await PaymentSourceOfPaidAsync("Online"));
+        Assert.Equal("Manual", await PaymentSourceOfPaidAsync("Manual"));
+        Assert.Equal(string.Empty, await PaymentSourceOfPaidAsync(null));
     }
 
     [Fact]
@@ -187,9 +189,8 @@ public sealed class InvoicePaidStaffConsumersTests
         var row = h.InApp[0];
         Assert.Equal("80.00 USD", row.Params["amount"]);
         Assert.Equal("InvoiceVoided", row.Params["reason"]);
-        Assert.Contains("80.00 USD", row.FallbackTitle);
-        Assert.Contains("80.00 USD", row.FallbackBody);
-        Assert.Contains("InvoiceVoided", row.FallbackBody);
+        Assert.Equal("Payment of 80.00 USD not applied", row.FallbackTitle);
+        Assert.Equal("A payment could not be matched to its invoice. Review it in Billing.", row.FallbackBody);
     }
 
     [Fact]
@@ -260,11 +261,11 @@ public sealed class InvoicePaidStaffConsumersTests
         Assert.Equal([NotificationChannel.InApp], entry.AllowedChannels);
     }
 
-    private static async Task<string?> BodyOfPaidAsync(string? paymentSource)
+    private static async Task<string> PaymentSourceOfPaidAsync(string? paymentSource)
     {
         var h = new Harness(new Person(Owner, Office, IsOwner: true));
         await h.PaidAsync(Paid() with { PaymentSource = paymentSource });
-        return Assert.Single(h.InApp).FallbackBody;
+        return Assert.Single(h.InApp).Params["paymentSource"];
     }
 
     /// <summary>Una oficina completa y un suscriptor de otra: solo el dueño y <see cref="Subscriber"/> deben enterarse.</summary>

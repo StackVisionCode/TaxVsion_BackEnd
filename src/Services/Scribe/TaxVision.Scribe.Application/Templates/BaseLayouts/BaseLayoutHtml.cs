@@ -18,18 +18,20 @@ public static class BaseLayoutHtml
     //      el texto la duplicaba. El header ahora es solo el <img> con el nombre en `alt=` (lectores de pantalla).
     // v15: el <img> del logo se adapta a cualquier proporción: altura fija (44px) + width:auto + max-width del
     //      contenedor; en Outlook antiguo (sin CSS) los atributos (260x44) matchean el logo horizontal del sistema.
-    public const int SystemBaseVersion = 15;
+    // v16: lang y pie según language (Es → español; sin idioma, inglés como antes).
+    public const int SystemBaseVersion = 16;
 
     // v7: fuera el aviso "Set your logo in Settings -> Branding". tenant-base lo lee el CLIENTE de la
     // oficina, no su personal; con logo o sin logo el correo no habla de la configuracion interna.
     // v8: "Sent from {{ product_name }}" en vez de la marca escrita.
     // v10: mismo diseño editorial que system-base (paleta Taxoffix), con el logo/nombre de la oficina.
     // v11: logo del tenant adaptativo (altura fija + ancho auto): cada oficina sube uno con otra proporción.
-    public const int TenantBaseVersion = 11;
+    // v12: lang y pie según language, igual que system-base.
+    public const int TenantBaseVersion = 12;
 
     public const string SystemBaseV1 = """
         <!DOCTYPE html>
-        <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+        <html lang="{% if language == 'Es' %}es{% else %}en{% endif %}" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
         <head>
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -83,12 +85,12 @@ public static class BaseLayoutHtml
                 </tr>
                 <tr>
                   <td class="mobile-padding" style="padding:22px 40px 6px 40px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#3E5F6B;mso-line-height-rule:exactly;">
-                    This is an automated message from <strong style="color:#083645;">{{ product_name }}</strong>. Please do not reply to this address.
+                    {% if language == 'Es' %}Este es un mensaje automático de <strong style="color:#083645;">{{ product_name }}</strong>. Por favor, no respondas a esta dirección.{% else %}This is an automated message from <strong style="color:#083645;">{{ product_name }}</strong>. Please do not reply to this address.{% endif %}
                   </td>
                 </tr>
                 <tr>
                   <td class="mobile-padding" style="padding:6px 40px 0 40px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#3E5F6B;mso-line-height-rule:exactly;">
-                    &copy; {{ current_year }} {{ platform_legal_name }} &middot; All rights reserved
+                    &copy; {{ current_year }} {{ platform_legal_name }} &middot; {% if language == 'Es' %}Todos los derechos reservados{% else %}All rights reserved{% endif %}
                   </td>
                 </tr>
               </table>
@@ -101,7 +103,7 @@ public static class BaseLayoutHtml
 
     public const string TenantBaseV1 = """
         <!DOCTYPE html>
-        <html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+        <html lang="{% if language == 'Es' %}es{% else %}en{% endif %}" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
         <head>
         <meta charset="utf-8">
         <meta http-equiv="X-UA-Compatible" content="IE=edge">
@@ -159,7 +161,7 @@ public static class BaseLayoutHtml
                 </tr>
                 <tr>
                   <td class="mobile-padding" style="padding:22px 40px 6px 40px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#3E5F6B;mso-line-height-rule:exactly;">
-                    <strong style="color:#083645;">{{ tenant_name }}</strong>{% if tenant_address != blank %} &middot; {{ tenant_address }}{% endif %}<br />Sent from {{ product_name }}
+                    <strong style="color:#083645;">{{ tenant_name }}</strong>{% if tenant_address != blank %} &middot; {{ tenant_address }}{% endif %}<br />{% if language == 'Es' %}Enviado desde{% else %}Sent from{% endif %} {{ product_name }}
                   </td>
                 </tr>
                 <tr>

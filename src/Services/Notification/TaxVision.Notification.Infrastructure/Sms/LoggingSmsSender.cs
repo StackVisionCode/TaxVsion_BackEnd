@@ -16,7 +16,8 @@ public sealed class LoggingSmsSender(ILogger<LoggingSmsSender> logger) : ISmsSen
         string text,
         CancellationToken ct,
         string? templateKey,
-        string? idempotencyToken
+        string? idempotencyToken,
+        string? sourceRef = null
     )
     {
         logger.LogWarning("Proveedor SMS no configurado. SMS a {Phone} NO fue enviado.", Mask(phoneNumber));

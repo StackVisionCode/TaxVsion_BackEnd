@@ -23,6 +23,8 @@ public sealed class NotificationLogConfiguration : IEntityTypeConfiguration<Noti
         builder.Property(log => log.RowVersion).IsRowVersion();
 
         builder.HasIndex(log => new { log.TenantId, log.CreatedAtUtc });
+        // La purga de retención recorre todas las oficinas por fecha.
+        builder.HasIndex(log => log.CreatedAtUtc);
         builder.HasIndex(log => new { log.TenantId, log.Status });
         builder.HasIndex(log => log.RelatedEventId);
         builder.HasIndex(log => new

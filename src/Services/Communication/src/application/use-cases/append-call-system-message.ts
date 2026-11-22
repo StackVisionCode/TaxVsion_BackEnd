@@ -78,13 +78,16 @@ export function formatCallDuration(totalSeconds: number): string {
 
 /** Cuerpo del mensaje System según el estado terminal de la llamada (copy en inglés, estilo WhatsApp). */
 export function callSystemMessageBody(input: {
-  status: 'MissedCall' | 'Ended';
+  status: 'MissedCall' | 'Declined' | 'Ended';
   kind: CallKind;
   durationSeconds?: number | null;
 }): string {
   const isVideo = input.kind === 'Video';
   if (input.status === 'MissedCall') {
     return isVideo ? 'Missed video call' : 'Missed call';
+  }
+  if (input.status === 'Declined') {
+    return isVideo ? 'Declined video call' : 'Declined call';
   }
   const label = isVideo ? 'Video call' : 'Call';
   const seconds = input.durationSeconds ?? 0;

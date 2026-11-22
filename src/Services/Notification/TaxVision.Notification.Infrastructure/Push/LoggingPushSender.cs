@@ -5,9 +5,8 @@ using TaxVision.Notification.Application.Abstractions;
 namespace TaxVision.Notification.Infrastructure.Push;
 
 /// <summary>
-/// Implementación provisional hasta integrar Firebase Admin SDK (FCM) / APNs
-/// HTTP2 — mismo criterio que <c>LoggingSmsSender</c>. Registra el intento sin
-/// exponer el token completo.
+/// Emisor cuando <c>Notification:UseFcmPush</c> está apagado: registra el intento sin
+/// exponer el token y devuelve <see cref="PushErrorCodes.NotConfigured"/>, porque no se envió.
 /// </summary>
 public sealed class LoggingPushSender(ILogger<LoggingPushSender> logger) : IPushSender
 {
@@ -19,7 +18,9 @@ public sealed class LoggingPushSender(ILogger<LoggingPushSender> logger) : IPush
             Mask(message.Token)
         );
         logger.LogDebug("[DEV] Push para {Token}: {Title} — {Body}", Mask(message.Token), message.Title, message.Body);
-        return Task.FromResult(Result.Success());
+        return Task.FromResult(
+            Result.Failure(new Error(PushErrorCodes.NotConfigured, "Push provider is not configured."))
+        );
     }
 
     private static string Mask(string token) => token.Length <= 6 ? "***" : $"{token[..3]}***{token[^3..]}";

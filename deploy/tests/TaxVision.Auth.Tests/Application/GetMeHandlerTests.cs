@@ -47,6 +47,25 @@ public sealed class GetMeHandlerTests
         Assert.Null(me.AvatarFileId);
     }
 
+    [Fact]
+    public async Task Returns_the_language()
+    {
+        var user = AvatarDoubles.Employee();
+        user.SetLanguage("es");
+
+        var me = await HandleAsync(user);
+
+        Assert.Equal("es", me.Language);
+    }
+
+    [Fact]
+    public async Task Without_preference_the_language_is_null()
+    {
+        var me = await HandleAsync(AvatarDoubles.Employee());
+
+        Assert.Null(me.Language);
+    }
+
     private static async Task<MeResponse> HandleAsync(User user)
     {
         var tenants = StubProxy<ITenantRegistry>.Create(

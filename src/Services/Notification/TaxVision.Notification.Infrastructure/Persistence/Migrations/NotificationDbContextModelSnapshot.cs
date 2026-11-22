@@ -255,6 +255,10 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
@@ -266,11 +270,22 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsStale")
                         .HasColumnType("bit");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
                     b.Property<DateTime?>("LastSourceEventAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ProfileSourceAtUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TimeZoneId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -814,6 +829,8 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAtUtc");
+
                     b.HasIndex("RelatedEventId");
 
                     b.HasIndex("TenantId", "CreatedAtUtc");
@@ -838,6 +855,9 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("LastSeenAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Platform")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -848,6 +868,9 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("SessionId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -861,6 +884,8 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Token");
 
                     b.HasIndex("TenantId", "Token")
                         .IsUnique();

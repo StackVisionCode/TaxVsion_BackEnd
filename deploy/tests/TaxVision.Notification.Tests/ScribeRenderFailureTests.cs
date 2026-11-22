@@ -208,6 +208,7 @@ public sealed class ScribeRenderFailureTests
                 scribeClient,
                 Options.Create(new PortalOptions()),
                 new FakeTenantHostResolver(),
+                FixedRecipientLocale.English,
                 new NoOpCorrelationContext(),
                 CancellationToken.None
             )
@@ -247,11 +248,10 @@ public sealed class ScribeRenderFailureTests
         await Assert.ThrowsAsync<ScribeRenderFailedException>(() =>
             SignerInvitedConsumer.Handle(
                 evt,
-                gateway,
                 scribeClient,
-                new NoOpSmsSender(),
-                new NotificationDispatcherHarness().Dispatcher,
+                new NotificationDispatcherHarness(emailGateway: gateway).Dispatcher,
                 NoPortalRecipientResolver.Instance,
+                FixedRecipientLocale.English,
                 Options.Create(new PortalOptions()),
                 TestPlatform.Settings,
                 new FakeTenantHostResolver(),

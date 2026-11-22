@@ -47,6 +47,12 @@ builder.Services.AddBuildingBlocks();
 builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddGrowthInfrastructure(builder.Configuration);
 
+// Eventos de aviso que los casos de uso devuelven para que salgan por el outbox del mismo mensaje.
+builder.Services.AddSingleton<
+    TaxVision.Referrals.Application.Abstractions.IReferralNoticeEvents,
+    TaxVision.Growth.Api.IntegrationEvents.ReferralNoticeEvents
+>();
+
 // Red de seguridad: barre reservas de código vencidas (checkout abandonado) → Expired + libera el hold,
 // para que un código de un solo uso no quede quemado si nadie llamó Cancel.
 builder.Services.AddHostedService<TaxVision.Growth.Infrastructure.Scheduling.ReservationExpirySweeper>();
@@ -166,10 +172,11 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<ReferralRewardGrantedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ReferralRewardRejectedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<ReferralRewardReversedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    // Envío de una giftcard por correo: Notification lo consume y despacha el email.
+    // Envío de una giftcard por correo: lleva el código en claro y solo lo consume Notification, así que va
+    // directo a su cola, no al fanout.
     options
         .PublishMessage<BuildingBlocks.Messaging.GrowthIntegrationEvents.GiftcardShareRequestedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
+        .ToRabbitQueue("notification-events");
 
     options
         .ListenToRabbitQueue(

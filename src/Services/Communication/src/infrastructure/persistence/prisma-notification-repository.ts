@@ -7,10 +7,15 @@ import {
   type NotificationSnapshot,
 } from '../../domain/notifications/notification.js';
 import type { NotificationRepository } from '../../application/ports/notification-repository.js';
+import type { NotificationListFilter } from '../../domain/notifications/notification-category.js';
+import type { NotificationBulkAction } from '../../contracts/socket/notification-socket-events.js';
 import type {
   InAppNotificationPersistenceResult,
   InAppNotificationRepository,
 } from '../../application/ports/in-app-notification-repository.js';
+
+/** Filas por pasada de la acción masiva por filtro: un solo UPDATE de miles de filas escalaría bloqueos. */
+export const BULK_BY_FILTER_BATCH_SIZE = 1000;
 
 export class PrismaNotificationRepository implements NotificationRepository, InAppNotificationRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -127,6 +132,19 @@ export class PrismaNotificationRepository implements NotificationRepository, InA
     return row ? Notification.rehydrate(this.toSnapshot(row)) : null;
   }
 
+  async findBySourceEvent(
+    tenantId: string,
+    sourceEventId: string,
+    userId: string,
+  ): Promise<Notification | null> {
+    const row = await this.prisma.notificationEntry.findUnique({
+      where: {
+        TenantId_SourceEventId_UserId: { TenantId: tenantId, SourceEventId: sourceEventId, UserId: userId },
+      },
+    });
+    return row ? Notification.rehydrate(this.toSnapshot(row)) : null;
+  }
+
   async markRead(tenantId: string, userId: string, id: string, readAtUtc: Date): Promise<boolean> {
     const updated = await this.prisma.notificationEntry.updateMany({
       where: { Id: id, TenantId: tenantId, UserId: userId, ReadAtUtc: null },
@@ -225,6 +243,25 @@ export class PrismaNotificationRepository implements NotificationRepository, InA
     });
   }
 
+  async findUnreadIdsByGroupKey(input: {
+    tenantId: string;
+    userId: string;
+    groupKey: string;
+  }): Promise<readonly string[]> {
+    const rows = await this.prisma.notificationEntry.findMany({
+      where: {
+        TenantId: input.tenantId,
+        UserId: input.userId,
+        GroupKey: input.groupKey,
+        ReadAtUtc: null,
+        DismissedAtUtc: null,
+      },
+      select: { Id: true },
+      take: 20,
+    });
+    return rows.map((row) => row.Id);
+  }
+
   async markManyUnread(input: {
     tenantId: string;
     userId: string;
@@ -289,40 +326,67 @@ export class PrismaNotificationRepository implements NotificationRepository, InA
     });
   }
 
-  async listForUser(input: {
-    tenantId: string;
-    userId: string;
-    take: number;
-    skip: number;
-    unreadOnly?: boolean;
-  }): Promise<NotificationSnapshot[]> {
-    const whereBase = {
-      TenantId: input.tenantId,
-      UserId: input.userId,
-      DismissedAtUtc: null,
-    };
-    const where = input.unreadOnly ? { ...whereBase, ReadAtUtc: null } : whereBase;
+  async listForUser(
+    input: { tenantId: string; userId: string; take: number; skip: number } & NotificationListFilter,
+  ): Promise<NotificationSnapshot[]> {
     const rows = await this.prisma.notificationEntry.findMany({
-      where,
-      orderBy: { CreatedAtUtc: 'desc' },
+      where: inboxWhere(input.tenantId, input.userId, input),
+      // Desempate por Id: filas con la misma hora no saltan de página.
+      orderBy: [{ CreatedAtUtc: 'desc' }, { Id: 'desc' }],
       take: input.take,
       skip: input.skip,
     });
     return rows.map((r) => this.toSnapshot(r));
   }
 
-  async countForUser(input: {
+  async countForUser(input: { tenantId: string; userId: string } & NotificationListFilter): Promise<number> {
+    return this.prisma.notificationEntry.count({ where: inboxWhere(input.tenantId, input.userId, input) });
+  }
+
+  async bulkByFilter(input: {
     tenantId: string;
     userId: string;
-    unreadOnly?: boolean;
-  }): Promise<number> {
-    const whereBase = {
-      TenantId: input.tenantId,
-      UserId: input.userId,
-      DismissedAtUtc: null,
+    action: NotificationBulkAction;
+    filter: NotificationListFilter;
+    cutoffUtc: Date;
+    atUtc: Date;
+  }): Promise<{ affectedCount: number; unreadCount: number }> {
+    // Solo las filas que la acción cambia: así cada pasada avanza y repetir no toca nada más.
+    const pending: Prisma.NotificationEntryWhereInput =
+      input.action === 'read'
+        ? { ReadAtUtc: null }
+        : input.action === 'unread'
+          ? { ReadAtUtc: { not: null } }
+          : {};
+    const data =
+      input.action === 'read'
+        ? { ReadAtUtc: input.atUtc }
+        : input.action === 'unread'
+          ? { ReadAtUtc: null }
+          : { DismissedAtUtc: input.atUtc };
+    const where: Prisma.NotificationEntryWhereInput = {
+      ...inboxWhere(input.tenantId, input.userId, input.filter),
+      ...pending,
+      CreatedAtUtc: { lte: input.cutoffUtc },
     };
-    const where = input.unreadOnly ? { ...whereBase, ReadAtUtc: null } : whereBase;
-    return this.prisma.notificationEntry.count({ where });
+
+    let affectedCount = 0;
+    for (;;) {
+      const batch = await this.prisma.notificationEntry.findMany({
+        where,
+        select: { Id: true },
+        take: BULK_BY_FILTER_BATCH_SIZE,
+      });
+      if (batch.length === 0) break;
+      const updated = await this.prisma.notificationEntry.updateMany({
+        where: { ...where, Id: { in: batch.map((row) => row.Id) } },
+        data,
+      });
+      affectedCount += updated.count;
+      if (batch.length < BULK_BY_FILTER_BATCH_SIZE) break;
+    }
+    const unreadCount = await this.countUnread(input.tenantId, input.userId);
+    return { affectedCount, unreadCount };
   }
 
   async countUnread(tenantId: string, userId: string): Promise<number> {
@@ -340,14 +404,24 @@ export class PrismaNotificationRepository implements NotificationRepository, InA
     tenantId: string;
     userId: string;
     sinceUtc: Date;
+    sinceId?: string;
     limit: number;
   }): Promise<NotificationSnapshot[]> {
+    // Con `sinceId`, cursor compuesto: lo posterior y, en el mismo instante, los ids mayores.
+    const after: Prisma.NotificationEntryWhereInput = input.sinceId
+      ? {
+          OR: [
+            { CreatedAtUtc: { gt: input.sinceUtc } },
+            { CreatedAtUtc: input.sinceUtc, Id: { gt: input.sinceId } },
+          ],
+        }
+      : { CreatedAtUtc: { gt: input.sinceUtc } };
     const rows = await this.prisma.notificationEntry.findMany({
       where: {
         TenantId: input.tenantId,
         UserId: input.userId,
         DismissedAtUtc: null,
-        CreatedAtUtc: { gt: input.sinceUtc },
+        ...after,
       },
       // ASC por CreatedAtUtc + Id de tiebreaker: la combinación es estable
       // bajo re-ejecución y permite al cliente usar el último `createdAtUtc`
@@ -425,4 +499,36 @@ export class PrismaNotificationRepository implements NotificationRepository, InA
       createdAtUtc: row.CreatedAtUtc,
     };
   }
+}
+
+/** Bandeja del usuario (sin descartadas) con los filtros de la lista. */
+function inboxWhere(
+  tenantId: string,
+  userId: string,
+  filter: NotificationListFilter,
+): Prisma.NotificationEntryWhereInput {
+  const like = filter.q ? escapeLike(filter.q) : null;
+  return {
+    TenantId: tenantId,
+    UserId: userId,
+    DismissedAtUtc: null,
+    ...(filter.unreadOnly ? { ReadAtUtc: null } : {}),
+    ...(filter.category ? { Category: filter.category } : {}),
+    // Parametrizado por Prisma; la colación de la base no distingue mayúsculas.
+    ...(like
+      ? {
+          OR: [
+            { Title: { contains: like } },
+            { Body: { contains: like } },
+            { ActorDisplayName: { contains: like } },
+            { ParamsJson: { contains: like } },
+          ],
+        }
+      : {}),
+  };
+}
+
+/** LIKE de SQL Server: `%`, `_` y `[` del término se buscan literales. */
+function escapeLike(value: string): string {
+  return value.replace(/[[%_]/g, (ch) => `[${ch}]`);
 }

@@ -140,6 +140,9 @@ function fakeMnAssignments(byCustomerId: Record<string, string[]>): CustomerAssi
         .filter(([, users]) => users.includes(userId))
         .map(([customerId]) => customerId);
     },
+    async getAssignedUserIds(_tenantId: string, customerId: string): Promise<string[]> {
+      return byCustomerId[customerId] ?? [];
+    },
   };
 }
 

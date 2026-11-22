@@ -21,10 +21,10 @@ public static class MeetingCancelledConsumer
     public static async Task Handle(
         MeetingCancelledIntegrationEvent evt,
         NotificationDispatcher dispatcher,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         ICalendarInviteBuilder invites,
         IPlatformSettings platform,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         ILogger<MeetingCancelledIntegrationEvent> logger,
         CancellationToken ct
@@ -47,7 +47,8 @@ public static class MeetingCancelledConsumer
                 string.IsNullOrWhiteSpace(evt.Reason) ? null : evt.Reason,
                 correlation.CorrelationId,
                 context: null,
-                ct
+                ct,
+                new Dictionary<string, string> { ["meetingTitle"] = meetingTitle }
             );
 
             var emails = evt
@@ -57,20 +58,25 @@ public static class MeetingCancelledConsumer
             if (emails.Count == 0)
                 return;
 
+            var locale = MeetingNotifications.ExternalLocale(locales, evt.TimeZone);
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     EventKey,
                     evt.TenantId,
                     new Dictionary<string, object?>
                     {
-                        ["meeting_title"] = meetingTitle,
+                        ["meeting_title"] = MeetingNotifications.EmailTitle(evt.MeetingTitle, locale),
                         ["start_local"] = ScribeDates.Instant(evt.ScheduledForUtc),
-                        ["time_zone"] = MeetingNotifications.TimeZoneLabel(evt.TimeZone),
+                        ["time_zone"] = MeetingNotifications.TimeZoneLabel(
+                            evt.TimeZone,
+                            evt.ScheduledForUtc,
+                            locale.Language
+                        ),
                         ["host_name"] = evt.HostDisplayName,
                         ["reason"] = string.IsNullOrWhiteSpace(evt.Reason) ? null : evt.Reason,
                     },
                     ScribeRenderAudience.Client,
-                    ScribeReader.From(null, evt.TimeZone),
+                    locale,
                     ct
                 )
             ).EnsureRendered(EventKey);
@@ -98,17 +104,18 @@ public static class MeetingCancelledConsumer
                     )
                     : null;
 
-                await gateway.QueueEmailAsync(
-                    render.ToDispatchRequest(
-                        tenantId: evt.TenantId,
-                        to: email,
-                        templateKey: EventKey,
-                        relatedEventId: evt.EventId,
-                        correlationId: correlation.CorrelationId
-                    ) with
-                    {
-                        InlineAttachments = invite is null ? null : [invite],
-                    },
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
+                        NotificationKinds.CommunicationMeetingCancelled,
+                        evt.TenantId,
+                        // Invitado externo: sin usuario no hay preferencia; idioma y zona ya resueltos.
+                        new NotificationTarget(Email: email, Locale: locale),
+                        evt.EventId,
+                        EventKey,
+                        evt.OccurredOn,
+                        correlation.CorrelationId,
+                        Email: MeetingNotifications.Rendered(EventKey, render, invite)
+                    ),
                     ct
                 );
             }

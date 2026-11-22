@@ -83,12 +83,14 @@ internal sealed class FormRequestReminderJob(
             candidateIds = candidates.Select(item => item.Id).ToList();
         }
 
+        // El job es el origen de la traza: un id por pasada.
+        var correlationId = Guid.NewGuid().ToString("N");
         var sent = 0;
         foreach (var id in candidateIds)
         {
             if (ct.IsCancellationRequested)
                 break;
-            if (await TrySendAsync(id, reminders, now, ct))
+            if (await TrySendAsync(id, reminders, now, correlationId, ct))
                 sent++;
         }
 
@@ -101,6 +103,7 @@ internal sealed class FormRequestReminderJob(
         Guid id,
         ClientFormsReminderOptions reminders,
         DateTime now,
+        string correlationId,
         CancellationToken ct
     )
     {
@@ -108,6 +111,7 @@ internal sealed class FormRequestReminderJob(
         var requests = scope.ServiceProvider.GetRequiredService<IFormRequestRepository>();
         var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox<TasksDbContext>>();
         var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
+        using var trace = correlation.Push(correlationId);
 
         var found = await requests.GetForReminderAsync(id, ct);
         if (found is null)

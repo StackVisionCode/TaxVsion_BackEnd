@@ -674,6 +674,8 @@ model ConversationParticipant {
   RemovedAtUtc      DateTime? @db.DateTime2
   LastReadAtUtc     DateTime? @db.DateTime2
   LastReadMessageId String?   @db.UniqueIdentifier
+  // D-N4: hasta cuándo ya se avisó de mensajes sin leer (una vez por racha).
+  MissedNoticeAtUtc DateTime? @db.DateTime2
 
   Conversation Conversation @relation(fields: [ConversationId], references: [Id], onDelete: Cascade)
 
@@ -1219,6 +1221,11 @@ model NotificationEntry {
   @@unique([TenantId, SourceEventId, UserId])
   @@index([TenantId, UserId, ReadAtUtc, CreatedAtUtc(sort: Desc)])
   @@index([TenantId, UserId, GroupKey, ReadAtUtc])
+  // Vista "todas" (sin descartadas) y filtro por categoría de la bandeja.
+  @@index([TenantId, UserId, DismissedAtUtc, CreatedAtUtc(sort: Desc)])
+  @@index([TenantId, UserId, Category, CreatedAtUtc(sort: Desc)])
+  // Purga de retención: leídas viejas y no leídas viejas, sin filtrar por oficina.
+  @@index([ReadAtUtc, CreatedAtUtc])
 }
 
 // Invitacion firmada por email/link. Guardamos SOLO SHA-256 del token opaco

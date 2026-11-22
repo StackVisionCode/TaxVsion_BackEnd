@@ -14,6 +14,8 @@ import type { UserPermissionsProjectionRepository } from '../../src/application/
 import type { CustomerPortalAccountRepository } from '../../src/application/ports/customer-portal-account-repository.js';
 import type { IncomingEnvelope } from '../../src/application/ports/event-consumer.js';
 import { bindOffboardingConsumers } from '../../src/application/event-handlers/offboarding-consumers.js';
+import { checkPermission, CommunicationPermissions } from '../../src/domain/shared/permissions.js';
+import { fakeSnapshot } from '../helpers/fake-user-permissions-projection-repository.js';
 
 function u(): string {
   return randomUUID();
@@ -166,6 +168,7 @@ function setup(successor: UserDirectoryEntrySnapshot | null) {
     markInactive: vi.fn(),
     markActive: vi.fn(),
     searchByDisplayNameOrEmail: vi.fn(),
+    findActiveAdmins: vi.fn().mockResolvedValue([]),
   };
   const customerPortalAccounts: CustomerPortalAccountRepository = {
     upsert: vi.fn(),
@@ -178,6 +181,7 @@ function setup(successor: UserDirectoryEntrySnapshot | null) {
   const meetings = new FakeMeetingRepository();
   const publisher = new FakePublisher();
   const emitter = new FakeEmitter();
+  const sessionTerminator = { disconnectUser: vi.fn(async () => {}) };
   bindOffboardingConsumers(register, {
     userPermissions,
     userDirectory,
@@ -185,8 +189,18 @@ function setup(successor: UserDirectoryEntrySnapshot | null) {
     meetings,
     publisher,
     emitter,
+    sessionTerminator,
   });
-  return { handlers, userPermissions, userDirectory, customerPortalAccounts, meetings, publisher, emitter };
+  return {
+    handlers,
+    userPermissions,
+    userDirectory,
+    customerPortalAccounts,
+    meetings,
+    publisher,
+    emitter,
+    sessionTerminator,
+  };
 }
 
 function eligibleSuccessor(userId: string): UserDirectoryEntrySnapshot {
@@ -240,6 +254,32 @@ describe('offboarding consumer — auth.user.offboarded.v1', () => {
     expect(ctx.userPermissions.markInactive).toHaveBeenCalledWith(leaver, expect.any(Date));
     expect(ctx.userDirectory.markInactive).toHaveBeenCalledWith(leaver);
     expect(ctx.customerPortalAccounts.markInactiveByUserId).toHaveBeenCalledWith(leaver);
+  });
+
+  it("drops the cached snapshot and terminates the leaver's sockets", async () => {
+    const leaver = u();
+    const ctx = setup(null);
+    const granted = {
+      userId: leaver,
+      tenantId: TENANT,
+      permissions: [CommunicationPermissions.NotificationRead],
+    };
+    vi.mocked(ctx.userPermissions.findByUserId).mockResolvedValue(fakeSnapshot(granted));
+    const check = () =>
+      checkPermission(
+        { userId: leaver, tenantId: TENANT, actorType: 'TenantEmployee', permissionVersion: 1 },
+        CommunicationPermissions.NotificationRead,
+        ctx.userPermissions,
+      );
+    expect((await check()).allowed).toBe(true);
+    vi.mocked(ctx.userPermissions.findByUserId).mockResolvedValue(
+      fakeSnapshot({ ...granted, isActive: false }),
+    );
+
+    await ctx.handlers.get('auth.user.offboarded.v1')!(offboardEnvelope({ userId: leaver }));
+
+    expect(await check()).toMatchObject({ allowed: false, code: 'Auth.UserInactive' });
+    expect(ctx.sessionTerminator.disconnectUser).toHaveBeenCalledWith(TENANT, leaver);
   });
 
   it('offboarding impact counts active (scheduled or live) meetings hosted by the leaver', async () => {

@@ -1,17 +1,27 @@
 namespace TaxVision.Notification.Application.Common;
 
-/// <summary>Qué cambió para el cliente tras el último intento fallido, dicho en el correo.</summary>
+/// <summary>Qué cambió para el cliente tras el último intento fallido, dicho en el correo y en el idioma de quien lee.</summary>
 public static class ChargeFailureConsequences
 {
-    public static string Describe(string? consequence, string? itemDescription) =>
+    public static string Describe(string? consequence, string? itemDescription, string? language = null) =>
         consequence switch
         {
-            "SubscriptionSuspended" => "your subscription has been suspended and your team can no longer sign in",
-            "SeatSuspended" => "the user seat has been suspended and the person assigned to it can no longer sign in",
-            "AddOnSuspended" => $"{AddOnSubject(itemDescription)} has been paused",
-            _ => "the service will remain on hold until the payment is completed",
+            "SubscriptionSuspended" => EmailText.For("charge_failure_effect.subscription_suspended", language),
+            "SeatSuspended" => EmailText.For("charge_failure_effect.seat_suspended", language),
+            "AddOnSuspended" => EmailText.For(
+                "charge_failure_effect.add_on_suspended",
+                language,
+                new Dictionary<string, string> { ["addOn"] = AddOnSubject(itemDescription, language) }
+            ),
+            _ => EmailText.For("charge_failure_effect.on_hold", language),
         };
 
-    private static string AddOnSubject(string? itemDescription) =>
-        string.IsNullOrWhiteSpace(itemDescription) ? "the add-on" : $"the {itemDescription}";
+    private static string AddOnSubject(string? itemDescription, string? language) =>
+        string.IsNullOrWhiteSpace(itemDescription)
+            ? EmailText.For("charge_failure_effect.add_on_generic", language)
+            : EmailText.For(
+                "charge_failure_effect.add_on",
+                language,
+                new Dictionary<string, string> { ["item"] = itemDescription }
+            );
 }

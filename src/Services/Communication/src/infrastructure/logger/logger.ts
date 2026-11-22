@@ -8,6 +8,20 @@ import { config } from '../config.js';
  *
  * Cierra CRIT-1 del legacy: nada de console.log con emojis.
  */
+interface LoggedRequest {
+  method?: string;
+  url?: string;
+  headers?: Record<string, unknown>;
+  host?: string;
+  ip?: string;
+  socket?: { remotePort?: number };
+}
+
+/** Oculta el texto de búsqueda (`q`) de una URL: puede ser el nombre de un cliente. */
+export function maskSearchText(url: string): string {
+  return url.replace(/([?&]q=)[^&#]*/g, '$1[REDACTED]');
+}
+
 const options: LoggerOptions = {
   level: config.logLevel,
   base: {
@@ -31,6 +45,17 @@ const options: LoggerOptions = {
   },
   formatters: {
     level: (label) => ({ level: label }),
+  },
+  // Mismos campos que el serializador de Fastify, con la URL sin el texto de búsqueda.
+  serializers: {
+    req: (req: LoggedRequest) => ({
+      method: req.method,
+      url: typeof req.url === 'string' ? maskSearchText(req.url) : req.url,
+      version: req.headers?.['accept-version'],
+      host: req.host,
+      remoteAddress: req.ip,
+      remotePort: req.socket?.remotePort,
+    }),
   },
 };
 

@@ -3,8 +3,6 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -23,30 +21,24 @@ public static class ShareLinkFolderItemAddedConsumer
             if (!inAppSource.PublishesInApp(InAppSourceGroup.CloudStorageLegal))
                 return;
 
-            var title = "Archivo movido a una carpeta compartida";
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(evt.CreatedByUserId),
-                title,
-                NotificationCategory.StorageAndQuota,
-                "cloudstorage.sharelink.folder_item_added",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.CreatedByUserId,
-                inApp: new InAppNotificationRequest(
+            // AutoCovered (ya había un link público) viaja como parámetro; el texto lo decide el archivo de textos.
+            var parameters = new Dictionary<string, string> { ["autoCovered"] = evt.AutoCovered ? "true" : "false" };
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.CloudStorageFolderItemAdded,
-                    evt.CreatedByUserId,
+                    evt.TenantId,
+                    new NotificationTarget(evt.CreatedByUserId),
                     evt.EventId,
                     "cloudstorage.sharelink.folder_item_added.v1",
                     evt.OccurredOn,
-                    title,
-                    FallbackBody: evt.AutoCovered
-                        ? "Un archivo tuyo quedó accesible por un link público existente al moverse de carpeta."
-                        : "Un archivo tuyo se movió a una carpeta con un link público.",
-                    ResourceId: evt.FileId.ToString(),
-                    ResourceContext: new Dictionary<string, string> { ["folderId"] = evt.FolderId.ToString() }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(
+                        Params: parameters,
+                        ResourceId: evt.FileId.ToString(),
+                        ResourceContext: new Dictionary<string, string> { ["folderId"] = evt.FolderId.ToString() }
+                    )
                 ),
-                ct: ct
+                ct
             );
         }
     }

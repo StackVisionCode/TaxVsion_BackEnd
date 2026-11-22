@@ -31,6 +31,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.DeactivationReason).HasConversion<string>().HasMaxLength(32);
         builder.Property(user => user.CustomerStatusChangedAtUtc);
         builder.Property(user => user.TimeZoneId).HasMaxLength(64);
+        builder.Property(user => user.Language).HasMaxLength(5);
         builder.Property(user => user.PhoneNumber).HasMaxLength(20);
         builder.Property(user => user.EmailVerified).IsRequired();
         builder.Property(user => user.PhoneVerified).IsRequired();

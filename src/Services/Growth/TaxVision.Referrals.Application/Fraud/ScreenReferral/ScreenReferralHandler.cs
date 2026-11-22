@@ -14,7 +14,8 @@ namespace TaxVision.Referrals.Application.Fraud.ScreenReferral;
 /// Compara la oficina referida por un alta con su referidor. Corre al enlazar la oficina y al conocerse el email de su
 /// dueño (lo que llegue último decide). Idempotente: una atribución ya rechazada o en revisión no se vuelve a evaluar.
 /// </summary>
-public sealed record ScreenReferralCommand(Guid OnboardingId);
+/// <param name="CorrelationId">La del evento que dispara la revisión; viaja en el aviso al referidor.</param>
+public sealed record ScreenReferralCommand(Guid OnboardingId, string CorrelationId);
 
 /// <param name="RewardTenantId">Oficina dueña del premio (el referidor), para avisarle si se canceló.</param>
 public sealed record ReferralScreeningResult(
@@ -33,7 +34,45 @@ public static class ScreenReferralHandler
     // Las decisiones automáticas las firma el sistema.
     private static readonly Guid SystemActor = PlatformTenant.Id;
 
-    public static async Task<Result<ReferralScreeningResult>> Handle(
+    /// <summary>
+    /// Devuelve el resultado y, si el premio quedó cancelado, el aviso al referidor como mensaje en cascada: Wolverine
+    /// lo publica por el outbox de este mismo mensaje, junto con el rechazo.
+    /// </summary>
+    public static async Task<(Result<ReferralScreeningResult> Result, object? Notice)> Handle(
+        ScreenReferralCommand command,
+        IReferralAttributionRepository attributions,
+        IReferralRewardCaseRepository rewards,
+        IReferralFraudReviewRepository reviews,
+        IOfficeOwnerSignalsReader owners,
+        ITenantContext tenantContext,
+        IUnitOfWork unitOfWork,
+        IReferralNoticeEvents noticeEvents,
+        TimeProvider timeProvider,
+        CancellationToken ct
+    )
+    {
+        object? notice = null;
+        var result = await ScreenAsync(
+            command,
+            attributions,
+            rewards,
+            reviews,
+            owners,
+            tenantContext,
+            unitOfWork,
+            timeProvider,
+            cancelled =>
+                notice = noticeEvents.Rejected(
+                    Rewards.ReferralRewardNotice.From(cancelled),
+                    "SelfReferral",
+                    command.CorrelationId
+                ),
+            ct
+        );
+        return (result, result.IsSuccess ? notice : null);
+    }
+
+    private static async Task<Result<ReferralScreeningResult>> ScreenAsync(
         ScreenReferralCommand command,
         IReferralAttributionRepository attributions,
         IReferralRewardCaseRepository rewards,
@@ -42,6 +81,7 @@ public static class ScreenReferralHandler
         ITenantContext tenantContext,
         IUnitOfWork unitOfWork,
         TimeProvider timeProvider,
+        Action<ReferralRewardCase> onRewardCancelled,
         CancellationToken ct
     )
     {
@@ -76,6 +116,9 @@ public static class ScreenReferralHandler
             return Result.Failure<ReferralScreeningResult>(recorded.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
+        if (reward?.Status == ReferralRewardCaseStatus.Cancelled)
+            onRewardCancelled(reward);
+
         return Result.Success(
             new ReferralScreeningResult(
                 finding.Verdict,

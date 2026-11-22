@@ -17,6 +17,7 @@ internal static class TenantConnectAccountNotificationPublisher
         string kind,
         string sourceEventType,
         string title,
+        OfficeAlertEmail email,
         NotificationDispatcher dispatcher,
         IRecipientResolver resolver,
         ICorrelationContext correlation,
@@ -30,6 +31,36 @@ internal static class TenantConnectAccountNotificationPublisher
                 resolver,
                 ct
             );
+            if (recipients.Count == 0)
+                return;
+
+            // Correo obligatorio antes de la campana; sin requisitos pendientes la fila no aparece.
+            var variables = new Dictionary<string, object?>(email.Variables)
+            {
+                ["action_url"] = await OfficeAlertEmails.BillingUrlAsync(email.Links, tenantId, ct),
+            };
+            if (requirementsCount > 0)
+                variables["requirements_count"] = requirementsCount;
+            await OfficeAlertEmails.SendAsync(
+                new NotificationIntent(
+                    kind,
+                    tenantId,
+                    new NotificationTarget(),
+                    eventId,
+                    sourceEventType,
+                    occurredOn,
+                    correlation.CorrelationId
+                ),
+                email.EventKey,
+                variables,
+                recipients,
+                dispatcher,
+                email.Emails,
+                email.Scribe,
+                email.Locales,
+                ct
+            );
+
             await BillingNotificationPublisher.RecordAsync(
                 dispatcher,
                 recipients,
@@ -55,3 +86,13 @@ internal static class TenantConnectAccountNotificationPublisher
         }
     }
 }
+
+/// <summary>Plantilla del correo obligatorio y lo que hace falta para mandarlo.</summary>
+internal sealed record OfficeAlertEmail(
+    string EventKey,
+    IReadOnlyDictionary<string, object?> Variables,
+    PushLinks Links,
+    IRecipientLocale Locales,
+    IUserEmailResolver Emails,
+    IScribeRenderClient Scribe
+);

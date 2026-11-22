@@ -9,6 +9,7 @@ import type { IncomingEnvelope } from '../../src/application/ports/event-consume
 import type { InAppNotificationRepository } from '../../src/application/ports/in-app-notification-repository.js';
 import type { RealtimeEmitter } from '../../src/application/ports/realtime-emitter.js';
 import { NotificationSocketEvents } from '../../src/contracts/socket/notification-socket-events.js';
+import type { IntegrationEvent } from '../../src/contracts/events/integration-event.js';
 
 const fixturePath = fileURLToPath(
   new URL(
@@ -33,11 +34,13 @@ function setup(status: 'created' | 'updated' | 'duplicate' = 'created') {
     countForUser: vi.fn().mockResolvedValue(4),
   } as InAppNotificationRepository;
   const emitter = { emitToUser: vi.fn() } as unknown as RealtimeEmitter;
+  const publisher = { enqueue: vi.fn(async (_event: IntegrationEvent) => {}) };
   bindInAppNotificationConsumers((eventType, handler) => handlers.set(eventType, handler), {
     notifications,
     emitter,
+    publisher,
   });
-  return { handlers, notifications, emitter };
+  return { handlers, notifications, emitter, publisher };
 }
 
 function envelope(payload: Record<string, unknown> = fixture): IncomingEnvelope {
@@ -128,5 +131,44 @@ describe('notification.inapp.requested.v1', () => {
     expect(result.data.kind).toBe(fixture['Kind']);
     expect(result.data.resourceType).toBe(fixture['ResourceType']);
     expect(result.data.action).toBe(fixture['Action']);
+  });
+
+  it('an invalid payload publishes a rejection and is not retried', async () => {
+    const { handlers, notifications, emitter, publisher } = setup();
+    const invalid = { ...fixture, Category: 'Gossip', Action: 'explode' };
+
+    const handler = handlers.get('notification.inapp.requested.v1');
+    if (!handler) throw new Error('handler not registered');
+
+    // Resuelve sin lanzar: el runtime confirma el mensaje y no lo reintenta.
+    await expect(handler(envelope(invalid))).resolves.toBeUndefined();
+
+    expect(notifications.persist).not.toHaveBeenCalled();
+    expect(emitter.emitToUser).not.toHaveBeenCalled();
+    expect(publisher.enqueue).toHaveBeenCalledTimes(1);
+    const rejection = publisher.enqueue.mock.calls[0]?.[0] as unknown as Record<string, unknown>;
+    expect(rejection).toMatchObject({
+      eventType: 'communication.notification.inapp_rejected.v1',
+      tenantId: fixture['TenantId'],
+      correlationId: fixture['CorrelationId'],
+      sourceEventId: fixture['SourceEventId'],
+      recipientUserId: fixture['RecipientUserId'],
+      kind: fixture['Kind'],
+      reason: 'InvalidPayload',
+      detail: 'category,action',
+    });
+    expect(typeof rejection['eventId']).toBe('string');
+    expect(Number.isNaN(Date.parse(String(rejection['occurredOnUtc'])))).toBe(false);
+    // Sin el contenido rechazado.
+    expect(JSON.stringify(rejection)).not.toContain('Gossip');
+    expect(JSON.stringify(rejection)).not.toContain(String(fixture['FallbackTitle']));
+  });
+
+  it('a valid payload publishes no rejection', async () => {
+    const { handlers, publisher } = setup();
+
+    await handlers.get('notification.inapp.requested.v1')?.(envelope());
+
+    expect(publisher.enqueue).not.toHaveBeenCalled();
   });
 });

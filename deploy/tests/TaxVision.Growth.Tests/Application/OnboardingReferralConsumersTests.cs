@@ -25,8 +25,11 @@ public sealed class OnboardingReferralConsumersTests
 {
     private static readonly Guid OnboardingId = Guid.NewGuid();
 
+    /// <summary>
+    /// El aviso al referidor lo devuelve el comando y sale por el outbox de su transacción: el consumer ya no publica.
+    /// </summary>
     [Fact]
-    public async Task Declared_code_creates_the_attribution_under_the_onboarding_tenant_and_notifies_the_referrer()
+    public async Task Attribution_notice_is_published_in_the_same_unit()
     {
         var referrerTenant = Guid.NewGuid();
         var referrerUser = Guid.NewGuid();
@@ -63,11 +66,53 @@ public sealed class OnboardingReferralConsumersTests
         // El tenant del bus se restaura al terminar (no se queda como el del alta).
         Assert.Null(bus.TenantId);
         Assert.Equal(OnboardingId.ToString(), bus.TenantIdDuring[1]);
+        // El comando pide el aviso con la correlación del evento; el consumer no publica nada.
+        Assert.NotNull(command.NoticeCorrelationId);
+        Assert.Empty(bus.Published);
+    }
 
-        var notice = Assert.Single(bus.Published.OfType<ReferralAttributedIntegrationEvent>());
-        Assert.Equal(referrerTenant, notice.TenantId);
-        Assert.Equal(attributionId, notice.AttributionId);
-        Assert.Equal(referrerUser, notice.ReferrerUserId);
+    /// <summary>El aviso de premio en espera también lo devuelve el comando de calificación.</summary>
+    [Fact]
+    public async Task Qualified_notice_is_published_in_the_same_unit()
+    {
+        var reward = new TaxVision.Referrals.Application.Rewards.ReferralRewardNotice(
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            Guid.NewGuid(),
+            1_290,
+            "USD",
+            DateTime.UtcNow.AddDays(30)
+        );
+        var paid = Paid(amountCents: 12_900);
+        var bus = new ScriptedBus(message =>
+            message switch
+            {
+                FindAttributionByRefereeQuery => Result.Success<Guid?>(Guid.NewGuid()),
+                QualifyReferralCommand => Result.Success(
+                    new QualifyReferralResult(
+                        Guid.NewGuid(),
+                        ReferralQualificationDecision.Qualified,
+                        null,
+                        reward.RewardCaseId,
+                        WasReplay: false,
+                        reward
+                    )
+                ),
+                _ => throw new InvalidOperationException(message.GetType().Name),
+            }
+        );
+
+        await OnboardingPaymentQualifiesReferralConsumer.Handle(
+            paid,
+            bus,
+            NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
+            default
+        );
+
+        Assert.Equal(paid.CorrelationId, Assert.IsType<QualifyReferralCommand>(bus.Invoked[1]).CorrelationId);
+        Assert.Empty(bus.Published);
     }
 
     [Fact]

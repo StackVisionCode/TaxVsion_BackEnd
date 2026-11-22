@@ -59,6 +59,9 @@ export interface UserDirectoryRepository {
    * al usuario (el nombre/email siguen en la fila; solo se re-activa). */
   markActive(userId: string, statusChangedAtUtc?: Date): Promise<void>;
 
+  /** Admins activos (`TenantAdmin`) de ESA oficina; nunca cruza tenants. */
+  findActiveAdmins(tenantId: string): Promise<UserDirectoryEntrySnapshot[]>;
+
   /**
    * Fase Frontend 5 — autocomplete de employees al armar invitaciones de
    * meeting. Filtra por TenantId + IsActive; `query` matchea contra

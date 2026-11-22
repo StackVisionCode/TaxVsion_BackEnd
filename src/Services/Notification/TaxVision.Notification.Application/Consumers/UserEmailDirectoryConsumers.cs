@@ -39,16 +39,22 @@ public static class UserEmailDirectoryUpsertConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var existing = await directory.FindAsync(evt.TenantId, evt.UserId, ct);
+            var entry =
+                existing ?? UserEmailDirectoryEntry.Create(evt.TenantId, evt.UserId, evt.Email, true, evt.OccurredOn);
             if (existing is null)
-                await directory.AddAsync(
-                    UserEmailDirectoryEntry.Create(evt.TenantId, evt.UserId, evt.Email, true, evt.OccurredOn),
-                    ct
-                );
+                await directory.AddAsync(entry, ct);
             else if (!existing.UpdateEmail(evt.Email, isActive: true, evt.OccurredOn))
             {
                 UserEmailDirectoryConsumerHelpers.LogIgnored(logger, nameof(UserRegisteredIntegrationEvent), evt);
                 return;
             }
+            // Nombre, idioma y zona del alta (los dos últimos llegan nulos hasta que el alta los conozca).
+            entry.ApplyProfile(
+                evt.Language,
+                evt.TimeZoneId,
+                UserProfileDirectoryConsumer.DisplayNameOf(evt.Name, evt.LastName),
+                evt.OccurredOn
+            );
 
             await unitOfWork.SaveChangesAsync(ct);
         }

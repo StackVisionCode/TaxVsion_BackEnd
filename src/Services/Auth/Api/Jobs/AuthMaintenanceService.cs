@@ -1,5 +1,8 @@
 using BuildingBlocks.Infrastructure.Hosting;
+using BuildingBlocks.Jobs;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Domain.Invitations;
 using TaxVision.Auth.Domain.Users;
 using TaxVision.Auth.Infrastructure.Persistence;
@@ -7,8 +10,8 @@ using TaxVision.Auth.Infrastructure.Persistence;
 namespace TaxVision.Auth.Api.Jobs;
 
 /// <summary>
-/// Mantenimiento periódico (cada hora): expira invitaciones vencidas y purga
-/// tokens/desafíos caducados hace más de 30 días. Idempotente y seguro con
+/// Mantenimiento periódico (cada hora): expira invitaciones vencidas, purga
+/// tokens/desafíos caducados hace más de 30 días y cierra las sesiones vencidas. Idempotente y seguro con
 /// múltiples réplicas (las operaciones son tolerantes a carreras).
 /// Migrable a Quartz cuando se estandarice el scheduling en la plataforma.
 /// </summary>
@@ -113,6 +116,52 @@ public sealed class AuthMaintenanceService(
                 changes
             );
         }
+
+        await SweepExpiredSessionsAsync(now, ct);
+    }
+
+    /// <summary>
+    /// Sesiones vivas sin ningún refresh vigente: se cierran con <c>RevokedReason = "expired"</c> y se avisa
+    /// <c>SessionEndedIntegrationEvent</c>. Una sesión por unidad (cierre y aviso juntos), en lotes.
+    /// </summary>
+    private async Task SweepExpiredSessionsAsync(DateTime now, CancellationToken ct)
+    {
+        var closed = 0;
+        while (true)
+        {
+            IReadOnlyList<Guid> expired;
+            await using (var scope = scopeFactory.CreateAsyncScope())
+            {
+                expired = await scope
+                    .ServiceProvider.GetRequiredService<IExpiredSessionQuery>()
+                    .FindExpiredSessionIdsAsync(now, ExpiredSessionSweep.BatchSize, ct);
+            }
+            if (expired.Count == 0)
+                break;
+
+            var summary = await TransactionalJobUnit.RunEachAsync<Guid, AuthDbContext>(
+                scopeFactory,
+                expired,
+                (sessionId, unit, token) =>
+                    ExpiredSessionSweep.CloseAsync(
+                        sessionId,
+                        unit.Services.GetRequiredService<ISessionRepository>(),
+                        unit.Outbox,
+                        now,
+                        token
+                    ),
+                logger,
+                ct
+            );
+            closed += summary.Committed;
+
+            // Lote incompleto o sin avance (todo falló): el resto queda para el próximo tick.
+            if (expired.Count < ExpiredSessionSweep.BatchSize || summary.Committed == 0)
+                break;
+        }
+
+        if (closed > 0)
+            logger.LogInformation("Auth maintenance: {Closed} expired sessions closed.", closed);
     }
 
     /// <summary>

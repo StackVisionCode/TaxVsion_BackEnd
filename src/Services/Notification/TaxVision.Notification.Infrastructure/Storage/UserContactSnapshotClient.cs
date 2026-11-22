@@ -58,7 +58,7 @@ public sealed class UserContactSnapshotClient(
             var dto = await response.Content.ReadFromJsonAsync<ContactDto>(Json, ct);
             return dto is null || string.IsNullOrWhiteSpace(dto.Email)
                 ? null
-                : new RemoteUserContact(dto.Email, dto.IsActive);
+                : new RemoteUserContact(dto.Email, dto.IsActive, dto.DisplayName, dto.Language, dto.TimeZoneId);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
@@ -67,5 +67,13 @@ public sealed class UserContactSnapshotClient(
         }
     }
 
-    private sealed record ContactDto(string Email, string ActorType, bool IsActive);
+    // Nombre, idioma y zona: aditivos en Auth; un Auth viejo no los manda.
+    private sealed record ContactDto(
+        string Email,
+        string ActorType,
+        bool IsActive,
+        string? DisplayName = null,
+        string? Language = null,
+        string? TimeZoneId = null
+    );
 }

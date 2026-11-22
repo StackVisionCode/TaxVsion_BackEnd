@@ -2,8 +2,6 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
@@ -22,27 +20,22 @@ public static class MeetingRecordingFailedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var title = $"Grabación de meeting falló: {evt.Reason}";
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(evt.HostUserId),
-                title,
-                NotificationCategory.Collaboration,
-                "communication.meeting.recording_failed",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.HostUserId,
-                inApp: new InAppNotificationRequest(
+            var parameters = new Dictionary<string, string> { ["reason"] = evt.Reason };
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.CommunicationMeetingRecordingFailed,
-                    evt.HostUserId,
+                    evt.TenantId,
+                    new NotificationTarget(evt.HostUserId),
                     evt.EventId,
                     "communication.meeting.recording_failed.v1",
                     evt.FailedAtUtc,
-                    title,
-                    ResourceContext: new Dictionary<string, string> { ["meetingId"] = evt.MeetingId.ToString() },
-                    Params: new Dictionary<string, string> { ["reason"] = evt.Reason }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(
+                        Params: parameters,
+                        ResourceContext: new Dictionary<string, string> { ["meetingId"] = evt.MeetingId.ToString() }
+                    )
                 ),
-                ct: ct
+                ct
             );
         }
     }

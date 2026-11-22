@@ -20,8 +20,8 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -63,7 +63,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Auth.Application.Sessions.Commands.RevokeAllMySessionsHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Auth.Application.Sessions.Commands.RevokeAllMySessionsHandler.Handle(revokeAllMySessionsCommand, sessionRepository, accessTokenDenylist, sessionRevocationPublisher, authAuditWriter, requestContext, correlationContext, unitOfWork, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Auth.Application.Sessions.Commands.RevokeAllMySessionsHandler.Handle(revokeAllMySessionsCommand, sessionRepository, accessTokenDenylist, sessionRevocationPublisher, authAuditWriter, requestContext, correlationContext, unitOfWork, context, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

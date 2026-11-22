@@ -5,6 +5,8 @@ import type { CustomerPortalAccountRepository } from '../ports/customer-portal-a
 import type { MeetingRepository } from '../ports/meeting-repository.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import type { SocketSessionTerminator } from '../ports/socket-session-terminator.js';
+import { invalidatePermissionCache } from '../../domain/shared/permissions.js';
 import type { ConversationRepository } from '../ports/conversation-repository.js';
 import type { ConversationAuditRepository } from '../ports/conversation-audit-repository.js';
 import type { SupportTicketRepository } from '../ports/support-ticket-repository.js';
@@ -67,6 +69,8 @@ export function bindOffboardingConsumers(
     settings?: TenantSettingsProvider;
     /** Grabaciones con captura en su navegador que siguen abiertas: se cierran por sistema. */
     recordingLifecycle?: RecordingLifecycleDeps;
+    /** Cierra los sockets del retirado. */
+    sessionTerminator?: SocketSessionTerminator;
   },
 ): void {
   register('auth.user.offboarded.v1', async (env) => {
@@ -80,6 +84,8 @@ export function bindOffboardingConsumers(
     await deps.userPermissions.markInactive(userId, new Date());
     await deps.userDirectory.markInactive(userId);
     await deps.customerPortalAccounts.markInactiveByUserId(userId);
+    invalidatePermissionCache(userId);
+    await deps.sessionTerminator?.disconnectUser(env.tenantId, userId);
 
     // 2. ¿Hay un sucesor elegible (empleado activo del mismo tenant)? Se resuelve una sola vez.
     const successorId =

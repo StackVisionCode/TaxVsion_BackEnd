@@ -42,8 +42,20 @@ public sealed class NotificationDispatcherPushTests
             Kind = "Video",
             RingingAtUtc = DateTime.UtcNow,
         };
-        await MobileCommunicationPushConsumer.Handle(evt, dispatcher, TimeProvider.System, default);
-        await MobileCommunicationPushConsumer.Handle(evt, dispatcher, TimeProvider.System, default);
+        await MobileCommunicationPushConsumer.Handle(
+            evt,
+            dispatcher,
+            NullLogger<CallStartedIntegrationEvent>.Instance,
+            TimeProvider.System,
+            default
+        );
+        await MobileCommunicationPushConsumer.Handle(
+            evt,
+            dispatcher,
+            NullLogger<CallStartedIntegrationEvent>.Instance,
+            TimeProvider.System,
+            default
+        );
         var sent = Assert.Single(sender.Sent);
         Assert.Equal("callee-token", sent.Token);
         Assert.Equal(evt.CallId.ToString(), sent.Data!["callId"]);
@@ -76,18 +88,10 @@ public sealed class NotificationDispatcherPushTests
             RecipientUserIds = [UserId, UserId, author],
             SentAtUtc = DateTime.UtcNow,
         };
-        await MobileCommunicationPushConsumer.Handle(evt, dispatcher, default);
+        await ChatPushLane.RunAsync(evt, dispatcher);
         Assert.Equal("recipient-token", Assert.Single(sender.Sent).Token);
         Assert.Equal("You have a new message.", sender.Sent[0].Body);
-        await MobileCommunicationPushConsumer.Handle(
-            evt with
-            {
-                Kind = "System",
-                EventId = Guid.NewGuid(),
-            },
-            dispatcher,
-            default
-        );
+        await ChatPushLane.RunAsync(evt with { Kind = "System", EventId = Guid.NewGuid() }, dispatcher);
         Assert.Single(sender.Sent);
     }
 
@@ -103,7 +107,13 @@ public sealed class NotificationDispatcherPushTests
             Kind = "Audio",
             RingingAtUtc = DateTime.UtcNow.AddMinutes(-2),
         };
-        await MobileCommunicationPushConsumer.Handle(evt, null!, TimeProvider.System, default);
+        await MobileCommunicationPushConsumer.Handle(
+            evt,
+            null!,
+            NullLogger<CallStartedIntegrationEvent>.Instance,
+            TimeProvider.System,
+            default
+        );
     }
 
     [Fact]
@@ -394,31 +404,47 @@ public sealed class NotificationDispatcherPushTests
     }
 
     [Fact]
-    public async Task Sin_dispositivo_el_log_queda_Skipped_no_device_y_no_llama_a_FCM()
+    public async Task No_device_writes_no_log_row()
     {
         var sender = new RecordingPushSender();
         var logs = new RecordingNotificationLogRepository();
         var metrics = new CountingDispatchMetrics();
         var dispatcher = BuildDispatcher(sender, new FakePushDeviceTokenRepository(), logs, metrics);
 
-        var result = await dispatcher.SendPushAsync(
-            TenantId,
-            UserId,
-            "Tarea vencida: X",
-            "Vencía ayer y sigue abierta.",
-            NotificationCategory.Collaboration,
-            "task.overdue",
-            Guid.NewGuid(),
-            "corr"
-        );
+        var result = await dispatcher.SendPushAsync(FormPush(Guid.NewGuid()));
 
         Assert.Equal("Notification.NoPushDevices", result.Error.Code);
         Assert.Empty(sender.Sent);
-        var log = Assert.Single(logs.Logs);
-        Assert.Equal(NotificationStatus.Skipped, log.Status);
-        Assert.Equal(NotificationDispatcher.NoDeviceReason, log.Error);
+        Assert.Empty(logs.Logs);
         Assert.Equal(0, metrics.Failed);
         Assert.Equal(1, metrics.NoRecipient);
+    }
+
+    [Fact]
+    public async Task Platform_filter_limits_the_devices()
+    {
+        var sender = new RecordingPushSender();
+        var devices = new FakePushDeviceTokenRepository();
+        devices.AddActiveDevice(TenantId, UserId, "android-token");
+        devices.AddActiveDevice(TenantId, UserId, "web-token", PushPlatform.Web);
+        var dispatcher = BuildDispatcher(
+            sender,
+            devices,
+            new RecordingNotificationLogRepository(),
+            new NoOpUnitOfWork()
+        );
+
+        await dispatcher.SendPushAsync(
+            FormPush(Guid.NewGuid()) with
+            {
+                Platforms = new HashSet<PushPlatform> { PushPlatform.Fcm },
+                TimeToLive = TimeSpan.FromSeconds(45),
+            }
+        );
+
+        var message = Assert.Single(sender.Sent);
+        Assert.Equal("android-token", message.Token);
+        Assert.Equal(TimeSpan.FromSeconds(45), message.TimeToLive);
     }
 
     [Fact]
@@ -443,6 +469,29 @@ public sealed class NotificationDispatcherPushTests
     }
 
     [Fact]
+    public async Task Un_proveedor_sin_configurar_deja_el_log_Failed_y_no_cuenta_como_enviado()
+    {
+        var sender = new RecordingPushSender();
+        sender.FailNextWith(new Error(PushErrorCodes.NotConfigured, "Push provider is not configured."));
+        var devices = new FakePushDeviceTokenRepository();
+        devices.AddActiveDevice(TenantId, UserId, "token");
+        var logs = new RecordingNotificationLogRepository();
+        var metrics = new CountingDispatchMetrics();
+        var dispatcher = BuildDispatcher(sender, devices, logs, metrics);
+
+        var outcome = await dispatcher.DispatchPushAsync(FormPush(Guid.NewGuid()));
+
+        Assert.Equal(PushErrorCodes.NotConfigured, outcome.Error?.Code);
+        var log = Assert.Single(logs.Logs);
+        Assert.Equal(NotificationStatus.Failed, log.Status);
+        Assert.Equal("Push provider is not configured.", log.Error);
+        Assert.Equal(1, metrics.Failed);
+        Assert.Equal(0, metrics.Sent);
+        Assert.Empty(devices.RevokedIds);
+        Assert.Empty(outcome.RetryableDeviceIds);
+    }
+
+    [Fact]
     public async Task Con_dispositivo_y_envio_exitoso_el_log_queda_Sent()
     {
         var sender = new RecordingPushSender();
@@ -462,6 +511,110 @@ public sealed class NotificationDispatcherPushTests
         Assert.Equal(1, metrics.Sent);
         Assert.Equal(0, metrics.Failed);
     }
+
+    // N8-04: encolar no llama a FCM ni escribe log; el envío lo hace el carril de push.
+    [Fact]
+    public async Task Enqueue_does_not_call_the_push_sender()
+    {
+        var sender = new RecordingPushSender();
+        var devices = new FakePushDeviceTokenRepository();
+        devices.AddActiveDevice(TenantId, UserId, "token");
+        var logs = new RecordingNotificationLogRepository();
+        var queue = new RecordingPushDeliveryQueue();
+        var dispatcher = BuildDispatcher(sender, devices, logs, queue);
+        var request = FormPush(Guid.NewGuid());
+
+        var result = await dispatcher.EnqueuePushAsync(request);
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(sender.Sent);
+        Assert.Empty(logs.Logs);
+        var queued = Assert.Single(queue.Queued);
+        Assert.Equal(TenantId, queued.TenantId);
+        Assert.Same(request, queued.Request);
+    }
+
+    [Fact]
+    public async Task Enqueue_without_devices_queues_nothing()
+    {
+        var queue = new RecordingPushDeliveryQueue();
+        var dispatcher = BuildDispatcher(
+            new RecordingPushSender(),
+            new FakePushDeviceTokenRepository(),
+            new RecordingNotificationLogRepository(),
+            queue
+        );
+
+        var result = await dispatcher.EnqueuePushAsync(FormPush(Guid.NewGuid()));
+
+        Assert.Equal("Notification.NoPushDevices", result.Error.Code);
+        Assert.Empty(queue.Queued);
+    }
+
+    // La intención encola el push; la llamada entrante sigue enviando en el handler.
+    [Fact]
+    public async Task Intent_push_is_queued_and_the_incoming_call_is_not()
+    {
+        var sender = new RecordingPushSender();
+        var devices = new FakePushDeviceTokenRepository();
+        devices.AddActiveDevice(TenantId, UserId, "token");
+        var queue = new RecordingPushDeliveryQueue();
+        var dispatcher = BuildDispatcher(sender, devices, new RecordingNotificationLogRepository(), queue);
+
+        var summary = await dispatcher.DispatchAsync(
+            new NotificationIntent(
+                TaxVision.Notification.Domain.Catalog.NotificationKinds.CommunicationChatMessage,
+                TenantId,
+                new NotificationTarget(UserId),
+                Guid.NewGuid(),
+                "communication.chat.message_sent.v1",
+                DateTime.UtcNow,
+                "corr",
+                Push: new PushContent(Guid.NewGuid().ToString(), LinkForRecipient: true)
+            )
+        );
+        await MobileCommunicationPushConsumer.Handle(
+            new CallStartedIntegrationEvent
+            {
+                TenantId = TenantId,
+                CallId = Guid.NewGuid(),
+                CallerUserId = Guid.NewGuid(),
+                CalleeUserId = UserId,
+                Kind = "Audio",
+                RingingAtUtc = DateTime.UtcNow,
+            },
+            dispatcher,
+            NullLogger<CallStartedIntegrationEvent>.Instance,
+            TimeProvider.System,
+            default
+        );
+
+        Assert.Equal(ChannelOutcome.Queued, summary.Channels[NotificationChannel.Push]);
+        Assert.Single(queue.Queued);
+        Assert.Single(sender.Sent);
+    }
+
+    private static NotificationDispatcher BuildDispatcher(
+        IPushSender pushSender,
+        IPushDeviceTokenRepository pushDeviceTokens,
+        INotificationLogRepository logs,
+        IPushDeliveryQueue pushQueue
+    ) =>
+        TestDispatchers.Create(
+            NoOpSmsSender.Instance,
+            pushSender,
+            pushDeviceTokens,
+            logs,
+            TestDeliveryGates.For(
+                AlwaysEnabledUserNotificationPreferenceRepository.Instance,
+                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
+            ),
+            new NoOpIntegrationEventPublisher(),
+            new NoOpUnitOfWork(),
+            new NoOpNotificationDispatchMetrics(),
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(logs),
+            pushQueue: pushQueue
+        );
 
     private static NotificationDispatcher BuildDispatcher(
         IPushSender pushSender,
@@ -487,6 +640,10 @@ public sealed class NotificationDispatcherPushTests
     private sealed class CountingDispatchMetrics : INotificationDispatchMetrics
     {
         public void RecordClientFormPushFailure(string code) { }
+
+        public void RecordNotAllowedByCatalog(string kind, string channel) { }
+
+        public void RecordDelivered(string kind, string channel) { }
 
         public int Sent { get; private set; }
         public int Failed { get; private set; }
@@ -594,15 +751,35 @@ public sealed class NotificationDispatcherPushTests
 
     private sealed class FakePushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
         private readonly Dictionary<Guid, PushDeviceToken> _devices = [];
         public List<Guid> RevokedIds { get; } = [];
 
-        public Guid AddActiveDevice(Guid tenantId, Guid userId, string token)
+        public Guid AddActiveDevice(Guid tenantId, Guid userId, string token, PushPlatform platform = PushPlatform.Fcm)
         {
-            var device = PushDeviceToken.Register(tenantId, userId, PushPlatform.Fcm, token, deviceId: null).Value;
+            var device = PushDeviceToken.Register(tenantId, userId, platform, token, deviceId: null).Value;
             _devices[device.Id] = device;
             return device.Id;
         }
@@ -704,7 +881,8 @@ public sealed class NotificationDispatcherPushTests
             string text,
             CancellationToken ct,
             string? templateKey,
-            string? idempotencyToken
+            string? idempotencyToken,
+            string? sourceRef = null
         ) => Task.FromResult(Result.Success());
     }
 

@@ -37,12 +37,12 @@ public sealed class SubscriptionDiscountEndingNoticeTests
     }
 
     [Fact]
-    public void No_notice_outside_nine_or_on_another_day()
+    public void No_notice_before_nine_or_more_than_seven_days_before()
     {
         var (_, discount) = Granted(DiscountDuration.Months, months: 3);
 
-        Assert.Null(SubscriptionDiscountEndingNotice.For(discount, SevenDaysBeforeAtNine.AddHours(1), NewYork, "c"));
-        Assert.Null(SubscriptionDiscountEndingNotice.For(discount, SevenDaysBeforeAtNine.AddDays(1), NewYork, "c"));
+        Assert.Null(SubscriptionDiscountEndingNotice.For(discount, SevenDaysBeforeAtNine.AddHours(-1), NewYork, "c"));
+        Assert.Null(SubscriptionDiscountEndingNotice.For(discount, SevenDaysBeforeAtNine.AddDays(-1), NewYork, "c"));
     }
 
     [Theory]
@@ -56,6 +56,42 @@ public sealed class SubscriptionDiscountEndingNoticeTests
 
         Assert.Null(SubscriptionDiscountEndingNotice.For(discount, sevenDaysBefore, NewYork, "c"));
         Assert.Null(SubscriptionDiscountEndingNotice.For(discount, SevenDaysBeforeAtNine, NewYork, "c"));
+    }
+
+    // D-N50: dos pasadas en la misma franja y la del día siguiente dejan un solo aviso.
+    [Fact]
+    public void Ending_discount_notice_is_published_once_per_period()
+    {
+        var (subscription, discount) = Granted(DiscountDuration.Months, months: 3);
+        DateTime[] passes =
+        [
+            SevenDaysBeforeAtNine,
+            SevenDaysBeforeAtNine.AddMinutes(40),
+            SevenDaysBeforeAtNine.AddDays(1),
+        ];
+
+        var notices = passes
+            .Select(nowUtc => SubscriptionDiscountEndingNotice.Take(subscription, discount.Id, nowUtc, NewYork, "c"))
+            .Where(notice => notice is not null)
+            .ToList();
+
+        Assert.Single(notices);
+        Assert.Equal(SevenDaysBeforeAtNine, discount.EndingNoticeSentAtUtc);
+    }
+
+    // D-N50: el job no corrió el día exacto; el aviso sale igual en la siguiente pasada, con los días que faltan.
+    [Fact]
+    public void Notice_is_sent_when_a_day_was_skipped()
+    {
+        var (subscription, discount) = Granted(DiscountDuration.Months, months: 3);
+        var nextDay = SevenDaysBeforeAtNine.AddDays(1);
+
+        var first = SubscriptionDiscountEndingNotice.Take(subscription, discount.Id, nextDay, NewYork, "c");
+        var again = SubscriptionDiscountEndingNotice.Take(subscription, discount.Id, nextDay.AddDays(1), NewYork, "c");
+
+        Assert.NotNull(first);
+        Assert.Equal(6, first.DaysUntilEnd);
+        Assert.Null(again);
     }
 
     private static (TenantSubscription, SubscriptionDiscount) Granted(DiscountDuration duration, int? months)

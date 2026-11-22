@@ -57,7 +57,8 @@ internal sealed class ReminderFireJob(
         try
         {
             await bus.InvokeAsync(
-                new FireReminderCommand(tenantId, reminderId, options.Value.MisfireGrace),
+                // El job es el origen de la traza: un id por disparo.
+                new FireReminderCommand(tenantId, reminderId, options.Value.MisfireGrace, Guid.NewGuid().ToString("N")),
                 context.CancellationToken
             );
         }

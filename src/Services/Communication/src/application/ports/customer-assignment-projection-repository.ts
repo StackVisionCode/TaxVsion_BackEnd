@@ -22,4 +22,7 @@ export interface CustomerAssignmentProjectionRepository {
 
   /** Set de customerIds asignados a este usuario (para filtrar el picker de clientes por asignacion). */
   getAssignedCustomerIds(tenantId: string, userId: string): Promise<string[]>;
+
+  /** Staff asignado a este customer (directorio "mi oficina" del portal). */
+  getAssignedUserIds(tenantId: string, customerId: string): Promise<string[]>;
 }

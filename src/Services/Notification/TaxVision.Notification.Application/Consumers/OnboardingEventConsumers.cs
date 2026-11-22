@@ -21,6 +21,12 @@ namespace TaxVision.Notification.Application.Consumers;
 // NotificationRecipientRolePermissionsProjection).
 // ---------------------------------------------------------------------------
 
+/// <summary>El prospecto aún no tiene cuenta y los eventos de alta no traen idioma: inglés.</summary>
+internal static class OnboardingReaders
+{
+    public static RecipientLocale Prospect(IRecipientLocale locales) => locales.FromEventLanguage(null);
+}
+
 public static class OnboardingOtpRequestedConsumer
 {
     public static async Task Handle(
@@ -28,6 +34,7 @@ public static class OnboardingOtpRequestedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -41,7 +48,7 @@ public static class OnboardingOtpRequestedConsumer
             var expiresInMinutes = Math.Max(1, (int)Math.Ceiling((evt.ExpiresAtUtc - DateTime.UtcNow).TotalMinutes));
 
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "onboarding.otp_requested.v1",
                     evt.TenantId,
                     new Dictionary<string, object?>
@@ -50,6 +57,8 @@ public static class OnboardingOtpRequestedConsumer
                         ["first_name"] = firstName,
                         ["expires_in_minutes"] = expiresInMinutes,
                     },
+                    ScribeRenderAudience.Staff,
+                    OnboardingReaders.Prospect(locales),
                     ct
                 )
             ).EnsureRendered("onboarding.otp_requested.v1");
@@ -77,6 +86,7 @@ public static class OnboardingRegistrationReadyConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         ILogger<OnboardingRegistrationReadyIntegrationEvent> logger,
         CancellationToken ct
@@ -110,7 +120,7 @@ public static class OnboardingRegistrationReadyConsumer
             var receiptLookup = await receiptLookups.GetByOnboardingIdAsync(evt.OnboardingId, ct);
 
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "onboarding.registration_ready.v1",
                     evt.TenantId,
                     new Dictionary<string, object?>
@@ -118,7 +128,8 @@ public static class OnboardingRegistrationReadyConsumer
                         ["first_name"] = evt.FirstName,
                         // PlanName es nullable hasta Fase 16 (Auth no tiene acceso al catálogo de
                         // Subscription todavía) — mismo gap ya documentado en el evento.
-                        ["plan_name"] = evt.PlanName ?? "tu plan",
+                        ["plan_name"] =
+                            evt.PlanName ?? EmailText.For("plan.fallback", OnboardingReaders.Prospect(locales)),
                         ["price_formatted"] = evt.PriceFormatted,
                         // Con códigos: precio de lista, descuento y qué códigos. Vacíos sin códigos.
                         ["gross_formatted"] = evt.GrossFormatted ?? string.Empty,
@@ -128,6 +139,8 @@ public static class OnboardingRegistrationReadyConsumer
                         ["registration_url"] = urlResult.Value,
                         ["receipt_download_url"] = receiptLookup?.ReceiptDownloadUrl,
                     },
+                    ScribeRenderAudience.Staff,
+                    OnboardingReaders.Prospect(locales),
                     ct
                 )
             ).EnsureRendered("onboarding.registration_ready.v1");
@@ -168,6 +181,7 @@ public static class OnboardingReceiptReadyConsumer
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         IUnitOfWork unitOfWork,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -181,6 +195,22 @@ public static class OnboardingReceiptReadyConsumer
             if (existing is not null)
                 return;
 
+            // El render va antes de la primera escritura.
+            var render = (
+                await scribeClient.RenderForRecipientAsync(
+                    "onboarding.receipt_ready.v1",
+                    evt.TenantId,
+                    new Dictionary<string, object?>
+                    {
+                        ["first_name"] = evt.FirstName,
+                        ["receipt_download_url"] = evt.ReceiptDownloadUrl,
+                    },
+                    ScribeRenderAudience.Staff,
+                    OnboardingReaders.Prospect(locales),
+                    ct
+                )
+            ).EnsureRendered("onboarding.receipt_ready.v1");
+
             await receiptLookups.AddAsync(
                 OnboardingReceiptLookup.Create(
                     evt.OnboardingId,
@@ -191,19 +221,6 @@ public static class OnboardingReceiptReadyConsumer
                 ct
             );
             await unitOfWork.SaveChangesAsync(ct);
-
-            var render = (
-                await scribeClient.RenderAsync(
-                    "onboarding.receipt_ready.v1",
-                    evt.TenantId,
-                    new Dictionary<string, object?>
-                    {
-                        ["first_name"] = evt.FirstName,
-                        ["receipt_download_url"] = evt.ReceiptDownloadUrl,
-                    },
-                    ct
-                )
-            ).EnsureRendered("onboarding.receipt_ready.v1");
 
             await gateway.QueueEmailAsync(
                 render.ToDispatchRequest(
@@ -230,6 +247,7 @@ public static class OnboardingPaymentFailedNotificationConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -237,16 +255,19 @@ public static class OnboardingPaymentFailedNotificationConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "onboarding.payment_failed.v1",
                     evt.TenantId,
                     new Dictionary<string, object?>
                     {
                         ["first_name"] = evt.FirstName,
-                        ["plan_name"] = evt.PlanName ?? "tu plan",
+                        ["plan_name"] =
+                            evt.PlanName ?? EmailText.For("plan.fallback", OnboardingReaders.Prospect(locales)),
                         ["failure_reason"] = evt.FailureReason,
                         ["retry_url"] = evt.RetryUrl,
                     },
+                    ScribeRenderAudience.Staff,
+                    OnboardingReaders.Prospect(locales),
                     ct
                 )
             ).EnsureRendered("onboarding.payment_failed.v1");

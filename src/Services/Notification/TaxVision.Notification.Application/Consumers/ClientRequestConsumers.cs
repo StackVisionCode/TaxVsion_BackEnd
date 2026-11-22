@@ -1,12 +1,11 @@
-﻿using BuildingBlocks.Common;
+using System.Globalization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -28,8 +27,6 @@ public static class ClientRequestCreatedConsumer
         ClientRequestCreatedIntegrationEvent evt,
         ICustomerEmailDirectoryRepository customers,
         ICustomerContactPolicyRepository contactPolicies,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribeClient,
         NotificationDispatcher dispatcher,
         IRecipientResolver recipientResolver,
         IOptions<PortalOptions> portal,
@@ -56,31 +53,27 @@ public static class ClientRequestCreatedConsumer
                 // El cliente entra a SU oficina: link al portal bajo el subdominio del tenant, no a un base fijo.
                 var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
 
-                var render = (
-                    await scribeClient.RenderAsync(
-                        TemplateKey,
-                        evt.TenantId,
-                        new Dictionary<string, object?>
-                        {
-                            ["customer_name"] = customer.DisplayName,
-                            ["request_title"] = evt.Title,
-                            ["request_details"] = evt.Details,
-                            ["due_at_utc"] = CivilDue.Typed(evt.DueOn, evt.DueAtUtc),
-                            ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
-                        },
-                        ScribeRenderAudience.Client,
-                        ct
-                    )
-                ).EnsureRendered(TemplateKey);
-
-                await gateway.QueueEmailAsync(
-                    render.ToDispatchRequest(
-                        tenantId: evt.TenantId,
-                        to: customer.NormalizedEmail,
-                        templateKey: TemplateKey,
-                        relatedEventId: evt.EventId,
-                        correlationId: correlation.CorrelationId
-                    ),
+                // Se renderiza en el idioma del cliente (el destino lleva su id).
+                await dispatcher.DispatchAsync(
+                    Intent(
+                        evt,
+                        new NotificationTarget(Email: customer.NormalizedEmail, CustomerId: evt.CustomerId),
+                        correlation
+                    ) with
+                    {
+                        Email = new EmailContent(
+                            TemplateKey,
+                            new Dictionary<string, object?>
+                            {
+                                ["customer_name"] = customer.DisplayName,
+                                ["request_title"] = evt.Title,
+                                ["request_details"] = evt.Details,
+                                ["due_at_utc"] = CivilDue.Typed(evt.DueOn, evt.DueAtUtc),
+                                ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
+                            },
+                            ScribeRenderAudience.Client
+                        ),
+                    },
                     ct
                 );
             }
@@ -94,33 +87,39 @@ public static class ClientRequestCreatedConsumer
             );
             if (portalUserId is { } userId)
             {
-                var title = $"Nueva solicitud: {evt.Title}";
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.DocumentsAndSignatures,
-                    "task.client_request_created",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
-                        NotificationKinds.TasksClientRequestCreated,
-                        userId,
-                        evt.EventId,
-                        "tasks.client_request_created.v1",
-                        evt.OccurredOn,
-                        title,
-                        FallbackBody: evt.Details,
-                        ResourceId: evt.ClientRequestId.ToString(),
-                        ResourceContext: new Dictionary<string, string> { ["customerId"] = evt.CustomerId.ToString() },
-                        Params: new Dictionary<string, string> { ["title"] = evt.Title }
-                    ),
-                    ct: ct
+                await dispatcher.DispatchAsync(
+                    Intent(evt, new NotificationTarget(userId, CustomerId: evt.CustomerId), correlation) with
+                    {
+                        InApp = new InAppContent(
+                            Params: new Dictionary<string, string> { ["title"] = evt.Title },
+                            ResourceId: evt.ClientRequestId.ToString(),
+                            ResourceContext: new Dictionary<string, string>
+                            {
+                                ["customerId"] = evt.CustomerId.ToString(),
+                            },
+                            TemplateKey: "task.client_request_created"
+                        ),
+                    },
+                    ct
                 );
             }
         }
     }
+
+    private static NotificationIntent Intent(
+        ClientRequestCreatedIntegrationEvent evt,
+        NotificationTarget target,
+        ICorrelationContext correlation
+    ) =>
+        new(
+            NotificationKinds.TasksClientRequestCreated,
+            evt.TenantId,
+            target,
+            evt.EventId,
+            "tasks.client_request_created.v1",
+            evt.OccurredOn,
+            correlation.CorrelationId
+        );
 }
 
 /// <summary>
@@ -143,48 +142,30 @@ public static class ClientRequestFulfilledConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var title = $"El cliente respondió: {evt.Title}";
-            var body = evt.DocumentCount == 1 ? "Subió un documento." : $"Subió {evt.DocumentCount} documentos.";
             // Quien sigue el pedido (sucesor tras un retiro); los mensajes viejos no lo traen.
             var staffUserId = evt.StaffRecipientUserId ?? evt.RequestedByUserId;
 
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(staffUserId),
-                title,
-                NotificationCategory.DocumentsAndSignatures,
-                "task.client_request_fulfilled",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: staffUserId,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.TasksClientRequestFulfilled,
-                    staffUserId,
+                    evt.TenantId,
+                    new NotificationTarget(staffUserId, CustomerId: evt.CustomerId),
                     evt.EventId,
                     "tasks.client_request_fulfilled.v1",
                     evt.OccurredOn,
-                    title,
-                    FallbackBody: body,
-                    ResourceId: evt.ClientRequestId.ToString(),
-                    ResourceContext: new Dictionary<string, string> { ["customerId"] = evt.CustomerId.ToString() },
-                    Params: new Dictionary<string, string>
-                    {
-                        ["title"] = evt.Title,
-                        ["documentCount"] = evt.DocumentCount.ToString(),
-                    }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(
+                        Params: new Dictionary<string, string>
+                        {
+                            ["title"] = evt.Title,
+                            ["documentCount"] = evt.DocumentCount.ToString(CultureInfo.InvariantCulture),
+                        },
+                        ResourceId: evt.ClientRequestId.ToString(),
+                        ResourceContext: new Dictionary<string, string> { ["customerId"] = evt.CustomerId.ToString() },
+                        TemplateKey: "task.client_request_fulfilled"
+                    ),
+                    Push: new PushContent()
                 ),
-                ct: ct
-            );
-
-            await dispatcher.SendPushAsync(
-                evt.TenantId,
-                staffUserId,
-                title,
-                body,
-                NotificationCategory.DocumentsAndSignatures,
-                "task.client_request_fulfilled",
-                evt.EventId,
-                correlation.CorrelationId,
                 ct
             );
         }
@@ -204,17 +185,17 @@ public static class ClientRequestFulfilledConsumer
 public static class ClientRequestDocumentRejectedConsumer
 {
     private const string TemplateKey = "task.client_request_document_rejected.v1";
+    private const string DocumentRejectedMessage = "task.document_rejected.client_message";
 
     public static async Task Handle(
         ClientRequestDocumentRejectedIntegrationEvent evt,
         ICustomerEmailDirectoryRepository customers,
         ICustomerContactPolicyRepository contactPolicies,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribeClient,
         NotificationDispatcher dispatcher,
         IRecipientResolver recipientResolver,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hostResolver,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -226,10 +207,10 @@ public static class ClientRequestDocumentRejectedConsumer
                 evt,
                 customers,
                 contactPolicies,
-                gateway,
-                scribeClient,
+                dispatcher,
                 portal,
                 hostResolver,
+                locales,
                 correlation,
                 ct
             );
@@ -259,29 +240,16 @@ public static class ClientRequestDocumentRejectedConsumer
         if (portalUserId is not { } userId)
             return;
 
-        var title = $"Tu archivo necesita atencion: {evt.DisplayName}";
-        await dispatcher.RecordInAppAsync(
-            evt.TenantId,
-            NotificationRecipient.ForUser(userId),
-            title,
-            NotificationCategory.DocumentsAndSignatures,
-            "tasks.client_request_document_rejected",
-            evt.EventId,
-            correlation.CorrelationId,
-            recipientUserId: userId,
-            inApp: new InAppNotificationRequest(
-                NotificationKinds.TasksClientRequestDocumentRejected,
-                userId,
-                evt.EventId,
-                "tasks.client_request_document_rejected.v1",
-                evt.OccurredOn,
-                title,
-                FallbackBody: evt.ClientMessage,
-                ResourceId: evt.ClientRequestId.ToString(),
-                ResourceContext: new Dictionary<string, string> { ["customerId"] = evt.CustomerId.ToString() },
-                Params: new Dictionary<string, string> { ["displayName"] = evt.DisplayName }
-            ),
-            ct: ct
+        await dispatcher.DispatchAsync(
+            Intent(evt, new NotificationTarget(userId, CustomerId: evt.CustomerId), correlation) with
+            {
+                InApp = InApp(
+                    evt,
+                    new Dictionary<string, string> { ["displayName"] = evt.DisplayName },
+                    "tasks.client_request_document_rejected"
+                ),
+            },
+            ct
         );
     }
 
@@ -292,31 +260,18 @@ public static class ClientRequestDocumentRejectedConsumer
         CancellationToken ct
     )
     {
-        var title = $"Archivo del cliente rechazado: {evt.DisplayName} ({evt.Reason})";
         // Quien sigue el pedido (sucesor tras un retiro); los mensajes viejos no lo traen.
         var staffUserId = evt.StaffRecipientUserId ?? evt.RequestedByUserId;
-        await dispatcher.RecordInAppAsync(
-            evt.TenantId,
-            NotificationRecipient.ForUser(staffUserId),
-            title,
-            NotificationCategory.DocumentsAndSignatures,
-            "task.client_request_document_rejected",
-            evt.EventId,
-            correlation.CorrelationId,
-            recipientUserId: staffUserId,
-            inApp: new InAppNotificationRequest(
-                NotificationKinds.TasksClientRequestDocumentRejected,
-                staffUserId,
-                evt.EventId,
-                "tasks.client_request_document_rejected.v1",
-                evt.OccurredOn,
-                title,
-                FallbackBody: $"Motivo: {evt.Reason}.",
-                ResourceId: evt.ClientRequestId.ToString(),
-                ResourceContext: new Dictionary<string, string> { ["customerId"] = evt.CustomerId.ToString() },
-                Params: new Dictionary<string, string> { ["displayName"] = evt.DisplayName, ["reason"] = evt.Reason }
-            ),
-            ct: ct
+        await dispatcher.DispatchAsync(
+            Intent(evt, new NotificationTarget(staffUserId, CustomerId: evt.CustomerId), correlation) with
+            {
+                InApp = InApp(
+                    evt,
+                    new Dictionary<string, string> { ["displayName"] = evt.DisplayName, ["reason"] = evt.Reason },
+                    "task.client_request_document_rejected"
+                ),
+            },
+            ct
         );
     }
 
@@ -324,10 +279,10 @@ public static class ClientRequestDocumentRejectedConsumer
         ClientRequestDocumentRejectedIntegrationEvent evt,
         ICustomerEmailDirectoryRepository customers,
         ICustomerContactPolicyRepository contactPolicies,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribeClient,
+        NotificationDispatcher dispatcher,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hostResolver,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -348,33 +303,58 @@ public static class ClientRequestDocumentRejectedConsumer
             return;
 
         var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
+        // El mensaje del sistema va en el idioma del cliente, el mismo con el que se renderiza el correo.
+        var locale = await locales.ForCustomerAsync(evt.TenantId, evt.CustomerId, ct);
 
-        var render = (
-            await scribeClient.RenderAsync(
-                TemplateKey,
-                evt.TenantId,
-                new Dictionary<string, object?>
-                {
-                    ["customer_name"] = customer.DisplayName,
-                    ["document_name"] = evt.DisplayName,
-                    ["request_title"] = evt.DisplayName,
-                    ["client_message"] = evt.ClientMessage,
-                    ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
-                },
-                ScribeRenderAudience.Client,
-                ct
-            )
-        ).EnsureRendered(TemplateKey);
-
-        await gateway.QueueEmailAsync(
-            render.ToDispatchRequest(
-                tenantId: evt.TenantId,
-                to: customer.NormalizedEmail,
-                templateKey: TemplateKey,
-                relatedEventId: evt.EventId,
-                correlationId: correlation.CorrelationId
-            ),
+        await dispatcher.DispatchAsync(
+            Intent(
+                evt,
+                new NotificationTarget(Email: customer.NormalizedEmail, CustomerId: evt.CustomerId),
+                correlation
+            ) with
+            {
+                Email = new EmailContent(
+                    TemplateKey,
+                    new Dictionary<string, object?>
+                    {
+                        ["customer_name"] = customer.DisplayName,
+                        ["document_name"] = evt.DisplayName,
+                        ["request_title"] = evt.DisplayName,
+                        // Mensaje fijo del sistema (Tasks lo manda en un solo idioma): sale en el del cliente.
+                        ["client_message"] = EmailText.For(DocumentRejectedMessage, locale),
+                        ["portal_link"] = TenantEmailLinks.ClientDocuments(tenantHost, portal.Value),
+                    },
+                    ScribeRenderAudience.Client
+                ),
+            },
             ct
         );
     }
+
+    private static NotificationIntent Intent(
+        ClientRequestDocumentRejectedIntegrationEvent evt,
+        NotificationTarget target,
+        ICorrelationContext correlation
+    ) =>
+        new(
+            NotificationKinds.TasksClientRequestDocumentRejected,
+            evt.TenantId,
+            target,
+            evt.EventId,
+            "tasks.client_request_document_rejected.v1",
+            evt.OccurredOn,
+            correlation.CorrelationId
+        );
+
+    private static InAppContent InApp(
+        ClientRequestDocumentRejectedIntegrationEvent evt,
+        Dictionary<string, string> parameters,
+        string templateKey
+    ) =>
+        new(
+            Params: parameters,
+            ResourceId: evt.ClientRequestId.ToString(),
+            ResourceContext: new Dictionary<string, string> { ["customerId"] = evt.CustomerId.ToString() },
+            TemplateKey: templateKey
+        );
 }

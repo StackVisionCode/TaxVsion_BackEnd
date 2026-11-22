@@ -3,6 +3,7 @@ using Wolverine.Attributes;
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
+/// Sin publicador desde 2026-11 (ningún servicio lo emite ni Notification lo consume); se conserva el contrato.
 /// F7 — la copia parcial ya está rendeada y subida a CloudStorage. Notification lo consume y
 /// manda el correo/SMS/WhatsApp al firmante con el link de descarga del archivo.
 /// </summary>

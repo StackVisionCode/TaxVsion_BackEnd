@@ -1,6 +1,7 @@
 using BuildingBlocks.Jobs;
 using BuildingBlocks.Messaging.SubscriptionIntegrationEvents;
 using BuildingBlocks.TenantTimeZones;
+using BuildingBlocks.TimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -13,8 +14,8 @@ namespace TaxVision.Subscription.Infrastructure.Scheduling;
 
 /// <summary>
 /// Cada hora: cierra los descuentos cuya ventana ya terminó (cobrar bien no depende de esto, lo usa la consulta) y
-/// avisa 7 días antes del fin de uno de N meses, a las 9:00 de la oficina; esa franja cae una vez por día, así que
-/// cada aviso sale una sola vez sin tabla de log. Una unidad con outbox por oficina y por aviso.
+/// avisa del fin de uno de N meses desde 7 días antes, a partir de las 9:00 de la oficina. El aviso deja su marca en
+/// el descuento en la misma unidad con outbox: sale una sola vez aunque el job corra dos veces o se salte un día.
 /// </summary>
 public sealed class SubscriptionDiscountJob(
     IServiceScopeFactory scopeFactory,
@@ -47,14 +48,12 @@ public sealed class SubscriptionDiscountJob(
             ct
         );
 
-        var notices = await EndingNoticesAsync(services, discounts, nowUtc, ct);
+        // El job es el origen de la traza: un id por pasada.
+        var correlationId = Guid.NewGuid().ToString("N");
+        var due = await DueNoticesAsync(services, discounts, nowUtc, correlationId, ct);
         var sent = await RunUnitsAsync(
-            notices,
-            async (notice, unit, _) =>
-            {
-                await unit.PublishAsync(notice);
-                return true;
-            },
+            due,
+            (candidate, unit, token) => SendNoticeAsync(unit, candidate, nowUtc, correlationId, token),
             ct
         );
 
@@ -80,11 +79,42 @@ public sealed class SubscriptionDiscountJob(
         return subscription?.CloseExpiredDiscounts(nowUtc) ?? false;
     }
 
-    // Los de N meses que terminan en los próximos días; la regla decide si hoy, a esta hora, toca avisar.
-    private static async Task<List<SubscriptionDiscountEndingIntegrationEvent>> EndingNoticesAsync(
+    // Relee el descuento dentro de la unidad: la marca y el aviso se confirman juntos o nada.
+    private static async Task<bool> SendNoticeAsync(
+        JobUnitContext<SubscriptionDbContext> unit,
+        DueNotice candidate,
+        DateTime nowUtc,
+        string correlationId,
+        CancellationToken ct
+    )
+    {
+        unit.UseTenant(candidate.TenantId);
+        var subscription = await unit
+            .Services.GetRequiredService<ISubscriptionRepository>()
+            .GetWithFullHistoryAsync(candidate.TenantId, ct);
+        if (
+            subscription is null
+            || SubscriptionDiscountEndingNotice.Take(
+                subscription,
+                candidate.DiscountId,
+                nowUtc,
+                candidate.Zone,
+                correlationId
+            )
+                is not { } notice
+        )
+            return false;
+
+        await unit.PublishAsync(notice);
+        return true;
+    }
+
+    // Los de N meses sin aviso que terminan en los próximos días; la regla decide si ya toca avisar.
+    private static async Task<List<DueNotice>> DueNoticesAsync(
         IServiceProvider services,
         DbSet<SubscriptionDiscount> discounts,
         DateTime nowUtc,
+        string correlationId,
         CancellationToken ct
     )
     {
@@ -94,6 +124,7 @@ public sealed class SubscriptionDiscountJob(
             .AsNoTracking()
             .Where(discount =>
                 discount.EndedAtUtc == null
+                && discount.EndingNoticeSentAtUtc == null
                 && discount.Duration == DiscountDuration.Months
                 && discount.EndsAtUtc > nowUtc
                 && discount.EndsAtUtc <= windowEndUtc
@@ -102,16 +133,16 @@ public sealed class SubscriptionDiscountJob(
             .ToListAsync(ct);
 
         var zones = services.GetRequiredService<ITenantTimeZoneResolver>();
-        // El job es el origen de la traza: un id por pasada.
-        var correlationId = Guid.NewGuid().ToString("N");
-        var notices = new List<SubscriptionDiscountEndingIntegrationEvent>();
+        var due = new List<DueNotice>();
         foreach (var discount in ending)
         {
             var zone = await zones.ResolveAsync(discount.TenantId, ct);
-            if (SubscriptionDiscountEndingNotice.For(discount, nowUtc, zone, correlationId) is { } notice)
-                notices.Add(notice);
+            if (SubscriptionDiscountEndingNotice.For(discount, nowUtc, zone, correlationId) is not null)
+                due.Add(new DueNotice(discount.TenantId, discount.Id, zone));
         }
 
-        return notices;
+        return due;
     }
+
+    private sealed record DueNotice(Guid TenantId, Guid DiscountId, ResolvedTimeZone Zone);
 }

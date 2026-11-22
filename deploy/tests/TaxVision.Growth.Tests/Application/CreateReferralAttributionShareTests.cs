@@ -65,7 +65,7 @@ public sealed class CreateReferralAttributionShareTests
         public async Task<TaxVision.Referrals.Domain.Attributions.ReferralAttribution> RunAsync(Guid shareId)
         {
             var attributions = new InMemoryReferralAttributionRepository();
-            var result = await CreateReferralAttributionHandler.Handle(
+            var (result, _) = await CreateReferralAttributionHandler.Handle(
                 new CreateReferralAttributionCommand(
                     GrowthTestData.RefereeTenantId,
                     program.Id,
@@ -83,6 +83,7 @@ public sealed class CreateReferralAttributionShareTests
                 new FakeReferralCodeTokenHasher(PlaintextCode, code.CodeHash),
                 new FakeReferralIdempotencyExecutor(attributions),
                 Shares,
+                new TaxVision.Growth.Api.IntegrationEvents.ReferralNoticeEvents(),
                 new FixedTimeProvider(new DateTimeOffset(GrowthTestData.NowUtc.AddMinutes(1))),
                 CancellationToken.None
             );

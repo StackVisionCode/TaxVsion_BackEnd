@@ -61,6 +61,25 @@ public sealed class UserOffboardingIncompleteConsumerTests
         Assert.Single(harness.InAppRows.Select(row => row.GroupKey).Distinct());
     }
 
+    /// <summary>Cada quien en su idioma y su zona: un render por idioma, no por persona.</summary>
+    [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var locales = new FixedRecipientLocale("es", "America/Bogota");
+        var harness = new OffboardingNoticeHarness(
+            active: [Admin, CoAdmin],
+            byPermission: new Dictionary<string, IReadOnlyList<Guid>> { ["users.manage"] = [Admin, CoAdmin] },
+            locales: locales
+        );
+
+        await HandleAsync(harness, Event());
+
+        var render = Assert.Single(harness.Scribe.Calls);
+        Assert.Equal("Es", render.Variables["language"]);
+        Assert.Equal(new ScribeReader("es", "America/Bogota"), Assert.Single(harness.Scribe.Readers));
+        Assert.Equal(2, harness.Postmaster.Count);
+    }
+
     [Fact]
     public async Task Sin_pasos_pendientes_o_sin_destinatarios_no_avisa()
     {

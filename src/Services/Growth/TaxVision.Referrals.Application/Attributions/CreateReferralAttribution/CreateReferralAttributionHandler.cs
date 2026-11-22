@@ -10,7 +10,45 @@ public static class CreateReferralAttributionHandler
 {
     private const string Operation = "CreateReferralAttribution";
 
-    public static async Task<Result<CreateReferralAttributionResult>> Handle(
+    /// <summary>
+    /// Devuelve el resultado y, si el comando lo pide, el aviso al referidor como mensaje en cascada: Wolverine lo
+    /// publica por el outbox de este mismo mensaje. Solo nace en la ejecución real; una repetición idempotente no
+    /// corre el cuerpo y no lo repite.
+    /// </summary>
+    public static async Task<(Result<CreateReferralAttributionResult> Result, object? Notice)> Handle(
+        CreateReferralAttributionCommand command,
+        IReferralProgramRepository programs,
+        IReferralCodeRepository codes,
+        IReferralAttributionRepository attributions,
+        IReferralCodeTokenHasher codeTokenHasher,
+        IReferralIdempotencyExecutor idempotency,
+        IReferralCodeShareRepository shares,
+        IReferralNoticeEvents noticeEvents,
+        TimeProvider timeProvider,
+        CancellationToken ct
+    )
+    {
+        object? notice = null;
+        var result = await CreateAsync(
+            command,
+            programs,
+            codes,
+            attributions,
+            codeTokenHasher,
+            idempotency,
+            shares,
+            timeProvider,
+            created =>
+                notice =
+                    command.NoticeCorrelationId is { } correlationId && created.ReferrerTenantId != Guid.Empty
+                        ? noticeEvents.Attributed(created, correlationId)
+                        : null,
+            ct
+        );
+        return (result, result.IsSuccess ? notice : null);
+    }
+
+    private static async Task<Result<CreateReferralAttributionResult>> CreateAsync(
         CreateReferralAttributionCommand command,
         IReferralProgramRepository programs,
         IReferralCodeRepository codes,
@@ -19,6 +57,7 @@ public static class CreateReferralAttributionHandler
         IReferralIdempotencyExecutor idempotency,
         IReferralCodeShareRepository shares,
         TimeProvider timeProvider,
+        Action<CreateReferralAttributionResult> onCreated,
         CancellationToken ct
     )
     {
@@ -104,16 +143,16 @@ public static class CreateReferralAttributionHandler
                     return Result.Failure<CreateReferralAttributionResult>(activated.Error);
 
                 await attributions.AddAsync(created.Value, operationCt);
-                return Result.Success(
-                    new CreateReferralAttributionResult(
-                        created.Value.Id,
-                        created.Value.Status,
-                        WasReplay: false,
-                        code.OwnerId,
-                        code.OwnerUserId,
-                        command.Channel?.ToString()
-                    )
+                var attributed = new CreateReferralAttributionResult(
+                    created.Value.Id,
+                    created.Value.Status,
+                    WasReplay: false,
+                    code.OwnerId,
+                    code.OwnerUserId,
+                    command.Channel?.ToString()
                 );
+                onCreated(attributed);
+                return Result.Success(attributed);
             },
             ct
         );

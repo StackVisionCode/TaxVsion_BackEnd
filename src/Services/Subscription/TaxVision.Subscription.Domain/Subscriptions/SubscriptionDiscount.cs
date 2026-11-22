@@ -39,6 +39,9 @@ public sealed class SubscriptionDiscount : BaseEntity
     public DateTime? EndedAtUtc { get; private set; }
     public string? EndedReason { get; private set; }
 
+    /// <summary>Cuándo salió el aviso de "termina pronto"; un descuento tiene una sola ventana, así que avisa una vez.</summary>
+    public DateTime? EndingNoticeSentAtUtc { get; private set; }
+
     private SubscriptionDiscount() { }
 
     internal static SubscriptionDiscount Create(
@@ -125,6 +128,8 @@ public sealed class SubscriptionDiscount : BaseEntity
             ? Math.Min(grossCents, AmountCents ?? 0)
             : 0;
     }
+
+    internal void MarkEndingNoticeSent(DateTime nowUtc) => EndingNoticeSentAtUtc = nowUtc;
 
     internal void End(string reason, DateTime nowUtc)
     {

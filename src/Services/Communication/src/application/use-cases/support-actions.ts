@@ -215,6 +215,7 @@ export async function claimSupportTicket(
     ticketId: ticket.id,
     assignedAgentId: cmd.agent.userId,
     claimedAtUtc: new Date().toISOString(),
+    ...openerOf(ticket),
   };
   await deps.publisher.enqueue(event);
   return Result.ok({ ticketId: ticket.id, assignedAgentId: cmd.agent.userId });
@@ -263,6 +264,7 @@ export async function resolveSupportTicket(
     resolvedByUserId: cmd.actor.userId,
     resolvedByAgent: isAgent,
     resolvedAtUtc: new Date().toISOString(),
+    ...openerOf(ticket),
   };
   await deps.publisher.enqueue(event);
   return Result.ok({ ticketId: ticket.id });
@@ -307,7 +309,13 @@ export async function closeSupportTicket(
     ticketId: ticket.id,
     closedByUserId: cmd.actor.userId,
     closedAtUtc: new Date().toISOString(),
+    ...openerOf(ticket),
   };
   await deps.publisher.enqueue(event);
   return Result.ok({ ticketId: ticket.id });
+}
+
+/** Quien abrió y dónde: Notification le avisa del cambio de estado. */
+function openerOf(ticket: { openedByUserId: string; agentTenantId: string; conversationId: string }) {
+  return { openedByUserId: ticket.openedByUserId, agentTenantId: ticket.agentTenantId, conversationId: ticket.conversationId };
 }

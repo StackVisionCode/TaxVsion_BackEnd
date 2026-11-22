@@ -13,7 +13,8 @@ public interface ISmsSender
         string text,
         CancellationToken ct,
         string? templateKey,
-        string? idempotencyToken
+        string? idempotencyToken,
+        string? sourceRef = null
     );
 }
 
@@ -44,7 +45,9 @@ public sealed record PushMessage(
     IReadOnlyDictionary<string, string>? Data = null,
     string? Topic = null,
     string? Tag = null,
-    string? Link = null
+    string? Link = null,
+    // Vida del aviso en FCM (Android y web). Null = lo de siempre.
+    TimeSpan? TimeToLive = null
 );
 
 /// <summary>
@@ -85,6 +88,9 @@ public static class PushErrorCodes
     public const string Internal = "Notification.Push.Internal";
     public const string QuotaExceeded = "Notification.Push.QuotaExceeded";
 
+    /// <summary>No hay proveedor push configurado; no es transitorio: se arregla con la credencial.</summary>
+    public const string NotConfigured = "Notification.Push.NotConfigured";
+
     /// <summary>Errores que se reintentan (P-21.4); el resto no mejora con otro intento.</summary>
     public static bool IsTransient(string code) => code is Unavailable or Internal or QuotaExceeded;
 }
@@ -116,6 +122,23 @@ public interface IPushDeviceTokenRepository
     /// persiste: el caller guarda.
     /// </summary>
     Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+
+    /// <summary>Revoca los activos del usuario registrados con esa sesión. No persiste.</summary>
+    Task<int> RevokeForSessionAsync(Guid tenantId, Guid userId, Guid sessionId, CancellationToken ct = default);
+
+    /// <summary>Revoca los activos del usuario salvo los de <paramref name="exceptSessionId"/>. No persiste.</summary>
+    Task<int> RevokeAllActiveForUserExceptSessionAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid? exceptSessionId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// La última alta gana: desactiva el mismo token en otras oficinas. Solo desactiva y exige el token
+    /// exacto. No persiste.
+    /// </summary>
+    Task<int> DeactivateTokenInOtherTenantsAsync(string token, Guid exceptTenantId, CancellationToken ct = default);
 }
 
 public interface INotificationLogRepository

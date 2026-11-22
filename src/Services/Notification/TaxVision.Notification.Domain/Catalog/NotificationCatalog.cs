@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Domain.Catalog;
 
@@ -14,6 +15,10 @@ public static class NotificationCatalog
     private static readonly IReadOnlySet<NotificationChannel> InAppEmailPush = Channels(
         NotificationChannel.InApp,
         NotificationChannel.Email,
+        NotificationChannel.Push
+    );
+    private static readonly IReadOnlySet<NotificationChannel> InAppPush = Channels(
+        NotificationChannel.InApp,
         NotificationChannel.Push
     );
     private static readonly IReadOnlySet<NotificationChannel> Transactional = Channels(
@@ -52,17 +57,19 @@ public static class NotificationCatalog
             NotificationCatalogCategory.DocumentsStorage,
             NotificationPriority.Urgent,
             NotificationRecipientPolicy.ByPermission,
-            InAppEmail,
+            InAppEmailPush,
             true,
             "file",
-            NotificationAction.Review
+            NotificationAction.Review,
+            // El push nunca es obligatorio.
+            InAppEmail
         ),
         Entry(
             NotificationKinds.CloudStorageStorageLimitExceeded,
             NotificationCatalogCategory.DocumentsStorage,
             NotificationPriority.High,
             NotificationRecipientPolicy.ByPermission,
-            InAppEmail,
+            InAppPush,
             false,
             "storage_settings",
             NotificationAction.Open
@@ -81,7 +88,7 @@ public static class NotificationCatalog
             NotificationKinds.CloudStorageDmcaTakedown,
             NotificationCatalogCategory.DocumentsStorage,
             NotificationPriority.Urgent,
-            NotificationRecipientPolicy.ExplicitUser,
+            NotificationRecipientPolicy.ByPermission,
             InAppEmail,
             true,
             "file",
@@ -91,7 +98,7 @@ public static class NotificationCatalog
             NotificationKinds.CloudStorageDmcaReinstated,
             NotificationCatalogCategory.DocumentsStorage,
             NotificationPriority.High,
-            NotificationRecipientPolicy.ExplicitUser,
+            NotificationRecipientPolicy.ByPermission,
             InAppEmail,
             true,
             "file",
@@ -101,7 +108,7 @@ public static class NotificationCatalog
             NotificationKinds.CloudStorageLegalHoldPlaced,
             NotificationCatalogCategory.DocumentsStorage,
             NotificationPriority.Urgent,
-            NotificationRecipientPolicy.ExplicitUser,
+            NotificationRecipientPolicy.ByPermission,
             InAppEmail,
             true,
             "file",
@@ -111,7 +118,7 @@ public static class NotificationCatalog
             NotificationKinds.CloudStorageLegalHoldLifted,
             NotificationCatalogCategory.DocumentsStorage,
             NotificationPriority.High,
-            NotificationRecipientPolicy.ExplicitUser,
+            NotificationRecipientPolicy.ByPermission,
             InAppEmail,
             true,
             "file",
@@ -152,6 +159,17 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Signatures,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "signature_request",
+            NotificationAction.Open
+        ),
+        Entry(
+            // Solo Node: a la cuenta del portal del cliente que firmó.
+            NotificationKinds.SignatureDocumentSignedCustomerSigner,
+            NotificationCatalogCategory.Signatures,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.CustomerPortal,
             InApp,
             false,
             "signature_request",
@@ -235,7 +253,8 @@ public static class NotificationCatalog
             InApp,
             false,
             "import_job",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.Collaboration
         ),
         Entry(
             NotificationKinds.CustomerImportFailed,
@@ -245,14 +264,15 @@ public static class NotificationCatalog
             InApp,
             false,
             "import_job",
-            NotificationAction.Review
+            NotificationAction.Review,
+            preferenceCategory: NotificationCategory.Collaboration
         ),
         Entry(
             NotificationKinds.ConnectorsOAuthRefreshFailed,
             NotificationCatalogCategory.Work,
             NotificationPriority.High,
             NotificationRecipientPolicy.MailboxAudience,
-            InAppEmail,
+            InApp,
             false,
             "mailbox_settings",
             NotificationAction.Reconnect
@@ -262,7 +282,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Work,
             NotificationPriority.High,
             NotificationRecipientPolicy.MailboxAudience,
-            InAppEmail,
+            InApp,
             false,
             "mailbox_settings",
             NotificationAction.Reconnect
@@ -303,7 +323,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Work,
             NotificationPriority.High,
             NotificationRecipientPolicy.ExplicitUser,
-            InApp,
+            InAppPush,
             false,
             "task",
             NotificationAction.Open
@@ -313,17 +333,18 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Work,
             NotificationPriority.High,
             NotificationRecipientPolicy.ExplicitUser,
-            InApp,
+            InAppPush,
             false,
             "task",
-            NotificationAction.Review
+            NotificationAction.Review,
+            preferenceCategory: NotificationCategory.DocumentsAndSignatures
         ),
         Entry(
             NotificationKinds.TasksClientRequestCreated,
             NotificationCatalogCategory.Portal,
             NotificationPriority.High,
             NotificationRecipientPolicy.CustomerPortal,
-            Transactional,
+            InAppEmail,
             true,
             "client_request",
             NotificationAction.Open
@@ -333,17 +354,18 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Work,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.ExplicitUser,
-            InApp,
+            InAppPush,
             false,
             "client_request",
-            NotificationAction.Review
+            NotificationAction.Review,
+            preferenceCategory: NotificationCategory.DocumentsAndSignatures
         ),
         Entry(
             NotificationKinds.TasksClientRequestDocumentRejected,
             NotificationCatalogCategory.Portal,
             NotificationPriority.High,
             NotificationRecipientPolicy.Participants,
-            Transactional,
+            InAppEmail,
             true,
             "client_request",
             NotificationAction.Review
@@ -353,7 +375,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Portal,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.CustomerPortal,
-            Transactional,
+            InAppEmail,
             true,
             "task",
             NotificationAction.Open
@@ -367,7 +389,8 @@ public static class NotificationCatalog
             true,
             "form_request",
             NotificationAction.Open,
-            InAppEmail
+            InAppEmail,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormRequestSubmitted,
@@ -377,7 +400,8 @@ public static class NotificationCatalog
             InAppEmailPush,
             false,
             "form_request",
-            NotificationAction.Review
+            NotificationAction.Review,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormRequestReturned,
@@ -388,7 +412,8 @@ public static class NotificationCatalog
             true,
             "form_request",
             NotificationAction.Open,
-            InAppEmail
+            InAppEmail,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormRequestCompleted,
@@ -398,7 +423,8 @@ public static class NotificationCatalog
             InAppEmailPush,
             false,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormRequestCancelled,
@@ -408,7 +434,8 @@ public static class NotificationCatalog
             InApp,
             false,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormAttachmentRejected,
@@ -419,7 +446,8 @@ public static class NotificationCatalog
             true,
             "form_request",
             NotificationAction.Open,
-            InAppEmail
+            InAppEmail,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormAttachmentRejectedStaff,
@@ -429,7 +457,8 @@ public static class NotificationCatalog
             InApp,
             false,
             "form_request",
-            NotificationAction.Review
+            NotificationAction.Review,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormRequestReminder,
@@ -439,7 +468,8 @@ public static class NotificationCatalog
             InAppEmailPush,
             false,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormAccessLink,
@@ -449,7 +479,8 @@ public static class NotificationCatalog
             Email,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormAccessCode,
@@ -459,7 +490,8 @@ public static class NotificationCatalog
             Email,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormActionFailed,
@@ -469,7 +501,8 @@ public static class NotificationCatalog
             InAppEmailPush,
             false,
             "form_request",
-            NotificationAction.Review
+            NotificationAction.Review,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormParticipantReturned,
@@ -479,7 +512,8 @@ public static class NotificationCatalog
             Email,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormParticipantReminder,
@@ -489,7 +523,8 @@ public static class NotificationCatalog
             Email,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormParticipantCompleted,
@@ -499,7 +534,8 @@ public static class NotificationCatalog
             Email,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormParticipantCancelled,
@@ -509,7 +545,8 @@ public static class NotificationCatalog
             Email,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.TasksFormParticipantAttachmentRejected,
@@ -519,24 +556,26 @@ public static class NotificationCatalog
             Email,
             true,
             "form_request",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.ClientRequests
         ),
         Entry(
             NotificationKinds.RemindersDue,
             NotificationCatalogCategory.Work,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.ExplicitUser,
-            InAppEmail,
+            InAppEmailPush,
             false,
             "reminder",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.Reminders
         ),
         Entry(
             NotificationKinds.CalendarAppointmentScheduled,
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.Participants,
-            InAppEmail,
+            InAppEmailPush,
             false,
             "appointment",
             NotificationAction.Open
@@ -546,7 +585,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.Participants,
-            InAppEmail,
+            InAppEmailPush,
             false,
             "appointment",
             NotificationAction.Open
@@ -555,8 +594,8 @@ public static class NotificationCatalog
             NotificationKinds.CalendarBookingRequested,
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,
-            NotificationRecipientPolicy.Participants,
-            InAppEmail,
+            NotificationRecipientPolicy.ExplicitUser,
+            InAppPush,
             false,
             "appointment",
             NotificationAction.Open
@@ -565,8 +604,8 @@ public static class NotificationCatalog
             NotificationKinds.CalendarBookingConfirmed,
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.Normal,
-            NotificationRecipientPolicy.Participants,
-            InAppEmail,
+            NotificationRecipientPolicy.CustomerPortal,
+            InApp,
             false,
             "appointment",
             NotificationAction.Open
@@ -586,7 +625,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.Participants,
-            InAppEmail,
+            InAppPush,
             false,
             "appointment",
             NotificationAction.Open
@@ -596,7 +635,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.Participants,
-            InAppEmail,
+            InAppEmailPush,
             false,
             "appointment",
             NotificationAction.Open
@@ -606,7 +645,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,
             NotificationRecipientPolicy.Participants,
-            InAppEmail,
+            InAppEmailPush,
             false,
             "appointment",
             NotificationAction.Open
@@ -616,7 +655,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,
             NotificationRecipientPolicy.Participants,
-            InAppEmail,
+            InAppEmailPush,
             false,
             "appointment",
             NotificationAction.Open
@@ -636,7 +675,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,
             NotificationRecipientPolicy.Participants,
-            InApp,
+            InAppPush,
             false,
             "appointment",
             NotificationAction.Open
@@ -665,7 +704,7 @@ public static class NotificationCatalog
             NotificationKinds.CommunicationMeetingCancelled,
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,
-            NotificationRecipientPolicy.ExplicitUser,
+            NotificationRecipientPolicy.Participants,
             InAppEmail,
             false,
             "meeting",
@@ -675,7 +714,7 @@ public static class NotificationCatalog
             NotificationKinds.CommunicationMeetingRescheduled,
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,
-            NotificationRecipientPolicy.ExplicitUser,
+            NotificationRecipientPolicy.Participants,
             InAppEmail,
             false,
             "meeting",
@@ -685,10 +724,31 @@ public static class NotificationCatalog
             NotificationKinds.CommunicationMeetingReminder,
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.High,
-            NotificationRecipientPolicy.ExplicitUser,
+            NotificationRecipientPolicy.Participants,
             InAppEmail,
             false,
             "meeting",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationChatMessagesMissed,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "conversation",
+            NotificationAction.Open
+        ),
+        Entry(
+            // Solo Node: al usuario que agregaron a un grupo.
+            NotificationKinds.CommunicationChatGroupMemberAdded,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "conversation",
             NotificationAction.Open
         ),
         Entry(
@@ -699,7 +759,8 @@ public static class NotificationCatalog
             InApp,
             false,
             "conversation",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.Collaboration
         ),
         Entry(
             NotificationKinds.CommunicationCallRecordingReady,
@@ -709,7 +770,8 @@ public static class NotificationCatalog
             InApp,
             false,
             "recording",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.Collaboration
         ),
         Entry(
             NotificationKinds.CommunicationCallRecordingFailed,
@@ -719,7 +781,8 @@ public static class NotificationCatalog
             InApp,
             false,
             "recording",
-            NotificationAction.Review
+            NotificationAction.Review,
+            preferenceCategory: NotificationCategory.Collaboration
         ),
         Entry(
             NotificationKinds.CommunicationMeetingRecordingReady,
@@ -729,7 +792,8 @@ public static class NotificationCatalog
             InApp,
             false,
             "recording",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.Collaboration
         ),
         Entry(
             NotificationKinds.CommunicationMeetingRecordingFailed,
@@ -739,13 +803,64 @@ public static class NotificationCatalog
             InApp,
             false,
             "recording",
-            NotificationAction.Review
+            NotificationAction.Review,
+            preferenceCategory: NotificationCategory.Collaboration
         ),
         Entry(
             NotificationKinds.CommunicationSupportOpened,
             NotificationCatalogCategory.Work,
             NotificationPriority.High,
             NotificationRecipientPolicy.ByPermission,
+            InAppPush,
+            false,
+            "support_ticket",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationSupportMessageReceived,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ByPermission,
+            InAppPush,
+            false,
+            "support_ticket",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationSupportReplyReceived,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "support_ticket",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationSupportClaimed,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "support_ticket",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationSupportResolved,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "support_ticket",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.CommunicationSupportClosed,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Low,
+            NotificationRecipientPolicy.ExplicitUser,
             InApp,
             false,
             "support_ticket",
@@ -755,12 +870,14 @@ public static class NotificationCatalog
             NotificationKinds.AuthSecurityAlert,
             NotificationCatalogCategory.Security,
             NotificationPriority.Urgent,
-            NotificationRecipientPolicy.ExplicitUser,
+            // Correo al afectado; campana al afectado, al owner y a los suscriptores de alertas de seguridad.
+            NotificationRecipientPolicy.ByPermission,
             InAppEmail,
             true,
             "security_settings",
             NotificationAction.Review
         ),
+        // Seats: solo correo, apagado por flag (Seats:SlotGating:EmitNotifications=false); sin campana hoy.
         Entry(
             NotificationKinds.AuthUserSlotGated,
             NotificationCatalogCategory.Billing,
@@ -771,6 +888,7 @@ public static class NotificationCatalog
             "seats",
             NotificationAction.Open
         ),
+        // Solo correo, apagado por flag, igual que el anterior.
         Entry(
             NotificationKinds.AuthUserSlotUnlocked,
             NotificationCatalogCategory.Billing,
@@ -816,7 +934,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Billing,
             NotificationPriority.High,
             NotificationRecipientPolicy.TenantOwner,
-            InAppEmail,
+            InApp,
             false,
             "billing",
             NotificationAction.Pay
@@ -927,7 +1045,7 @@ public static class NotificationCatalog
             NotificationKinds.PaymentClientPayoutFailed,
             NotificationCatalogCategory.Billing,
             NotificationPriority.Urgent,
-            NotificationRecipientPolicy.TenantOwner,
+            NotificationRecipientPolicy.ByPermission,
             InAppEmail,
             true,
             "billing",
@@ -958,10 +1076,11 @@ public static class NotificationCatalog
             NotificationCatalogCategory.Portal,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.CustomerPortal,
-            Transactional,
+            InAppEmail,
             true,
             "invoice",
-            NotificationAction.Pay
+            NotificationAction.Pay,
+            preferenceCategory: NotificationCategory.Billing
         ),
         Entry(
             NotificationKinds.BillingInvoicePaid,
@@ -983,6 +1102,7 @@ public static class NotificationCatalog
             "invoice",
             NotificationAction.Review
         ),
+        // Sin destinatario: las generaciones las piden servicios (facturas, recibos, resúmenes de formularios), no personas; sin consumer.
         Entry(
             NotificationKinds.DocumentsGenerationFailed,
             NotificationCatalogCategory.DocumentsStorage,
@@ -1093,7 +1213,8 @@ public static class NotificationCatalog
             InApp,
             false,
             "financial_import_batch",
-            NotificationAction.Review
+            NotificationAction.Review,
+            preferenceCategory: NotificationCategory.DocumentsAndSignatures
         ),
         Entry(
             // Lote subido desde el portal: acuse al cliente, sin detalle técnico.
@@ -1125,7 +1246,8 @@ public static class NotificationCatalog
             Channels(NotificationChannel.Push),
             false,
             "conversation",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.Collaboration
         ),
         Entry(
             NotificationKinds.CommunicationChatMessage,
@@ -1135,11 +1257,21 @@ public static class NotificationCatalog
             Channels(NotificationChannel.Push),
             false,
             "conversation",
-            NotificationAction.Open
+            NotificationAction.Open,
+            preferenceCategory: NotificationCategory.Collaboration
         ),
     }.ToFrozenDictionary(entry => entry.Kind, StringComparer.Ordinal);
 
     public static IReadOnlyCollection<NotificationCatalogEntry> All { get; } = Entries.Values.ToArray();
+
+    /// <summary>Interruptores de preferencias con efecto, calculados una vez del catálogo.</summary>
+    public static NotificationPreferenceAvailability Availability { get; } = new(All);
+
+    public static bool IsAvailable(
+        NotificationCategory category,
+        NotificationChannel channel,
+        PreferenceAudience audience
+    ) => Availability.IsAvailable(category, channel, audience);
 
     public static bool TryGet(string kind, out NotificationCatalogEntry? entry) => Entries.TryGetValue(kind, out entry);
 
@@ -1157,7 +1289,8 @@ public static class NotificationCatalog
         bool isMandatory,
         string resourceType,
         NotificationAction action,
-        IReadOnlySet<NotificationChannel>? mandatoryChannels = null
+        IReadOnlySet<NotificationChannel>? mandatoryChannels = null,
+        NotificationCategory? preferenceCategory = null
     ) =>
         new(
             kind,
@@ -1170,8 +1303,24 @@ public static class NotificationCatalog
             $"notif.{kind}.body",
             Enum.Parse<NotificationResourceType>(resourceType.Replace("_", string.Empty), true),
             action,
+            preferenceCategory ?? DefaultPreferenceCategory(category),
             mandatoryChannels
         );
+
+    // Mapa por defecto entre la categoría del catálogo y la de preferencias; la entrada lo puede declarar.
+    private static NotificationCategory DefaultPreferenceCategory(NotificationCatalogCategory category) =>
+        category switch
+        {
+            NotificationCatalogCategory.Security => NotificationCategory.AccountSecurity,
+            NotificationCatalogCategory.Work => NotificationCategory.Collaboration,
+            NotificationCatalogCategory.Clients => NotificationCategory.DocumentsAndSignatures,
+            NotificationCatalogCategory.Signatures => NotificationCategory.DocumentsAndSignatures,
+            NotificationCatalogCategory.CalendarMeetings => NotificationCategory.Calendar,
+            NotificationCatalogCategory.DocumentsStorage => NotificationCategory.StorageAndQuota,
+            NotificationCatalogCategory.Billing => NotificationCategory.Billing,
+            NotificationCatalogCategory.Portal => NotificationCategory.DocumentsAndSignatures,
+            _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
+        };
 
     private static IReadOnlySet<NotificationChannel> Channels(params NotificationChannel[] channels) =>
         channels.ToFrozenSet();

@@ -2,6 +2,8 @@ using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Consumers.Campaigns;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Application.Email.Sending.Campaign;
 using TaxVision.Notification.Application.Email.Sending.Consumers;
@@ -77,13 +79,32 @@ public sealed class CampaignEmailDispatchConsumerTests
         Assert.Equal("Accepted", result!.Outcome);
     }
 
+    // N8-03: el evento de campaña solo se pasa al carril masivo; el envío corre allí.
+    [Theory]
+    [InlineData("Email")]
+    [InlineData("push")]
+    public void Email_and_push_dispatches_are_forwarded_to_the_bulk_lane(string channel)
+    {
+        var evt = Dispatch("manual-ref") with { Channel = channel };
+
+        var command = CampaignDispatchLaneConsumer.Handle(evt);
+
+        Assert.NotNull(command);
+        Assert.Equal(Tenant, command.TenantId);
+        Assert.Same(evt, command.Request);
+    }
+
+    [Fact]
+    public void Other_channels_are_not_forwarded() =>
+        Assert.Null(CampaignDispatchLaneConsumer.Handle(Dispatch("manual-ref") with { Channel = "Sms" }));
+
     private static Task<CampaignDispatchResultIntegrationEvent?> Handle(
         CampaignDispatchRequestedIntegrationEvent evt,
         ICampaignEmailProvider provider,
         ICustomerContactPolicyRepository policies
     ) =>
         CampaignEmailDispatchConsumer.Handle(
-            evt,
+            new DispatchCampaignMessage(evt.TenantId, evt),
             provider,
             policies,
             new InMemorySends(),

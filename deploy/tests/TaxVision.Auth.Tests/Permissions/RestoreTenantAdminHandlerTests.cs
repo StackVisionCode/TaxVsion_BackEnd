@@ -77,6 +77,10 @@ public sealed class RestoreTenantAdminHandlerTests
         // El JWT vigente dice PlatformAdmin: se corta para que el próximo login traiga el tipo correcto.
         Assert.Equal([session.Id], _denylist.Denied);
         Assert.Single(_revocations.Published);
+        Assert.Equal(
+            "actor_type_restored",
+            Assert.Single(_bus.Published.OfType<SessionEndedIntegrationEvent>()).Reason
+        );
 
         var log = Assert.Single(_audit.Logs);
         Assert.Equal(AuthAuditAction.UserRestoredAsTenantAdmin, log.Action);

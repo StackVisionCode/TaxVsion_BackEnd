@@ -1,12 +1,10 @@
-﻿using BuildingBlocks.Common;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -29,8 +27,6 @@ public static class TaskWaitingOnClientConsumer
         TaskWaitingOnClientIntegrationEvent evt,
         ICustomerEmailDirectoryRepository customers,
         ICustomerContactPolicyRepository contactPolicies,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribeClient,
         NotificationDispatcher dispatcher,
         IRecipientResolver recipientResolver,
         IOptions<PortalOptions> portal,
@@ -56,32 +52,28 @@ public static class TaskWaitingOnClientConsumer
                 // El cliente entra a SU oficina: link al portal bajo el subdominio del tenant.
                 var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
 
-                var render = (
-                    await scribeClient.RenderAsync(
-                        TemplateKey,
-                        evt.TenantId,
-                        new Dictionary<string, object?>
-                        {
-                            ["customer_name"] = customer.DisplayName,
-                            ["task_title"] = evt.Title,
-                            ["expected_items"] = evt.ExpectedItems,
-                            ["client_due_at_utc"] = CivilDue.Typed(evt.ClientDueOn, evt.ClientDueAtUtc),
-                            ["tax_year"] = evt.TaxYear,
-                            ["portal_link"] = TenantEmailLinks.ClientBase(tenantHost, portal.Value),
-                        },
-                        ScribeRenderAudience.Client,
-                        ct
-                    )
-                ).EnsureRendered(TemplateKey);
-
-                await gateway.QueueEmailAsync(
-                    render.ToDispatchRequest(
-                        tenantId: evt.TenantId,
-                        to: customer.NormalizedEmail,
-                        templateKey: TemplateKey,
-                        relatedEventId: evt.EventId,
-                        correlationId: correlation.CorrelationId
-                    ),
+                // Se renderiza en el idioma del cliente (el destino lleva su id).
+                await dispatcher.DispatchAsync(
+                    Intent(
+                        evt,
+                        new NotificationTarget(Email: customer.NormalizedEmail, CustomerId: evt.CustomerId),
+                        correlation
+                    ) with
+                    {
+                        Email = new EmailContent(
+                            TemplateKey,
+                            new Dictionary<string, object?>
+                            {
+                                ["customer_name"] = customer.DisplayName,
+                                ["task_title"] = evt.Title,
+                                ["expected_items"] = evt.ExpectedItems,
+                                ["client_due_at_utc"] = CivilDue.Typed(evt.ClientDueOn, evt.ClientDueAtUtc),
+                                ["tax_year"] = evt.TaxYear,
+                                ["portal_link"] = TenantEmailLinks.ClientBase(tenantHost, portal.Value),
+                            },
+                            ScribeRenderAudience.Client
+                        ),
+                    },
                     ct
                 );
             }
@@ -95,31 +87,36 @@ public static class TaskWaitingOnClientConsumer
             );
             if (portalUserId is { } userId)
             {
-                var title = $"Tu oficina espera algo: {evt.Title}";
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.DocumentsAndSignatures,
-                    "tasks.waiting_on_client",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
-                        NotificationKinds.TasksWaitingOnClient,
-                        userId,
-                        evt.EventId,
-                        "tasks.waiting_on_client.v1",
-                        evt.OccurredOn,
-                        title,
-                        FallbackBody: evt.ExpectedItems,
-                        ResourceId: evt.TaskId.ToString(),
-                        ResourceContext: new Dictionary<string, string> { ["customerId"] = evt.CustomerId.ToString() },
-                        Params: new Dictionary<string, string> { ["title"] = evt.Title }
-                    ),
-                    ct: ct
+                await dispatcher.DispatchAsync(
+                    Intent(evt, new NotificationTarget(userId, CustomerId: evt.CustomerId), correlation) with
+                    {
+                        InApp = new InAppContent(
+                            Params: new Dictionary<string, string> { ["title"] = evt.Title },
+                            ResourceId: evt.TaskId.ToString(),
+                            ResourceContext: new Dictionary<string, string>
+                            {
+                                ["customerId"] = evt.CustomerId.ToString(),
+                            }
+                        ),
+                    },
+                    ct
                 );
             }
         }
     }
+
+    private static NotificationIntent Intent(
+        TaskWaitingOnClientIntegrationEvent evt,
+        NotificationTarget target,
+        ICorrelationContext correlation
+    ) =>
+        new(
+            NotificationKinds.TasksWaitingOnClient,
+            evt.TenantId,
+            target,
+            evt.EventId,
+            "tasks.waiting_on_client.v1",
+            evt.OccurredOn,
+            correlation.CorrelationId
+        );
 }

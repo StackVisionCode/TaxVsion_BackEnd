@@ -10,7 +10,43 @@ public static class QualifyReferralHandler
 {
     private const string Operation = "QualifyReferral";
 
-    public static async Task<Result<QualifyReferralResult>> Handle(
+    /// <summary>
+    /// Devuelve el resultado y, si nació un premio, el aviso al referidor como mensaje en cascada: Wolverine lo
+    /// publica por el outbox de este mismo mensaje. Una repetición idempotente no corre el cuerpo y no lo repite.
+    /// </summary>
+    public static async Task<(Result<QualifyReferralResult> Result, object? Notice)> Handle(
+        QualifyReferralCommand command,
+        IReferralAttributionRepository attributions,
+        IReferralProgramRepository programs,
+        IReferralQualificationRepository qualifications,
+        IReferralRewardCaseRepository rewards,
+        IReferralRewardQuota rewardQuota,
+        IReferralIdempotencyExecutor idempotency,
+        IReferralNoticeEvents noticeEvents,
+        TimeProvider timeProvider,
+        CancellationToken ct
+    )
+    {
+        object? notice = null;
+        var result = await QualifyAsync(
+            command,
+            attributions,
+            programs,
+            qualifications,
+            rewards,
+            rewardQuota,
+            idempotency,
+            timeProvider,
+            qualified =>
+                notice = qualified.Reward is { } reward
+                    ? noticeEvents.Qualified(reward, command.PaymentId, command.CorrelationId)
+                    : null,
+            ct
+        );
+        return (result, result.IsSuccess ? notice : null);
+    }
+
+    private static async Task<Result<QualifyReferralResult>> QualifyAsync(
         QualifyReferralCommand command,
         IReferralAttributionRepository attributions,
         IReferralProgramRepository programs,
@@ -19,6 +55,7 @@ public static class QualifyReferralHandler
         IReferralRewardQuota rewardQuota,
         IReferralIdempotencyExecutor idempotency,
         TimeProvider timeProvider,
+        Action<QualifyReferralResult> onQualified,
         CancellationToken ct
     )
     {
@@ -158,16 +195,16 @@ public static class QualifyReferralHandler
                     }
                 }
 
-                return Result.Success(
-                    new QualifyReferralResult(
-                        qualification.Id,
-                        qualification.Decision,
-                        qualification.RejectionReasonCode,
-                        reward?.Id,
-                        WasReplay: false,
-                        reward is null ? null : Rewards.ReferralRewardNotice.From(reward)
-                    )
+                var evaluatedResult = new QualifyReferralResult(
+                    qualification.Id,
+                    qualification.Decision,
+                    qualification.RejectionReasonCode,
+                    reward?.Id,
+                    WasReplay: false,
+                    reward is null ? null : Rewards.ReferralRewardNotice.From(reward)
                 );
+                onQualified(evaluatedResult);
+                return Result.Success(evaluatedResult);
             },
             ct
         );

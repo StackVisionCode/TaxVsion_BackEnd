@@ -23,12 +23,14 @@ public static class CampaignPushDispatchConsumer
     // Comparte handler generado con el canal Email, que no lleva transacción. El dispatcher guarda por su cuenta.
     [NonTransactional]
     public static async Task<CampaignDispatchResultIntegrationEvent?> Handle(
-        CampaignDispatchRequestedIntegrationEvent evt,
+        DispatchCampaignMessage command,
         NotificationDispatcher dispatcher,
         IPlatformSettings platform,
         CancellationToken ct
     )
     {
+        // Llega por el carril masivo (N8-03).
+        var evt = command.Request;
         if (!string.Equals(evt.Channel, "Push", StringComparison.OrdinalIgnoreCase))
             return null; // otro canal — no es lo nuestro
 
@@ -42,15 +44,25 @@ public static class CampaignPushDispatchConsumer
         var body =
             CampaignPersonalization.Render(evt.Body, evt.RecipientName, evt.Email, evt.PhoneE164) ?? string.Empty;
 
+        // Sin recurso ni enlace: solo las claves que identifican el aviso.
         var result = await dispatcher.SendPushAsync(
-            evt.TenantId,
-            userId,
-            title,
-            body,
-            NotificationCategory.Collaboration,
-            TemplateKey,
-            relatedEventId: null,
-            correlationId: evt.CorrelationId,
+            new PushDispatchRequest(
+                evt.TenantId,
+                userId,
+                title,
+                body,
+                NotificationCategory.Collaboration,
+                "campaign.push",
+                TemplateKey,
+                RelatedEventId: null,
+                CorrelationId: evt.CorrelationId,
+                Data: new Dictionary<string, string>
+                {
+                    ["kind"] = TemplateKey,
+                    ["tenantId"] = evt.TenantId.ToString(),
+                    ["recipientUserId"] = userId.ToString(),
+                }
+            ),
             ct
         );
 

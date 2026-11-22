@@ -48,4 +48,13 @@ export class PrismaCustomerAssignmentProjectionRepository implements CustomerAss
     });
     return [...new Set(rows.map((r) => r.CustomerId))];
   }
+
+  async getAssignedUserIds(tenantId: string, customerId: string): Promise<string[]> {
+    // Usa @@index([TenantId, CustomerId]).
+    const rows = await this.prisma.customerAssignmentProjection.findMany({
+      where: { TenantId: tenantId, CustomerId: customerId },
+      select: { UserId: true },
+    });
+    return [...new Set(rows.map((r) => r.UserId))];
+  }
 }

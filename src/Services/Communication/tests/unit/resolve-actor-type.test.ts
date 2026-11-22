@@ -33,6 +33,7 @@ function fakeDirectory(result: UserDirectoryEntrySnapshot | null): UserDirectory
     markInactive: async () => {},
     markActive: async () => {},
     searchByDisplayNameOrEmail: async () => [],
+    findActiveAdmins: async () => [],
   };
 }
 

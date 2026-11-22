@@ -27,28 +27,54 @@ public sealed record ReviewRewardCaseCommand(
     Guid RewardCaseId,
     RewardReviewAction Action,
     string Reason,
-    Guid ActorUserId
+    Guid ActorUserId,
+    string CorrelationId
 );
 
 public sealed record ReviewRewardCaseResult(Guid RewardCaseId, ReferralRewardCaseStatus Status);
 
 public static class ReviewRewardCaseHandler
 {
-    public static async Task<Result<ReviewRewardCaseResult>> Handle(
+    /// <summary>
+    /// Devuelve el resultado y, si fue un rechazo, el aviso al referidor como mensaje en cascada: Wolverine lo
+    /// publica por el outbox de este mismo mensaje, junto con el cambio de estado.
+    /// </summary>
+    public static async Task<(Result<ReviewRewardCaseResult> Result, object? Notice)> Handle(
         ReviewRewardCaseCommand command,
         IReferralRewardCaseRepository rewards,
         IUnitOfWork unitOfWork,
+        IReferralNoticeEvents noticeEvents,
+        TimeProvider timeProvider,
+        CancellationToken ct
+    )
+    {
+        var reviewed = await ReviewAsync(command, rewards, timeProvider, ct);
+        if (reviewed.IsFailure)
+            return (Result.Failure<ReviewRewardCaseResult>(reviewed.Error), null);
+
+        var reward = reviewed.Value;
+        await unitOfWork.SaveChangesAsync(ct);
+        var notice =
+            command.Action == RewardReviewAction.Reject
+                ? noticeEvents.Rejected(ReferralRewardNotice.From(reward), "ReviewRejected", command.CorrelationId)
+                : null;
+        return (Result.Success(new ReviewRewardCaseResult(reward.Id, reward.Status)), notice);
+    }
+
+    private static async Task<Result<ReferralRewardCase>> ReviewAsync(
+        ReviewRewardCaseCommand command,
+        IReferralRewardCaseRepository rewards,
         TimeProvider timeProvider,
         CancellationToken ct
     )
     {
         var actor = ApplicationGuards.EnsureActor(command.ActorUserId);
         if (actor.IsFailure)
-            return Result.Failure<ReviewRewardCaseResult>(actor.Error);
+            return Result.Failure<ReferralRewardCase>(actor.Error);
 
         if (!Enum.IsDefined(command.Action))
         {
-            return Result.Failure<ReviewRewardCaseResult>(
+            return Result.Failure<ReferralRewardCase>(
                 new Error("ReferralReward.InvalidAction", "The review action is not supported.")
             );
         }
@@ -56,7 +82,7 @@ public static class ReviewRewardCaseHandler
         var reward = await rewards.GetByIdAsync(command.RewardCaseId, command.OwnerTenantId, ct);
         if (reward is null)
         {
-            return Result.Failure<ReviewRewardCaseResult>(
+            return Result.Failure<ReferralRewardCase>(
                 new Error("ReferralReward.NotFound", "The referral reward does not exist.")
             );
         }
@@ -68,10 +94,6 @@ public static class ReviewRewardCaseHandler
             RewardReviewAction.Release => reward.ReleaseFromReview(command.Reason, command.ActorUserId, nowUtc),
             _ => reward.Cancel(command.Reason, command.ActorUserId, nowUtc),
         };
-        if (changed.IsFailure)
-            return Result.Failure<ReviewRewardCaseResult>(changed.Error);
-
-        await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(new ReviewRewardCaseResult(reward.Id, reward.Status));
+        return changed.IsFailure ? Result.Failure<ReferralRewardCase>(changed.Error) : Result.Success(reward);
     }
 }

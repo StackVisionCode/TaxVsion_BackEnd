@@ -48,12 +48,31 @@ internal sealed class NotificationRetentionJob(
 
             await using var scope = serviceProvider.CreateAsyncScope();
             var purger = scope.ServiceProvider.GetRequiredService<NotificationLogRetentionPurger>();
-            var cutoffUtc = timeProvider.GetUtcNow().UtcDateTime.AddMonths(-settings.RetentionMonths);
+            var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+            var cutoffUtc = nowUtc.AddMonths(-settings.RetentionMonths);
             var purged = await purger.PurgeAsync(cutoffUtc, settings.BatchSize, ct);
             logger.LogInformation(
                 "NotificationRetentionJob purged {PurgedCount} notification log(s) older than {CutoffUtc}.",
                 purged,
                 cutoffUtc
+            );
+
+            var devices = scope.ServiceProvider.GetRequiredService<PushDeviceTokenRetentionPurger>();
+            var deactivated = await devices.DeactivateIdleAsync(
+                nowUtc.AddDays(-settings.PushIdleDays),
+                nowUtc,
+                settings.BatchSize,
+                ct
+            );
+            var deleted = await devices.DeleteRevokedAsync(
+                nowUtc.AddDays(-settings.PushRevokedRetentionDays),
+                settings.BatchSize,
+                ct
+            );
+            logger.LogInformation(
+                "NotificationRetentionJob deactivated {DeactivatedCount} idle and deleted {DeletedCount} revoked push device(s).",
+                deactivated,
+                deleted
             );
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }

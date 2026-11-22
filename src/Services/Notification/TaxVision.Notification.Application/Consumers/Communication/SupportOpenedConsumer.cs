@@ -4,8 +4,6 @@ using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
@@ -45,45 +43,30 @@ public static class SupportOpenedConsumer
 
             var title = $"New support ticket: {evt.Subject}";
             var body = BuildBody(evt);
-
             foreach (var userId in recipients)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.AgentTenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.Collaboration,
-                    TemplateKey,
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
                         NotificationKinds.CommunicationSupportOpened,
-                        userId,
+                        evt.AgentTenantId,
+                        new NotificationTarget(userId),
                         evt.EventId,
                         "communication.support.opened.v1",
                         evt.OccurredOn,
-                        title,
-                        FallbackBody: body,
-                        ResourceId: evt.TicketId.ToString(),
-                        Params: new Dictionary<string, string>
-                        {
-                            ["subject"] = evt.Subject,
-                            ["priority"] = evt.Priority,
-                        }
+                        correlation.CorrelationId,
+                        InApp: new InAppContent(
+                            Params: new Dictionary<string, string>
+                            {
+                                ["subject"] = evt.Subject,
+                                ["priority"] = evt.Priority,
+                            },
+                            ResourceId: evt.TicketId.ToString(),
+                            TemplateKey: TemplateKey,
+                            FallbackTitle: title,
+                            FallbackBody: body
+                        ),
+                        Push: new PushContent()
                     ),
-                    ct: ct
-                );
-
-                await dispatcher.SendPushAsync(
-                    evt.AgentTenantId,
-                    userId,
-                    title,
-                    body,
-                    NotificationCategory.Collaboration,
-                    TemplateKey,
-                    evt.EventId,
-                    correlation.CorrelationId,
                     ct
                 );
             }

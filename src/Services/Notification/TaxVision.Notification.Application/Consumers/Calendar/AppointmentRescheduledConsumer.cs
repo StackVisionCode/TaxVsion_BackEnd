@@ -1,4 +1,4 @@
-﻿using BuildingBlocks.Common;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
@@ -27,11 +27,11 @@ public static class AppointmentRescheduledConsumer
 
     public static async Task Handle(
         AppointmentRescheduledIntegrationEvent evt,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hosts,
         NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -51,11 +51,11 @@ public static class AppointmentRescheduledConsumer
         {
             await CalendarRecipients.PushAsync(
                 dispatcher,
+                locales,
                 evt.Recipients,
                 evt.TenantId,
-                "Appointment rescheduled",
-                "The time changed. Open your calendar.",
                 NotificationKinds.CalendarAppointmentRescheduled,
+                evt.AppointmentId,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct
@@ -81,7 +81,7 @@ public static class AppointmentRescheduledConsumer
                 evt.TenantId,
                 TemplateKey,
                 NotificationKinds.CalendarAppointmentRescheduled,
-                new Dictionary<string, object?>
+                _ => new Dictionary<string, object?>
                 {
                     ["scope"] = evt.Scope,
                     ["previous_local"] = ScribeDates.Instant(evt.PreviousStartUtc),
@@ -90,7 +90,8 @@ public static class AppointmentRescheduledConsumer
                     ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
                 },
                 scribeClient,
-                gateway,
+                dispatcher,
+                locales,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct,

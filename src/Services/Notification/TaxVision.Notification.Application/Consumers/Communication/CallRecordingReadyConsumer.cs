@@ -1,9 +1,8 @@
+using System.Globalization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
@@ -25,29 +24,28 @@ public static class CallRecordingReadyConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var subject = $"Grabación de llamada lista ({evt.DurationSeconds:F0}s)";
+            var parameters = new Dictionary<string, string>
+            {
+                ["durationSeconds"] = evt.DurationSeconds.ToString("F0", CultureInfo.InvariantCulture),
+            };
             foreach (var participant in new[] { evt.CallerUserId, evt.CalleeUserId })
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(participant),
-                    subject,
-                    NotificationCategory.Collaboration,
-                    "communication.call.recording_ready",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: participant,
-                    inApp: new InAppNotificationRequest(
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
                         NotificationKinds.CommunicationCallRecordingReady,
-                        participant,
+                        evt.TenantId,
+                        new NotificationTarget(participant),
                         evt.EventId,
                         "communication.call.recording_ready.v1",
                         evt.ReadyAtUtc,
-                        subject,
-                        ResourceId: evt.RecordingFileId.ToString(),
-                        ResourceContext: new Dictionary<string, string> { ["callId"] = evt.CallId.ToString() }
+                        correlation.CorrelationId,
+                        InApp: new InAppContent(
+                            Params: parameters,
+                            ResourceId: evt.RecordingFileId.ToString(),
+                            ResourceContext: new Dictionary<string, string> { ["callId"] = evt.CallId.ToString() }
+                        )
                     ),
-                    ct: ct
+                    ct
                 );
             }
         }

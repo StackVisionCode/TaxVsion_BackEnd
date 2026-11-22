@@ -30,7 +30,8 @@ internal sealed class OffboardingNoticeHarness
         string? host = null,
         bool scribeFails = false,
         IReadOnlyCollection<Guid>? emailDisabled = null,
-        IReadOnlyCollection<Guid>? inactiveInDirectory = null
+        IReadOnlyCollection<Guid>? inactiveInDirectory = null,
+        IRecipientLocale? locales = null
     )
     {
         Resolver = new FakeResolver(active, byPermission ?? new Dictionary<string, IReadOnlyList<Guid>>());
@@ -40,13 +41,6 @@ internal sealed class OffboardingNoticeHarness
         var directory = new InMemoryUserEmailDirectoryRepository();
         foreach (var userId in inactiveInDirectory ?? [])
             directory.Seed(TenantId, userId, EmailOf(userId), isActive: false);
-        _dispatcher = new NotificationDispatcherHarness(
-            pushSender: _push,
-            pushDeviceTokens: new FakeDevices(),
-            logs: logs,
-            preferences: preferences,
-            userDirectory: directory
-        );
         var gateway = new EventBasedEmailDispatchGateway(
             _gatewayPublisher,
             logs,
@@ -54,16 +48,24 @@ internal sealed class OffboardingNoticeHarness
             TestDeliveryGates.For(preferences, directory),
             NullLogger<EventBasedEmailDispatchGateway>.Instance
         );
+        _dispatcher = new NotificationDispatcherHarness(
+            pushSender: _push,
+            pushDeviceTokens: new FakeDevices(),
+            logs: logs,
+            preferences: preferences,
+            userDirectory: directory,
+            emailGateway: new RecordingGateway(gateway, Queued)
+        );
         Correlation = new TestCorrelationContext();
         Sender = new OffboardingNoticeSender(
             _dispatcher.Dispatcher,
             Resolver,
             new FakeEmails(inactiveInDirectory ?? []),
-            new RecordingGateway(gateway, Queued),
             Scribe,
             new FakeTenantHostResolver(host),
             Options.Create(new PortalOptions()),
-            Correlation
+            Correlation,
+            locales ?? FixedRecipientLocale.English
         );
     }
 
@@ -116,8 +118,23 @@ internal sealed class OffboardingNoticeHarness
         }
     }
 
-    internal sealed class RecordingScribe(bool fails) : IScribeRenderClient
+    internal sealed class RecordingScribe(bool fails) : IScribeRenderClient, IScribeReaderRenderClient
     {
+        public List<ScribeReader?> Readers { get; } = [];
+
+        public Task<Result<ScribeRenderedEmail>> RenderForReaderAsync(
+            string eventKey,
+            Guid tenantId,
+            IReadOnlyDictionary<string, object?> variables,
+            ScribeRenderAudience audience,
+            ScribeReader reader,
+            CancellationToken ct = default
+        )
+        {
+            Readers.Add(reader);
+            return RenderAsync(eventKey, tenantId, variables, ct);
+        }
+
         public Task<Result<ScribeRenderedEmail>> RenderAsync(
             string eventKey,
             Guid tenantId,
@@ -270,6 +287,26 @@ internal sealed class OffboardingNoticeHarness
     // Todo usuario tiene un dispositivo: el push depende solo de los gates del dispatcher.
     private sealed class FakeDevices : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

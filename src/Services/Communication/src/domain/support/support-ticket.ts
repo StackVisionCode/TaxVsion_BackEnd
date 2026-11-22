@@ -33,6 +33,8 @@ export class SupportTicket {
   }
 
   static open(input: {
+    /** El mismo id que guarda la conversación del ticket. Sin valor, uno nuevo. */
+    id?: string;
     tenantId: string;
     agentTenantId: string;
     openedByUserId: string;
@@ -56,7 +58,7 @@ export class SupportTicket {
     const now = input.now ?? new Date();
     return Result.ok(
       new SupportTicket({
-        id: randomUUID(),
+        id: input.id ?? randomUUID(),
         tenantId: input.tenantId,
         agentTenantId: input.agentTenantId,
         openedByUserId: input.openedByUserId,

@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
+using BuildingBlocks.Messaging.NotificationIntegrationEvents;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -8,6 +9,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
@@ -35,7 +37,16 @@ public sealed class ReminderDueConsumerTests
 
         Assert.Single(harness.Logs.Logs, log => log.Channel == NotificationChannel.InApp);
         Assert.Single(harness.PushSender.Sent);
-        Assert.All(harness.Logs.Logs, log => Assert.Equal("reminder.due", log.TemplateKey));
+        Assert.Equal(
+            "reminder.due",
+            Assert.Single(harness.Logs.Logs, log => log.Channel == NotificationChannel.InApp).TemplateKey
+        );
+        // El push usa el kind del catálogo y texto genérico (no sale texto del usuario a la pantalla bloqueada).
+        Assert.Equal(
+            NotificationKinds.RemindersDue,
+            Assert.Single(harness.Logs.Logs, log => log.Channel == NotificationChannel.Push).TemplateKey
+        );
+        Assert.Equal("You have a reminder due.", harness.PushSender.Sent[0].Body);
 
         // Fase 10 — el tercer canal. La dirección salió del directorio local, sin pegarle a Auth.
         var email = Assert.Single(harness.EmailGateway.Queued);
@@ -111,10 +122,9 @@ public sealed class ReminderDueConsumerTests
 
         await ReminderDueConsumer.Handle(
             Due(),
-            harness.Dispatcher,
+            harness.Dispatch(gateway, new StubScribeRenderClient(), FixedRecipientLocale.English),
+            FixedRecipientLocale.English,
             harness.EmailResolver,
-            gateway,
-            new StubScribeRenderClient(),
             Options.Create(new PortalOptions()),
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -147,13 +157,25 @@ public sealed class ReminderDueConsumerTests
     }
 
     [Fact]
-    public async Task Un_recordatorio_pospuesto_lo_dice_en_el_titulo()
+    public async Task Un_recordatorio_pospuesto_lleva_el_conteo_en_los_parametros()
     {
         var harness = new Harness(preferencesEnabled: true, withActiveDevice: true);
 
         await Handle(harness, Due() with { SnoozeCount = 2 });
 
-        Assert.Contains("pospuesto 2", harness.PushSender.Sent[0].Title);
+        Assert.Equal("2", InApp(harness).Params!["snoozeCount"]);
+        Assert.Equal("Reminder", harness.PushSender.Sent[0].Title);
+    }
+
+    [Fact]
+    public async Task Fallback_comes_from_the_copy_catalog()
+    {
+        var harness = new Harness(preferencesEnabled: true, withActiveDevice: true);
+
+        await Handle(harness, Due());
+
+        Assert.Equal("Reminder due", InApp(harness).FallbackTitle);
+        Assert.Equal("A scheduled reminder is due.", InApp(harness).FallbackBody);
     }
 
     /// <summary>
@@ -166,13 +188,12 @@ public sealed class ReminderDueConsumerTests
         var harness = new Harness(preferencesEnabled: true, withActiveDevice: true);
         var anchorUtc = new DateTime(2026, 8, 20, 18, 0, 0, DateTimeKind.Utc);
 
+        harness.Directory.Seed(TenantId, UserId, "perez@example.com");
+
         await Handle(harness, Due() with { Body = null, AnchorAtUtc = anchorUtc });
 
         // Con fecha, zona escrita y en inglés (antes: "Es a las 14:00.").
-        Assert.Equal(
-            "Scheduled for Thu, Aug 20, 2026, 2:00 PM · Santo Domingo time, GMT-4.",
-            harness.PushSender.Sent[0].Body
-        );
+        Assert.Equal("Scheduled for Thu, Aug 20, 2026, 2:00 PM · Santo Domingo time, GMT-4.", EmailBody(harness));
     }
 
     [Fact]
@@ -180,9 +201,11 @@ public sealed class ReminderDueConsumerTests
     {
         var harness = new Harness(preferencesEnabled: true, withActiveDevice: true);
 
+        harness.Directory.Seed(TenantId, UserId, "perez@example.com");
+
         await Handle(harness, Due() with { Body = null, AnchorAtUtc = null });
 
-        Assert.Equal("You have a reminder.", harness.PushSender.Sent[0].Body);
+        Assert.Equal("You have a reminder.", EmailBody(harness));
     }
 
     [Fact]
@@ -191,18 +214,72 @@ public sealed class ReminderDueConsumerTests
         var harness = new Harness(preferencesEnabled: true, withActiveDevice: true);
         var anchorUtc = new DateTime(2026, 8, 20, 18, 0, 0, DateTimeKind.Utc);
 
+        harness.Directory.Seed(TenantId, UserId, "perez@example.com");
+
         await Handle(harness, Due() with { Body = null, AnchorAtUtc = anchorUtc, TimeZoneId = "Mars/Olympus" });
 
-        Assert.Equal("Scheduled for Thu, Aug 20, 2026, 6:00 PM · UTC.", harness.PushSender.Sent[0].Body);
+        Assert.Equal("Scheduled for Thu, Aug 20, 2026, 6:00 PM · UTC.", EmailBody(harness));
     }
 
-    private static Task Handle(Harness harness, ReminderDueIntegrationEvent evt) =>
+    // El stub de Scribe devuelve la variable `body` como texto del correo.
+    private static string EmailBody(Harness harness) => Assert.Single(harness.EmailGateway.Queued).TextBody;
+
+    private static InAppNotificationRequestedIntegrationEvent InApp(Harness harness) =>
+        Assert.Single(harness.Publisher.Published.OfType<InAppNotificationRequestedIntegrationEvent>());
+
+    [Fact]
+    public async Task Push_is_rendered_in_the_recipient_language()
+    {
+        var harness = new Harness(preferencesEnabled: true, withActiveDevice: true);
+        harness.Directory.Seed(TenantId, UserId, "perez@example.com");
+
+        await Handle(harness, Due(), new FixedRecipientLocale("es"));
+
+        var push = Assert.Single(harness.PushSender.Sent);
+        Assert.Equal("Recordatorio", push.Title);
+        Assert.Equal("Tienes un recordatorio pendiente.", push.Body);
+    }
+
+    [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var harness = new Harness(preferencesEnabled: true, withActiveDevice: false);
+        harness.Directory.Seed(TenantId, UserId, "staff@example.com");
+        var scribe = new TestDoubles.RecordingScribeRenderClient();
+        var locales = new FixedRecipientLocale("es", "America/Chicago");
+
+        await ReminderDueConsumer.Handle(
+            Due() with
+            {
+                Body = null,
+                AnchorAtUtc = new DateTime(2026, 11, 18, 14, 0, 0, DateTimeKind.Utc),
+            },
+            harness.Dispatch(harness.EmailGateway, scribe, locales),
+            locales,
+            harness.EmailResolver,
+            Options.Create(new PortalOptions()),
+            new NoOpCorrelationContext(),
+            CancellationToken.None
+        );
+
+        var render = Assert.Single(scribe.Renders);
+        Assert.Equal("Es", render.Language);
+        Assert.Equal(new ScribeReader("es", "America/Chicago"), render.Reader);
+        // El título lo escribió el usuario: viaja tal cual. El cuerpo lo arma el sistema: en español.
+        Assert.Equal("Llamar a Pérez", render.Variables["title"]);
+        Assert.StartsWith("Programado para el ", Assert.IsType<string>(render.Variables["body"]));
+    }
+
+    private static Task Handle(Harness harness, ReminderDueIntegrationEvent evt, IRecipientLocale? locales = null) =>
         ReminderDueConsumer.Handle(
             evt,
-            harness.Dispatcher,
+            harness.Dispatch(
+                harness.EmailGateway,
+                new StubScribeRenderClient(),
+                locales ?? FixedRecipientLocale.English
+            ),
+            locales ?? FixedRecipientLocale.English,
             harness.EmailResolver,
-            harness.EmailGateway,
-            new StubScribeRenderClient(),
             Options.Create(new PortalOptions()),
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -232,11 +309,12 @@ public sealed class ReminderDueConsumerTests
         internal RecordingPushSender PushSender { get; } = new();
         internal RecordingLogRepository Logs { get; } = new();
         internal SwitchablePreferenceRepository Preferences { get; }
-        internal NotificationDispatcher Dispatcher { get; }
+        private readonly FakeDeviceRepository devices = new();
         internal RecordingEmailGateway EmailGateway { get; } = new();
         internal FakeEmailDirectoryRepository Directory { get; } = new();
         internal SwitchableContactSnapshotClient ContactClient { get; }
         internal UserEmailResolver EmailResolver { get; }
+        internal CapturingIntegrationEventPublisher Publisher { get; } = new();
 
         internal Harness(bool preferencesEnabled, bool withActiveDevice, string? pullEmail = null)
         {
@@ -248,22 +326,30 @@ public sealed class ReminderDueConsumerTests
                 new NoOpUnitOfWork(),
                 NullLogger<UserEmailResolver>.Instance
             );
-            var devices = new FakeDeviceRepository();
             if (withActiveDevice)
                 devices.AddActiveDevice(TenantId, UserId, "token-1");
+        }
 
-            Dispatcher = TestDispatchers.Create(
+        // El correo y el push salen por el dispatcher: cada prueba elige gateway, Scribe e idioma.
+        internal NotificationDispatcher Dispatch(
+            IEmailDispatchGateway gateway,
+            IScribeRenderClient scribe,
+            IRecipientLocale locales
+        ) =>
+            TestDispatchers.Create(
                 new NoOpSmsSender(),
                 PushSender,
                 devices,
                 Logs,
                 TestDeliveryGates.For(Preferences, Directory),
-                new TaxVision.Notification.Tests.TestDoubles.CapturingIntegrationEventPublisher(),
+                Publisher,
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
-                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(Logs)
+                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(Logs),
+                gateway,
+                scribe,
+                locales
             );
-        }
 
         internal EventBasedEmailDispatchGateway RealGateway(CapturingIntegrationEventPublisher publisher) =>
             new(
@@ -288,6 +374,26 @@ public sealed class ReminderDueConsumerTests
 
     private sealed class FakeDeviceRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
@@ -433,7 +539,13 @@ public sealed class ReminderDueConsumerTests
             CancellationToken ct = default
         ) =>
             Task.FromResult(
-                Result.Success(new ScribeRenderedEmail($"[{eventKey}] {variables["title"]}", "<p>html</p>", "text"))
+                Result.Success(
+                    new ScribeRenderedEmail(
+                        $"[{eventKey}] {variables["title"]}",
+                        "<p>html</p>",
+                        variables.TryGetValue("body", out var body) ? body?.ToString() ?? "text" : "text"
+                    )
+                )
             );
     }
 
@@ -477,7 +589,8 @@ public sealed class ReminderDueConsumerTests
             string text,
             CancellationToken ct,
             string? templateKey,
-            string? idempotencyToken
+            string? idempotencyToken,
+            string? sourceRef = null
         ) => Task.FromResult(Result.Success());
     }
 

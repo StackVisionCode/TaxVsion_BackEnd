@@ -158,6 +158,11 @@ async function getCachedSnapshot(
   return snapshot;
 }
 
+/** Olvida el snapshot cacheado de un usuario (baja, retiro, reactivación). Solo afecta a este proceso. */
+export function invalidatePermissionCache(userId: string): void {
+  projectionCache.delete(userId);
+}
+
 export async function checkPermission(
   subject: PermissionSubject,
   required: RequiredPermission,
@@ -172,6 +177,11 @@ export async function checkPermission(
     // probar que permisos tiene realmente — se lo trata como sin acceso, no
     // como "todo permitido". Mismo criterio que ProjectionPermissionsSource.cs.
     return { allowed: false, code: 'Auth.Forbidden', message: `Missing ${required}.` };
+  }
+
+  // Usuario dado de baja: sin acceso aunque conserve los permisos en la proyección.
+  if (snapshot.isActive === false) {
+    return { allowed: false, code: 'Auth.UserInactive', message: 'This user is inactive.' };
   }
 
   if (subject.permissionVersion < snapshot.permissionVersion) {

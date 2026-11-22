@@ -7,6 +7,7 @@ using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.RefreshTokens;
+using Wolverine;
 
 namespace TaxVision.Auth.Application.Sessions.Commands;
 
@@ -40,6 +41,7 @@ public static class TakeoverSessionHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -129,6 +131,15 @@ public static class TakeoverSessionHandler
                 session.Id,
                 "single_session_superseded",
                 ct
+            );
+        foreach (var session in previous)
+            await bus.PublishAsync(
+                SessionEndedEvents.ForSession(
+                    session,
+                    "single_session_superseded",
+                    DateTime.UtcNow,
+                    correlation.CorrelationId
+                )
             );
 
         return Result.Success(

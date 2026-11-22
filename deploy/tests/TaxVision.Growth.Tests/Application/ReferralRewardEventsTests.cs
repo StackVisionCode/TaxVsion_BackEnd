@@ -36,35 +36,17 @@ public sealed class ReferralRewardEventsTests
         new DateTime(2026, 12, 17, 0, 0, 0, DateTimeKind.Utc)
     );
 
+    // El comando de calificación devuelve este aviso en cascada (ver ReferralsIdempotencyApplicationTests).
     [Fact]
-    public async Task A_qualified_referral_publishes_qualified_with_the_reward()
+    public void A_qualified_referral_notice_carries_the_reward()
     {
-        var bus = new ScriptedBus(message =>
-            message switch
-            {
-                FindAttributionByRefereeQuery => Result.Success<Guid?>(Notice.AttributionId),
-                QualifyReferralCommand => Result.Success(
-                    new QualifyReferralResult(
-                        Notice.QualificationId,
-                        ReferralQualificationDecision.Qualified,
-                        null,
-                        Notice.RewardCaseId,
-                        WasReplay: false,
-                        Reward: Notice
-                    )
-                ),
-                _ => throw new InvalidOperationException(message.GetType().Name),
-            }
+        var paymentId = Guid.NewGuid();
+
+        var qualified = Assert.IsType<ReferralQualifiedIntegrationEvent>(
+            new ReferralNoticeEvents().Qualified(Notice, paymentId, "corr-qualify")
         );
 
-        await OnboardingPaymentQualifiesReferralConsumer.Handle(
-            Paid(),
-            bus,
-            NullLogger<OnboardingPaymentSucceededIntegrationEvent>.Instance,
-            default
-        );
-
-        var qualified = Assert.IsType<ReferralQualifiedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal(paymentId, qualified.QualifyingPaymentId);
         Assert.Equal(Referrer, qualified.TenantId);
         Assert.Equal(990, qualified.RewardAmountCents);
         Assert.Equal("USD", qualified.RewardCurrency);

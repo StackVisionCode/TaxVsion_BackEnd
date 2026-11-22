@@ -93,6 +93,26 @@ function envelope(eventType: string, payload: Record<string, unknown>): Incoming
   };
 }
 
+function openedEnvelope(): IncomingEnvelope {
+  return envelope('communication.support.opened.v1', {
+    TicketId: 'ticket-1',
+    AgentTenantId: 'tenant-platform',
+    SupportRecipientUserIds: ['agent-1'],
+    OpenedByUserId: 'user-office',
+    ConversationId: 'conversation-1',
+    Subject: 'App Mobile',
+    Category: 'Technical',
+    Priority: 'Normal',
+  });
+}
+
+// Abre un ticket y devuelve la fila creada para el agente.
+async function openTicketSnapshot(): Promise<NotificationSnapshot | undefined> {
+  const { handlers, notifications } = setup();
+  await handlers.get('communication.support.opened.v1')?.(openedEnvelope());
+  return vi.mocked(notifications.createIfMissing).mock.calls[0]?.[0]?.toSnapshot();
+}
+
 function supportTicket() {
   const result = SupportTicket.open({
     tenantId: 'tenant-office',
@@ -122,6 +142,37 @@ function agentPermissions(userId: string): UserPermissionsProjectionSnapshot {
 }
 
 describe('bindSupportConsumers', () => {
+  it('a support message marks the ticket for the agents without the text', async () => {
+    const { handlers, emitter } = setup();
+
+    await handlers.get('communication.support.message_added.v1')!(
+      envelope('communication.support.message_added.v1', {
+        TicketId: 'ticket-1',
+        MessageId: 'message-1',
+        SenderUserId: 'user-office',
+        SenderRole: 'Customer',
+        SentAtUtc: '2026-10-02T04:01:00.000Z',
+        ConversationId: 'conversation-1',
+        AgentTenantId: 'tenant-platform',
+        OpenedByUserId: 'user-office',
+        AssignedAgentId: null,
+        SupportRecipientUserIds: ['agent-1'],
+      }),
+    );
+
+    expect(emitter.emitToTenantStaff).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(emitter.emitToTenantStaff).mock.calls[0]![0];
+    expect(call.tenantId).toBe('tenant-platform');
+    expect(call.event).toBe(SupportSocketEvents.TicketMessage);
+    expect(call.envelope.payload).toEqual({
+      ticketId: 'ticket-1',
+      conversationId: 'conversation-1',
+      senderRole: 'Customer',
+      sentAtUtc: '2026-10-02T04:01:00.000Z',
+      assignedAgentId: null,
+    });
+  });
+
   it('traduce ticket opened a socket event para staff del tenant plataforma y oficina', async () => {
     const { handlers, emitter, analytics, notifications, userPermissions } = setup();
 
@@ -163,7 +214,6 @@ describe('bindSupportConsumers', () => {
     const snapshot = created.toSnapshot() as NotificationSnapshot;
     expect(snapshot.tenantId).toBe('tenant-platform');
     expect(snapshot.userId).toBe('agent-1');
-    expect(snapshot.kind).toBe('support.ticket.opened');
     expect(emitter.emitToUser).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: 'tenant-platform',
@@ -171,6 +221,20 @@ describe('bindSupportConsumers', () => {
         event: 'notification.received',
       }),
     );
+  });
+
+  it('uses the catalog kind', async () => {
+    const snapshot = await openTicketSnapshot();
+    expect(snapshot?.kind).toBe('communication.support.opened');
+  });
+
+  it('stores title and body keys with params', async () => {
+    const snapshot = await openTicketSnapshot();
+    expect(snapshot?.titleKey).toBe('notif.communication.support.opened.title');
+    expect(snapshot?.bodyKey).toBe('notif.communication.support.opened.body');
+    expect(snapshot?.params).toEqual({ subject: 'App Mobile', priority: 'Normal', category: 'Technical' });
+    // El texto guardado sigue siendo el respaldo en inglés.
+    expect(snapshot?.title).toBe('New support ticket: App Mobile');
   });
 
   it('con inAppSource=Notification emite realtime pero no crea la fila (la crea Notification .NET)', async () => {

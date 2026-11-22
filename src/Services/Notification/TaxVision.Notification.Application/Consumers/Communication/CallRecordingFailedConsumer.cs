@@ -2,8 +2,6 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
@@ -22,29 +20,24 @@ public static class CallRecordingFailedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var subject = $"Grabación de llamada falló: {evt.Reason}";
+            var parameters = new Dictionary<string, string> { ["reason"] = evt.Reason };
             foreach (var participant in new[] { evt.CallerUserId, evt.CalleeUserId })
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(participant),
-                    subject,
-                    NotificationCategory.Collaboration,
-                    "communication.call.recording_failed",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: participant,
-                    inApp: new InAppNotificationRequest(
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
                         NotificationKinds.CommunicationCallRecordingFailed,
-                        participant,
+                        evt.TenantId,
+                        new NotificationTarget(participant),
                         evt.EventId,
                         "communication.call.recording_failed.v1",
                         evt.FailedAtUtc,
-                        subject,
-                        ResourceContext: new Dictionary<string, string> { ["callId"] = evt.CallId.ToString() },
-                        Params: new Dictionary<string, string> { ["reason"] = evt.Reason }
+                        correlation.CorrelationId,
+                        InApp: new InAppContent(
+                            Params: parameters,
+                            ResourceContext: new Dictionary<string, string> { ["callId"] = evt.CallId.ToString() }
+                        )
                     ),
-                    ct: ct
+                    ct
                 );
             }
         }

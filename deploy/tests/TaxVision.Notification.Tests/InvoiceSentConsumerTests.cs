@@ -67,6 +67,32 @@ public sealed class InvoiceSentConsumerTests
     }
 
     [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var scribe = new TestDoubles.RecordingScribeRenderClient();
+
+        await InvoiceSentConsumer.Handle(
+            Invoice("client@example.com", null) with
+            {
+                CustomerId = Guid.NewGuid(),
+            },
+            scribe,
+            AllowAllContactPolicyRepository.Instance,
+            new NotificationDispatcherHarness(emailGateway: new TestDoubles.RecordingEmailGateway()).Dispatcher,
+            NoPortalRecipientResolver.Instance,
+            new FixedRecipientLocale("es"),
+            new NoOpCorrelationContext(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<InvoiceSentLog>.Instance,
+            CancellationToken.None
+        );
+
+        var render = Assert.Single(scribe.Renders);
+        Assert.Equal("Es", render.Language);
+        Assert.Equal("es", render.Reader?.Locale);
+        Assert.Equal(ScribeRenderAudience.Client, render.Audience);
+    }
+
+    [Fact]
     public async Task Sin_email_del_cliente_no_se_renderiza_ni_se_encola()
     {
         var render = new RecordingRenderClient();
@@ -103,11 +129,11 @@ public sealed class InvoiceSentConsumerTests
     ) =>
         InvoiceSentConsumer.Handle(
             evt,
-            gateway,
             render,
             AllowAllContactPolicyRepository.Instance,
-            new NotificationDispatcherHarness().Dispatcher,
+            new NotificationDispatcherHarness(emailGateway: gateway).Dispatcher,
             NoPortalRecipientResolver.Instance,
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<InvoiceSentLog>.Instance,
             CancellationToken.None

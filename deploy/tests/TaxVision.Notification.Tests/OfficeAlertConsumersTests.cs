@@ -173,6 +173,10 @@ public sealed class OfficeAlertConsumersTests
             harness.Dispatcher,
             AlwaysOnInAppSource.Instance,
             resolver,
+            TestPushLinks.Create(),
+            FixedRecipientLocale.English,
+            new FixedUserEmails(null),
+            new RecordingScribeRenderClient(),
             new TestCorrelationContext(),
             CancellationToken.None
         );
@@ -357,7 +361,7 @@ public sealed class OfficeAlertConsumersTests
     {
         var affectedOwner = Guid.NewGuid();
         var subscriber = Guid.NewGuid();
-        var harness = new NotificationDispatcherHarness();
+        var harness = new NotificationDispatcherHarness(emailGateway: new RecordingEmailGateway());
         var resolver = new AudienceResolver(
             affectedOwner,
             new Dictionary<string, IReadOnlyList<Guid>>
@@ -374,10 +378,15 @@ public sealed class OfficeAlertConsumersTests
                 AlertType = SecurityAlertType.AccountLockedOut,
             },
             harness.Dispatcher,
+            new RecordingScribeRenderClient(),
+            new FixedUserEmails("owner@example.com"),
+            new PortalAccountsStub(portalUserId: null),
             Options.Create(new PortalOptions()),
             TestPlatform.Settings,
             resolver,
+            FixedRecipientLocale.English,
             new TestCorrelationContext(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<SecurityAlertIntegrationEvent>.Instance,
             CancellationToken.None
         );
 

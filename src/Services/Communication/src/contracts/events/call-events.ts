@@ -83,6 +83,9 @@ export interface CallMissedEvent extends IntegrationEvent {
   readonly kind: 'Audio' | 'Video';
   readonly ringingAtUtc: string;
   readonly missedAtUtc: string;
+  /** Ausente = 'Timeout' (eventos viejos). */
+  readonly reason?: 'Timeout' | 'Cancelled';
+  readonly conversationId?: string | null;
 }
 
 export interface CallRecordingReadyEvent extends IntegrationEvent {

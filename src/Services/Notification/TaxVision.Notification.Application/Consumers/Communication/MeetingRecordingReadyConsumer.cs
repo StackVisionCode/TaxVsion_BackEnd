@@ -1,9 +1,8 @@
+using System.Globalization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
@@ -25,27 +24,27 @@ public static class MeetingRecordingReadyConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var title = $"Grabación de meeting lista ({evt.DurationSeconds:F0}s, {evt.ParticipantCount} participantes)";
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(evt.HostUserId),
-                title,
-                NotificationCategory.Collaboration,
-                "communication.meeting.recording_ready",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.HostUserId,
-                inApp: new InAppNotificationRequest(
+            var parameters = new Dictionary<string, string>
+            {
+                ["durationSeconds"] = evt.DurationSeconds.ToString("F0", CultureInfo.InvariantCulture),
+                ["participantCount"] = evt.ParticipantCount.ToString(CultureInfo.InvariantCulture),
+            };
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.CommunicationMeetingRecordingReady,
-                    evt.HostUserId,
+                    evt.TenantId,
+                    new NotificationTarget(evt.HostUserId),
                     evt.EventId,
                     "communication.meeting.recording_ready.v1",
                     evt.ReadyAtUtc,
-                    title,
-                    ResourceId: evt.RecordingFileId.ToString(),
-                    ResourceContext: new Dictionary<string, string> { ["meetingId"] = evt.MeetingId.ToString() }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(
+                        Params: parameters,
+                        ResourceId: evt.RecordingFileId.ToString(),
+                        ResourceContext: new Dictionary<string, string> { ["meetingId"] = evt.MeetingId.ToString() }
+                    )
                 ),
-                ct: ct
+                ct
             );
         }
     }

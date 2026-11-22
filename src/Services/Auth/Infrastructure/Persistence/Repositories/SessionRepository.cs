@@ -9,7 +9,7 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Repositories;
 /// Implementación EF Core del repositorio de sesiones y refresh tokens:
 /// alta, consulta y revocación de sesiones por sesión, usuario o tenant.
 /// </summary>
-public sealed class SessionRepository(AuthDbContext db) : ISessionRepository
+public sealed class SessionRepository(AuthDbContext db) : ISessionRepository, IExpiredSessionQuery
 {
     public async Task AddSessionAsync(UserSession session, CancellationToken ct = default) =>
         await db.UserSessions.AddAsync(session, ct);
@@ -161,5 +161,27 @@ public sealed class SessionRepository(AuthDbContext db) : ISessionRepository
         await db
             .UserSessions.IgnoreQueryFilters()
             .Where(session => session.TenantId == tenantId && session.RevokedAtUtc == null)
+            .ToListAsync(ct);
+
+    /// <summary>Sesiones vivas sin ningún refresh vigente (vencidos, revocados o purgados), las más viejas primero.
+    /// Cross-tenant a propósito: lo usa el barrido de mantenimiento.</summary>
+    public async Task<IReadOnlyList<Guid>> FindExpiredSessionIdsAsync(
+        DateTime now,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .UserSessions.IgnoreQueryFilters()
+            .Where(session =>
+                session.RevokedAtUtc == null
+                && !db
+                    .RefreshTokens.IgnoreQueryFilters()
+                    .Any(token =>
+                        token.SessionId == session.Id && token.RevokedAtUtc == null && token.ExpiresAtUtc > now
+                    )
+            )
+            .OrderBy(session => session.LastSeenAtUtc)
+            .Select(session => session.Id)
+            .Take(take)
             .ToListAsync(ct);
 }

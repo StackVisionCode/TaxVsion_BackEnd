@@ -267,6 +267,31 @@ public sealed class UsersController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    public sealed record SetMyLanguageRequest(string? Language);
+
+    /// <summary>Idioma de los avisos del propio usuario: "en", "es" o null (sin preferencia).
+    /// Endpoint aparte de me/profile: allí un campo ausente borra el valor.</summary>
+    [HttpPut("me/language")]
+    [Authorize]
+    [AllowActorTypes(
+        ActorType.TenantEmployee,
+        ActorType.TenantAdmin,
+        ActorType.CustomerPortal,
+        ActorType.PlatformAdmin
+    )]
+    [RateLimit("auth.g.user_profile_manage")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetMyLanguage(SetMyLanguageRequest request, CancellationToken ct)
+    {
+        if (!User.TryGetUserId(out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result>(new SetMyLanguageCommand(userId, request.Language), ct);
+
+        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     /// <summary>Plan, asientos usados/disponibles e invitaciones restantes del tenant.</summary>
     [HttpGet("/auth/tenants/limits")]
     [HasPermission(PermissionCatalog.UsersView)]

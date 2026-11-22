@@ -1,6 +1,5 @@
 using BuildingBlocks.Messaging.NotificationIntegrationEvents;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
-using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -33,18 +32,65 @@ public sealed class ClientRequestDocumentRejectedConsumerTests
             Rejected(withStaffRecipient ? Successor : null),
             new NoCustomers(),
             AllowAllContactPolicyRepository.Instance,
-            new UnusedGateway(),
-            new UnusedScribe(),
             harness.Dispatcher,
             NoPortalRecipientResolver.Instance,
             Options.Create(new PortalOptions()),
             new FakeTenantHostResolver(),
+            FixedRecipientLocale.English,
             new NoOpCorrelation(),
             CancellationToken.None
         );
 
         var inApp = Assert.Single(harness.Publisher.Published.OfType<InAppNotificationRequestedIntegrationEvent>());
         Assert.Equal(withStaffRecipient ? Successor : RequestedBy, inApp.RecipientUserId);
+    }
+
+    /// <summary>El correo al cliente sale en su idioma, con el mensaje del sistema también en su idioma.</summary>
+    [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var scribe = new RecordingScribeRenderClient();
+        var gateway = new RecordingEmailGateway();
+        var evt = Rejected(null);
+        var locales = new FixedRecipientLocale("es", "America/Bogota");
+
+        await ClientRequestDocumentRejectedConsumer.Handle(
+            evt,
+            new OneCustomer(evt.CustomerId),
+            AllowAllContactPolicyRepository.Instance,
+            new NotificationDispatcherHarness(emailGateway: gateway, scribe: scribe, locales: locales).Dispatcher,
+            NoPortalRecipientResolver.Instance,
+            Options.Create(new PortalOptions()),
+            new FakeTenantHostResolver(),
+            locales,
+            new NoOpCorrelation(),
+            CancellationToken.None
+        );
+
+        var render = Assert.Single(scribe.Renders);
+        Assert.Equal("Es", render.Language);
+        Assert.Equal(new ScribeReader("es", "America/Bogota"), render.Reader);
+        Assert.Equal(
+            "No pudimos procesar este archivo. Vuelve a subirlo, por favor.",
+            render.Variables["client_message"]
+        );
+        Assert.Single(gateway.Queued);
+    }
+
+    private sealed class OneCustomer(Guid customerId) : ICustomerEmailDirectoryRepository
+    {
+        public Task<CustomerEmailDirectoryEntry?> GetByCustomerIdAsync(
+            Guid tenantId,
+            Guid id,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<CustomerEmailDirectoryEntry?>(
+                id == customerId
+                    ? CustomerEmailDirectoryEntry.Create(tenantId, id, "client@example.com", "Client")
+                    : null
+            );
+
+        public Task AddAsync(CustomerEmailDirectoryEntry entry, CancellationToken ct = default) => Task.CompletedTask;
     }
 
     private static ClientRequestDocumentRejectedIntegrationEvent Rejected(Guid? staffRecipient) =>
@@ -71,38 +117,5 @@ public sealed class ClientRequestDocumentRejectedConsumerTests
         ) => Task.FromResult<CustomerEmailDirectoryEntry?>(null);
 
         public Task AddAsync(CustomerEmailDirectoryEntry entry, CancellationToken ct = default) => Task.CompletedTask;
-    }
-
-    private sealed class UnusedGateway : IEmailDispatchGateway
-    {
-        public Task<EmailDispatchResult> QueueEmailAsync(
-            EmailDispatchRequest request,
-            CancellationToken ct = default
-        ) => throw new InvalidOperationException("No customer email expected in this test.");
-    }
-
-    private sealed class UnusedScribe : IScribeRenderClient
-    {
-        public Task<Result<ScribeRenderedEmail>> RenderAsync(
-            string eventKey,
-            Guid tenantId,
-            IReadOnlyDictionary<string, object?> variables,
-            ScribeRenderAudience audience,
-            CancellationToken ct = default
-        ) => RenderAsync(eventKey, tenantId, variables, ct);
-
-        public Task<Result<ScribeRenderedText>> RenderTextAsync(
-            string eventKey,
-            Guid tenantId,
-            IReadOnlyDictionary<string, object?> variables,
-            CancellationToken ct = default
-        ) => TestDoubles.ScribeTestDefaults.TextUnsupported();
-
-        public Task<Result<ScribeRenderedEmail>> RenderAsync(
-            string eventKey,
-            Guid tenantId,
-            IReadOnlyDictionary<string, object?> variables,
-            CancellationToken ct = default
-        ) => throw new InvalidOperationException("No render expected in this test.");
     }
 }

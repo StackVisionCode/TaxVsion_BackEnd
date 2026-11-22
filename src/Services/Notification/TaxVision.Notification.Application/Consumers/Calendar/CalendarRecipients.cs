@@ -1,15 +1,12 @@
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
-using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
 
 /// <summary>
-/// Correo e in-app de los asistentes de una cita. El gate de entrega del gateway (inactivo, preferencia,
-/// catálogo) decide por cada asistente con <c>UserId</c>; un cliente invitado sin cuenta recibe igual.
+/// Correo, push e in-app de los asistentes de una cita, por el punto único. El gate de entrega (inactivo,
+/// preferencia, catálogo) decide por cada asistente con <c>UserId</c>; un cliente invitado sin cuenta recibe igual.
 /// </summary>
 internal static class CalendarRecipients
 {
@@ -23,32 +20,39 @@ internal static class CalendarRecipients
         Guid? organizerUserId
     ) => hasRoom ? recipients.Where(r => r.UserId is { } id && id == organizerUserId).ToList() : recipients;
 
-    /// <summary>Push a cada destinatario con cuenta; sin dispositivo registrado no hace nada.</summary>
+    /// <summary>
+    /// Push genérico a cada destinatario con cuenta, con el enlace a la cita; sin dispositivo no hace nada.
+    /// Un aviso nuevo de la misma cita sustituye al anterior.
+    /// </summary>
     public static async Task PushAsync(
         NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         IReadOnlyList<AppointmentRecipient> recipients,
         Guid tenantId,
-        string title,
-        string body,
         string kind,
+        Guid appointmentId,
         Guid relatedEventId,
         string? correlationId,
         CancellationToken ct
     )
     {
+        // Una lectura de idioma por usuario durante el evento.
+        var languages = new RecipientLocaleCache(locales, tenantId);
         foreach (var recipient in recipients)
         {
             if (recipient.UserId is not { } userId)
                 continue;
-            await dispatcher.SendPushAsync(
-                tenantId,
-                userId,
-                title,
-                body,
-                NotificationCategory.Calendar,
-                kind,
-                relatedEventId,
-                correlationId,
+            var target = new NotificationTarget(userId, Locale: await languages.ForUserAsync(userId, ct));
+            await dispatcher.DispatchAsync(
+                Intent(kind, tenantId, target, relatedEventId, correlationId) with
+                {
+                    Push = new PushContent(
+                        appointmentId.ToString(),
+                        Tag: $"appointment:{appointmentId:N}",
+                        // El clic busca el aviso de la cita en la bandeja aunque este push vaya aparte.
+                        SourceEventId: relatedEventId
+                    ),
+                },
                 ct
             );
         }
@@ -59,17 +63,19 @@ internal static class CalendarRecipients
         recipient.UserId is null ? ScribeRenderAudience.Client : ScribeRenderAudience.Staff;
 
     /// <summary>
-    /// Renderiza una vez por audiencia presente y encola el correo de cada destinatario. Todos los renders
-    /// van antes de encolar: si Scribe falla, el reintento no deja correos a medias.
+    /// Renderiza una vez por audiencia e idioma presentes (no por persona) y encola el correo de cada
+    /// destinatario. Todos los renders van antes de encolar: si Scribe falla, el reintento no deja correos a
+    /// medias. Las variables pueden depender del idioma (textos del sistema dentro del correo).
     /// </summary>
     public static async Task QueueByAudienceAsync(
         IReadOnlyList<AppointmentRecipient> recipients,
         Guid tenantId,
         string templateKey,
         string kind,
-        IReadOnlyDictionary<string, object?> variables,
+        Func<RecipientLocale, IReadOnlyDictionary<string, object?>> variables,
         IScribeRenderClient scribeClient,
-        IEmailDispatchGateway gateway,
+        NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         Guid relatedEventId,
         string? correlationId,
         CancellationToken ct,
@@ -78,48 +84,87 @@ internal static class CalendarRecipients
         string? timeZoneId = null
     )
     {
-        // Las horas tipadas se imprimen en la zona de la cita, con su rótulo.
-        var reader = ScribeReader.From(null, timeZoneId);
-        var renders = new Dictionary<ScribeRenderAudience, ScribeRenderedEmail>();
+        var languages = new RecipientLocaleCache(locales, tenantId);
+        var renders = new Dictionary<(ScribeRenderAudience, string, ScribeReader), ScribeRenderedEmail>();
+        var emails = new List<(AppointmentRecipient Recipient, RecipientLocale Locale, ScribeRenderedEmail Render)>();
         foreach (var recipient in recipients)
         {
+            // Idioma de quien lee; las horas tipadas, en la zona de la cita (no en la del lector), con su rótulo.
+            var locale = (await LocaleOfAsync(recipient, languages, locales, tenantId, ct)) with
+            {
+                TimeZoneId = timeZoneId,
+            };
             var audience = AudienceOf(recipient);
-            if (RsvpTokenOf(recipient, rsvpBaseUrl, organizerUserId) is null && !renders.ContainsKey(audience))
-                renders[audience] = (
-                    await scribeClient.RenderAsync(templateKey, tenantId, variables, audience, reader, ct)
-                ).EnsureRendered(templateKey);
-        }
-
-        foreach (var recipient in recipients)
-        {
+            ScribeRenderedEmail rendered;
             // Con enlace de respuesta el render es de esa persona: sus botones son solo suyos.
-            var rendered = renders.GetValueOrDefault(AudienceOf(recipient));
             if (RsvpTokenOf(recipient, rsvpBaseUrl, organizerUserId) is { } token)
             {
-                var own = new Dictionary<string, object?>(variables);
+                var own = new Dictionary<string, object?>(variables(locale));
                 CalendarRsvpLinks.AddTo(own, rsvpBaseUrl!, token);
                 rendered = (
-                    await scribeClient.RenderAsync(templateKey, tenantId, own, AudienceOf(recipient), reader, ct)
+                    await scribeClient.RenderForRecipientAsync(templateKey, tenantId, own, audience, locale, ct)
                 ).EnsureRendered(templateKey);
             }
+            else if (!renders.TryGetValue((audience, locale.TemplateLanguage, locale.Reader), out rendered!))
+            {
+                rendered = (
+                    await scribeClient.RenderForRecipientAsync(
+                        templateKey,
+                        tenantId,
+                        variables(locale),
+                        audience,
+                        locale,
+                        ct
+                    )
+                ).EnsureRendered(templateKey);
+                renders[(audience, locale.TemplateLanguage, locale.Reader)] = rendered;
+            }
+            emails.Add((recipient, locale, rendered));
+        }
 
-            await gateway.QueueEmailAsync(
-                rendered!.ToDispatchRequest(
-                    tenantId: tenantId,
-                    to: recipient.Email,
-                    templateKey: templateKey,
-                    relatedEventId: relatedEventId,
-                    correlationId: correlationId
+        foreach (var (recipient, locale, rendered) in emails)
+        {
+            await dispatcher.DispatchAsync(
+                Intent(
+                    kind,
+                    tenantId,
+                    new NotificationTarget(
+                        recipient.UserId,
+                        recipient.Email,
+                        CustomerId: recipient.CustomerId,
+                        Locale: locale
+                    ),
+                    relatedEventId,
+                    correlationId
                 ) with
                 {
-                    RecipientUserId = recipient.UserId,
-                    Category = NotificationCategory.Calendar,
-                    NotificationKind = kind,
+                    // Ya renderizado arriba con el idioma y la zona de la cita.
+                    Email = new EmailContent(
+                        templateKey,
+                        NoVariables,
+                        AudienceOf(recipient),
+                        Render: (_, _) => Task.FromResult(rendered)
+                    ),
                 },
                 ct
             );
         }
     }
+
+    /// <summary>Compañero → su idioma; cliente invitado → el del cliente; externo sin datos → inglés.</summary>
+    private static async Task<RecipientLocale> LocaleOfAsync(
+        AppointmentRecipient recipient,
+        RecipientLocaleCache languages,
+        IRecipientLocale locales,
+        Guid tenantId,
+        CancellationToken ct
+    ) =>
+        recipient switch
+        {
+            { UserId: { } userId } => await languages.ForUserAsync(userId, ct),
+            { CustomerId: { } customerId } => await locales.ForCustomerAsync(tenantId, customerId, ct),
+            _ => locales.FromEventLanguage(null),
+        };
 
     /// <summary>El organizador ya aceptó: sus avisos no llevan botones.</summary>
     private static string? RsvpTokenOf(AppointmentRecipient recipient, string? rsvpBaseUrl, Guid? organizerUserId) =>
@@ -157,27 +202,34 @@ internal static class CalendarRecipients
             if (recipient.UserId is not { } userId)
                 continue;
 
-            await dispatcher.RecordInAppAsync(
-                tenantId,
-                NotificationRecipient.ForUser(userId),
-                title,
-                NotificationCategory.Calendar,
-                kind,
-                sourceEventId,
-                correlationId,
-                recipientUserId: userId,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     kind,
-                    userId,
+                    tenantId,
+                    new NotificationTarget(userId),
                     sourceEventId,
                     sourceEventType,
                     occurredAtUtc,
-                    title,
-                    ResourceId: appointmentId.ToString(),
-                    ResourceContext: context
+                    correlationId,
+                    InApp: new InAppContent(
+                        ResourceId: appointmentId.ToString(),
+                        ResourceContext: context,
+                        FallbackTitle: title
+                    )
                 ),
-                ct: ct
+                ct
             );
         }
     }
+
+    private static readonly IReadOnlyDictionary<string, object?> NoVariables = new Dictionary<string, object?>();
+
+    // Push y correo no usan el tipo ni la fecha del evento (solo el in-app los publica).
+    private static NotificationIntent Intent(
+        string kind,
+        Guid tenantId,
+        NotificationTarget target,
+        Guid relatedEventId,
+        string? correlationId
+    ) => new(kind, tenantId, target, relatedEventId, kind, DateTime.UtcNow, correlationId);
 }

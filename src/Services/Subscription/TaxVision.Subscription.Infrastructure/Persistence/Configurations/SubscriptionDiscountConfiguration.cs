@@ -26,6 +26,7 @@ public sealed class SubscriptionDiscountConfiguration : IEntityTypeConfiguration
         builder.Property(discount => discount.EndedReason).HasMaxLength(500);
         builder.Property(discount => discount.StartsAtUtc).IsRequired();
         builder.Property(discount => discount.CreatedAtUtc).IsRequired();
+        builder.Property(discount => discount.EndingNoticeSentAtUtc);
 
         builder
             .HasIndex(discount => new { discount.TenantSubscriptionId, discount.EndedAtUtc })

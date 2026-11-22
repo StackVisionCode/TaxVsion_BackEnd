@@ -4,6 +4,8 @@ import type { RolePermissionsProjectionRepository } from '../ports/role-permissi
 import type { CustomerPortalAccountRepository } from '../ports/customer-portal-account-repository.js';
 import type { IncomingEnvelope } from '../ports/event-consumer.js';
 import type { RealtimeEmitter } from '../ports/realtime-emitter.js';
+import type { SocketSessionTerminator } from '../ports/socket-session-terminator.js';
+import { invalidatePermissionCache } from '../../domain/shared/permissions.js';
 import { logger } from '../../infrastructure/logger/logger.js';
 import { emitUserProfileChanged, readOptionalGuid } from './user-profile-realtime.js';
 import {
@@ -32,6 +34,8 @@ export function bindAuthConsumers(
     customerPortalAccounts: CustomerPortalAccountRepository;
     /** Opcional: sin emisor los consumers siguen proyectando, solo no avisan en vivo. */
     emitter?: RealtimeEmitter;
+    /** Cierra los sockets del usuario dado de baja. */
+    sessionTerminator?: SocketSessionTerminator;
   },
 ): void {
   /**
@@ -178,6 +182,8 @@ export function bindAuthConsumers(
     await deps.userPermissions.markInactive(userId, new Date(), at);
     await deps.userDirectory.markInactive(userId, at);
     await deps.customerPortalAccounts.markInactiveByUserId(userId, at);
+    invalidatePermissionCache(userId);
+    await deps.sessionTerminator?.disconnectUser(env.tenantId, userId);
   });
 
   // Contraparte de `deactivated`: sin este consumer, reactivar un usuario en Auth
@@ -193,6 +199,7 @@ export function bindAuthConsumers(
     await deps.userPermissions.markActive(userId, new Date(), at);
     await deps.userDirectory.markActive(userId, at);
     await deps.customerPortalAccounts.markActiveByUserId(userId, at);
+    invalidatePermissionCache(userId);
   });
 
   /**

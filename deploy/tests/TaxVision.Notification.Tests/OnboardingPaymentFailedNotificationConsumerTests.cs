@@ -6,6 +6,7 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -37,6 +38,7 @@ public sealed class OnboardingPaymentFailedNotificationConsumerTests
             gateway,
             scribeClient,
             Options.Create(Portal),
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );

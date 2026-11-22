@@ -4,8 +4,6 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -17,15 +15,16 @@ public static class LegalHoldLiftedConsumer
         NotificationDispatcher dispatcher,
         IInAppSourceGate inAppSource,
         IRecipientResolver recipientResolver,
+        PushLinks links,
+        IRecipientLocale locales,
+        IUserEmailResolver emails,
+        IScribeRenderClient scribe,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            if (!inAppSource.PublishesInApp(InAppSourceGroup.CloudStorageLegal))
-                return;
-
             var recipients = await OfficeAlertRecipients.ResolveOwnerAndSubscribersAsync(
                 evt.TenantId,
                 NotificationPermissions.StorageAlerts,
@@ -38,30 +37,48 @@ public static class LegalHoldLiftedConsumer
                 ct
             );
 
-            const string title = "Retencion legal levantada";
-            const string body = "La retencion legal sobre un archivo del tenant fue levantada.";
+            if (recipients.Count == 0)
+                return;
+
+            var intent = new NotificationIntent(
+                NotificationKinds.CloudStorageLegalHoldLifted,
+                evt.TenantId,
+                new NotificationTarget(),
+                evt.EventId,
+                "cloudstorage.file.legal_hold_lifted.v1",
+                evt.OccurredOn,
+                correlation.CorrelationId
+            );
+            // Correo obligatorio: no depende de quién publica la campana (T3.7).
+            var variables = new Dictionary<string, object?>
+            {
+                ["lifted_at"] = ScribeDates.Instant(evt.OccurredOn),
+                ["action_url"] = await OfficeAlertEmails.FileUrlAsync(links, evt.TenantId, evt.FileId, ct),
+            };
+            await OfficeAlertEmails.SendAsync(
+                intent,
+                "storage.legal_hold_lifted.v1",
+                variables,
+                recipients,
+                dispatcher,
+                emails,
+                scribe,
+                locales,
+                ct
+            );
+
+            if (!inAppSource.PublishesInApp(InAppSourceGroup.CloudStorageLegal))
+                return;
+
             foreach (var userId in recipients)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.StorageAndQuota,
-                    "cloudstorage.file.legal_hold_lifted",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
-                        NotificationKinds.CloudStorageLegalHoldLifted,
-                        userId,
-                        evt.EventId,
-                        "cloudstorage.file.legal_hold_lifted.v1",
-                        evt.OccurredOn,
-                        title,
-                        FallbackBody: body,
-                        ResourceId: evt.FileId.ToString()
-                    ),
-                    ct: ct
+                await dispatcher.DispatchAsync(
+                    intent with
+                    {
+                        Target = new NotificationTarget(userId),
+                        InApp = new InAppContent(ResourceId: evt.FileId.ToString()),
+                    },
+                    ct
                 );
             }
         }

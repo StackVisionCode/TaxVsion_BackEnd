@@ -127,6 +127,38 @@ public sealed class NotificationLog : TenantEntity
             Status = NotificationStatus.Delivered;
     }
 
+    /// <summary>Resultado del proveedor: entregado. Solo desde Sent; repetido o fuera de orden no cambia nada.</summary>
+    public Result ConfirmDelivered()
+    {
+        if (Status != NotificationStatus.Sent)
+            return Result.Failure(InvalidTransition);
+        Status = NotificationStatus.Delivered;
+        return Result.Success();
+    }
+
+    /// <summary>Resultado del proveedor (o rechazo del destino): no se entregó. Solo desde Sent.</summary>
+    public Result FailAfterSend(string reason)
+    {
+        if (Status != NotificationStatus.Sent)
+            return Result.Failure(InvalidTransition);
+        MarkFailed(reason);
+        return Result.Success();
+    }
+
+    /// <summary>El proveedor lo omitió (p. ej. el número pidió STOP). Solo desde Sent.</summary>
+    public Result SkipAfterSend(string reason)
+    {
+        if (Status != NotificationStatus.Sent)
+            return Result.Failure(InvalidTransition);
+        MarkSkipped(reason);
+        return Result.Success();
+    }
+
+    private static readonly Error InvalidTransition = new(
+        "NotificationLog.InvalidTransition",
+        "The delivery result does not apply to the current status."
+    );
+
     /// <summary>Desde Sent o Delivered: un rebote tardío (aceptó y después devolvió) es la verdad final.</summary>
     public void MarkBounced(string reason)
     {

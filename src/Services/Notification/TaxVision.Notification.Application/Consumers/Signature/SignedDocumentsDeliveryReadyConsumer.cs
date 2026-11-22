@@ -3,6 +3,7 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Platform;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
@@ -21,7 +22,7 @@ public static class SignedDocumentsDeliveryReadyConsumer
         SignedDeliveryLinkResolver deliveryLinks,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
-        ISmsSender smsSender,
+        NotificationDispatcher dispatcher,
         IPlatformSettings platform,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -41,12 +42,17 @@ public static class SignedDocumentsDeliveryReadyConsumer
 
             if (target.PrefersSms)
             {
-                await smsSender.SendAsync(
+                await dispatcher.SendSmsAsync(
+                    evt.TenantId,
                     signer.PhoneE164!,
                     BuildSms(signer, pageUrl, isPartialCopy, platform.Current.BrandName),
-                    ct,
-                    templateKey: null,
-                    idempotencyToken: $"{evt.EventId:N}:{signer.SignerId:N}"
+                    NotificationCategory.DocumentsAndSignatures,
+                    "sig.signed_documents_ready.sms",
+                    evt.EventId,
+                    correlationId,
+                    recipientUserId: null,
+                    idempotencyToken: $"{evt.EventId:N}:{signer.SignerId:N}",
+                    ct: ct
                 );
                 return;
             }
@@ -122,11 +128,14 @@ public static class SignedDocumentsDeliveryReadyConsumer
     }
 
     private static string BuildSms(SignerContactSnapshot signer, string pageUrl, bool isPartialCopy, string product) =>
-        (signer.Language, isPartialCopy) switch
-        {
-            ("Es", true) => $"{product}: {signer.FullName}, tu copia firmada está lista: {pageUrl}",
-            ("Es", false) => $"{product}: {signer.FullName}, tus documentos firmados están listos: {pageUrl}",
-            (_, true) => $"{product}: {signer.FullName}, your signed copy is ready: {pageUrl}",
-            _ => $"{product}: {signer.FullName}, your signed documents are ready: {pageUrl}",
-        };
+        SmsText.For(
+            isPartialCopy ? SmsText.SignatureDeliveryReadyPartial : SmsText.SignatureDeliveryReady,
+            signer.Language,
+            new Dictionary<string, string>
+            {
+                ["brand"] = product,
+                ["fullName"] = signer.FullName,
+                ["link"] = pageUrl,
+            }
+        );
 }

@@ -1,4 +1,4 @@
-﻿using BuildingBlocks.Common;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
@@ -27,11 +27,11 @@ public static class AppointmentAttendeeAddedConsumer
 
     public static async Task Handle(
         AppointmentAttendeeAddedIntegrationEvent evt,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hosts,
         NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -48,11 +48,11 @@ public static class AppointmentAttendeeAddedConsumer
         {
             await CalendarRecipients.PushAsync(
                 dispatcher,
+                locales,
                 recipients,
                 evt.TenantId,
-                $"You were added to an appointment: {evt.Title}",
-                "Open your calendar for the details.",
                 NotificationKinds.CalendarAttendeeAdded,
+                evt.AppointmentId,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct
@@ -82,17 +82,19 @@ public static class AppointmentAttendeeAddedConsumer
                 evt.TenantId,
                 TemplateKey,
                 NotificationKinds.CalendarAttendeeAdded,
-                new Dictionary<string, object?>
+                locale => new Dictionary<string, object?>
                 {
                     ["appointment_title"] = evt.Title,
-                    ["start_local"] = (object?)ScribeDates.Instant(evt.StartUtc) ?? "Follows the series schedule",
+                    ["start_local"] =
+                        (object?)ScribeDates.Instant(evt.StartUtc) ?? EmailText.For("calendar.series_schedule", locale),
                     ["time_zone"] = evt.TimeZoneId,
                     ["is_recurring"] = evt.IsRecurring,
                     ["is_virtual"] = evt.IsVirtual,
                     ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
                 },
                 scribeClient,
-                gateway,
+                dispatcher,
+                locales,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct,

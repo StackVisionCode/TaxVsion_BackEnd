@@ -48,13 +48,16 @@ public sealed class UserEmailResolver(
 
         // La respuesta de Auth es la verdad más reciente: se aplica con la hora actual.
         var now = DateTime.UtcNow;
+        var entry =
+            local
+            ?? Domain.Directory.UserEmailDirectoryEntry.Create(tenantId, userId, remote.Email, remote.IsActive, now);
         if (local is null)
-            await directory.AddAsync(
-                Domain.Directory.UserEmailDirectoryEntry.Create(tenantId, userId, remote.Email, remote.IsActive, now),
-                ct
-            );
+            await directory.AddAsync(entry, ct);
         else
             local.UpdateEmail(remote.Email, remote.IsActive, now);
+        // Auth también trae idioma, zona y nombre (null en un Auth viejo: no borra lo que ya había).
+        if (remote.Language is not null || remote.TimeZoneId is not null || remote.DisplayName is not null)
+            entry.ApplyProfile(remote.Language, remote.TimeZoneId, remote.DisplayName, now);
 
         await unitOfWork.SaveChangesAsync(ct);
 

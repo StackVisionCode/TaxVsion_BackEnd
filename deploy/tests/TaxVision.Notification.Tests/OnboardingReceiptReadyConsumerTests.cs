@@ -9,6 +9,7 @@ using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Onboarding;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -47,6 +48,7 @@ public sealed class OnboardingReceiptReadyConsumerTests
             scribeClient,
             Options.Create(Portal),
             uow,
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -94,6 +96,7 @@ public sealed class OnboardingReceiptReadyConsumerTests
             scribeClient,
             Options.Create(Portal),
             uow,
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );

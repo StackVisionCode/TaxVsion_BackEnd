@@ -1,4 +1,6 @@
 import type { Notification, NotificationSnapshot } from '../../domain/notifications/notification.js';
+import type { NotificationListFilter } from '../../domain/notifications/notification-category.js';
+import type { NotificationBulkAction } from '../../contracts/socket/notification-socket-events.js';
 
 export interface NotificationRepository {
   /**
@@ -10,6 +12,9 @@ export interface NotificationRepository {
   createIfMissing(notification: Notification): Promise<boolean>;
 
   findById(tenantId: string, id: string, userId: string): Promise<Notification | null>;
+
+  /** Por la clave única (oficina, evento de origen, usuario). */
+  findBySourceEvent?(tenantId: string, sourceEventId: string, userId: string): Promise<Notification | null>;
 
   markRead(tenantId: string, userId: string, id: string, readAtUtc: Date): Promise<boolean>;
 
@@ -36,6 +41,13 @@ export interface NotificationRepository {
     readAtUtc: Date;
   }): Promise<{ markedCount: number; unreadCount: number }>;
 
+  /** Filas sin leer del usuario con ese `GroupKey` (p. ej. "mensajes perdidos" de un chat). */
+  findUnreadIdsByGroupKey?(input: {
+    tenantId: string;
+    userId: string;
+    groupKey: string;
+  }): Promise<readonly string[]>;
+
   /** Simétrico de markManyRead: vuelve varias filas a no-leídas. */
   markManyUnread(input: {
     tenantId: string;
@@ -54,20 +66,30 @@ export interface NotificationRepository {
     dismissedAtUtc: Date;
   }): Promise<{ dismissedCount: number; unreadCount: number }>;
 
-  listForUser(input: {
-    tenantId: string;
-    userId: string;
-    take: number;
-    skip: number;
-    unreadOnly?: boolean;
-  }): Promise<NotificationSnapshot[]>;
+  listForUser(
+    input: {
+      tenantId: string;
+      userId: string;
+      take: number;
+      skip: number;
+    } & NotificationListFilter,
+  ): Promise<NotificationSnapshot[]>;
 
-  /** Conteo total para paginación: respeta `unreadOnly` igual que `listForUser`. */
-  countForUser(input: {
+  /** Conteo total para paginación: respeta los mismos filtros que `listForUser`. */
+  countForUser(input: { tenantId: string; userId: string } & NotificationListFilter): Promise<number>;
+
+  /**
+   * Aplica la acción a las filas del usuario que cumplen el filtro, no descartadas y con
+   * `CreatedAtUtc <= cutoffUtc`, en lotes. Devuelve las afectadas y el conteo final de no leídas.
+   */
+  bulkByFilter?(input: {
     tenantId: string;
     userId: string;
-    unreadOnly?: boolean;
-  }): Promise<number>;
+    action: NotificationBulkAction;
+    filter: NotificationListFilter;
+    cutoffUtc: Date;
+    atUtc: Date;
+  }): Promise<{ affectedCount: number; unreadCount: number }>;
 
   countUnread(tenantId: string, userId: string): Promise<number>;
 
@@ -85,6 +107,8 @@ export interface NotificationRepository {
     tenantId: string;
     userId: string;
     sinceUtc: Date;
+    /** Desempate opcional: con él, el cursor es `(sinceUtc, sinceId)` y no salta filas del mismo milisegundo. */
+    sinceId?: string;
     limit: number;
   }): Promise<NotificationSnapshot[]>;
 }
