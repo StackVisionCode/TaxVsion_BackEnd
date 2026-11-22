@@ -12,12 +12,14 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.Tenant.Domain.Compliance.OfficeCompliance> _loggerOfOfficeCompliance;
+        private readonly Microsoft.Extensions.Logging.ILogger<TaxVision.Tenant.Domain.Team.WorkspacePreference> _loggerOfWorkspacePreference;
         private readonly System.TimeProvider _timeProvider;
 
-        public UserOffboardedIntegrationEventHandler1522434942(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Tenant.Domain.Compliance.OfficeCompliance> loggerOfOfficeCompliance, System.TimeProvider timeProvider)
+        public UserOffboardedIntegrationEventHandler1522434942(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<TaxVision.Tenant.Domain.Compliance.OfficeCompliance> loggerOfOfficeCompliance, Microsoft.Extensions.Logging.ILogger<TaxVision.Tenant.Domain.Team.WorkspacePreference> loggerOfWorkspacePreference, System.TimeProvider timeProvider)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _loggerOfOfficeCompliance = loggerOfOfficeCompliance;
+            _loggerOfWorkspacePreference = loggerOfWorkspacePreference;
             _timeProvider = timeProvider;
         }
 
@@ -31,15 +33,16 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Tenant.Application.Abstractions.IUserPermissionsProjectionRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var userPermissionsProjectionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tenant.Application.Abstractions.IUserPermissionsProjectionRepository>(serviceScope.ServiceProvider);
+            var workspacePreferenceRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tenant.Application.Team.Abstractions.IWorkspacePreferenceRepository>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var officeComplianceRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tenant.Application.Compliance.Abstractions.IOfficeComplianceRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var userOffboardedIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardedIntegrationEvent)context.Envelope.Message;
 
@@ -58,6 +61,10 @@ namespace Internal.Generated.WolverineHandlers
             {
                 
                 // The actual message execution
+                await TaxVision.Tenant.Application.Team.Consumers.WorkspacePreferencesUserOffboardedConsumer.Handle(userOffboardedIntegrationEvent, workspacePreferenceRepository, correlationContext, _loggerOfWorkspacePreference, cancellation).ConfigureAwait(false);
+
+                
+                // The actual message execution
                 await TaxVision.Tenant.Application.Consumers.UserLifecyclePermissionsProjectionConsumer.Handle(userOffboardedIntegrationEvent, userPermissionsProjectionRepository, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
 
                 
@@ -65,7 +72,7 @@ namespace Internal.Generated.WolverineHandlers
                 await TaxVision.Tenant.Application.Compliance.Consumers.SecurityCoordinatorOffboardedConsumer.Handle(userOffboardedIntegrationEvent, officeComplianceRepository, unitOfWork, context, correlationContext, _loggerOfOfficeCompliance, _timeProvider, cancellation).ConfigureAwait(false);
 
                 // Acuse del retiro por handler (OffboardingStepAcknowledgementPolicy)
-                await BuildingBlocks.Web.Hosting.OffboardingStepAcknowledger.PublishAsync(userOffboardedIntegrationEvent, context, new BuildingBlocks.Web.Hosting.OffboardingStep[] { new BuildingBlocks.Web.Hosting.OffboardingStep("Tenant", "SecurityCoordinatorOffboardedConsumer"), new BuildingBlocks.Web.Hosting.OffboardingStep("Tenant", "UserLifecyclePermissionsProjectionConsumer") }, cancellation).ConfigureAwait(false);
+                await BuildingBlocks.Web.Hosting.OffboardingStepAcknowledger.PublishAsync(userOffboardedIntegrationEvent, context, new BuildingBlocks.Web.Hosting.OffboardingStep[] { new BuildingBlocks.Web.Hosting.OffboardingStep("Tenant", "SecurityCoordinatorOffboardedConsumer"), new BuildingBlocks.Web.Hosting.OffboardingStep("Tenant", "UserLifecyclePermissionsProjectionConsumer"), new BuildingBlocks.Web.Hosting.OffboardingStep("Tenant", "WorkspacePreferencesUserOffboardedConsumer") }, cancellation).ConfigureAwait(false);
                 
                 // Added by EF Core Transaction Middleware
                 var result_of_SaveChangesAsync = await tenantDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);

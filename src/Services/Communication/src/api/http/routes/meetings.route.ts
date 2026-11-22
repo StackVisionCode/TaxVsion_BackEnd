@@ -26,6 +26,7 @@ import { continueMeeting } from '../../../application/use-cases/continue-meeting
 import { listMeetingEvents } from '../../../application/use-cases/meeting-events-query.js';
 import { getMeetingSummary } from '../../../application/use-cases/get-meeting-summary.js';
 import { getMeetingChatHistory } from '../../../application/use-cases/get-meeting-chat-history.js';
+import { officeTimeZone } from '../../../application/use-cases/member-work.js';
 import { resolveDisplayName } from '../../socket/handlers/resolve-display-name.js';
 import { requirePermission } from '../plugins/require-permission.js';
 import { RecordingScope } from '../../../domain/recording/recording-session-state.js';
@@ -238,7 +239,8 @@ export async function registerMeetingRoutes(app: FastifyInstance, container: App
     },
     async (request, reply) => {
       const principal = request.principal!;
-      const tz = typeof principal.raw['zoneinfo'] === 'string' ? principal.raw['zoneinfo'] : 'UTC';
+      // "Hoy" en la zona de la oficina, igual que Work Profile.
+      const tz = await officeTimeZone(container.tenantTimeZones, principal.tenantId);
       const now = new Date();
       const { dayStartUtc, dayEndUtc, weekEndUtc } = userDayWindow(now, tz);
       const stats = await container.meetings.getStatsForUser({

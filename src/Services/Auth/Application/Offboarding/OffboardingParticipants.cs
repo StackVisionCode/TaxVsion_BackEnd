@@ -136,7 +136,11 @@ public static class OffboardingParticipants
         new(
             "Tenant",
             "Office settings",
-            ["SecurityCoordinatorOffboardedConsumer", "UserLifecyclePermissionsProjectionConsumer"],
+            [
+                "SecurityCoordinatorOffboardedConsumer",
+                "UserLifecyclePermissionsProjectionConsumer",
+                "WorkspacePreferencesUserOffboardedConsumer",
+            ],
             "/tenants/offboarding-impact/{userId}"
         ),
         new("Wallet", "Wallet", ["UserLifecyclePermissionsProjectionConsumer"]),

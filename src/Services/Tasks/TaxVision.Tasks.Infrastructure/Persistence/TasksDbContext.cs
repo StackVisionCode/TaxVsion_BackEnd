@@ -143,6 +143,11 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         modelBuilder.ApplyCustomerAssignmentProjection();
+        // T-1: "mis clientes" por usuario sin recorrer el tenant (recorte de tareas).
+        modelBuilder
+            .Entity<CustomerAssignmentProjection>()
+            .HasIndex(a => new { a.TenantId, a.UserId })
+            .IncludeProperties(a => a.CustomerId);
         modelBuilder.ApplyTenantTimeZoneProjection();
         FormInsightsDbFunctions.Register(modelBuilder);
         ApplyFailClosedTenantFilter(modelBuilder);

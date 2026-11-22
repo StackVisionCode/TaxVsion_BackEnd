@@ -123,16 +123,59 @@ public sealed class AppointmentRangeQueryTests
         Assert.False(first.IsRecurring);
     }
 
+    [Fact]
+    public async Task Participant_filter_reads_only_that_users_agenda()
+    {
+        var type = Type();
+        var user = Guid.NewGuid();
+        var actor = Guid.NewGuid();
+        var mine = At(From.AddHours(15), user, type.Id);
+        var range = new SeededRange(mine) { OfficeRangeThrows = true };
+
+        var result = await GetAppointmentRangeHandler.Handle(
+            new GetAppointmentRangeQuery(Tenant, From, From.AddDays(1), null, actor, CanViewAll: false, user),
+            range,
+            new SingleTypeRepository(type),
+            new NullCalendarMetrics(),
+            Options.Create(new CalendarVisibilityOptions { Enabled = true }),
+            default
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(mine.Id, Assert.Single(result.Value).AppointmentId);
+        Assert.Equal((user, actor), range.UserRangeCall);
+    }
+
     /// <summary>Devuelve lo sembrado como si la consulta SQL ya hubiera filtrado por solape.</summary>
     private sealed class SeededRange(params Appointment[] seed) : IAppointmentRepository
     {
+        // La agenda de la oficina no debe leerse cuando hay filtro por participante.
+        public bool OfficeRangeThrows { get; init; }
+        public (Guid UserId, Guid? AssignedTo)? UserRangeCall { get; private set; }
+
         public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
             Guid tenantId,
             DateTime rangeStartUtc,
             DateTime rangeEndUtc,
             Guid? assignedToUserId,
             CancellationToken ct = default
-        ) => Task.FromResult<IReadOnlyList<Appointment>>(seed);
+        ) =>
+            OfficeRangeThrows
+                ? throw new InvalidOperationException("Office range read with a participant filter.")
+                : Task.FromResult<IReadOnlyList<Appointment>>(seed);
+
+        public Task<IReadOnlyList<Appointment>> ListVisibleForUserRangeAsync(
+            Guid tenantId,
+            Guid userId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        )
+        {
+            UserRangeCall = (userId, assignedToUserId);
+            return Task.FromResult<IReadOnlyList<Appointment>>(seed);
+        }
 
         public Task<IReadOnlyList<Appointment>> ListOrganizerTypeForRangeAsync(
             Guid tenantId,

@@ -6,6 +6,7 @@ using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.CloudStorage.Domain.Audit;
@@ -72,6 +73,13 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         modelBuilder.ApplyCustomerAssignmentProjection();
+        // T-1: "mis clientes" por usuario sin recorrer el tenant (recorte de listados y resúmenes).
+        modelBuilder
+            .Entity<CustomerAssignmentProjection>()
+            .HasIndex(a => new { a.TenantId, a.UserId })
+            .IncludeProperties(a => a.CustomerId);
+        // Zona de la oficina (kit TenantTimeZones): días del resumen del widget Documents.
+        modelBuilder.ApplyTenantTimeZoneProjection();
         ApplyFailClosedTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);
         // Al final: también cubre las proyecciones y tipos agregados arriba.

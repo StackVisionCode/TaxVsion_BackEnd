@@ -133,6 +133,11 @@ public sealed class SignatureDbContext(DbContextOptions<SignatureDbContext> opti
     {
         modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
         modelBuilder.ApplyCustomerAssignmentProjection();
+        // T-1: "mis clientes" por usuario sin recorrer el tenant (recorte del resumen y los listados).
+        modelBuilder
+            .Entity<CustomerAssignmentProjection>()
+            .HasIndex(a => new { a.TenantId, a.UserId })
+            .IncludeProperties(a => a.CustomerId);
         modelBuilder.ApplyTenantTimeZoneProjection();
         ApplyGlobalTenantFilter(modelBuilder);
         base.OnModelCreating(modelBuilder);

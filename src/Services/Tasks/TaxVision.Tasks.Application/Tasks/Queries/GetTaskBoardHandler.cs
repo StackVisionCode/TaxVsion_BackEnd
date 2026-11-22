@@ -28,13 +28,15 @@ public static class GetTaskBoardHandler
     )
     {
         var assignedTo = visibility.Value.Enabled && !query.CanViewAll ? query.ActorUserId : (Guid?)null;
-        var items = await tasks.ListForBoardAsync(query.TenantId, query.Filter, query.Take, assignedTo, ct);
+        // Uno de más para saber si había más que el tope sin contar aparte.
+        var rows = await tasks.ListForBoardAsync(query.TenantId, query.Filter, query.Take + 1, assignedTo, ct);
+        var items = rows.Take(query.Take).ToList();
         var byStatus = items.ToLookup(t => t.Status);
 
         var columns = Enum.GetValues<TaskItemStatus>()
             .Select(status => new TaskBoardColumn(status, [.. byStatus[status].Select(TaskResponse.From)]))
             .ToList();
 
-        return new TaskBoardResponse(columns, items.Count);
+        return new TaskBoardResponse(columns, items.Count) { Truncated = rows.Count > query.Take };
     }
 }

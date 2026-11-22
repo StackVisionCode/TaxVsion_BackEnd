@@ -192,6 +192,10 @@ public sealed class TaskRepository(TasksDbContext context) : ITaskRepository
         if (filter.TaxYear is { } taxYear)
             query = query.Where(t => t.Reference.TaxYear == taxYear);
 
+        // El corte del resumen del dashboard, no uno copiado: la lista y el número no pueden diferir.
+        if (filter.Due is { } due)
+            query = TaskSummaryReader.WithDue(query, due);
+
         return ApplyVisibility(query, tenantId, assignedToUserId);
     }
 

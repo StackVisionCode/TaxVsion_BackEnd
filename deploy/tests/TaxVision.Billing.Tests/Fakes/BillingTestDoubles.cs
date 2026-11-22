@@ -183,7 +183,8 @@ internal sealed class InMemoryInvoiceRepository(params Invoice[] seed) : IInvoic
         int take,
         CancellationToken ct = default,
         Guid? assignedToUserId = null,
-        Guid? customerId = null
+        Guid? customerId = null,
+        OpenInvoicesFilter? open = null
     ) => Task.FromResult<IReadOnlyList<Invoice>>(Rows.Take(take).ToList());
 
     public Task AddAsync(Invoice value, CancellationToken ct = default)

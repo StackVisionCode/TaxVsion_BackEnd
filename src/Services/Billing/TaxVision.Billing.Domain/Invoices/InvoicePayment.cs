@@ -10,6 +10,10 @@ public sealed class InvoicePayment : BaseEntity
     public const int ReferenceMaxLength = 128;
 
     public Guid InvoiceId { get; private set; }
+
+    /// <summary>Oficina de la factura, copiada al crear el pago: los totales filtran pagos sin unir con facturas.</summary>
+    public Guid TenantId { get; private set; }
+
     public InvoicePaymentSource Source { get; private set; }
     public string SourceReference { get; private set; } = string.Empty;
     public Money Amount { get; private set; } = null!;
@@ -59,6 +63,7 @@ public sealed class InvoicePayment : BaseEntity
 
     internal InvoicePayment(
         Guid invoiceId,
+        Guid tenantId,
         InvoicePaymentSource source,
         string sourceReference,
         Money amount,
@@ -69,6 +74,7 @@ public sealed class InvoicePayment : BaseEntity
     )
     {
         InvoiceId = invoiceId;
+        TenantId = tenantId;
         Source = source;
         SourceReference = sourceReference;
         Amount = amount;

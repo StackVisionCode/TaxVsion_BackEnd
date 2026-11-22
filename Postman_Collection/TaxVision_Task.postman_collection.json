@@ -211,7 +211,144 @@
                 "tasks",
                 "board"
               ]
-            }
+            },
+            "description": "Abiertas visibles para el actor, tope 500. Si habia mas, la respuesta trae la cabecera X-Result-Truncated: true (R4); el cuerpo no cambia y totalCount es lo devuelto. Cuota task.h.search."
+          }
+        },
+        {
+          "name": "Resumen del dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/summary",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "scope",
+                  "value": "office",
+                  "description": "Opcional. Vacio = como siempre; me = asignadas a quien llama; office = toda la oficina (exige users.work.view, si no 403). Otro valor: 400.",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "Conteos del dashboard por el dia civil de la oficina, con la visibilidad del tablero en todo alcance (sin customers.view_all, solo lo visible para el actor). Filtros opcionales: assigneeUserId, customerId, taxYear, scope. Cuota task.f.read."
+          }
+        },
+        {
+          "name": "Waiting on clients de la oficina",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/work/office/waiting",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "work",
+                "office",
+                "waiting"
+              ]
+            },
+            "description": "Lo que espera al cliente en toda la oficina, sin filtro de responsable y con el recorte de clientes de quien mira: counts [{kind, waiting}] de tasks (WaitingOnClient), client-requests (Pending) y, con tasks.form_requests.read y el modulo disponible, form-requests (Pending o Returned). Exige tasks.read y users.work.view (403 sin el). Cuota task.f.read."
+          }
+        },
+        {
+          "name": "Buscar por vencimiento del dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/search?due=overdue&page=1&size=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "due",
+                  "value": "overdue",
+                  "description": "overdue | today | soon. Mismo corte que /tasks/summary (overdue, dueToday, dueSoon)."
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Lista que abre cada numero del widget Tasks. Se combina con status, assigneeUserId, customerId y taxYear. Cuota task.h.search."
+          }
+        },
+        {
+          "name": "Buscar vencimientos legales (Filing deadlines)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlBase}}/tasks/search?due=statutory&page=1&size=20",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "tasks",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "due",
+                  "value": "statutory",
+                  "description": "Abiertas con vencimiento legal: vencidas y las de los proximos 30 dias de la oficina. Mismo conjunto que deadlines de /tasks/summary."
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "size",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Lista que abre el widget Filing deadlines: su total es la suma de taskCount de deadlines del resumen. Se combina con status, assigneeUserId, customerId y taxYear. Cuota task.h.search."
           }
         },
         {

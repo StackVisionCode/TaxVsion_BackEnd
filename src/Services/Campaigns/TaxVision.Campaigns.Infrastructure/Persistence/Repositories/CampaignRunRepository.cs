@@ -1,8 +1,10 @@
 using System.Linq.Expressions;
 using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Campaigns.Application.Runs;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Domain.Runs;
+using TaxVision.Campaigns.Domain.Scheduling;
 
 namespace TaxVision.Campaigns.Infrastructure.Persistence.Repositories;
 
@@ -83,6 +85,82 @@ public sealed class CampaignRunRepository(CampaignsDbContext db) : ICampaignRunR
         var totalCount = await query.CountAsync(ct);
         var items = await query.Skip((page - 1) * size).Take(size).Include(r => r.Recipients).ToListAsync(ct);
         return new PagedResult<CampaignRun>(items, page, size, totalCount);
+    }
+
+    // Proyección delgada sin Include(Recipients): seek en IX_CampaignRuns_TenantId_CreatedAtUtc.
+    public async Task<RecentCampaignRunsResponse> ListRecentAsync(
+        Guid tenantId,
+        int take,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    )
+    {
+        var rows = await db
+            .CampaignRuns.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.TenantId == tenantId)
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .ThenByDescending(r => r.Id)
+            .Take(take)
+            .Select(r => new
+            {
+                r.Id,
+                r.CampaignId,
+                Campaign = db
+                    .Campaigns.IgnoreQueryFilters()
+                    .Where(c => c.TenantId == tenantId && c.Id == r.CampaignId)
+                    .Select(c => new { c.Name, c.Status })
+                    .FirstOrDefault(),
+                r.Status,
+                r.TriggerKind,
+                r.RecipientCount,
+                r.CounterDispatched,
+                r.CounterAccepted,
+                r.CounterDelivered,
+                r.CounterFailed,
+                r.CounterSkipped,
+                r.CounterUnknown,
+                r.CreatedAtUtc,
+                r.FinishedAtUtc,
+            })
+            .ToListAsync(ct);
+
+        // Agendados Active desde ahora: IX_CampaignSchedules_TenantId_Status_NextFireAtUtc.
+        var active = db
+            .CampaignSchedules.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.Status == ScheduleStatus.Active && s.NextFireAtUtc >= nowUtc);
+        var nextFire = await active.MinAsync(s => s.NextFireAtUtc, ct);
+        var campaignIds = rows.Select(r => r.CampaignId).Distinct().ToList();
+        var nextByCampaign =
+            campaignIds.Count == 0
+                ? new Dictionary<Guid, DateTime?>()
+                : await active
+                    .Where(s => campaignIds.Contains(s.CampaignId))
+                    .GroupBy(s => s.CampaignId)
+                    .Select(g => new { CampaignId = g.Key, Next = g.Min(s => s.NextFireAtUtc) })
+                    .ToDictionaryAsync(x => x.CampaignId, x => x.Next, ct);
+
+        var items = rows.Select(r => new RecentCampaignRunItem(
+                r.Id,
+                r.CampaignId,
+                r.Campaign?.Name,
+                r.Campaign?.Status.ToString(),
+                r.Status.ToString(),
+                r.TriggerKind,
+                r.RecipientCount,
+                r.CounterDispatched,
+                r.CounterAccepted,
+                r.CounterDelivered,
+                r.CounterFailed,
+                r.CounterSkipped,
+                r.CounterUnknown,
+                r.CreatedAtUtc,
+                r.FinishedAtUtc,
+                nextByCampaign.GetValueOrDefault(r.CampaignId)
+            ))
+            .ToList();
+        return new RecentCampaignRunsResponse(items, nextFire);
     }
 
     public async Task AddAsync(CampaignRun run, CancellationToken ct = default) =>

@@ -144,6 +144,22 @@ internal sealed class RecordingTaskWorkReader : ITaskWorkReader
         return Task.FromResult(BatchRows);
     }
 
+    public Guid? OfficeVisibleTo { get; private set; }
+
+    public Task<IReadOnlyList<OfficeWaitingCount>> CountOfficeWaitingAsync(
+        Guid tenantId,
+        Guid? visibleTo,
+        CancellationToken ct
+    )
+    {
+        WasCalled = true;
+        OfficeVisibleTo = visibleTo;
+        return Task.FromResult<IReadOnlyList<OfficeWaitingCount>>([
+            new OfficeWaitingCount(WorkKinds.Tasks, 2),
+            new OfficeWaitingCount(WorkKinds.ClientRequests, 1),
+        ]);
+    }
+
     public IReadOnlyList<WorkTitle> Titles { get; init; } = [];
     public IReadOnlyCollection<Guid>? TitleTaskIds { get; private set; }
     public IReadOnlyCollection<Guid>? TitleRequestIds { get; private set; }

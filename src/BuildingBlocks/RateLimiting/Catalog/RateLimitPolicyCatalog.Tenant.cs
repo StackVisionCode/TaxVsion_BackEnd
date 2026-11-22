@@ -39,6 +39,19 @@ public static partial class RateLimitPolicyCatalog
         overlayQuota: 3000
     );
 
+    // Preferencias del espacio de trabajo (layout del dashboard): cupo propio para no compartir el overlay del tenant
+    // con marca y perfil.
+    public static readonly RateLimitPolicyDefinition TenantPreferencesRead = Define(
+        "tenant.f.preferences_read",
+        RateLimitCategory.F,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 300,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 3000
+    );
+
     public static readonly RateLimitPolicyDefinition TenantStatusChange = Define(
         "tenant.g.status_change",
         RateLimitCategory.G,
@@ -54,6 +67,18 @@ public static partial class RateLimitPolicyCatalog
     // una fila (mismo criterio que customer.g.write).
     public static readonly RateLimitPolicyDefinition TenantBrandingManage = Define(
         "tenant.g.branding_manage",
+        RateLimitCategory.G,
+        RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
+        [RateLimitPartitionDimension.Tenant],
+        quota: 60,
+        windowSeconds: 60,
+        RateLimitAlgorithm.TokenBucket,
+        overlayQuota: 600
+    );
+
+    // Guardar o restablecer el layout propio y fijar o quitar la plantilla de la oficina.
+    public static readonly RateLimitPolicyDefinition TenantPreferencesWrite = Define(
+        "tenant.g.preferences_write",
         RateLimitCategory.G,
         RateLimitPartitionDimension.Tenant | RateLimitPartitionDimension.User,
         [RateLimitPartitionDimension.Tenant],

@@ -4,6 +4,7 @@ using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.TenantTimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,6 +29,7 @@ using TaxVision.CloudStorage.Infrastructure.Reconciliation;
 using TaxVision.CloudStorage.Infrastructure.Security;
 using TaxVision.CloudStorage.Infrastructure.Storage;
 using TaxVision.CloudStorage.Infrastructure.Time;
+using TaxVision.CloudStorage.Infrastructure.TimeZones;
 
 namespace TaxVision.CloudStorage.Infrastructure;
 
@@ -46,6 +48,13 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<CloudStorageDbContext>());
         services.AddScoped<IFileObjectRepository, FileObjectRepository>();
         services.AddScoped<ILibraryReadRepository, LibraryReadRepository>();
+        // Resúmenes del dashboard: widget Documents y desglose de uso del widget Storage.
+        services.AddScoped<IFileSummaryReader, FileSummaryReader>();
+        services.AddScoped<IStorageBreakdownReader, StorageBreakdownReader>();
+        // Zona de la oficina (kit TenantTimeZones): proyección + reconciliación con el token M2M de plataforma.
+        services.AddTenantTimeZoneProjection<CloudStorageDbContext>();
+        services.AddTenantTimeZoneReconciliation<CloudStorageTenantTimeZoneTokenProvider>(configuration);
+        services.AddScoped<IOfficeTimeZone, OfficeTimeZone>();
         AddLibraryOwnerClients(services, configuration);
         services.AddScoped<IScanClaims, SqlScanClaims>();
         services.AddScoped<IStorageLimitRepository, StorageLimitRepository>();

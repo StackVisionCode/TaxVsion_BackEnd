@@ -248,6 +248,8 @@ builder.Host.UseWolverine(options =>
     options.Discovery.IncludeAssembly(typeof(InitiateUploadHandler).Assembly);
     // Consumer COMPARTIDO del kit (vive en BuildingBlocks.CustomerVisibility, fuera de .Application).
     options.Discovery.IncludeType(typeof(BuildingBlocks.CustomerVisibility.CustomerAssignmentsProjectionConsumer));
+    // Consumer compartido del kit TenantTimeZones (zona de la oficina).
+    options.Discovery.IncludeType(typeof(BuildingBlocks.TenantTimeZones.TenantTimeZoneProjectionConsumer));
     options.ListenForPlatformSettings();
     options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
 

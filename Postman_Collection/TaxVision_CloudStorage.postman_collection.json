@@ -284,6 +284,51 @@
 					]
 				},
 				{
+					"name": "GetFilesSummary",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/files/summary?days=14",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"files",
+								"summary"
+							],
+							"query": [
+								{
+									"key": "days",
+									"value": "14"
+								}
+							]
+						},
+						"description": "Resumen del widget Documents del dashboard. Cuenta solo la rama Documents de la biblioteca (sin notas, chat, correo ni PDF de factura o firma), con el mismo recorte por cliente asignado que el listado y los dias de la oficina (kit TenantTimeZones). days entre 1 y 31 (por defecto 14); fuera de rango, 400 Storage.InvalidSummaryWindow. Requiere cloudstorage.file.view; solo staff (TenantEmployee, TenantAdmin, PlatformAdmin). Cuota cloudstorage.f.file_list."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"un dia por entrada de la ventana\", () => pm.expect(pm.response.json().uploadsByDay).to.have.lengthOf(pm.response.json().days));",
+									"pm.test(\"revision y ultimos\", () => { const b = pm.response.json(); pm.expect(b.pendingReview).to.have.property(\"count\"); pm.expect(b.latest.length).to.be.at.most(3); });"
+								]
+							}
+						}
+					]
+				},
+				{
 					"name": "ListFilesByOwner",
 					"request": {
 						"method": "GET",
@@ -1901,6 +1946,50 @@
 								"exec": [
 									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
 									"pm.test(\"incluye metricas de uso\", () => pm.expect(pm.response.json()).to.be.an(\"object\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "GetStorageUsageBreakdown",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/storage/usage?breakdown=true",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"storage",
+								"usage"
+							],
+							"query": [
+								{
+									"key": "breakdown",
+									"value": "true"
+								}
+							]
+						},
+						"description": "Uso de la cuota con desglose para el widget Storage: byCategory (Documents, Images, Video & Audio, Others; solo Available) y trash (en papelera que aun cuenta como usado). GROUP BY en vivo sobre la columna calculada Files.Category. Sin breakdown la respuesta es la de siempre. Requiere cloudstorage.settings.manage."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"pm.test(\"cuatro categorias\", () => pm.expect(pm.response.json().byCategory.map(c => c.category)).to.eql([\"Documents\", \"Images\", \"Video & Audio\", \"Others\"]));",
+									"pm.test(\"incluye papelera\", () => pm.expect(pm.response.json().trash).to.have.property(\"bytes\"));"
 								]
 							}
 						}

@@ -61,6 +61,11 @@ public sealed class BillingDbContext(DbContextOptions<BillingDbContext> options,
         modelBuilder.ApplyTenantTimeZoneProjection();
         // Schema null → usa el default (billing); misma tabla/índices que la config inline anterior.
         modelBuilder.ApplyCustomerAssignmentProjection();
+        // T-1: "mis clientes" por usuario sin recorrer el tenant (recorte del resumen y los listados).
+        modelBuilder
+            .Entity<CustomerAssignmentProjection>()
+            .HasIndex(a => new { a.TenantId, a.UserId })
+            .IncludeProperties(a => a.CustomerId);
         ApplyFailClosedTenantFilters(modelBuilder);
         base.OnModelCreating(modelBuilder);
         // Al final: también cubre las proyecciones y tipos agregados arriba.

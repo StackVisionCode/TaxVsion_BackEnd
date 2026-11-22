@@ -206,6 +206,27 @@ public sealed class TaskWorkReaderIntegrationTests : IAsyncLifetime
         );
     }
 
+    [Fact]
+    public async Task Office_waiting_counts_everyone_but_only_what_the_viewer_can_see()
+    {
+        await using var db = _database.NewContext(Guid.Empty);
+        var reader = new TaskWorkReader(db);
+
+        var full = await reader.CountOfficeWaitingAsync(_tenantId, null, default);
+        var restricted = await reader.CountOfficeWaitingAsync(_tenantId, _boss, default);
+
+        // Sin recorte: la tarea en espera de Ana y los tres pedidos pendientes (de Ana y de Luis).
+        Assert.Equal(
+            [new OfficeWaitingCount(WorkKinds.Tasks, 1), new OfficeWaitingCount(WorkKinds.ClientRequests, 3)],
+            full.ToArray()
+        );
+        // El jefe solo ve su cliente: la tarea sin cliente es de Ana y no cuenta.
+        Assert.Equal(
+            [new OfficeWaitingCount(WorkKinds.Tasks, 0), new OfficeWaitingCount(WorkKinds.ClientRequests, 1)],
+            restricted.ToArray()
+        );
+    }
+
     private static DueDate Civil(DateOnly day) => DueDate.EndOfCivilDay(day, NewYork, false).Value;
 
     private static DueDate Timed(DateTime dueAtUtc) => DueDate.Create(dueAtUtc, "America/New_York", false).Value;

@@ -119,6 +119,7 @@
 					"name": "Listar mis conversaciones",
 					"request": {
 						"method": "GET",
+						"description": "Cada item trae `unreadCount` y `lastMessage` (opcional; null si no hay mensajes visibles). En grupos, ambos cuentan solo desde el ingreso del usuario (JoinedAtUtc).\n\nEjemplo de `lastMessage`:\n```json\n{ \"senderId\": \"3f2a…\", \"senderDisplayName\": \"Ana Pérez\", \"kind\": \"Text\", \"preview\": \"See you at 3\", \"isVoiceNote\": false, \"isDeleted\": false, \"createdAtUtc\": \"2026-11-20T15:30:00.000Z\" }\n```\n`preview`: hasta 200 caracteres; null si se borró o no tiene texto. `isVoiceNote`: adjunto con duración de audio.",
 						"url": {
 							"raw": "{{UrlBase}}/communication/conversations?page=1&size=20",
 							"host": [

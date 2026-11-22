@@ -54,6 +54,23 @@ public sealed class TaskWorkReader(TasksDbContext context) : ITaskWorkReader
             .ToList();
     }
 
+    public async Task<IReadOnlyList<OfficeWaitingCount>> CountOfficeWaitingAsync(
+        Guid tenantId,
+        Guid? visibleTo,
+        CancellationToken ct
+    )
+    {
+        var tasks = await OpenTasks(tenantId, visibleTo)
+            .CountAsync(t => t.Status == TaskItemStatus.WaitingOnClient, ct);
+        var requests = await OpenRequests(tenantId, visibleTo)
+            .CountAsync(r => r.Status == ClientRequestStatus.Pending, ct);
+        return
+        [
+            new OfficeWaitingCount(WorkKinds.Tasks, tasks),
+            new OfficeWaitingCount(WorkKinds.ClientRequests, requests),
+        ];
+    }
+
     public async Task<IReadOnlyList<WorkItem>> TopAsync(
         Guid tenantId,
         Guid userId,

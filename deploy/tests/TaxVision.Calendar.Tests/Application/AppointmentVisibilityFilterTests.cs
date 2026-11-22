@@ -85,6 +85,19 @@ public sealed class AppointmentVisibilityFilterTests
         public Guid? LastRangeAssignee { get; private set; }
         public Guid? LastDetailAssignee { get; private set; }
 
+        public Task<IReadOnlyList<Appointment>> ListVisibleForUserRangeAsync(
+            Guid tenantId,
+            Guid userId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        )
+        {
+            LastRangeAssignee = assignedToUserId;
+            return Task.FromResult<IReadOnlyList<Appointment>>([]);
+        }
+
         public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
             Guid tenantId,
             DateTime rangeStartUtc,

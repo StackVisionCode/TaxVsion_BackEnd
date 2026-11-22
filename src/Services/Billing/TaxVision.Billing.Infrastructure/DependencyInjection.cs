@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IInvoicePdfFileReader, InvoicePdfFileReader>();
         services.AddScoped<IIntegrationEventPagePublisher, Messaging.OutboxIntegrationEventPagePublisher>();
         services.AddScoped<IInvoiceSummaryReader, InvoiceSummaryReader>();
+        services.AddScoped<IInvoiceDashboardReader, InvoiceDashboardReader>();
         services.AddScoped<IIssuerProfileRepository, IssuerProfileRepository>();
         services.AddScoped<ITenantBillingSettingsRepository, TenantBillingSettingsRepository>();
         services.AddScoped<IInvoiceNumberSequenceRepository, InvoiceNumberSequenceRepository>();

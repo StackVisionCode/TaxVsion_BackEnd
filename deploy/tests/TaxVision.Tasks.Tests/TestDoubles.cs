@@ -241,7 +241,7 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
     )
     {
         LastBoardAssignee = assignedToUserId;
-        return Task.FromResult<IReadOnlyList<TaskItem>>([.. _tasks.Where(t => t.TenantId == tenantId)]);
+        return Task.FromResult<IReadOnlyList<TaskItem>>([.. _tasks.Where(t => t.TenantId == tenantId).Take(take)]);
     }
 
     public TaskQueryFilter? LastCalendarFilter { get; private set; }

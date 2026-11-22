@@ -14820,6 +14820,9 @@ namespace TaxVision.Customer.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "AssignedPreparerUserId");
 
+                    b.HasIndex("TenantId", "CreatedAtUtc")
+                        .HasDatabaseName("IX_Customers_TenantId_CreatedAtUtc");
+
                     b.HasIndex("TenantId", "OccupationId");
 
                     b.HasIndex("TenantId", "Status", "DisplayName");

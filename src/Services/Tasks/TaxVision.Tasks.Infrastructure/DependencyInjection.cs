@@ -85,6 +85,7 @@ public static class DependencyInjection
         services.AddScoped<ITaskTemplateRepository, TaskTemplateRepository>();
         services.AddScoped<IClientRequestRepository, ClientRequestRepository>();
         services.AddScoped<Application.Work.ITaskWorkReader, TaskWorkReader>();
+        services.AddScoped<Application.Tasks.Abstractions.ITaskSummaryReader, TaskSummaryReader>();
         services.AddScoped<Application.Files.ITaskFileVisibilityReader, TaskFileVisibilityReader>();
         services.AddScoped<Application.Files.IFileSourceRedeclarer, Files.FileSourceRedeclarer>();
         services.AddOptions<ClientReminderOptions>().Bind(configuration.GetSection(ClientReminderOptions.SectionName));

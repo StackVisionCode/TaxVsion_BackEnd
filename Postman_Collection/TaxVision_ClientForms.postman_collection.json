@@ -102,6 +102,14 @@
           }
         },
         {
+          "name": "List mine waiting on the client",
+          "request": {
+            "method": "GET",
+            "url": "{{UrlBase}}/tasks/forms/requests?view=All&status=Pending&status=Returned&assignedToMe=true&page=1&pageSize=25",
+            "description": "assignedToMe = responsable o, sin el, quien la pidio (fila Forms de My work)."
+          }
+        },
+        {
           "name": "Get request detail",
           "request": { "method": "GET", "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}" },
           "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('200', () => pm.response.to.have.status(200));", "const body = pm.response.json();", "pm.collectionVariables.set('requestRowVersion', body.request.rowVersion);", "const latest = (body.actionRuns || []).find(run => run.isLatestAttempt);", "if (latest) pm.collectionVariables.set('actionRunId', latest.id);"] } }]
@@ -145,6 +153,19 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": { "mode": "raw", "raw": "{\n  \"note\": \"Handled outside the form workflow.\",\n  \"rowVersion\": \"{{requestRowVersion}}\"\n}" },
             "url": "{{UrlBase}}/tasks/forms/requests/{{formRequestId}}/archive"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Prospects",
+      "item": [
+        {
+          "name": "Prospect status summary",
+          "request": {
+            "method": "GET",
+            "url": "{{UrlBase}}/tasks/forms/prospects/summary",
+            "description": "One count per derived status (invited, verified, submitted, converted, duplicate, lost), with the same scope as the prospect list. Quota task.f.form_read."
           }
         }
       ]

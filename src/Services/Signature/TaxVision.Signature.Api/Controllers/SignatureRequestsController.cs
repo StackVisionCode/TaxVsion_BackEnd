@@ -45,6 +45,7 @@ using TaxVision.Signature.Application.Requests.Commands.UpsertDraft;
 using TaxVision.Signature.Application.Requests.Queries.GetById;
 using TaxVision.Signature.Application.Requests.Queries.List;
 using TaxVision.Signature.Application.Requests.Queries.PreparerCandidates;
+using TaxVision.Signature.Application.Requests.Queries.Summary;
 using TaxVision.Signature.Domain.Requests;
 using TaxVision.Signature.Domain.Requests.ValueObjects;
 using Wolverine;
@@ -177,6 +178,8 @@ public sealed class SignatureRequestsController(
         [FromQuery] int size = 20,
         [FromQuery] bool editableOnly = false,
         [FromQuery] Guid? customerId = null,
+        [FromQuery] bool expiring = false,
+        [FromQuery] string? assignee = null,
         CancellationToken ct = default
     )
     {
@@ -185,6 +188,8 @@ public sealed class SignatureRequestsController(
 
         // Bypass admin: customers.view_all (PlatformAdmin/TenantAdmin/supervisor) ve todas las solicitudes.
         var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        // Filtros del dashboard; un assignee distinto de "me" se ignora.
+        var mineOnly = string.Equals(assignee, "me", StringComparison.OrdinalIgnoreCase);
         var result = await bus.InvokeAsync<ListSignatureRequestsResult>(
             new ListSignatureRequestsQuery(
                 tenantId,
@@ -195,11 +200,62 @@ public sealed class SignatureRequestsController(
                 userId,
                 canViewAll,
                 editableOnly,
-                customerId
+                customerId,
+                expiring,
+                mineOnly,
+                DateTime.UtcNow
             ),
             ct
         );
         return Ok(result);
+    }
+
+    // ---------- GET /signature/requests/summary ----------
+    // Resumen del widget de firmas con el mismo recorte que la lista; días de la oficina, ambos inclusive.
+    // scope: vacío = como siempre; me = lo que creó quien llama; office = toda la oficina (users.work.view).
+    [HttpGet("summary")]
+    [HasPermission(SignaturePermissions.RequestRead)]
+    [RateLimit("signature.f.request_read")]
+    [ProducesResponseType<SignatureRequestsSummaryResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> Summary(
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] DateOnly? to = null,
+        [FromQuery] string? scope = null,
+        CancellationToken ct = default
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+        if (!DashboardScopes.TryParse(scope, out var parsed))
+            return BadRequest(SignatureRequestsSummaryErrors.ScopeInvalid);
+
+        var canViewAll = await permissionsSource.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        // El permiso de oficina sale del token; el handler decide con él.
+        var canViewOffice =
+            parsed == DashboardScope.Office
+            && await permissionsSource.HasPermissionAsync(User, UserManagementPermissions.UsersWorkView, ct);
+        var result = await bus.InvokeAsync<Result<SignatureRequestsSummaryResponse>>(
+            new GetSignatureRequestsSummaryQuery(
+                tenantId,
+                userId,
+                canViewAll,
+                from,
+                to,
+                DateTime.UtcNow,
+                parsed,
+                canViewOffice
+            ),
+            ct
+        );
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        var status =
+            result.Error == SignatureRequestsSummaryErrors.OfficeForbidden
+                ? StatusCodes.Status403Forbidden
+                : result.Error.ToHttpStatusCode();
+        return StatusCode(status, result.Error);
     }
 
     // ---------- GET /signature/requests/{id} ----------

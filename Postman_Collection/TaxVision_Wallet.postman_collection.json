@@ -7,6 +7,48 @@
 	},
 	"item": [
 		{
+			"name": "Wallet",
+			"item": [
+				{
+					"name": "GetWallet",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{accessToken}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{UrlBase}}/wallet",
+							"host": [
+								"{{UrlBase}}"
+							],
+							"path": [
+								"wallet"
+							]
+						},
+						"description": "Saldo del monedero de la oficina (lo crea en 0 si no existe). Al final trae las señales del navbar: lowBalanceThresholdMicros (0 = sin aviso; sin ajustes guardados, 5000000), isLowBalance (umbral > 0 y availableMicros < umbral), autoRechargeStatus (Off/Active/Paused) y autoRechargePausedReason (PaymentFailed/MethodUnavailable/null). Requiere wallet.view; cuota wallet.f.get."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"status 200\", () => pm.response.code === 200 || pm.expect.fail(\"Got \" + pm.response.code + \": \" + pm.response.text()));",
+									"const w = pm.response.json();",
+									"pm.test(\"saldo y señales\", () => { pm.expect(w.availableMicros).to.be.a(\"number\"); pm.expect(w.lowBalanceThresholdMicros).to.be.a(\"number\"); pm.expect(w.isLowBalance).to.be.a(\"boolean\"); pm.expect([\"Off\",\"Active\",\"Paused\"]).to.include(w.autoRechargeStatus); });"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
 			"name": "Internal",
 			"item": [
 				{

@@ -160,6 +160,22 @@ public sealed class SignatureRequestConfiguration : IEntityTypeConfiguration<Sig
         builder.HasIndex(request => new { request.TenantId, request.Status });
         builder.HasIndex(request => new { request.TenantId, request.CreatedAtUtc });
         builder.HasIndex(request => new { request.TenantId, request.ExpiresAtUtc });
+        // Resumen del widget de firmas: conteos por estado y período sin leer la tabla.
+        builder
+            .HasIndex(request => new
+            {
+                request.TenantId,
+                request.Status,
+                request.CompletedAtUtc,
+            })
+            .IncludeProperties(request => new
+            {
+                request.SentAtUtc,
+                request.ExpiresAtUtc,
+                request.ExpiredAtUtc,
+                request.CanceledAtUtc,
+                request.CreatedByUserId,
+            });
 
         // Índice FILTRADO para el ReadyReconciliationScheduler: su barrido es cross-tenant
         // (WHERE Status='Draft' AND CreatedAtUtc < cutoff), así que los índices tenant-leading de

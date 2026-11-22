@@ -226,7 +226,8 @@ public sealed class IssueInvoiceHandlerTests
             int take,
             CancellationToken ct = default,
             Guid? assignedToUserId = null,
-            Guid? customerId = null
+            Guid? customerId = null,
+            OpenInvoicesFilter? open = null
         ) => throw new NotSupportedException();
 
         public Task AddAsync(Invoice value, CancellationToken ct = default) => throw new NotSupportedException();

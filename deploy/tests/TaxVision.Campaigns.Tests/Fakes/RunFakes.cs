@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Campaigns.Application.Contacts.Abstractions;
+using TaxVision.Campaigns.Application.Runs;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Application.Runs.Commands;
 using TaxVision.Campaigns.Application.Scheduling.Commands;
@@ -44,6 +45,20 @@ internal sealed class FakeCampaignRunRepository : ICampaignRunRepository
         int size,
         CancellationToken ct = default
     ) => throw new NotSupportedException();
+
+    /// <summary>Última llamada a <see cref="ListRecentAsync"/> (oficina, tope ya recortado, ahora).</summary>
+    public (Guid TenantId, int Take, DateTime NowUtc)? LastRecentRequest { get; private set; }
+
+    public Task<RecentCampaignRunsResponse> ListRecentAsync(
+        Guid tenantId,
+        int take,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    )
+    {
+        LastRecentRequest = (tenantId, take, nowUtc);
+        return Task.FromResult(new RecentCampaignRunsResponse([], null));
+    }
 
     public Task AddAsync(CampaignRun run, CancellationToken ct = default)
     {

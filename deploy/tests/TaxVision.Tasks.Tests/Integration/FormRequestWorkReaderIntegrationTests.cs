@@ -133,6 +133,18 @@ public sealed class FormRequestWorkReaderIntegrationTests : IAsyncLifetime
         );
     }
 
+    [Fact]
+    public async Task Office_waiting_counts_every_responsible_within_the_viewer_inbox()
+    {
+        await using var db = _database.NewContext(Guid.Empty);
+        var reader = Reader(db);
+
+        var full = await reader.CountOfficeWaitingAsync(_tenantId, _boss, true, default);
+        var restricted = await reader.CountOfficeWaitingAsync(_tenantId, _boss, false, default);
+
+        Assert.Equal((3, 1), (full, restricted));
+    }
+
     private static IFormRequestWorkReader Reader(TasksDbContext db) =>
         (IFormRequestWorkReader)
             Activator.CreateInstance(

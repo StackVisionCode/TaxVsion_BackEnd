@@ -126,6 +126,25 @@ public sealed class AppointmentRepository(CalendarDbContext context) : IAppointm
             )
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<Appointment>> ListVisibleForUserRangeAsync(
+        Guid tenantId,
+        Guid userId,
+        DateTime rangeStartUtc,
+        DateTime rangeEndUtc,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    ) =>
+        await ApplyVisibility(
+                Scoped(tenantId)
+                    .Include(a => a.Attendees)
+                    .Include(a => a.Exceptions)
+                    .Where(a => a.OrganizerUserId == userId || a.Attendees.Any(at => at.UserId == userId))
+                    .Where(InRange(rangeStartUtc, rangeEndUtc)),
+                tenantId,
+                assignedToUserId
+            )
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<Appointment>> ListForUserRangeAsync(
         Guid tenantId,
         Guid userId,

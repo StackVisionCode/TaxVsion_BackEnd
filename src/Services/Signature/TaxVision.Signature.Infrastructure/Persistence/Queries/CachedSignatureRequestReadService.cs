@@ -69,6 +69,7 @@ public sealed class CachedSignatureRequestReadService(ISignatureRequestReadServi
     // `va`/`u`: la visibilidad por asignación (P2) hace que el resultado dependa del actor → la clave DEBE
     // variar por usuario, o dos usuarios compartirían páginas cacheadas (fuga de visibilidad). Los que ven
     // todo (view_all/admin) comparten una sola entrada (u=Empty). `cu` (customerId) separa los listados por cliente.
+    // `x`/`m`: vence pronto y "mías"; "mías" depende del actor aunque vea todo.
     private static string BuildCacheKey(ListSignatureRequestsQuery q, long version) =>
-        $"sig:list:{CacheKeyVersion}:{q.TenantId:N}:g={version}:va={q.CanViewAll}:u={(q.CanViewAll ? Guid.Empty : q.ActorUserId):N}:s={q.Status}:c={q.Category}:e={q.EditableOnly}:cu={q.CustomerId}:p={q.Page}:z={q.PageSize}";
+        $"sig:list:{CacheKeyVersion}:{q.TenantId:N}:g={version}:va={q.CanViewAll}:u={(q.CanViewAll && !q.MineOnly ? Guid.Empty : q.ActorUserId):N}:s={q.Status}:c={q.Category}:e={q.EditableOnly}:cu={q.CustomerId}:x={q.ExpiringSoon}:m={q.MineOnly}:p={q.Page}:z={q.PageSize}";
 }

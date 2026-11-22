@@ -48,7 +48,8 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
         int take,
         CancellationToken ct = default,
         Guid? assignedToUserId = null,
-        Guid? customerId = null
+        Guid? customerId = null,
+        OpenInvoicesFilter? open = null
     )
     {
         var query = _dbContext
@@ -69,6 +70,12 @@ public sealed class InvoiceRepository(BillingDbContext dbContext) : IInvoiceRepo
         // usa el índice (TenantId, CustomerId).
         if (customerId is { } cid)
             query = query.Where(i => i.CustomerId == cid);
+
+        // Filtros del dashboard: las mismas reglas que el aging.
+        if (open is not null)
+            query = query.WhereOpen();
+        if (open?.PastDueBeforeUtc is { } cutoff)
+            query = query.WhereBaseBefore(cutoff);
 
         return await query.OrderByDescending(i => i.CreatedAtUtc).Take(take <= 0 ? 50 : take).ToListAsync(ct);
     }

@@ -63,7 +63,12 @@ public sealed class StorageActorScopeResolver(
             return scope;
 
         var assignedCustomerIds = await assignments.GetAssignedCustomerIdsAsync(tenantId, actorId, ct);
-        return scope with { BypassAssignmentFilter = false, AssignedCustomerIds = assignedCustomerIds };
+        return scope with
+        {
+            BypassAssignmentFilter = false,
+            AssignedCustomerIds = assignedCustomerIds,
+            AssignedUserId = actorId,
+        };
     }
 
     private async Task<StorageActorScope> WithReadableSurfacesAsync(

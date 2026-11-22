@@ -85,6 +85,35 @@ public sealed class WorkController(
         return Ok(WorkSummaryComposer.Combine(ids, tasks.Value, forms));
     }
 
+    /// <summary>
+    /// "Waiting on clients" de toda la oficina (alcance Office del dashboard): sin filtro de responsable, con el ABAC
+    /// de quien mira y solo con <c>users.work.view</c>. Form requests solo con su permiso y el módulo disponible.
+    /// </summary>
+    [HttpGet("office/waiting")]
+    [HasPermission(TasksPermissions.Read)]
+    [RateLimit("task.f.read")]
+    [ProducesResponseType<OfficeWaitingResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> OfficeWaiting(CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
+            return Unauthorized();
+
+        var canViewAll = await HasAsync(CustomersPermissions.ViewAll, ct);
+        var tasks = await bus.InvokeAsync<Result<IReadOnlyList<OfficeWaitingCount>>>(
+            new GetOfficeWaitingQuery(tenantId, actorId, await CanViewOthersAsync(ct), canViewAll),
+            ct
+        );
+        if (tasks.IsFailure)
+            return StatusCode(tasks.Error.ToHttpStatusCode(), tasks.Error);
+
+        // Solo después de autorizar: el bloque de form requests respeta su permiso y la disponibilidad del módulo.
+        if (!await IncludesClientFormsAsync(tenantId, ct))
+            return Ok(new OfficeWaitingResponse(tasks.Value));
+        var forms = await bus.InvokeAsync<int>(new GetFormRequestOfficeWaitingQuery(tenantId, actorId, canViewAll), ct);
+        return Ok(new OfficeWaitingResponse([.. tasks.Value, new OfficeWaitingCount(WorkKinds.FormRequests, forms)]));
+    }
+
     /// <summary>Títulos en vivo para Activity: solo lo que quien mira puede leer; lo demás se omite.</summary>
     [HttpPost("titles")]
     [HasPermission(TasksPermissions.Read)]

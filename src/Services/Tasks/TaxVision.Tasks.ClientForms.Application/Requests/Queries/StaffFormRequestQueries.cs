@@ -5,6 +5,7 @@ using TaxVision.Tasks.ClientForms.Domain.Requests;
 
 namespace TaxVision.Tasks.ClientForms.Application.Requests.Queries;
 
+/// <param name="AssignedToMe">A cargo del actor (responsable o, sin él, quien la pidió), como en My work.</param>
 public sealed record ListFormRequestsQuery(
     Guid TenantId,
     Guid ActorUserId,
@@ -18,7 +19,8 @@ public sealed record ListFormRequestsQuery(
     string? Search,
     int Page,
     int PageSize,
-    FormRequestInboxView View = FormRequestInboxView.All
+    FormRequestInboxView View = FormRequestInboxView.All,
+    bool AssignedToMe = false
 );
 
 public enum FormRequestInboxView

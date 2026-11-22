@@ -198,6 +198,7 @@ public static class InfrastructureRegistration
     private static void AddTeam(IServiceCollection services, IConfiguration config)
     {
         services.AddScoped<IActivityEntryRepository, ActivityEntryRepository>();
+        services.AddScoped<IWorkspacePreferenceRepository, WorkspacePreferenceRepository>();
         services.AddScoped<ActivityRetentionPurger>();
         services
             .AddOptions<ActivityRetentionOptions>()

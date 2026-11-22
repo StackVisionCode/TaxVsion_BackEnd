@@ -406,6 +406,15 @@ public sealed class AppointmentDomainEventIntegrationTests : IAsyncLifetime
                 ct
             );
 
+        public Task<IReadOnlyList<Appointment>> ListVisibleForUserRangeAsync(
+            Guid tenantId,
+            Guid userId,
+            DateTime rangeStartUtc,
+            DateTime rangeEndUtc,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        ) => inner.ListVisibleForUserRangeAsync(tenantId, userId, rangeStartUtc, rangeEndUtc, assignedToUserId, ct);
+
         public Task<IReadOnlyList<Appointment>> ListVisibleForRangeAsync(
             Guid tenantId,
             DateTime rangeStartUtc,

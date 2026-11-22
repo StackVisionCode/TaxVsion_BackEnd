@@ -42,6 +42,7 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
         [FromQuery] FormRequestInboxView view = FormRequestInboxView.NeedsAction,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 25,
+        [FromQuery] bool assignedToMe = false,
         CancellationToken ct = default
     )
     {
@@ -61,7 +62,8 @@ public sealed class FormRequestsController(IMessageBus bus, IUserPermissionsSour
                 search,
                 page,
                 pageSize,
-                view
+                view,
+                assignedToMe
             ),
             ct
         );

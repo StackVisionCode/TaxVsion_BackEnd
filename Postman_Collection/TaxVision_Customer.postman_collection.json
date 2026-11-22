@@ -381,6 +381,85 @@
           ]
         },
         {
+          "name": "GetCustomersOverview",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{accessToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{UrlBase}}/customers/overview?months=12",
+              "host": [
+                "{{UrlBase}}"
+              ],
+              "path": [
+                "customers",
+                "overview"
+              ],
+              "query": [
+                {
+                  "key": "months",
+                  "value": "12"
+                }
+              ]
+            },
+            "description": "Resumen del dashboard: total, altas por mes (1..24), 3 altas recientes y statusCounts (active/inactive/archived; el total es su suma). Recortado por asignación igual que la búsqueda. Permiso customers.view. Cuota customer.h.search."
+          },
+          "response": [
+            {
+              "name": "OK (200)",
+              "originalRequest": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{accessToken}}",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{UrlBase}}/customers/overview?months=12",
+                  "host": [
+                    "{{UrlBase}}"
+                  ],
+                  "path": [
+                    "customers",
+                    "overview"
+                  ],
+                  "query": [
+                    {
+                      "key": "months",
+                      "value": "12"
+                    }
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"totalCount\": 6,\n  \"monthly\": [\n    {\n      \"year\": 2026,\n      \"month\": 11,\n      \"count\": 2\n    }\n  ],\n  \"recent\": [],\n  \"statusCounts\": {\n    \"active\": 3,\n    \"inactive\": 2,\n    \"archived\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
           "name": "UpdateCustomer",
           "request": {
             "auth": {

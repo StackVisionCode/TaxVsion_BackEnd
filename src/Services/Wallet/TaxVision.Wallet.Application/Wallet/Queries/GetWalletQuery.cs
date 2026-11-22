@@ -1,6 +1,8 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using TaxVision.Wallet.Application.Settings.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
+using TaxVision.Wallet.Domain.Settings;
 
 namespace TaxVision.Wallet.Application.Wallet.Queries;
 
@@ -12,13 +14,17 @@ public static class GetWalletHandler
     public static async Task<Result<WalletView>> Handle(
         GetWalletQuery query,
         IWalletRepository wallets,
+        IWalletSettingsRepository settingsRepository,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
     {
+        // Sin fila de ajustes valen los de fábrica; leer no crea la fila.
+        var settings =
+            await settingsRepository.GetAsync(query.TenantId, ct) ?? WalletSettings.CreateDefault(query.TenantId);
         var wallet = await wallets.GetByTenantAsync(query.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
         if (wallet is not null)
-            return Result.Success(WalletView.From(wallet));
+            return Result.Success(WalletView.From(wallet, settings));
 
         // Auto-create (zero-balance). F1: sin manejo de carrera concurrente (el índice único por
         // tenant la detectaría; reconciliación de la carrera queda para F2).
@@ -28,6 +34,6 @@ public static class GetWalletHandler
 
         await wallets.AddAsync(created.Value, ct);
         await unitOfWork.SaveChangesAsync(ct);
-        return Result.Success(WalletView.From(created.Value));
+        return Result.Success(WalletView.From(created.Value, settings));
     }
 }

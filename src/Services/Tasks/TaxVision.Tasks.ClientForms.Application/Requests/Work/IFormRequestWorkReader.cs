@@ -27,6 +27,9 @@ public interface IFormRequestWorkReader
         CancellationToken ct
     );
 
+    /// <summary>Pendientes o devueltas de toda la oficina (cualquier responsable), con la bandeja de quien mira.</summary>
+    Task<int> CountOfficeWaitingAsync(Guid tenantId, Guid actorUserId, bool canViewAll, CancellationToken ct);
+
     /// <summary>Abiertas y vencidas por persona; solo filas con algo.</summary>
     Task<IReadOnlyList<WorkBatchRow>> CountByUserAsync(
         Guid tenantId,
