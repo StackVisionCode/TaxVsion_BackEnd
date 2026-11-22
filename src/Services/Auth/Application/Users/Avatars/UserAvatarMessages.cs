@@ -74,7 +74,7 @@ public static class UserAvatarMessages
             };
     }
 
-    /// <summary>Estado actual completo del perfil visible (nombre + foto).</summary>
+    /// <summary>Foto actual del perfil: nombre, foto, idioma y zona.</summary>
     public static UserProfileUpdatedIntegrationEvent ProfileUpdated(User user, string correlationId) =>
         new()
         {
@@ -83,6 +83,8 @@ public static class UserAvatarMessages
             Name = user.Name,
             LastName = user.LastName,
             AvatarFileId = user.AvatarFileId,
+            Language = user.Language,
+            TimeZoneId = user.TimeZoneId,
             CorrelationId = correlationId,
         };
 

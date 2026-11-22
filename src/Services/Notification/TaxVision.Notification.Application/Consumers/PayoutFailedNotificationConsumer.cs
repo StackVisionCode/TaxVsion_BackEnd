@@ -12,6 +12,10 @@ public static class PayoutFailedNotificationConsumer
         PayoutFailedIntegrationEvent evt,
         NotificationDispatcher dispatcher,
         IRecipientResolver resolver,
+        PushLinks links,
+        IRecipientLocale locales,
+        IUserEmailResolver emails,
+        IScribeRenderClient scribe,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -23,6 +27,40 @@ public static class PayoutFailedNotificationConsumer
                 resolver,
                 ct
             );
+            if (recipients.Count == 0)
+                return;
+
+            // Correo obligatorio antes de la campana.
+            var variables = new Dictionary<string, object?>
+            {
+                ["amount_label"] = FormatAmount(evt.AmountCents, evt.Currency),
+                ["failed_at"] = ScribeDates.Instant(evt.FailedAtUtc),
+                ["action_url"] = await OfficeAlertEmails.BillingUrlAsync(links, evt.TenantId, ct),
+            };
+            if (!string.IsNullOrWhiteSpace(evt.FailureReason))
+                variables["failure_reason"] = evt.FailureReason;
+            if (!string.IsNullOrWhiteSpace(evt.ProviderPayoutReference))
+                variables["payout_reference"] = evt.ProviderPayoutReference;
+            await OfficeAlertEmails.SendAsync(
+                new NotificationIntent(
+                    NotificationKinds.PaymentClientPayoutFailed,
+                    evt.TenantId,
+                    new NotificationTarget(),
+                    evt.EventId,
+                    "paymentclient.payout_failed.v1",
+                    evt.FailedAtUtc,
+                    correlation.CorrelationId
+                ),
+                "payments.payout_failed.v1",
+                variables,
+                recipients,
+                dispatcher,
+                emails,
+                scribe,
+                locales,
+                ct
+            );
+
             await BillingNotificationPublisher.RecordAsync(
                 dispatcher,
                 recipients,

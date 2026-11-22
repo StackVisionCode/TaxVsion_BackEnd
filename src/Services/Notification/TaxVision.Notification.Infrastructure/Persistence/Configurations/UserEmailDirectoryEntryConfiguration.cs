@@ -16,6 +16,9 @@ public sealed class UserEmailDirectoryEntryConfiguration : IEntityTypeConfigurat
         builder.Property(e => e.IsActive).IsRequired();
         builder.Property(e => e.IsStale).IsRequired();
         builder.Property(e => e.UpdatedAtUtc).IsRequired();
+        builder.Property(e => e.Language).HasMaxLength(5);
+        builder.Property(e => e.TimeZoneId).HasMaxLength(64);
+        builder.Property(e => e.DisplayName).HasMaxLength(160);
 
         // Un usuario, una fila. El índice único es lo que hace segura la carrera entre el consumer
         // de UserRegistered y la recuperación pull: si las dos intentan insertar, la segunda choca.

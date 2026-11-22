@@ -15,10 +15,8 @@ namespace TaxVision.Notification.Infrastructure.Push;
 /// </summary>
 /// <remarks>
 /// La inicialización de Firebase es perezosa y tolerante: si la credencial falla o no
-/// existe, el sender degrada a un no-op con logging para no tumbar el dispatcher al
-/// arrancar. Un arranque con <c>UseFcmPush=true</c> y <c>FIREBASE_SERVICE_ACCOUNT_JSON_B64</c>
-/// vacío debe seguir despachando notificaciones in-app y por email aunque las push
-/// terminen en el log.
+/// existe, el arranque sigue y cada push devuelve <see cref="PushErrorCodes.NotConfigured"/>.
+/// In-app y email siguen despachando; la salud lo marca como Degraded.
 /// </remarks>
 public sealed class FcmPushSender : IPushSender
 {
@@ -35,7 +33,7 @@ public sealed class FcmPushSender : IPushSender
     }
 
     // FirebaseApp.Create corre una vez por proceso. Si falla (credencial faltante o
-    // inválida), marcamos el estado permanente del proceso y caemos a un no-op: no
+    // inválida), marcamos el estado permanente del proceso y los push fallan: no
     // intentamos de nuevo porque el error es de configuración, no transitorio.
     private bool TryEnsureInitialized()
     {
@@ -62,7 +60,7 @@ public sealed class FcmPushSender : IPushSender
                     _initializationError =
                         $"Firebase service account JSON not found at '{_options.ServiceAccountJsonPath}'.";
                     _logger.LogError(
-                        "FCM disabled at startup: {Reason} Push notifications will be logged, not delivered.",
+                        "FCM disabled at startup: {Reason} Push notifications will fail as not configured.",
                         _initializationError
                     );
                     return false;
@@ -77,45 +75,34 @@ public sealed class FcmPushSender : IPushSender
             {
                 _initializationFailed = true;
                 _initializationError = ex.Message;
-                _logger.LogError(ex, "FCM initialization failed. Push notifications will be logged, not delivered.");
+                _logger.LogError(ex, "FCM initialization failed. Push notifications will fail as not configured.");
                 return false;
             }
         }
+    }
+
+    /// <summary>Para la salud: intenta inicializar (solo lee el archivo) sin enviar nada.</summary>
+    public bool IsAvailable(out string? reason)
+    {
+        var available = TryEnsureInitialized();
+        reason = available ? null : _initializationError ?? "unknown";
+        return available;
     }
 
     public async Task<Result> SendAsync(PushMessage message, CancellationToken ct = default)
     {
         if (!TryEnsureInitialized())
         {
-            _logger.LogInformation(
-                "FCM no inicializado ({Reason}); push a {Platform} descartado para {Token}.",
+            _logger.LogWarning(
+                "FCM no inicializado ({Reason}); push a {Platform} no enviado para {Token}.",
                 _initializationError ?? "unknown",
                 message.Platform,
                 Mask(message.Token)
             );
-            return Result.Success();
+            return Result.Failure(new Error(PushErrorCodes.NotConfigured, "Push provider is not configured."));
         }
 
-        var fcmMessage = new Message
-        {
-            Token = message.Token,
-            Notification = new FcmNotification { Title = message.Title, Body = message.Body },
-            Data = message.Data,
-            Webpush = BuildWebpush(message),
-            Android =
-                message.Platform == TaxVision.Notification.Domain.Notifications.PushPlatform.Fcm
-                    ? new AndroidConfig
-                    {
-                        Priority = Priority.High,
-                        TimeToLive = TimeSpan.FromSeconds(message.Data?.ContainsKey("callId") == true ? 45 : 3600),
-                        Notification = new AndroidNotification
-                        {
-                            ChannelId = "taxvision-communication",
-                            Tag = message.Tag,
-                        },
-                    }
-                    : null,
-        };
+        var fcmMessage = BuildMessage(message);
 
         try
         {
@@ -155,16 +142,41 @@ public sealed class FcmPushSender : IPushSender
         }
     }
 
+    /// <summary>Mensaje FCM sin enviarlo. Sin TTL explícito, Android conserva una hora.</summary>
+    public static Message BuildMessage(PushMessage message) =>
+        new()
+        {
+            Token = message.Token,
+            Notification = new FcmNotification { Title = message.Title, Body = message.Body },
+            Data = message.Data,
+            Webpush = BuildWebpush(message),
+            Android =
+                message.Platform == TaxVision.Notification.Domain.Notifications.PushPlatform.Fcm
+                    ? new AndroidConfig
+                    {
+                        Priority = Priority.High,
+                        TimeToLive = message.TimeToLive ?? TimeSpan.FromHours(1),
+                        Notification = new AndroidNotification
+                        {
+                            ChannelId = "taxvision-communication",
+                            Tag = message.Tag,
+                        },
+                    }
+                    : null,
+        };
+
     private static WebpushConfig? BuildWebpush(PushMessage message)
     {
         if (message.Platform != TaxVision.Notification.Domain.Notifications.PushPlatform.Web)
             return null;
-        var headers = string.IsNullOrWhiteSpace(message.Topic)
-            ? null
-            : new Dictionary<string, string> { ["Topic"] = message.Topic };
+        var headers = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(message.Topic))
+            headers["Topic"] = message.Topic;
+        if (message.TimeToLive is { } ttl)
+            headers["TTL"] = ((long)ttl.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
         return new WebpushConfig
         {
-            Headers = headers,
+            Headers = headers.Count == 0 ? null : headers,
             Notification = string.IsNullOrWhiteSpace(message.Tag)
                 ? null
                 : new WebpushNotification { Tag = message.Tag },

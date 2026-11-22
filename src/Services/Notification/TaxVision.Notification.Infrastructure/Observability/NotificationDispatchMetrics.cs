@@ -41,6 +41,10 @@ public sealed class NotificationDispatchMetrics : INotificationDispatchMetrics, 
 
     public void RecordNoRecipient(string kind, string channel) => Record(kind, channel, "no_recipient");
 
+    public void RecordNotAllowedByCatalog(string kind, string channel) => Record(kind, channel, "skipped_not_allowed");
+
+    public void RecordDelivered(string kind, string channel) => Record(kind, channel, "delivered");
+
     public void RecordClientFormPushFailure(string code) =>
         _clientFormPushFailures.Add(1, new KeyValuePair<string, object?>("code", code));
 

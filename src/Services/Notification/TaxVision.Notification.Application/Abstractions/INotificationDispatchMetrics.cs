@@ -33,4 +33,10 @@ public interface INotificationDispatchMetrics
     void RecordNoRecipient(string kind, string channel);
 
     void RecordClientFormPushFailure(string code);
+
+    /// <summary>El canal no está permitido por el catálogo para ese kind: no se envía.</summary>
+    void RecordNotAllowedByCatalog(string kind, string channel);
+
+    /// <summary>El proveedor confirmó la entrega (p. ej. el resultado del SMS).</summary>
+    void RecordDelivered(string kind, string channel);
 }

@@ -109,6 +109,7 @@ public static class WalletAutoRechargePausedNotificationConsumer
             var amount = WalletAlertSender.FromCents(evt.AmountCents, evt.Currency);
             var reason = Reason(evt.Reason, evt.MethodLabel, amount);
             var delivery = evt.TopUpId ?? evt.EventId;
+            var settingsUrl = await sender.StaffBaseAsync(evt.TenantId, ct) + WalletAlertSender.SettingsPath;
             var alert = new WalletAlert(
                 evt.TenantId,
                 evt.EventId,
@@ -119,28 +120,36 @@ public static class WalletAutoRechargePausedNotificationConsumer
                 delivery.ToString("N"),
                 "Automatic recharge is paused",
                 $"{reason} It won't retry on its own. Review it in Settings → Wallet.",
-                new Dictionary<string, object?>
-                {
-                    ["reason_text"] = reason,
-                    ["amount_label"] = amount,
-                    ["method_label"] = evt.MethodLabel,
-                    ["settings_url"] = await sender.StaffBaseAsync(evt.TenantId, ct) + WalletAlertSender.SettingsPath,
-                },
+                Variables(reason),
                 (evt.TopUpId ?? evt.TenantId).ToString(),
-                $"wallet:auto-recharge:paused:{delivery:N}"
+                $"wallet:auto-recharge:paused:{delivery:N}",
+                // El motivo, en el idioma de quien lee el correo.
+                locale => Variables(Reason(evt.Reason, evt.MethodLabel, amount, locale.Language))
             );
             await sender.SendAsync(alert, await sender.RecipientsAsync(evt.TenantId, ct), ct);
+
+            Dictionary<string, object?> Variables(string reasonText) =>
+                new()
+                {
+                    ["reason_text"] = reasonText,
+                    ["amount_label"] = amount,
+                    ["method_label"] = evt.MethodLabel,
+                    ["settings_url"] = settingsUrl,
+                };
         }
     }
 
-    internal static string Reason(string reason, string method, string amount) =>
-        reason switch
-        {
-            "PaymentFailed" => $"We couldn't charge {method} for your {amount} automatic recharge.",
-            "MethodUnavailable" =>
-                $"Your saved payment method {method} is no longer available, so we couldn't run your {amount} automatic recharge.",
-            _ => $"We couldn't run your {amount} automatic recharge with {method}.",
-        };
+    internal static string Reason(string reason, string method, string amount, string? language = null) =>
+        EmailText.For(
+            reason switch
+            {
+                "PaymentFailed" => "wallet.paused.payment_failed",
+                "MethodUnavailable" => "wallet.paused.method_unavailable",
+                _ => "wallet.paused.other",
+            },
+            language,
+            new Dictionary<string, string> { ["method"] = method, ["amount"] = amount }
+        );
 }
 
 /// <summary>Se llegó al tope diario de recargas automáticas: no pausa, sigue mañana.</summary>

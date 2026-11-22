@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Notification.Api.Common;
 using TaxVision.Notification.Application.Notifications.Preferences;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 using Wolverine;
@@ -25,7 +26,14 @@ namespace TaxVision.Notification.Api.Controllers;
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.CustomerPortal, ActorType.PlatformAdmin)]
 public sealed class NotificationPreferencesController(IMessageBus bus) : ControllerBase
 {
-    public sealed record PreferenceResponse(string Category, string Channel, bool Enabled, bool Locked);
+    public sealed record PreferenceResponse(
+        string Category,
+        string Channel,
+        bool Enabled,
+        bool Locked,
+        bool Available,
+        IReadOnlyList<string> Covers
+    );
 
     public sealed record SetPreferenceRequest(NotificationCategory Category, NotificationChannel Channel, bool Enabled);
 
@@ -37,7 +45,7 @@ public sealed class NotificationPreferencesController(IMessageBus bus) : Control
         if (!User.TryGetTenantId(out var tenantId) || !User.TryGetUserId(out var userId))
             return Unauthorized();
 
-        var query = new GetNotificationPreferencesQuery(tenantId, userId);
+        var query = new GetNotificationPreferencesQuery(tenantId, userId, Audience());
         var result = await bus.InvokeAsync<Result<IReadOnlyList<NotificationPreferenceItem>>>(query, ct);
         if (result.IsFailure)
             return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -47,7 +55,9 @@ public sealed class NotificationPreferencesController(IMessageBus bus) : Control
                 item.Category.ToString(),
                 item.Channel.ToString(),
                 item.Enabled,
-                item.Locked
+                item.Locked,
+                item.Available,
+                item.Covers ?? []
             ))
             .ToList();
         return Ok(response);
@@ -66,9 +76,17 @@ public sealed class NotificationPreferencesController(IMessageBus bus) : Control
             userId,
             request.Category,
             request.Channel,
-            request.Enabled
+            request.Enabled,
+            Audience()
         );
         var result = await bus.InvokeAsync<Result>(command, ct);
-        return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+        if (result.IsSuccess)
+            return NoContent();
+        return result.Error.Code == SetNotificationPreferenceHandler.NotAvailable.Code
+            ? StatusCode(StatusCodes.Status403Forbidden, result.Error)
+            : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    private PreferenceAudience Audience() =>
+        User.GetActorType() == ActorType.CustomerPortal ? PreferenceAudience.CustomerPortal : PreferenceAudience.Staff;
 }

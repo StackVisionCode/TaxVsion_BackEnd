@@ -25,15 +25,19 @@ public sealed class ScribeNotificationTemplateSeederTests
 {
     private const string WispKey = "tenant.wisp_review_due.v1";
 
+    // Versión actual de la plantilla del WISP en el código (sube cuando cambia su contenido).
+    private static int WispVersion =>
+        NotificationTemplateSeedSource.All.Single(s => s.TemplateKey == WispKey).ContentVersion;
+
     [Fact]
     public async Task Al_arrancar_publica_la_plantilla_del_WISP_y_su_mapping()
     {
         await using var host = await SeedHost.StartAsync();
 
-        var template = await host.WaitForPublishedAsync(WispKey, minimumVersion: 23);
+        var template = await host.WaitForPublishedAsync(WispKey, minimumVersion: WispVersion);
 
         var published = template.Versions.Single(v => v.Status == EmailVersionStatus.Published);
-        Assert.Equal(23, published.SeedContentVersion);
+        Assert.Equal(WispVersion, published.SeedContentVersion);
         Assert.Contains("FTC Safeguards Rule", host.Storage.Read(published.HtmlFileId!.Value));
         Assert.True(await host.HasMappingAsync(WispKey));
     }
@@ -43,9 +47,12 @@ public sealed class ScribeNotificationTemplateSeederTests
     {
         await using var host = await SeedHost.StartAsync(existingWispVersion: 22);
 
-        var template = await host.WaitForPublishedAsync(WispKey, minimumVersion: 23);
+        var template = await host.WaitForPublishedAsync(WispKey, minimumVersion: WispVersion);
 
-        Assert.Equal(23, template.Versions.Single(v => v.Status == EmailVersionStatus.Published).SeedContentVersion);
+        Assert.Equal(
+            WispVersion,
+            template.Versions.Single(v => v.Status == EmailVersionStatus.Published).SeedContentVersion
+        );
         Assert.Contains(template.Versions, v => v.Status == EmailVersionStatus.Archived && v.SeedContentVersion == 22);
     }
 

@@ -7,6 +7,7 @@ using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Domain.Recipients;
 using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
@@ -98,6 +99,38 @@ public sealed class NotificationDispatcherInAppTests
 
         Assert.Empty(publisher.Published);
         Assert.Single(logs.Logs);
+    }
+
+    [Fact]
+    public async Task Kind_outside_the_catalog_is_recorded_as_failed()
+    {
+        var logs = new RecordingNotificationLogRepository();
+        var publisher = new CapturingIntegrationEventPublisher();
+        var dispatcher = BuildDispatcher(logs, publisher, new NoOpUnitOfWork());
+
+        await dispatcher.RecordInAppAsync(
+            TenantId,
+            NotificationRecipient.ForUser(RecipientUserId),
+            "Something",
+            NotificationCategory.Collaboration,
+            "unknown.kind",
+            Guid.NewGuid(),
+            "corr-unknown",
+            recipientUserId: RecipientUserId,
+            inApp: new InAppNotificationRequest(
+                "unknown.kind",
+                RecipientUserId,
+                Guid.NewGuid(),
+                "unknown.kind.v1",
+                DateTime.UtcNow,
+                "Something"
+            )
+        );
+
+        Assert.Empty(publisher.Published);
+        var log = Assert.Single(logs.Logs);
+        Assert.Equal(NotificationStatus.Failed, log.Status);
+        Assert.Equal("kind_not_in_catalog", log.Error);
     }
 
     [Fact]
@@ -265,22 +298,112 @@ public sealed class NotificationDispatcherInAppTests
         INotificationLogRepository logs,
         IIntegrationEventPublisher publisher,
         IUnitOfWork uow,
-        IUserNotificationPreferenceRepository? preferences = null
-    ) =>
-        TestDispatchers.Create(
+        IUserNotificationPreferenceRepository? preferences = null,
+        InMemoryUserEmailDirectoryRepository? directory = null,
+        TestPortalAccounts? portalAccounts = null
+    )
+    {
+        directory ??= new InMemoryUserEmailDirectoryRepository();
+        return TestDispatchers.Create(
             NoOpSmsSender.Instance,
             NoOpPushSender.Instance,
             EmptyPushDeviceTokenRepository.Instance,
             logs,
-            TestDeliveryGates.For(
-                preferences ?? AlwaysEnabledPreferences.Instance,
-                new TaxVision.Notification.Tests.TestDoubles.InMemoryUserEmailDirectoryRepository()
-            ),
+            TestDeliveryGates.For(preferences ?? AlwaysEnabledPreferences.Instance, directory),
             publisher,
             uow,
             new NoOpNotificationDispatchMetrics(),
-            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
+            new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
+            directory: directory,
+            portalAccounts: portalAccounts
         );
+    }
+
+    private static readonly Guid ActorUserId = Guid.NewGuid();
+
+    [Fact]
+    public async Task Actor_name_is_filled_from_the_directory_for_staff_kinds()
+    {
+        var evt = await PublishWithActorAsync(NotificationKinds.TasksTaskOverdue, explicitName: null);
+
+        Assert.Equal(ActorUserId, evt.ActorUserId);
+        Assert.Equal("Ana Lopez", evt.ActorDisplayName);
+    }
+
+    [Fact]
+    public async Task Actor_name_is_never_sent_for_portal_kinds()
+    {
+        var evt = await PublishWithActorAsync(NotificationKinds.TasksClientRequestCreated, explicitName: "Ana Lopez");
+
+        Assert.Null(evt.ActorDisplayName);
+    }
+
+    [Fact]
+    public async Task Actor_name_is_never_sent_to_a_portal_recipient_of_a_shared_kind()
+    {
+        var evt = await PublishWithActorAsync(
+            NotificationKinds.CommunicationCallMissed,
+            explicitName: null,
+            recipientIsPortal: true
+        );
+
+        Assert.Null(evt.ActorDisplayName);
+    }
+
+    [Fact]
+    public async Task Explicit_actor_name_is_kept()
+    {
+        var evt = await PublishWithActorAsync(NotificationKinds.TasksTaskOverdue, explicitName: "Ana (front desk)");
+
+        Assert.Equal("Ana (front desk)", evt.ActorDisplayName);
+    }
+
+    private static async Task<InAppNotificationRequestedIntegrationEvent> PublishWithActorAsync(
+        string kind,
+        string? explicitName,
+        bool recipientIsPortal = false
+    )
+    {
+        var portalAccounts = new TestPortalAccounts();
+        if (recipientIsPortal)
+            portalAccounts.Rows.Add(CustomerPortalAccountProjection.Create(TenantId, Guid.NewGuid(), RecipientUserId));
+        var directory = new InMemoryUserEmailDirectoryRepository();
+        directory
+            .Seed(TenantId, ActorUserId, "ana@example.com")
+            .ApplyProfile(null, null, "Ana Lopez", new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc));
+        var publisher = new CapturingIntegrationEventPublisher();
+        var dispatcher = BuildDispatcher(
+            new RecordingNotificationLogRepository(),
+            publisher,
+            new NoOpUnitOfWork(),
+            directory: directory,
+            portalAccounts: portalAccounts
+        );
+        var sourceEventId = Guid.NewGuid();
+
+        await dispatcher.RecordInAppAsync(
+            TenantId,
+            NotificationRecipient.ForUser(RecipientUserId),
+            "Subject",
+            NotificationCategory.Collaboration,
+            kind,
+            sourceEventId,
+            "corr",
+            recipientUserId: RecipientUserId,
+            inApp: new InAppNotificationRequest(
+                kind,
+                RecipientUserId,
+                sourceEventId,
+                "test.v1",
+                new DateTime(2026, 11, 20, 15, 0, 0, DateTimeKind.Utc),
+                "Subject",
+                ActorUserId: ActorUserId,
+                ActorDisplayName: explicitName
+            )
+        );
+
+        return Assert.IsType<InAppNotificationRequestedIntegrationEvent>(Assert.Single(publisher.Published));
+    }
 
     private sealed class RecordingNotificationLogRepository : INotificationLogRepository
     {
@@ -332,7 +455,8 @@ public sealed class NotificationDispatcherInAppTests
             string text,
             CancellationToken ct,
             string? templateKey,
-            string? idempotencyToken
+            string? idempotencyToken,
+            string? sourceRef = null
         ) => Task.FromResult(Result.Success());
     }
 
@@ -346,6 +470,26 @@ public sealed class NotificationDispatcherInAppTests
 
     private sealed class EmptyPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

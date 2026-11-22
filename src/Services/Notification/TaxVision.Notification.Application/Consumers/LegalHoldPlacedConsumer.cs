@@ -4,8 +4,6 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -17,15 +15,16 @@ public static class LegalHoldPlacedConsumer
         NotificationDispatcher dispatcher,
         IInAppSourceGate inAppSource,
         IRecipientResolver recipientResolver,
+        PushLinks links,
+        IRecipientLocale locales,
+        IUserEmailResolver emails,
+        IScribeRenderClient scribe,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            if (!inAppSource.PublishesInApp(InAppSourceGroup.CloudStorageLegal))
-                return;
-
             var recipients = await OfficeAlertRecipients.ResolveOwnerAndSubscribersAsync(
                 evt.TenantId,
                 NotificationPermissions.StorageAlerts,
@@ -38,30 +37,50 @@ public static class LegalHoldPlacedConsumer
                 ct
             );
 
-            const string title = "Archivo en retencion legal";
-            const string body = "Un archivo del tenant quedo bajo retencion legal y no puede borrarse mientras dure.";
+            if (recipients.Count == 0)
+                return;
+
+            var intent = new NotificationIntent(
+                NotificationKinds.CloudStorageLegalHoldPlaced,
+                evt.TenantId,
+                new NotificationTarget(),
+                evt.EventId,
+                "cloudstorage.file.legal_hold_placed.v1",
+                evt.OccurredOn,
+                correlation.CorrelationId
+            );
+            // Correo obligatorio: no depende de quién publica la campana (T3.7).
+            var variables = new Dictionary<string, object?>
+            {
+                ["placed_at"] = ScribeDates.Instant(evt.OccurredOn),
+                ["action_url"] = await OfficeAlertEmails.FileUrlAsync(links, evt.TenantId, evt.FileId, ct),
+            };
+            if (!string.IsNullOrWhiteSpace(evt.Reason))
+                variables["reason"] = evt.Reason;
+            await OfficeAlertEmails.SendAsync(
+                intent,
+                "storage.legal_hold_placed.v1",
+                variables,
+                recipients,
+                dispatcher,
+                emails,
+                scribe,
+                locales,
+                ct
+            );
+
+            if (!inAppSource.PublishesInApp(InAppSourceGroup.CloudStorageLegal))
+                return;
+
             foreach (var userId in recipients)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.StorageAndQuota,
-                    "cloudstorage.file.legal_hold_placed",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
-                        NotificationKinds.CloudStorageLegalHoldPlaced,
-                        userId,
-                        evt.EventId,
-                        "cloudstorage.file.legal_hold_placed.v1",
-                        evt.OccurredOn,
-                        title,
-                        FallbackBody: body,
-                        ResourceId: evt.FileId.ToString()
-                    ),
-                    ct: ct
+                await dispatcher.DispatchAsync(
+                    intent with
+                    {
+                        Target = new NotificationTarget(userId),
+                        InApp = new InAppContent(ResourceId: evt.FileId.ToString()),
+                    },
+                    ct
                 );
             }
         }

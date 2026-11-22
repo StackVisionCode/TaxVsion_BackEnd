@@ -1,10 +1,8 @@
+using System.Globalization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
-using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -21,39 +19,27 @@ public static class CustomersBulkImportedConsumer
         {
             // El creador, salvo que Customer haya pasado el aviso a otro (creador retirado).
             var recipient = evt.NotifyUserId ?? evt.CreatedByUserId;
-            var title = "Importación masiva completada";
-            var body =
-                $"{evt.SuccessCount}/{evt.TotalRows} clientes importados"
-                + (evt.FailedCount > 0 ? $", {evt.FailedCount} con errores." : ".");
-
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(recipient),
-                title,
-                NotificationCategory.Collaboration,
-                "customer.bulk_imported",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: recipient,
-                inApp: new InAppNotificationRequest(
+            var parameters = new Dictionary<string, string>
+            {
+                ["totalRows"] = evt.TotalRows.ToString(CultureInfo.InvariantCulture),
+                ["successCount"] = evt.SuccessCount.ToString(CultureInfo.InvariantCulture),
+                ["updatedCount"] = evt.UpdatedCount.ToString(CultureInfo.InvariantCulture),
+                ["skippedCount"] = evt.SkippedCount.ToString(CultureInfo.InvariantCulture),
+                ["failedCount"] = evt.FailedCount.ToString(CultureInfo.InvariantCulture),
+            };
+            // El cuerpo ({summary}) lo arma el frontend con los conteos; aquí queda sin cuerpo.
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.CustomerBulkImported,
-                    recipient,
+                    evt.TenantId,
+                    new NotificationTarget(recipient),
                     evt.EventId,
                     "customer.bulk_imported.v1",
                     evt.CompletedAtUtc,
-                    title,
-                    FallbackBody: body,
-                    ResourceId: evt.ImportJobId.ToString(),
-                    Params: new Dictionary<string, string>
-                    {
-                        ["totalRows"] = evt.TotalRows.ToString(),
-                        ["successCount"] = evt.SuccessCount.ToString(),
-                        ["updatedCount"] = evt.UpdatedCount.ToString(),
-                        ["skippedCount"] = evt.SkippedCount.ToString(),
-                        ["failedCount"] = evt.FailedCount.ToString(),
-                    }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(Params: parameters, ResourceId: evt.ImportJobId.ToString())
                 ),
-                ct: ct
+                ct
             );
         }
     }

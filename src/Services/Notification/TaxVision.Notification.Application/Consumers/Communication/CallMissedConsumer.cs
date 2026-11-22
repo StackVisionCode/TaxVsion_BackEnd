@@ -4,8 +4,6 @@ using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
@@ -29,36 +27,43 @@ public static class CallMissedConsumer
                 ? "You missed a video call."
                 : "You missed an audio call.";
 
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(evt.CalleeUserId),
-                title,
-                NotificationCategory.Collaboration,
-                "communication.call.missed",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.CalleeUserId,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.CommunicationCallMissed,
-                    evt.CalleeUserId,
+                    evt.TenantId,
+                    new NotificationTarget(evt.CalleeUserId),
                     evt.EventId,
                     "communication.call.missed.v1",
                     evt.MissedAtUtc,
-                    title,
-                    FallbackBody: body,
-                    ActorUserId: evt.CallerUserId,
-                    ResourceId: evt.CallId.ToString(),
-                    ResourceContext: new Dictionary<string, string>
-                    {
-                        ["callId"] = evt.CallId.ToString(),
-                        ["callerUserId"] = evt.CallerUserId.ToString(),
-                        ["kind"] = evt.Kind,
-                    },
-                    GroupKey: $"call:{evt.CallId:N}"
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(
+                        Params: new Dictionary<string, string> { ["kind"] = evt.Kind },
+                        // La fila abre la conversación; sin ella (evento viejo) el front decide el destino.
+                        ResourceId: evt.ConversationId?.ToString(),
+                        ResourceContext: Context(evt),
+                        // Una fila por contacto: Node suma el contador mientras no se lea.
+                        GroupKey: $"call-missed:{evt.CallerUserId:N}",
+                        ActorUserId: evt.CallerUserId,
+                        FallbackTitle: title,
+                        FallbackBody: body
+                    )
                 ),
-                ct: ct
+                ct
             );
         }
+    }
+
+    private static Dictionary<string, string> Context(CallMissedIntegrationEvent evt)
+    {
+        var context = new Dictionary<string, string>
+        {
+            ["callId"] = evt.CallId.ToString(),
+            ["callerUserId"] = evt.CallerUserId.ToString(),
+            ["kind"] = evt.Kind,
+        };
+        if (evt.ConversationId is { } conversationId)
+            context["conversationId"] = conversationId.ToString();
+        return context;
     }
 
     private static async Task<bool> CanReceiveCallsAsync(

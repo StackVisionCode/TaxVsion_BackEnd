@@ -6,6 +6,7 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -263,6 +264,47 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
         Assert.Equal("Promo code SPRI...0420 · 20% off", scribe.LastVariables["discount_label"]);
     }
 
+    [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var scribe = new TestDoubles.RecordingScribeRenderClient();
+        var locales = new FixedRecipientLocale("es", "America/Chicago");
+        var evt = Event("Suspended", "RenewalChargeFailed") with
+        {
+            ItemDescription = null,
+            PlanName = null,
+            FailureCode = "card_declined",
+            Consequence = "SubscriptionSuspended",
+            IsFinalAttempt = true,
+        };
+
+        await SubscriptionLifecycleEmailConsumer.Handle(
+            evt,
+            new NotificationDispatcherHarness(emailGateway: new RecordingEmailDispatchGateway()).Dispatcher,
+            scribe,
+            Options.Create(Portal),
+            locales,
+            new FixedOffices(),
+            new InMemoryUserEmailDirectoryRepository(),
+            new NoOpCorrelationContext(),
+            new NoOpSubscriptionEmailMetrics(),
+            new FixedOfficeZone("America/New_York"),
+            CancellationToken.None
+        );
+
+        Assert.Equal([evt.Email], locales.OfficeEmailLookups);
+        var render = Assert.Single(scribe.Renders);
+        Assert.Equal("Es", render.Language);
+        Assert.Equal(new ScribeReader("es", "America/Chicago"), render.Reader);
+        Assert.Equal("Tu banco rechazó el cobro.", render.Variables["friendly_reason"]);
+        Assert.Equal(
+            "tu suscripción se suspendió y tu equipo ya no puede iniciar sesión",
+            render.Variables["suspension_effect"]
+        );
+        Assert.Equal("tu suscripción", render.Variables["item_description"]);
+        Assert.Equal("tu plan", render.Variables["plan_name"]);
+    }
+
     private static TenantSubscriptionEmailRequestedIntegrationEvent Event(
         string status,
         string reason,
@@ -287,9 +329,12 @@ public sealed class SubscriptionLifecycleEmailConsumerTests
     ) =>
         SubscriptionLifecycleEmailConsumer.Handle(
             evt,
-            gateway,
+            new NotificationDispatcherHarness(emailGateway: gateway).Dispatcher,
             scribe,
             Options.Create(Portal),
+            FixedRecipientLocale.English,
+            new FixedOffices(),
+            new InMemoryUserEmailDirectoryRepository(),
             new NoOpCorrelationContext(),
             new NoOpSubscriptionEmailMetrics(),
             new FixedOfficeZone("America/New_York"),

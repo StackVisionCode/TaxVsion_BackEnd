@@ -4,8 +4,35 @@ using TaxVision.Notification.Domain.Notifications;
 
 namespace TaxVision.Notification.Infrastructure.Persistence.Repositories;
 
-public sealed class NotificationLogRepository(NotificationDbContext db) : INotificationLogRepository
+public sealed class NotificationLogRepository(NotificationDbContext db)
+    : INotificationLogRepository,
+        INotificationLogStatusRepository
 {
+    public Task<NotificationLog?> FindAsync(Guid tenantId, Guid logId, CancellationToken ct = default) =>
+        db
+            .NotificationLogs.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(log => log.TenantId == tenantId && log.Id == logId, ct);
+
+    public Task<NotificationLog?> FindByRelatedEventAsync(
+        Guid tenantId,
+        Guid relatedEventId,
+        string kind,
+        NotificationChannel channel,
+        string recipient,
+        CancellationToken ct = default
+    ) =>
+        db
+            .NotificationLogs.IgnoreQueryFilters()
+            .Where(log =>
+                log.TenantId == tenantId
+                && log.RelatedEventId == relatedEventId
+                && log.Kind == kind
+                && log.Channel == channel
+                && log.Recipient == recipient
+            )
+            .OrderByDescending(log => log.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
     public async Task AddAsync(NotificationLog log, CancellationToken ct = default) =>
         await db.NotificationLogs.AddAsync(log, ct);
 

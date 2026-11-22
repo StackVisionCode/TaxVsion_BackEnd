@@ -2,6 +2,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Platform;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
@@ -16,8 +17,8 @@ namespace TaxVision.Notification.Application.Consumers;
 // localmente (antes: static class EmailTemplates) — se renderiza en Scribe vía
 // IScribeRenderClient.RenderAsync(eventKey, ...) y el resultado (Subject/Html/Text)
 // se envía tal cual por IEmailDispatchGateway.QueueEmailAsync, como ya hacía
-// Notifications Fase 3. SecurityAlertConsumer es la excepción: es notificación
-// in-app (nunca pasó por el gateway de email), así que no llama a Scribe.
+// Notifications Fase 3. SecurityAlertConsumer también: correo al afectado con la
+// plantilla de alerta de Scribe, además de la campanita.
 //
 // Hardening Fase 7: cada llamada a RenderAsync termina en .EnsureRendered(eventKey)
 // en vez de un "if (render.IsFailure) return;" manual — una falla de Scribe ahora
@@ -38,6 +39,7 @@ public static class InvitationCreatedConsumer
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
         AuthAccountTokenReader tokens,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -60,8 +62,9 @@ public static class InvitationCreatedConsumer
                 : $"https://{platform.Current.TenantHost(evt.TenantSubdomain.Trim().ToLowerInvariant())}";
             var inviteLink = $"{tenantPortalUrl}/accept-invitation?token={Uri.EscapeDataString(token)}";
 
+            // Quien aún no tiene cuenta no tiene idioma propio, y el evento no trae uno: inglés.
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "auth.invitation_created.v1",
                     evt.TenantId,
                     new Dictionary<string, object?>
@@ -74,6 +77,7 @@ public static class InvitationCreatedConsumer
                         ["is_resend"] = evt.IsResend,
                     },
                     AuthAccountCopy.Audience(evt.ActorType),
+                    locales.FromEventLanguage(null),
                     ct
                 )
             ).EnsureRendered("auth.invitation_created.v1");
@@ -105,6 +109,7 @@ public static class PasswordResetRequestedConsumer
         IPlatformSettings platform,
         ITenantHostResolver hostResolver,
         AuthAccountTokenReader tokens,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -131,7 +136,7 @@ public static class PasswordResetRequestedConsumer
                 : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/reset-password?token={resetToken}";
 
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "auth.password_reset_requested.v1",
                     evt.TenantId,
                     new Dictionary<string, object?>
@@ -144,6 +149,7 @@ public static class PasswordResetRequestedConsumer
                             : evt.TenantName,
                     },
                     AuthAccountCopy.Audience(evt.ActorType),
+                    await locales.ForUserAsync(evt.TenantId, evt.UserId, ct),
                     ct
                 )
             ).EnsureRendered("auth.password_reset_requested.v1");
@@ -172,6 +178,7 @@ public static class TenantRecoveryRequestedConsumer
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -186,11 +193,14 @@ public static class TenantRecoveryRequestedConsumer
                 })
                 .ToList();
 
+            // Un correo que puede ser de varias oficinas y sin usuario: inglés.
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "auth.tenant_recovery_requested.v1",
                     evt.TenantId,
                     new Dictionary<string, object?> { ["offices"] = offices },
+                    ScribeRenderAudience.Staff,
+                    locales.FromEventLanguage(null),
                     ct
                 )
             ).EnsureRendered("auth.tenant_recovery_requested.v1");
@@ -217,6 +227,7 @@ public static class MfaChallengeRequestedConsumer
         IScribeRenderClient scribeClient,
         ICustomerPortalAccountProjectionRepository portalAccounts,
         NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
         ICorrelationContext correlation,
@@ -225,11 +236,14 @@ public static class MfaChallengeRequestedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            var locale = await locales.ForUserAsync(evt.TenantId, evt.UserId, ct);
             if (string.Equals(evt.Channel, "Sms", StringComparison.OrdinalIgnoreCase))
             {
-                var text =
-                    $"{platform.Current.BrandName}: tu código es {evt.Code}. "
-                    + "Expira en pocos minutos. No lo compartas.";
+                var text = SmsText.For(
+                    SmsText.MfaCode,
+                    locale,
+                    new Dictionary<string, string> { ["brand"] = platform.Current.BrandName, ["code"] = evt.Code }
+                );
                 // SMS sigue via NotificationDispatcher — Scribe/el gateway son exclusivos de email.
                 await dispatcher.SendSmsAsync(
                     evt.TenantId,
@@ -244,12 +258,11 @@ public static class MfaChallengeRequestedConsumer
                 return;
             }
 
-            var reason = evt.Purpose switch
+            // La plantilla escribe el motivo en el idioma de quien lee; aquí solo viaja el código.
+            var reasonCode = evt.Purpose switch
             {
-                "login" => "iniciar sesión",
-                "email_change" => "confirmar tu nuevo email",
-                "phone_verification" => "verificar tu teléfono",
-                _ => "continuar",
+                "login" or "email_change" or "phone_verification" => evt.Purpose,
+                _ => "continue",
             };
 
             // El evento no trae el tipo de actor: el usuario es cliente si es el de una cuenta de portal.
@@ -257,11 +270,12 @@ public static class MfaChallengeRequestedConsumer
                 ? ScribeRenderAudience.Client
                 : ScribeRenderAudience.Staff;
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "auth.mfa_otp_requested.v1",
                     evt.TenantId,
-                    new Dictionary<string, object?> { ["code"] = evt.Code, ["reason"] = reason },
+                    new Dictionary<string, object?> { ["code"] = evt.Code, ["reason_code"] = reasonCode },
                     audience,
+                    locale,
                     ct
                 )
             ).EnsureRendered("auth.mfa_otp_requested.v1");
@@ -290,6 +304,7 @@ public static class EmailChangeRequestedConsumer
         IPlatformSettings platform,
         ITenantHostResolver hostResolver,
         AuthAccountTokenReader tokens,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -313,13 +328,14 @@ public static class EmailChangeRequestedConsumer
                 ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/confirm-email?token={confirmToken}"
                 : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/confirm-email?token={confirmToken}";
             var office = string.IsNullOrWhiteSpace(evt.TenantName) ? platform.Current.BrandName : evt.TenantName;
+            var locale = await locales.ForUserAsync(evt.TenantId, evt.UserId, ct);
 
             // Nota Fase 7: antes, si este primer render fallaba, el bloque se saltaba en silencio y
             // el consumer seguía directo a la alerta de seguridad — el email de confirmación se
             // perdía sin dejar rastro. Ahora EnsureRendered lanza de inmediato, así que Wolverine
             // reintenta el evento completo (ambos emails) en vez de completar con uno solo enviado.
             var confirmRender = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "auth.email_change_requested.v1",
                     evt.TenantId,
                     new Dictionary<string, object?>
@@ -330,6 +346,7 @@ public static class EmailChangeRequestedConsumer
                         ["office"] = office,
                     },
                     AuthAccountCopy.Audience(evt.ActorType),
+                    locale,
                     ct
                 )
             ).EnsureRendered("auth.email_change_requested.v1");
@@ -350,17 +367,22 @@ public static class EmailChangeRequestedConsumer
 
             // Aviso a la dirección anterior: dice qué cuenta pidió el cambio y hacia qué email.
             var warningRender = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "auth.email_change_security_alert.v1",
                     evt.TenantId,
                     new Dictionary<string, object?>
                     {
-                        ["description"] = AuthAccountCopy.IsPortal(evt.ActorType)
-                            ? $"Someone asked to change the email of your client portal account at {office} to {evt.NewEmail}."
-                            : $"Someone asked to change the email of your {office} workspace account to {evt.NewEmail}.",
+                        ["description"] = EmailText.For(
+                            AuthAccountCopy.IsPortal(evt.ActorType)
+                                ? "auth.email_change_requested.client"
+                                : "auth.email_change_requested.staff",
+                            locale,
+                            new Dictionary<string, string> { ["office"] = office!, ["newEmail"] = evt.NewEmail }
+                        ),
                         ["ip_address"] = null,
                     },
                     AuthAccountCopy.Audience(evt.ActorType),
+                    locale,
                     ct
                 )
             ).EnsureRendered("auth.email_change_security_alert.v1");
@@ -379,60 +401,6 @@ public static class EmailChangeRequestedConsumer
     }
 }
 
-// Notificación in-app — nunca pasó por el gateway de email ni por Scribe (Scribe solo renderiza
-// HTML de correo); el subject es texto plano fijo, igual que el builder original.
-public static class SecurityAlertConsumer
-{
-    public static async Task Handle(
-        SecurityAlertIntegrationEvent evt,
-        NotificationDispatcher dispatcher,
-        IOptions<PortalOptions> portal,
-        IPlatformSettings platform,
-        IRecipientResolver recipientResolver,
-        ICorrelationContext correlation,
-        CancellationToken ct
-    )
-    {
-        using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
-        {
-            var subject = $"Alerta de seguridad en tu cuenta de {platform.Current.BrandName}";
-            var officeRecipients = await OfficeAlertRecipients.ResolveOwnerAndSubscribersAsync(
-                evt.TenantId,
-                NotificationPermissions.SecurityTenantAlerts,
-                new RecipientValidation(RequiredCapability: SubscriptionPermissions.AuditView),
-                recipientResolver,
-                ct
-            );
-            var recipients = new[] { evt.UserId }.Concat(officeRecipients).Distinct();
-
-            foreach (var userId in recipients)
-            {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    subject,
-                    NotificationCategory.AccountSecurity,
-                    "auth.security_alert",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
-                        NotificationKinds.AuthSecurityAlert,
-                        userId,
-                        evt.EventId,
-                        "auth.security_alert.v1",
-                        evt.OccurredOn,
-                        subject,
-                        ActorUserId: evt.UserId,
-                        Params: new Dictionary<string, string> { ["alertType"] = evt.AlertType }
-                    ),
-                    ct: ct
-                );
-            }
-        }
-    }
-}
-
 // Fase 9: primer consumer real de auth.welcome — el evento vivía en el namespace local de Auth
 // y se movió a BuildingBlocks.Messaging.AuthIntegrationEvents para que Notification pudiera
 // referenciarlo (ver memoria project_scribe_fase8_migration.md).
@@ -444,6 +412,7 @@ public static class UserRegisteredConsumer
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hostResolver,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -452,7 +421,7 @@ public static class UserRegisteredConsumer
         {
             var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     "auth.user_registered.v1",
                     evt.TenantId,
                     new Dictionary<string, object?>
@@ -466,6 +435,7 @@ public static class UserRegisteredConsumer
                                 : TenantEmailLinks.StaffBase(tenantHost, portal.Value),
                     },
                     AuthAccountCopy.Audience(evt.ActorType),
+                    await locales.ForUserAsync(evt.TenantId, evt.UserId, ct),
                     ct
                 )
             ).EnsureRendered("auth.user_registered.v1");

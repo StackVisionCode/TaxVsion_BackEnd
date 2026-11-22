@@ -5,6 +5,8 @@ using BuildingBlocks.TimeZones;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Domain.Catalog;
+using TaxVision.Notification.Domain.Notifications;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -18,9 +20,12 @@ public static class SubscriptionLifecycleEmailConsumer
 {
     public static async Task Handle(
         TenantSubscriptionEmailRequestedIntegrationEvent evt,
-        IEmailDispatchGateway gateway,
+        NotificationDispatcher dispatcher,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
+        IRecipientLocale locales,
+        ITenantOwnerProjectionRepository offices,
+        IUserEmailDirectoryRepository directory,
         ICorrelationContext correlation,
         ISubscriptionEmailMetrics metrics,
         IOfficeTimeZone zones,
@@ -37,14 +42,18 @@ public static class SubscriptionLifecycleEmailConsumer
 
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            // Auth solo manda el correo del dueño o admin: su idioma y su preferencia salen del usuario de la oficina
+            // con esa dirección (sin él, inglés y sin preferencia).
+            var locale = await locales.ForOfficeEmailAsync(evt.TenantId, evt.Email, ct);
+            var userId = await OfficeEmailUsers.FindAsync(evt.TenantId, evt.Email, offices, directory, ct);
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     eventKey,
                     evt.TenantId,
                     new Dictionary<string, object?>
                     {
                         ["first_name"] = evt.FirstName,
-                        ["plan_name"] = evt.PlanName ?? "your plan",
+                        ["plan_name"] = evt.PlanName ?? EmailText.For("plan.fallback", locale),
                         ["renew_url"] = evt.RenewUrl,
                         ["manage_url"] = evt.ManageUrl ?? evt.RenewUrl,
                         ["access_ends_date"] = Typed(evt.AccessEndsAtUtc),
@@ -70,60 +79,74 @@ public static class SubscriptionLifecycleEmailConsumer
                         ["next_charge_date"] =
                             (object?)ScribeDates.Instant(evt.NextChargeAtUtc) ?? evt.NextChargeDate ?? string.Empty,
                         // Cobro automático de renovación fallido: uno por intento.
-                        ["item_description"] = evt.ItemDescription ?? evt.PlanName ?? "your subscription",
+                        ["item_description"] =
+                            evt.ItemDescription ?? evt.PlanName ?? EmailText.For("subscription.item_fallback", locale),
                         ["has_card"] = !string.IsNullOrWhiteSpace(evt.CardLast4),
                         ["attempt_number"] = evt.AttemptNumber?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
                         ["max_attempts"] = evt.MaxAttempts?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
                         ["is_final"] = evt.IsFinalAttempt,
                         ["next_retry_date"] = Typed(evt.NextAttemptAtUtc),
-                        ["friendly_reason"] = ChargeFailureReasons.Describe(evt.FailureCode),
+                        ["friendly_reason"] = ChargeFailureReasons.Describe(evt.FailureCode, locale.Language),
                         ["suspension_effect"] = ChargeFailureConsequences.Describe(
                             evt.Consequence,
-                            evt.ItemDescription
+                            evt.ItemDescription,
+                            locale.Language
                         ),
                         // Cambio de condiciones del plan agendado por una migración.
                         ["change_date"] = Typed(evt.VersionChangeEffectiveAtUtc),
                         ["change_summary"] = evt.VersionChangeSummary ?? string.Empty,
                     },
+                    ScribeRenderAudience.Staff,
+                    locale,
                     ct
                 )
             ).EnsureRendered(eventKey);
 
-            await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
-                    tenantId: evt.TenantId,
-                    to: evt.Email,
-                    templateKey: templateKey,
-                    relatedEventId: evt.EventId,
-                    correlationId: correlation.CorrelationId
-                ) with
-                {
-                    // El recordatorio lo publica un job: cada pasada trae un EventId nuevo, así que la
-                    // deduplicación por evento no sirve. La clave se ancla al tenant y a la fecha de fin.
-                    IdempotencyKey = templateKey switch
-                    {
-                        // El de 7 y el de 1 día comparten fecha de fin; un evento viejo sin número, la clave de antes.
-                        "subscription.access_ending" => evt.NoticeDaysBefore is { } daysBefore
-                            ? $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}:{daysBefore}d"
-                            : $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}",
-                        "subscription.renewal_upcoming" =>
-                            $"{evt.TenantId:N}:renewal-upcoming:{evt.NextRenewalAtUtc:yyyyMMdd}:{evt.DaysUntilRenewal}",
-                        // Un correo por intento: un reenvío del mismo aviso no lo repite.
-                        // Un aviso por migración: un reenvío del evento no lo repite.
-                        // Un aviso por cambio: el mismo ciclo y la misma próxima fecha no se repiten.
-                        "subscription.billing_cycle_changed" =>
-                            $"{evt.TenantId:N}:cycle-change:{evt.Cadence}:{evt.NextChargeDate}",
-                        "subscription.version_change_scheduled" when evt.MigrationId is { } migrationId =>
-                            $"{evt.TenantId:N}:version-change:{migrationId:N}",
-                        "subscription.recurring_charge_failed" when evt.SaaSPaymentId is { } paymentId =>
-                            $"{paymentId:N}:attempt-{evt.AttemptNumber}:{evt.Email.Trim().ToLowerInvariant()}",
-                        _ => null,
-                    },
-                },
+            var summary = await dispatcher.DispatchAsync(
+                new NotificationIntent(
+                    // La renovación próxima respeta la preferencia; el resto de avisos de la suscripción es obligatorio.
+                    string.Equals(evt.Reason, "RenewalUpcoming", StringComparison.OrdinalIgnoreCase)
+                        ? NotificationKinds.SubscriptionRenewalUpcoming
+                        : NotificationKinds.SubscriptionStatusChanged,
+                    evt.TenantId,
+                    new NotificationTarget(userId, evt.Email, Locale: locale),
+                    evt.EventId,
+                    "auth.tenant_subscription_email_requested.v1",
+                    evt.OccurredOn,
+                    correlation.CorrelationId,
+                    Email: new EmailContent(
+                        eventKey,
+                        new Dictionary<string, object?>(),
+                        TemplateKey: templateKey,
+                        // El recordatorio lo publica un job: cada pasada trae un EventId nuevo, así que la
+                        // deduplicación por evento no sirve. La clave se ancla al tenant y a la fecha de fin.
+                        IdempotencyKey: templateKey switch
+                        {
+                            // El de 7 y el de 1 día comparten fecha de fin; un evento viejo sin número, la clave de antes.
+                            "subscription.access_ending" => evt.NoticeDaysBefore is { } daysBefore
+                                ? $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}:{daysBefore}d"
+                                : $"{evt.TenantId:N}:access-ending:{evt.AccessEndsAtUtc:yyyyMMdd}",
+                            "subscription.renewal_upcoming" =>
+                                $"{evt.TenantId:N}:renewal-upcoming:{evt.NextRenewalAtUtc:yyyyMMdd}:{evt.DaysUntilRenewal}",
+                            // Un correo por intento: un reenvío del mismo aviso no lo repite.
+                            // Un aviso por migración: un reenvío del evento no lo repite.
+                            // Un aviso por cambio: el mismo ciclo y la misma próxima fecha no se repiten.
+                            "subscription.billing_cycle_changed" =>
+                                $"{evt.TenantId:N}:cycle-change:{evt.Cadence}:{evt.NextChargeDate}",
+                            "subscription.version_change_scheduled" when evt.MigrationId is { } migrationId =>
+                                $"{evt.TenantId:N}:version-change:{migrationId:N}",
+                            "subscription.recurring_charge_failed" when evt.SaaSPaymentId is { } paymentId =>
+                                $"{paymentId:N}:attempt-{evt.AttemptNumber}:{evt.Email.Trim().ToLowerInvariant()}",
+                            _ => null,
+                        },
+                        Render: (_, _) => Task.FromResult(render)
+                    )
+                ),
                 ct
             );
 
-            metrics.RecordDunningEmailSent(templateKey);
+            if (summary.Channels[NotificationChannel.Email] == ChannelOutcome.Queued)
+                metrics.RecordDunningEmailSent(templateKey);
         }
     }
 

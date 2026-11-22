@@ -314,6 +314,29 @@ describe('bindCloudStorageConsumers — notificacion al uploader', () => {
     expect(JSON.stringify(row)).not.toContain('score');
   });
 
+  it('stores title and body keys with params', async () => {
+    const { handlers, notifications } = setupWithNotifications();
+
+    await handlers.get('cloudstorage.file.blocked_by_policy.v1')?.(
+      envelopeWithCreatedBy('cloudstorage.file.blocked_by_policy.v1', { FileId: 'file-10', CreatedBy: 'uploader-10' }),
+    );
+    await handlers.get('cloudstorage.file.pending_review.v1')?.(
+      envelopeWithCreatedBy('cloudstorage.file.pending_review.v1', { FileId: 'file-11', CreatedBy: 'uploader-11' }),
+    );
+
+    const [blocked, pending] = vi.mocked(notifications.createIfMissing).mock.calls.map(([row]) => row.toSnapshot());
+    expect(blocked).toMatchObject({
+      titleKey: 'notif.cloudstorage.file.blocked_by_policy.title',
+      bodyKey: 'notif.cloudstorage.file.blocked_by_policy.body',
+      params: {},
+    });
+    expect(pending).toMatchObject({
+      titleKey: 'notif.cloudstorage.file.pending_review.title',
+      bodyKey: 'notif.cloudstorage.file.pending_review.body',
+      params: {},
+    });
+  });
+
   // E2E F8: el adjunto de chat lo crea la cuenta de servicio; el aviso va a quien mandó el mensaje.
   it('un adjunto de chat avisa al remitente del mensaje, no a la cuenta de servicio', async () => {
     const { handlers, notifications } = setupWithNotifications('Communication', { messageId: 'msg-1', senderId: 'staff-1' });

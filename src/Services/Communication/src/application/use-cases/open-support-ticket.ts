@@ -72,6 +72,8 @@ export async function openSupportTicket(
   if (!conversationResult.isSuccess) return Result.fail(conversationResult.error);
 
   const ticketResult = SupportTicket.open({
+    // El ticket se guarda con el id que ya lleva su conversación.
+    id: ticketId,
     tenantId: cmd.tenantId,
     agentTenantId,
     openedByUserId: cmd.opener.userId,

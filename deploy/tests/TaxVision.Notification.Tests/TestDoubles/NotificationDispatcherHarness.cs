@@ -22,7 +22,13 @@ public sealed class NotificationDispatcherHarness
         INotificationDispatchMetrics? metrics = null,
         IUserEmailDirectoryRepository? userDirectory = null,
         ISmsSender? smsSender = null,
-        IUnitOfWork? unitOfWork = null
+        IUnitOfWork? unitOfWork = null,
+        IEmailDispatchGateway? emailGateway = null,
+        IScribeRenderClient? scribe = null,
+        IRecipientLocale? locales = null,
+        PushLinks? links = null,
+        IPushDeliveryQueue? pushQueue = null,
+        TimeProvider? clock = null
     )
     {
         Dispatcher = TestDispatchers.Create(
@@ -37,7 +43,13 @@ public sealed class NotificationDispatcherHarness
             Publisher,
             unitOfWork ?? new NoOpUnitOfWork(),
             metrics ?? new NoOpNotificationDispatchMetrics(),
-            new InlinePushAttemptRecorder(logs)
+            new InlinePushAttemptRecorder(logs),
+            emailGateway,
+            scribe,
+            locales,
+            links,
+            pushQueue: pushQueue,
+            clock: clock
         );
     }
 
@@ -83,7 +95,8 @@ public sealed class NotificationDispatcherHarness
             string text,
             CancellationToken ct,
             string? templateKey,
-            string? idempotencyToken
+            string? idempotencyToken,
+            string? sourceRef = null
         ) => Task.FromResult(Result.Success());
     }
 
@@ -95,6 +108,26 @@ public sealed class NotificationDispatcherHarness
 
     private sealed class NoOpPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

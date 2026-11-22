@@ -7,6 +7,12 @@ import { toNotificationDto } from '../use-cases/notification-dto.js';
 import { Notification } from '../../domain/notifications/notification.js';
 import { NotificationSocketEvents } from '../../contracts/socket/notification-socket-events.js';
 import { readDotNetField } from '../../contracts/events/dotnet-payload.js';
+import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
+import {
+  INAPP_NOTIFICATION_REJECTED_TYPE,
+  type InAppNotificationRejectedEvent,
+} from '../../contracts/events/notification-events.js';
+import { logger } from '../../infrastructure/logger/logger.js';
 
 // Trunca textos largos sin rechazar el payload: tirar un titulo de 201 caracteres
 // a DLQ pierde la notificacion, truncarlo preserva el mensaje y respeta el ancho
@@ -80,11 +86,19 @@ export function parseInAppNotificationRequested(payload: Record<string, unknown>
 
 export function bindInAppNotificationConsumers(
   register: (eventType: string, handler: (env: IncomingEnvelope) => Promise<void>) => void,
-  deps: { notifications: InAppNotificationRepository; emitter: RealtimeEmitter },
+  deps: {
+    notifications: InAppNotificationRepository;
+    emitter: RealtimeEmitter;
+    publisher: IntegrationEventPublisher;
+  },
 ): void {
   register('notification.inapp.requested.v1', async (env) => {
     const parsed = parseInAppNotificationRequested(env.payload);
-    if (!parsed.success) throw new Error(`Invalid in-app notification payload: ${parsed.error.message}`);
+    // Un payload inválido no mejora al reintentar: se avisa a Notification y se confirma el mensaje.
+    if (!parsed.success) {
+      await publishRejection(env, parsed.error.issues, deps.publisher);
+      return;
+    }
 
     const payload = parsed.data;
     const occurredAtUtc = new Date(payload.occurredAtUtc);
@@ -157,4 +171,41 @@ export function bindInAppNotificationConsumers(
       },
     });
   });
+}
+
+const UuidSchema = z.string().uuid();
+
+async function publishRejection(
+  env: IncomingEnvelope,
+  issues: readonly { path: readonly PropertyKey[] }[],
+  publisher: IntegrationEventPublisher,
+): Promise<void> {
+  const detail = Array.from(
+    new Set(issues.map((issue) => issue.path.map(String).join('.') || '(root)')),
+  ).join(',');
+  const sourceEventId = UuidSchema.safeParse(readDotNetField(env.payload, 'SourceEventId', 'sourceEventId'));
+  const recipientUserId = UuidSchema.safeParse(
+    readDotNetField(env.payload, 'RecipientUserId', 'recipientUserId'),
+  );
+  // Sin evento ni destinatario válidos Notification no puede ubicar la fila: solo se registra.
+  if (!sourceEventId.success || !recipientUserId.success) {
+    logger.warn({ eventId: env.eventId, detail }, 'in-app notification rejected without a traceable row');
+    return;
+  }
+  const rawKind = readDotNetField(env.payload, 'Kind', 'kind');
+  const occurredOnUtc = new Date().toISOString();
+  const rejection: InAppNotificationRejectedEvent = {
+    eventId: randomUUID(),
+    eventType: INAPP_NOTIFICATION_REJECTED_TYPE,
+    tenantId: env.tenantId,
+    correlationId: env.correlationId ?? '',
+    occurredOnUtc,
+    sourceEventId: sourceEventId.data,
+    recipientUserId: recipientUserId.data,
+    kind: typeof rawKind === 'string' ? rawKind.trim().slice(0, 128) : '',
+    reason: 'InvalidPayload',
+    detail: detail.slice(0, 512),
+  };
+  await publisher.enqueue(rejection);
+  logger.warn({ eventId: env.eventId, detail }, 'in-app notification rejected: invalid payload');
 }

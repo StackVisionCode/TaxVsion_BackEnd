@@ -19,7 +19,9 @@ using TaxVision.Auth.Api.Jobs;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.TenantDomains.DomainEvents;
 using TaxVision.Auth.Application.Users;
+using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
+using TaxVision.Auth.Domain.Sessions;
 using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Domain.Users;
 using TaxVision.Auth.Infrastructure.Persistence;
@@ -155,6 +157,68 @@ public sealed class AuthJobUnitIntegrationTests : IAsyncLifetime
         Assert.Equal(1, await verify.AuthAuditLogs.IgnoreQueryFilters().CountAsync(log => log.TargetId == domain.Id));
     }
 
+    // Barrido de sesiones vencidas: cierre y aviso en la misma unidad, y una segunda pasada no repite.
+    [Fact]
+    public async Task ExpiredSessionSweep_ClosesAndPublishesOnce()
+    {
+        var (expired, purged, alive) = await SeedSessionsAsync();
+
+        await RunExpiredSessionSweepAsync();
+        await RunExpiredSessionSweepAsync();
+
+        await using var db = NewContext();
+        var sessions = await db
+            .UserSessions.IgnoreQueryFilters()
+            .Where(s => s.Id == expired || s.Id == purged || s.Id == alive)
+            .ToDictionaryAsync(s => s.Id);
+        Assert.Equal("expired", sessions[expired].RevokedReason);
+        Assert.Equal("expired", sessions[purged].RevokedReason);
+        Assert.Null(sessions[alive].RevokedAtUtc);
+        Assert.Equal(2, await CountRowsAsync("wolverine_outgoing_envelopes", "auth.session.ended.v1"));
+    }
+
+    private async Task<(Guid Expired, Guid Purged, Guid Alive)> SeedSessionsAsync()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = User.Register(
+            tenantId,
+            "Session",
+            "Holder",
+            $"{Guid.NewGuid():N}@example.test",
+            "hash",
+            UserActorType.TenantEmployee
+        ).Value;
+        var expired = UserSession.Start(tenantId, user.Id, "Chrome", "agent", "203.0.113.10");
+        var purged = UserSession.Start(tenantId, user.Id, "Chrome", "agent", "203.0.113.10");
+        var alive = UserSession.Start(tenantId, user.Id, "iPhone", "agent", "203.0.113.10", SessionSurface.Mobile);
+        await using var db = NewContext();
+        db.Users.Add(user);
+        db.UserSessions.AddRange(expired, purged, alive);
+        db.RefreshTokens.AddRange(
+            RefreshToken.Create(tenantId, user.Id, expired.Id, $"{Guid.NewGuid():N}", DateTime.UtcNow.AddDays(-1)),
+            RefreshToken.Create(
+                tenantId,
+                user.Id,
+                alive.Id,
+                $"{Guid.NewGuid():N}",
+                DateTime.UtcNow.AddDays(1),
+                SessionSurface.Mobile
+            )
+        );
+        await db.SaveChangesAsync();
+        return (expired.Id, purged.Id, alive.Id);
+    }
+
+    private Task RunExpiredSessionSweepAsync()
+    {
+        var job = ActivatorUtilities.CreateInstance<AuthMaintenanceService>(_host.Services, new StartedLifetime());
+        var sweep = typeof(AuthMaintenanceService).GetMethod(
+            "SweepExpiredSessionsAsync",
+            BindingFlags.NonPublic | BindingFlags.Instance
+        )!;
+        return (Task)sweep.Invoke(job, [DateTime.UtcNow, CancellationToken.None])!;
+    }
+
     private async Task<Guid> SeedOutdatedSystemRoleAsync()
     {
         var tenantId = Guid.NewGuid();
@@ -218,6 +282,8 @@ public sealed class AuthJobUnitIntegrationTests : IAsyncLifetime
                 options.Services.AddScoped<IAuthAuditWriter, AuthAuditStore>();
                 options.Services.AddScoped<IRoleRepository, RoleRepository>();
                 options.Services.AddScoped<ITenantDomainRepository, TenantDomainRepository>();
+                options.Services.AddScoped<ISessionRepository, SessionRepository>();
+                options.Services.AddScoped<IExpiredSessionQuery, SessionRepository>();
                 options.Services.AddScoped<IUserRepository>(sp =>
                 {
                     _users.Inner = new UserRepository(sp.GetRequiredService<AuthDbContext>());
@@ -235,6 +301,7 @@ public sealed class AuthJobUnitIntegrationTests : IAsyncLifetime
                 options.PublishMessage<UserRolesChangedIntegrationEvent>().ToPort(closedPort).UseDurableOutbox();
                 options.PublishMessage<TenantDomainVerifiedIntegrationEvent>().ToPort(closedPort).UseDurableOutbox();
                 options.PublishMessage<TenantDomainActivatedIntegrationEvent>().ToPort(closedPort).UseDurableOutbox();
+                options.PublishMessage<SessionEndedIntegrationEvent>().ToPort(closedPort).UseDurableOutbox();
             })
             .StartAsync();
     }

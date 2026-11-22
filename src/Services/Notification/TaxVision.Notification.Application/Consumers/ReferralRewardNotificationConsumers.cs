@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -58,10 +57,10 @@ public static class ReferralRewardGrantedNotificationConsumer
         NotificationDispatcher dispatcher,
         IRecipientResolver resolver,
         IUserEmailResolver emails,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribe,
         ITenantHostResolver hosts,
         IOptions<PortalOptions> portal,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         ILogger<ReferralRewardGrantedIntegrationEvent> logger,
         CancellationToken ct
@@ -79,7 +78,7 @@ public static class ReferralRewardGrantedNotificationConsumer
             var amount = ReferralRewardText.Amount(evt.RewardAmountCents, evt.RewardCurrency);
             var host = await hosts.ResolveHostAsync(evt.TenantId, ct);
             var walletUrl = $"{TenantEmailLinks.StaffBase(host, portal.Value)}/wallet";
-            await SendEmailsAsync(evt, owners, amount, walletUrl, emails, gateway, scribe, correlation, ct);
+            await SendEmailsAsync(evt, owners, amount, walletUrl, emails, dispatcher, scribe, locales, correlation, ct);
 
             await ReferralRewardText.RecordAsync(
                 dispatcher,
@@ -97,7 +96,8 @@ public static class ReferralRewardGrantedNotificationConsumer
                     ? "Your referral reward was added to your Wallet."
                     : $"{amount} was added to your Wallet.",
                 ct,
-                owners
+                owners,
+                amount
             );
         }
     }
@@ -108,8 +108,9 @@ public static class ReferralRewardGrantedNotificationConsumer
         string? amount,
         string walletUrl,
         IUserEmailResolver emails,
-        IEmailDispatchGateway gateway,
+        NotificationDispatcher dispatcher,
         IScribeRenderClient scribe,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -127,33 +128,39 @@ public static class ReferralRewardGrantedNotificationConsumer
         if (addresses.Count == 0)
             return;
 
-        var render = (
-            await scribe.RenderAsync(
-                EmailEventKey,
-                evt.TenantId,
-                new Dictionary<string, object?>
-                {
-                    ["amount_label"] = amount ?? "Your reward",
-                    ["wallet_url"] = walletUrl,
-                },
-                ct
-            )
-        ).EnsureRendered(EmailEventKey);
+        // Un render por idioma y lector; todos antes de encolar.
+        var renders = new RecipientRenders(
+            scribe,
+            EmailEventKey,
+            evt.TenantId,
+            ScribeRenderAudience.Staff,
+            locale => new Dictionary<string, object?>
+            {
+                ["amount_label"] = amount ?? EmailText.For("referral.reward_fallback", locale),
+                ["wallet_url"] = walletUrl,
+            }
+        );
+        var languages = new RecipientLocaleCache(locales, evt.TenantId);
+        foreach (var (userId, _) in addresses)
+            await renders.ForAsync(await languages.ForUserAsync(userId, ct), ct);
 
         foreach (var (userId, address) in addresses)
-            await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
+                    NotificationKinds.ReferralRewardGranted,
                     evt.TenantId,
-                    address,
-                    EmailEventKey,
+                    new NotificationTarget(userId, address),
                     evt.EventId,
-                    correlation.CorrelationId
-                ) with
-                {
-                    RecipientUserId = userId,
-                    Category = NotificationCategory.Billing,
-                    NotificationKind = NotificationKinds.ReferralRewardGranted,
-                },
+                    evt.EventType,
+                    evt.OccurredAt,
+                    correlation.CorrelationId,
+                    Email: new EmailContent(
+                        EmailEventKey,
+                        new Dictionary<string, object?>(),
+                        ScribeRenderAudience.Staff,
+                        Render: renders.ForAsync
+                    )
+                ),
                 ct
             );
     }
@@ -210,7 +217,8 @@ public static class ReferralRewardReversedNotificationConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var amount = ReferralRewardText.Amount(evt.RewardAmountCents, evt.RewardCurrency) ?? "Your referral reward";
+            var knownAmount = ReferralRewardText.Amount(evt.RewardAmountCents, evt.RewardCurrency);
+            var amount = knownAmount ?? "Your referral reward";
             await ReferralRewardText.RecordAsync(
                 dispatcher,
                 resolver,
@@ -224,7 +232,8 @@ public static class ReferralRewardReversedNotificationConsumer
                 "reversed",
                 "A referral reward was reversed",
                 $"{amount} was removed from your Wallet because the referred office's payment was refunded or disputed.",
-                ct
+                ct,
+                amount: knownAmount
             );
         }
     }
@@ -244,6 +253,15 @@ internal static class ReferralRewardText
         return string.Equals(currency, "USD", StringComparison.OrdinalIgnoreCase)
             ? amount.ToString("C", English)
             : $"{amount.ToString("N2", English)} {currency.ToUpperInvariant()}";
+    }
+
+    // El monto viaja solo si el evento lo trae: sin él, el frontend usa el texto del servidor.
+    private static Dictionary<string, string> Parameters(Guid rewardCaseId, string? amount)
+    {
+        var parameters = new Dictionary<string, string> { ["rewardCaseId"] = rewardCaseId.ToString() };
+        if (amount is not null)
+            parameters["amount"] = amount;
+        return parameters;
     }
 
     public static async Task<IReadOnlyList<Guid>> OwnersAsync(
@@ -270,14 +288,15 @@ internal static class ReferralRewardText
         string title,
         string body,
         CancellationToken ct,
-        IReadOnlyList<Guid>? owners = null
+        IReadOnlyList<Guid>? owners = null,
+        string? amount = null
     )
     {
         var recipients = owners ?? await OwnersAsync(resolver, tenantId, ct);
         if (recipients.Count == 0)
             return;
 
-        await BillingNotificationPublisher.RecordAsync(
+        await NotifyAsync(
             dispatcher,
             recipients,
             tenantId,
@@ -289,9 +308,49 @@ internal static class ReferralRewardText
             title,
             body,
             rewardCaseId.ToString(),
-            new Dictionary<string, string> { ["rewardCaseId"] = rewardCaseId.ToString() },
+            Parameters(rewardCaseId, amount),
             $"referrals:reward:{rewardCaseId}:{moment}",
             ct
         );
+    }
+
+    /// <summary>In-app a cada dueño, con el texto del servidor como respaldo.</summary>
+    public static async Task NotifyAsync(
+        NotificationDispatcher dispatcher,
+        IReadOnlyList<Guid> recipients,
+        Guid tenantId,
+        Guid eventId,
+        string correlationId,
+        string kind,
+        string sourceEventType,
+        DateTime occurredOn,
+        string title,
+        string body,
+        string resourceId,
+        IReadOnlyDictionary<string, string> parameters,
+        string groupKey,
+        CancellationToken ct
+    )
+    {
+        foreach (var userId in recipients)
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
+                    kind,
+                    tenantId,
+                    new NotificationTarget(userId),
+                    eventId,
+                    sourceEventType,
+                    occurredOn,
+                    correlationId,
+                    InApp: new InAppContent(
+                        Params: parameters,
+                        ResourceId: resourceId,
+                        GroupKey: groupKey,
+                        FallbackTitle: title,
+                        FallbackBody: body
+                    )
+                ),
+                ct
+            );
     }
 }

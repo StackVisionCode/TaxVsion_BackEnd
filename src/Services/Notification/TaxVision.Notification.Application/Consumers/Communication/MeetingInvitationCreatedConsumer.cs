@@ -1,13 +1,12 @@
 ﻿using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
+using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Platform;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Communication;
 
@@ -40,11 +39,11 @@ public static class MeetingInvitationCreatedConsumer
     public static async Task Handle(
         MeetingInvitationCreatedIntegrationEvent evt,
         NotificationDispatcher dispatcher,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         ICalendarInviteBuilder invites,
         IPlatformSettings platform,
         IOptions<PortalOptions> portal,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         ILogger<MeetingInvitationCreatedLog> logger,
         CancellationToken ct
@@ -52,9 +51,6 @@ public static class MeetingInvitationCreatedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var recipient = evt.InviteeUserId is { } userId
-                ? NotificationRecipient.ForUser(userId)
-                : NotificationRecipient.ForGuest(evt.InviteeEmail);
             var meetingTitle = MeetingNotifications.Title(evt.MeetingTitle);
             var inProgress = string.Equals(evt.MeetingStatus, "Live", StringComparison.OrdinalIgnoreCase);
             var title = inProgress
@@ -64,37 +60,100 @@ public static class MeetingInvitationCreatedConsumer
                 ? null
                 : $"{evt.InvitedByDisplayName} invited you.";
 
-            // Solo el invitado con cuenta llega a la campana; los externos sin UserId reciben solo el email.
-            var inApp = evt.InviteeUserId is { } inviteeUserId
-                ? new InAppNotificationRequest(
-                    NotificationKinds.CommunicationMeetingInvitationCreated,
-                    inviteeUserId,
-                    evt.EventId,
-                    EventKey,
-                    evt.OccurredOn,
-                    title,
-                    FallbackBody: body,
-                    ActorUserId: evt.InvitedByUserId,
-                    ActorDisplayName: evt.InvitedByDisplayName,
-                    ResourceId: evt.MeetingId.ToString(),
-                    ResourceContext: InAppContext(evt, inProgress)
-                )
-                : null;
+            // El render va antes de la primera escritura: un fallo de Scribe no deja la campana a medias.
+            var hasEmail = !string.IsNullOrWhiteSpace(evt.InviteeEmail);
+            RecipientLocale? locale = null;
+            ScribeRenderedEmail? render = null;
+            EmailInlineAttachment? invite = null;
+            if (hasEmail)
+            {
+                // Idioma del invitado (con cuenta, el suyo; externo, inglés); hora y vencimiento en la zona de la
+                // reunión; sin zona, la de la oficina.
+                locale = (
+                    evt.InviteeUserId is { } readerId
+                        ? await locales.ForUserAsync(evt.TenantId, readerId, ct)
+                        : locales.FromEventLanguage(null)
+                ) with
+                {
+                    TimeZoneId = string.IsNullOrWhiteSpace(evt.TimeZone) ? null : evt.TimeZone,
+                };
+                var variables = new Dictionary<string, object?>
+                {
+                    ["invitee_name"] = string.IsNullOrWhiteSpace(evt.InviteeName) ? "there" : evt.InviteeName!,
+                    ["join_link"] = evt.JoinUrl,
+                    ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
+                    ["meeting_title"] = MeetingNotifications.EmailTitle(evt.MeetingTitle, locale),
+                    ["start_local"] = ScribeDates.Instant(evt.ScheduledForUtc),
+                    ["time_zone"] = MeetingNotifications.TimeZoneLabel(
+                        evt.TimeZone,
+                        evt.ScheduledForUtc,
+                        locale.Language
+                    ),
+                    ["duration_minutes"] = evt.DurationMinutes,
+                    ["host_name"] = evt.HostDisplayName,
+                    ["meeting_code"] = evt.ShortCode,
+                    ["in_progress"] = inProgress,
+                };
+                // Sala de una cita: el invitado responde a la cita desde aquí, en el host de la oficina.
+                if (!string.IsNullOrWhiteSpace(evt.RsvpToken) && CalendarRsvpLinks.BaseOf(evt.JoinUrl) is { } rsvpBase)
+                    CalendarRsvpLinks.AddTo(variables, rsvpBase, evt.RsvpToken);
 
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                recipient,
-                title,
-                NotificationCategory.Calendar,
-                NotificationKinds.CommunicationMeetingInvitationCreated,
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.InviteeUserId,
-                inApp: inApp,
-                ct: ct
+                render = (
+                    await scribeClient.RenderForRecipientAsync(
+                        EventKey,
+                        evt.TenantId,
+                        variables,
+                        AudienceOf(evt.InviteeKind),
+                        locale,
+                        ct
+                    )
+                ).EnsureRendered(EventKey);
+
+                // Sin fecha no hay nada que poner en el calendario (reunión en curso o sin agendar).
+                invite = evt.ScheduledForUtc is { } startUtc
+                    ? invites.Build(
+                        MeetingNotifications.Invite(
+                            CalendarInviteMethod.Request,
+                            evt.MeetingId,
+                            evt.MeetingTitle,
+                            startUtc,
+                            evt.DurationMinutes,
+                            sequence: 0,
+                            stampUtc: evt.OccurredOn,
+                            url: evt.JoinUrl,
+                            meetingCode: evt.ShortCode,
+                            hostDisplayName: evt.HostDisplayName,
+                            platform,
+                            attendeeEmail: evt.InviteeEmail!,
+                            attendeeName: evt.InviteeName
+                        )
+                    )
+                    : null;
+            }
+
+            // Solo el invitado con cuenta llega a la campana; el externo sin UserId deja la fila de auditoría a su
+            // nombre y recibe solo el email.
+            await dispatcher.DispatchAsync(
+                Intent(
+                    evt,
+                    evt.InviteeUserId is { } inviteeUserId
+                        ? new NotificationTarget(inviteeUserId)
+                        : new NotificationTarget(Email: evt.InviteeEmail),
+                    correlation
+                ) with
+                {
+                    InApp = new InAppContent(
+                        ResourceId: evt.MeetingId.ToString(),
+                        ResourceContext: InAppContext(evt, inProgress),
+                        ActorUserId: evt.InvitedByUserId,
+                        ActorDisplayName: evt.InvitedByDisplayName,
+                        FallbackTitle: title,
+                        FallbackBody: body
+                    ),
+                },
+                ct
             );
-
-            if (string.IsNullOrWhiteSpace(evt.InviteeEmail))
+            if (!hasEmail)
             {
                 logger.LogInformation(
                     "Meeting invitation {InvitationId} has no email; recorded in-app only.",
@@ -103,75 +162,41 @@ public static class MeetingInvitationCreatedConsumer
                 return;
             }
 
-            var variables = new Dictionary<string, object?>
-            {
-                ["invitee_name"] = string.IsNullOrWhiteSpace(evt.InviteeName) ? "there" : evt.InviteeName!,
-                ["join_link"] = evt.JoinUrl,
-                ["expires_at"] = ScribeDates.Instant(evt.ExpiresAtUtc),
-                ["meeting_title"] = meetingTitle,
-                ["start_local"] = ScribeDates.Instant(evt.ScheduledForUtc),
-                ["time_zone"] = MeetingNotifications.TimeZoneLabel(evt.TimeZone),
-                ["duration_minutes"] = evt.DurationMinutes,
-                ["host_name"] = evt.HostDisplayName,
-                ["meeting_code"] = evt.ShortCode,
-                ["in_progress"] = inProgress,
-            };
-            // Sala de una cita: el invitado responde a la cita desde aquí, en el host de la oficina.
-            if (!string.IsNullOrWhiteSpace(evt.RsvpToken) && CalendarRsvpLinks.BaseOf(evt.JoinUrl) is { } rsvpBase)
-                CalendarRsvpLinks.AddTo(variables, rsvpBase, evt.RsvpToken);
-
-            var render = (
-                await scribeClient.RenderAsync(
-                    EventKey,
-                    evt.TenantId,
-                    variables,
-                    AudienceOf(evt.InviteeKind),
-                    // Hora y vencimiento en la zona de la reunión; sin zona, la de la oficina.
-                    ScribeReader.From(null, evt.TimeZone),
-                    ct
-                )
-            ).EnsureRendered(EventKey);
-
-            // Sin fecha no hay nada que poner en el calendario (reunión en curso o sin agendar).
-            var invite = evt.ScheduledForUtc is { } startUtc
-                ? invites.Build(
-                    MeetingNotifications.Invite(
-                        CalendarInviteMethod.Request,
-                        evt.MeetingId,
-                        evt.MeetingTitle,
-                        startUtc,
-                        evt.DurationMinutes,
-                        sequence: 0,
-                        stampUtc: evt.OccurredOn,
-                        url: evt.JoinUrl,
-                        meetingCode: evt.ShortCode,
-                        hostDisplayName: evt.HostDisplayName,
-                        platform,
-                        attendeeEmail: evt.InviteeEmail!,
-                        attendeeName: evt.InviteeName
-                    )
-                )
-                : null;
-
-            await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
-                    tenantId: evt.TenantId,
-                    to: evt.InviteeEmail!,
-                    templateKey: TemplateKey,
-                    relatedEventId: evt.EventId,
-                    correlationId: correlation.CorrelationId
+            await dispatcher.DispatchAsync(
+                // El gate decide por el invitado con cuenta (inactivo, preferencia, catálogo).
+                Intent(
+                    evt,
+                    new NotificationTarget(evt.InviteeUserId, evt.InviteeEmail, Locale: locale),
+                    correlation
                 ) with
                 {
-                    InlineAttachments = invite is null ? null : [invite],
-                    // El gate del gateway decide por el invitado con cuenta (inactivo, preferencia, catálogo).
-                    RecipientUserId = evt.InviteeUserId,
-                    Category = NotificationCategory.Calendar,
-                    NotificationKind = NotificationKinds.CommunicationMeetingInvitationCreated,
+                    Email = MeetingNotifications.Rendered(
+                        EventKey,
+                        render!,
+                        invite,
+                        AudienceOf(evt.InviteeKind),
+                        TemplateKey
+                    ),
                 },
                 ct
             );
         }
     }
+
+    private static NotificationIntent Intent(
+        MeetingInvitationCreatedIntegrationEvent evt,
+        NotificationTarget target,
+        ICorrelationContext correlation
+    ) =>
+        new(
+            NotificationKinds.CommunicationMeetingInvitationCreated,
+            evt.TenantId,
+            target,
+            evt.EventId,
+            EventKey,
+            evt.OccurredOn,
+            correlation.CorrelationId
+        );
 
     private static Dictionary<string, string> InAppContext(
         MeetingInvitationCreatedIntegrationEvent evt,

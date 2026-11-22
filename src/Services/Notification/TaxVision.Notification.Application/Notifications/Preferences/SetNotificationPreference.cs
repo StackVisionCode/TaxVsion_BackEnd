@@ -1,6 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Notification.Application.Abstractions;
+using TaxVision.Notification.Domain.Catalog;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -12,11 +13,17 @@ public sealed record SetNotificationPreferenceCommand(
     Guid UserId,
     NotificationCategory Category,
     NotificationChannel Channel,
-    bool Enabled
+    bool Enabled,
+    PreferenceAudience Audience = PreferenceAudience.Staff
 );
 
 public static class SetNotificationPreferenceHandler
 {
+    public static readonly Error NotAvailable = new(
+        "Notification.Preferences.NotAvailable",
+        "Notification preferences are not available for this account."
+    );
+
     public static async Task<Result> Handle(
         SetNotificationPreferenceCommand command,
         IUserNotificationPreferenceRepository repository,
@@ -24,6 +31,10 @@ public static class SetNotificationPreferenceHandler
         CancellationToken ct
     )
     {
+        // El portal no tiene pantalla: no puede apagar categorías por la API.
+        if (command.Audience == PreferenceAudience.CustomerPortal)
+            return Result.Failure(NotAvailable);
+
         var existing = await repository.GetAsync(
             command.TenantId,
             command.UserId,

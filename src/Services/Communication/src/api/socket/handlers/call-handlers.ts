@@ -240,7 +240,7 @@ function wireCallSocket(
         actorType: principal.actorType,
         action,
       },
-      container,
+      { ...container, emitter },
     );
     if (!result.isSuccess) {
       ack?.({ ok: false, code: result.error.code, message: result.error.message });

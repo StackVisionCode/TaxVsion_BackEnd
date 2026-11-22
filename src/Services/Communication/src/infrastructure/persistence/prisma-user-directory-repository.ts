@@ -67,6 +67,14 @@ export class PrismaUserDirectoryRepository implements UserDirectoryRepository, S
     return rows.map(toSnapshot);
   }
 
+  async findActiveAdmins(tenantId: string): Promise<UserDirectoryEntrySnapshot[]> {
+    // Usa @@index([TenantId, IsActive]); ActorType filtra el resto.
+    const rows = await this.prisma.userDirectoryEntry.findMany({
+      where: { TenantId: tenantId, IsActive: true, ActorType: 'TenantAdmin' },
+    });
+    return rows.map(toSnapshot);
+  }
+
   async markInactive(userId: string, statusChangedAtUtc?: Date): Promise<void> {
     await this.prisma.userDirectoryEntry.updateMany({
       where: { UserId: userId, ...newerStatus(statusChangedAtUtc) },

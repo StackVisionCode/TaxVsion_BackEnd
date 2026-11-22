@@ -79,11 +79,11 @@ public sealed class CalendarAppointmentConsumerTests
                 TimeZoneId = "America/Santo_Domingo",
                 Recipients = [new AppointmentRecipient("cliente@example.com", null)],
             },
-            harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
             new FakeTenantHostResolver(),
             harness.Dispatcher,
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -169,10 +169,10 @@ public sealed class CalendarAppointmentConsumerTests
                     new AppointmentRecipient("cliente@example.com", null),
                 ],
             },
-            harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
             harness.Dispatcher,
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -241,12 +241,12 @@ public sealed class CalendarAppointmentConsumerTests
                 Reason = "We're closed that day",
                 Recipients = [new AppointmentRecipient("minato@client.test", null, Guid.NewGuid(), "Minato")],
             },
-            harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
             new FakeTenantHostResolver("manfer.taxoffix.io"),
             harness.Dispatcher,
             NoPortalRecipientResolver.Instance,
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -329,11 +329,11 @@ public sealed class CalendarAppointmentConsumerTests
                 IsRecurring = false,
                 IsVirtual = true,
             },
-            harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
             new FakeTenantHostResolver(),
             harness.Dispatcher,
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -361,10 +361,10 @@ public sealed class CalendarAppointmentConsumerTests
                     new AppointmentRecipient("cliente@example.com", null),
                 ],
             },
-            harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
             harness.Dispatcher,
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -390,10 +390,10 @@ public sealed class CalendarAppointmentConsumerTests
                 TimeZoneId = "America/Santo_Domingo",
                 Recipients = [new AppointmentRecipient("cliente@example.com", null)],
             },
-            harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
             harness.Dispatcher,
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );
@@ -402,14 +402,62 @@ public sealed class CalendarAppointmentConsumerTests
         Assert.Equal("America/Santo_Domingo", harness.Render.LastReader?.TimeZoneId);
     }
 
-    private static Task Scheduled(Harness harness, AppointmentScheduledIntegrationEvent evt) =>
+    /// <summary>
+    /// Un render por idioma y audiencia, no por persona: dos compañeros en español comparten el suyo. La hora va
+    /// en la zona de la cita, no en la de cada lector.
+    /// </summary>
+    [Fact]
+    public async Task One_render_per_language_and_audience()
+    {
+        var harness = new Harness(preferencesEnabled: true);
+        var spanishA = Guid.NewGuid();
+        var spanishB = Guid.NewGuid();
+        var english = Guid.NewGuid();
+        var locales = new FixedRecipientLocale("en", "America/Chicago");
+        locales.ByUser[spanishA] = "es";
+        locales.ByUser[spanishB] = "es";
+
+        await Scheduled(
+            harness,
+            Invitation() with
+            {
+                Recipients =
+                [
+                    new AppointmentRecipient("a@example.com", spanishA),
+                    new AppointmentRecipient("b@example.com", spanishB),
+                    new AppointmentRecipient("c@example.com", english),
+                    new AppointmentRecipient("cliente@example.com", null),
+                ],
+            },
+            locales
+        );
+
+        Assert.Equal(4, harness.Gateway.Queued.Count);
+        Assert.Equal(
+            ["Client:En", "Staff:En", "Staff:Es"],
+            harness
+                .Render.Audiences.Zip(harness.Render.AllVariables, (audience, v) => $"{audience}:{v["language"]}")
+                .Order()
+        );
+        Assert.All(harness.Render.Readers, reader => Assert.Equal("America/Santo_Domingo", reader.TimeZoneId));
+        Assert.Equal(
+            harness.Gateway.Queued.Single(e => e.To == "a@example.com").Subject,
+            harness.Gateway.Queued.Single(e => e.To == "b@example.com").Subject
+        );
+    }
+
+    private static Task Scheduled(
+        Harness harness,
+        AppointmentScheduledIntegrationEvent evt,
+        IRecipientLocale? locales = null
+    ) =>
         AppointmentScheduledConsumer.Handle(
             evt,
-            harness.Gateway,
             harness.Render,
             Options.Create(new PortalOptions()),
             new FakeTenantHostResolver("manfer.taxoffix.io"),
             harness.Dispatcher,
+            locales ?? FixedRecipientLocale.English,
             NoPortalRecipientResolver.Instance,
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -446,11 +494,14 @@ public sealed class CalendarAppointmentConsumerTests
                 new NoOpPushSender(),
                 new NoOpPushDeviceTokenRepository(),
                 new NoOpNotificationLogRepository(),
-                TestDeliveryGates.For(new SwitchablePreferences(preferencesEnabled), Directory),
+                // La preferencia la decide ya el dispatcher: misma instancia que el gateway.
+                TestDeliveryGates.For(Preferences, Directory),
                 new CapturingIntegrationEventPublisher(),
                 new NoOpUnitOfWork(),
                 new NoOpNotificationDispatchMetrics(),
-                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder()
+                new TaxVision.Notification.Tests.TestDoubles.InlinePushAttemptRecorder(),
+                Gateway,
+                Render
             );
         }
 
@@ -469,7 +520,8 @@ public sealed class CalendarAppointmentConsumerTests
             string text,
             CancellationToken ct,
             string? templateKey,
-            string? idempotencyToken
+            string? idempotencyToken,
+            string? sourceRef = null
         ) => Task.FromResult(Result.Success());
     }
 
@@ -481,6 +533,26 @@ public sealed class CalendarAppointmentConsumerTests
 
     private sealed class NoOpPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 
@@ -550,8 +622,11 @@ public sealed class CalendarAppointmentConsumerTests
         )
         {
             LastReader = reader;
+            Readers.Add(reader);
             return RenderAsync(eventKey, tenantId, variables, audience, ct);
         }
+
+        public List<ScribeReader> Readers { get; } = [];
 
         public Task<Result<ScribeRenderedText>> RenderTextAsync(
             string eventKey,

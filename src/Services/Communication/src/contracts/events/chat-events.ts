@@ -21,7 +21,21 @@ export const ChatEventTypes = {
   VoiceNoteTranscriptionRequested: 'communication.chat.voice_note_transcription_requested.v1',
   VoiceNoteTranscriptReady:     'communication.chat.voice_note_transcript_ready.v1',
   VoiceNoteTranscriptFailed:    'communication.chat.voice_note_transcript_failed.v1',
+  // D-N4: mensajes que siguen sin leer pasados N minutos (una vez por racha).
+  MessagesMissed:               'communication.chat.messages_missed.v1',
 } as const;
+
+/** D-N4: aviso de "mensajes perdidos" para un participante. Solo ids y un contador. */
+export interface ChatMessagesMissedEvent extends IntegrationEvent {
+  readonly eventType: 'communication.chat.messages_missed.v1';
+  readonly conversationId: string;
+  readonly conversationKind: 'Direct' | 'Group';
+  readonly recipientUserId: string;
+  readonly unreadCount: number;
+  readonly oldestUnreadAtUtc: string;
+  readonly latestMessageId: string;
+  readonly latestSenderId: string;
+}
 
 /** F7 (D-27): pedido al worker; `fileId` es la nota de voz en CloudStorage (VoiceNotes). */
 export interface VoiceNoteTranscriptionRequestedEvent extends IntegrationEvent {
@@ -66,6 +80,11 @@ export interface MessageSentEvent extends IntegrationEvent {
   readonly hasAttachment: boolean;
   readonly recipientUserIds: readonly string[];
   readonly sentAtUtc: string;
+  readonly conversationKind?: 'Direct' | 'Group' | 'Support' | 'Meeting';
+  readonly meetingId?: string | null;
+  readonly supportTicketId?: string | null;
+  /** Subconjunto de `recipientUserIds` al que conviene mandar push. Ausente = a todos (eventos viejos). */
+  readonly pushRecipientUserIds?: readonly string[];
 }
 
 export interface MessageEditedEvent extends IntegrationEvent {

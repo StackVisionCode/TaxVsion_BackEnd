@@ -18,6 +18,9 @@ import type { MessageDto } from '../../contracts/socket/chat-socket-events.js';
 import { messageSnapshotToDto } from './chat-mappers.js';
 import { chatFileRole, declareFileSource, relatedCustomerOf } from '../services/file-source-declarer.js';
 import { FileSourceResourceTypes } from '../../contracts/events/cloudstorage-events.js';
+import { chatPushRecipients } from '../services/chat-push-recipients.js';
+import type { ConversationFocusStore } from '../ports/conversation-focus-store.js';
+import { publishSupportMessageAdded, type PublishSupportMessageAddedDeps } from './publish-support-message-added.js';
 
 /**
  * Comando: enviar un mensaje a una conversacion existente. Body (Text) o
@@ -69,6 +72,13 @@ export interface SendMessageDeps {
   readonly cloudStorageMetadata?: CloudStorageMetadataClient | undefined;
   /** Para avisar si el adjunto ya estaba escaneado al registrarlo. */
   readonly emitter?: RealtimeEmitter | undefined;
+  /** Foco del chat: sin push a quien ya lo ve. Ausente (tests viejos) = push a todos los no silenciados. */
+  readonly conversationFocus?: Pick<ConversationFocusStore, 'snapshot'> | undefined;
+  /** D-N30: sin push a quien tiene la app visible en otra pantalla (por defecto sí). */
+  readonly chatPushSuppressWhenActive?: boolean | undefined;
+  /** Soporte: avisar a los agentes o a quien abrió. Opcionales para los llamadores que no son de soporte. */
+  readonly supportTickets?: PublishSupportMessageAddedDeps['supportTickets'];
+  readonly userPermissions?: PublishSupportMessageAddedDeps['userPermissions'];
 }
 
 export async function sendMessage(
@@ -201,10 +211,19 @@ export async function sendMessage(
       .catch(() => undefined);
   }
 
-  const recipients = conversation
+  const others = conversation
     .getParticipantSnapshots()
-    .filter((p) => !p.isRemoved && p.userId !== command.senderUserId)
-    .map((p) => p.userId);
+    .filter((p) => !p.isRemoved && p.userId !== command.senderUserId);
+  const recipients = others.map((p) => p.userId);
+  const focus = await readFocus(deps, command.tenantId, recipients, command.conversationId);
+  const pushRecipientUserIds = chatPushRecipients({
+    conversationKind: conversation.kind,
+    recipientUserIds: recipients,
+    mutedUserIds: others.filter((p) => p.isMuted).map((p) => p.userId),
+    viewingUserIds: focus.viewing,
+    activeUserIds: focus.active,
+    suppressWhenActive: deps.chatPushSuppressWhenActive ?? true,
+  });
 
   const sentEvent: MessageSentEvent = {
     eventId: randomUUID(),
@@ -219,8 +238,26 @@ export async function sendMessage(
     hasAttachment: messageSnapshot.attachmentFileId !== null,
     recipientUserIds: recipients,
     sentAtUtc: messageSnapshot.createdAtUtc.toISOString(),
+    conversationKind: conversation.kind,
+    ...(conversation.meetingId ? { meetingId: conversation.meetingId } : {}),
+    ...(conversation.supportTicketId ? { supportTicketId: conversation.supportTicketId } : {}),
+    pushRecipientUserIds,
   };
   await deps.publisher.enqueue(sentEvent);
+  if (conversation.supportTicketId) {
+    await publishSupportMessageAdded(
+      {
+        tenantId: command.tenantId,
+        correlationId: command.correlationId,
+        ticketId: conversation.supportTicketId,
+        conversationId: conversation.id,
+        messageId: messageSnapshot.id,
+        senderUserId: command.senderUserId,
+        sentAtUtc: messageSnapshot.createdAtUtc.toISOString(),
+      },
+      deps,
+    );
+  }
 
   // F8a (T-10): el evento lleva el tipo de chat (y el meeting) para que cada módulo tome lo suyo.
   const dto: MessageDto = {
@@ -238,6 +275,21 @@ export async function sendMessage(
     token: reservation.token,
   });
   return Result.ok(result);
+}
+
+/** Un fallo de Redis deja las listas vacías: se avisa de más, nunca de menos. */
+async function readFocus(
+  deps: SendMessageDeps,
+  tenantId: string,
+  recipients: readonly string[],
+  conversationId: string,
+): Promise<{ active: readonly string[]; viewing: readonly string[] }> {
+  if (!deps.conversationFocus || recipients.length === 0) return { active: [], viewing: [] };
+  try {
+    return await deps.conversationFocus.snapshot(tenantId, recipients, conversationId);
+  } catch {
+    return { active: [], viewing: [] };
+  }
 }
 
 /** D-27: transcribir solo si el plan y la oficina lo permiten y la nota no supera la duracion maxima. */

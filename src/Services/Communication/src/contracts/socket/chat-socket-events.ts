@@ -147,6 +147,13 @@ export const PresenceQueryPayloadSchema = z.object({
 });
 export type PresenceQueryPayload = z.infer<typeof PresenceQueryPayloadSchema>;
 
+/** Foco del chat (c -> s): pestaña visible y conversación abierta. Solo decide push; no se reenvía a nadie. */
+export const FocusSetPayloadSchema = z.object({
+  visible: z.boolean(),
+  conversationId: z.string().uuid().nullable(),
+});
+export type FocusSetPayload = z.infer<typeof FocusSetPayloadSchema>;
+
 // ---------- Fase Backend 9 — reactions / pin / forward ----------
 
 export const AddReactionPayloadSchema = z.object({
@@ -452,6 +459,7 @@ export const ChatSocketEvents = {
   RecordingStart: 'chat.recording.start',
   RecordingStop: 'chat.recording.stop',
   PresenceQuery: 'chat.presence.query',
+  FocusSet: 'chat.focus.set',
   AddReaction: 'chat.message.reaction.add',
   RemoveReaction: 'chat.message.reaction.remove',
   PinMessage: 'chat.message.pin',

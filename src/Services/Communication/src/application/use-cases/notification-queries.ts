@@ -1,20 +1,24 @@
 import { Result, makeError } from '../../domain/shared/result.js';
 import type { NotificationRepository } from '../ports/notification-repository.js';
-import type { NotificationDto } from '../../contracts/socket/notification-socket-events.js';
+import type {
+  NotificationBulkAction,
+  NotificationDto,
+} from '../../contracts/socket/notification-socket-events.js';
+import type { NotificationListFilter } from '../../domain/notifications/notification-category.js';
 import { toNotificationDto } from './notification-dto.js';
 
-export interface ListNotificationsQuery {
+export interface ListNotificationsQuery extends NotificationListFilter {
   readonly tenantId: string;
   readonly userId: string;
   readonly page: number;
   readonly size: number;
-  readonly unreadOnly?: boolean;
 }
 
 export interface ListNotificationsSinceQuery {
   readonly tenantId: string;
   readonly userId: string;
   readonly sinceUtc: Date;
+  readonly sinceId?: string;
   readonly limit: number;
 }
 
@@ -29,6 +33,8 @@ export interface ListNotificationsSinceResult {
    * nuevo con este valor para traer la siguiente página.
    */
   readonly nextCursorUtc: string | null;
+  /** Id del último item: se manda como `sinceId` junto a `sinceUtc`. Null si items está vacío. */
+  readonly nextCursorId: string | null;
 }
 
 export async function listNotificationsSince(
@@ -44,6 +50,7 @@ export async function listNotificationsSince(
       tenantId: query.tenantId,
       userId: query.userId,
       sinceUtc: query.sinceUtc,
+      ...(query.sinceId ? { sinceId: query.sinceId } : {}),
       limit,
     }),
     deps.notifications.countUnread(query.tenantId, query.userId),
@@ -54,6 +61,7 @@ export async function listNotificationsSince(
     unreadCount,
     asOfUtc: new Date().toISOString(),
     nextCursorUtc: last ? last.createdAtUtc.toISOString() : null,
+    nextCursorId: last ? last.id : null,
   });
 }
 
@@ -61,7 +69,7 @@ export interface ListNotificationsResult {
   readonly items: readonly NotificationDto[];
   readonly page: number;
   readonly size: number;
-  /** Total de filas que cumplen el mismo filtro (`unreadOnly`): para "Page X of Y" sin cursor. */
+  /** Total de filas que cumplen los mismos filtros: para "Page X of Y" sin cursor. */
   readonly total: number;
   readonly unreadCount: number;
   readonly asOfUtc: string;
@@ -73,19 +81,17 @@ export async function listNotifications(
 ): Promise<Result<ListNotificationsResult>> {
   const size = Math.min(Math.max(query.size, 1), 100);
   const page = Math.max(query.page, 1);
+  const filter = listFilterOf(query);
   const [snapshots, total, unreadCount] = await Promise.all([
     deps.notifications.listForUser({
       tenantId: query.tenantId,
       userId: query.userId,
       take: size,
       skip: (page - 1) * size,
-      ...(query.unreadOnly !== undefined ? { unreadOnly: query.unreadOnly } : {}),
+      ...filter,
     }),
-    deps.notifications.countForUser({
-      tenantId: query.tenantId,
-      userId: query.userId,
-      ...(query.unreadOnly !== undefined ? { unreadOnly: query.unreadOnly } : {}),
-    }),
+    deps.notifications.countForUser({ tenantId: query.tenantId, userId: query.userId, ...filter }),
+    // La campanita: siempre el buzón completo, sin filtros.
     deps.notifications.countUnread(query.tenantId, query.userId),
   ]);
   return Result.ok({
@@ -96,6 +102,48 @@ export async function listNotifications(
     unreadCount,
     asOfUtc: new Date().toISOString(),
   });
+}
+
+export interface GetNotificationQuery {
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly notificationId: string;
+}
+
+/** Detalle por id, sin efectos. Ajena, descartada o inexistente: el mismo NotFound. */
+export async function getNotification(
+  query: GetNotificationQuery,
+  deps: { notifications: NotificationRepository },
+): Promise<Result<NotificationDto>> {
+  const found = await deps.notifications.findById(query.tenantId, query.notificationId, query.userId);
+  const snapshot = found?.toSnapshot();
+  if (!snapshot || snapshot.dismissedAtUtc !== null) {
+    return Result.fail(makeError('Notification.NotFound', 'Notification not found.'));
+  }
+  return Result.ok(toNotificationDto(snapshot));
+}
+
+export interface GetNotificationBySourceQuery {
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly sourceEventId: string;
+}
+
+/** Fila del usuario creada por un evento (clic de un push). Ajena, descartada o inexistente: el mismo NotFound. */
+export async function getNotificationBySource(
+  query: GetNotificationBySourceQuery,
+  deps: { notifications: NotificationRepository },
+): Promise<Result<NotificationDto>> {
+  const found = await deps.notifications.findBySourceEvent?.(
+    query.tenantId,
+    query.sourceEventId,
+    query.userId,
+  );
+  const snapshot = found?.toSnapshot();
+  if (!snapshot || snapshot.dismissedAtUtc !== null) {
+    return Result.fail(makeError('Notification.NotFound', 'Notification not found.'));
+  }
+  return Result.ok(toNotificationDto(snapshot));
 }
 
 export interface MarkNotificationReadCommand {
@@ -274,6 +322,61 @@ export async function deleteNotifications(
   return Result.ok({
     affectedCount: result.dismissedCount,
     unreadCount: result.unreadCount,
+    asOfUtc: new Date().toISOString(),
+  });
+}
+
+/** Solo los filtros presentes (exactOptionalPropertyTypes). */
+function listFilterOf(filter: NotificationListFilter): NotificationListFilter {
+  return {
+    ...(filter.unreadOnly !== undefined ? { unreadOnly: filter.unreadOnly } : {}),
+    ...(filter.category !== undefined ? { category: filter.category } : {}),
+    ...(filter.q !== undefined ? { q: filter.q } : {}),
+  };
+}
+
+export interface BulkByFilterCommand {
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly action: NotificationBulkAction;
+  readonly filter: NotificationListFilter;
+  /** El `asOfUtc` de la lista que el usuario ve; nunca el reloj del navegador. */
+  readonly upToCreatedAtUtc: Date;
+}
+
+export interface BulkByFilterResult {
+  readonly affectedCount: number;
+  readonly unreadCount: number;
+  readonly cutoffUtc: string;
+  readonly asOfUtc: string;
+}
+
+/** Acción masiva sobre todo lo que cumple el filtro hasta el corte; lo que llega después no se toca. */
+export async function applyNotificationsBulkByFilter(
+  cmd: BulkByFilterCommand,
+  deps: { notifications: NotificationRepository },
+): Promise<Result<BulkByFilterResult>> {
+  if (Number.isNaN(cmd.upToCreatedAtUtc.getTime())) {
+    return Result.fail(makeError('Notification.InvalidCutoff', 'The notification cutoff is invalid.'));
+  }
+  const atUtc = new Date();
+  // Un corte del futuro se recorta a "ahora".
+  const cutoffUtc = cmd.upToCreatedAtUtc.getTime() > atUtc.getTime() ? atUtc : cmd.upToCreatedAtUtc;
+  if (!deps.notifications.bulkByFilter) {
+    return Result.fail(makeError('Notification.BulkByFilterUnavailable', 'Bulk by filter is not available.'));
+  }
+  const result = await deps.notifications.bulkByFilter({
+    tenantId: cmd.tenantId,
+    userId: cmd.userId,
+    action: cmd.action,
+    filter: listFilterOf(cmd.filter),
+    cutoffUtc,
+    atUtc,
+  });
+  return Result.ok({
+    affectedCount: result.affectedCount,
+    unreadCount: result.unreadCount,
+    cutoffUtc: cutoffUtc.toISOString(),
     asOfUtc: new Date().toISOString(),
   });
 }

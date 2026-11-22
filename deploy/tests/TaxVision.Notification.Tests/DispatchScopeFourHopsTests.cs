@@ -71,11 +71,11 @@ public sealed class DispatchScopeFourHopsTests
 
         await InvoiceSentConsumer.Handle(
             Invoice(),
-            gateway,
             new StubRenderClient(render),
             AllowAllContactPolicyRepository.Instance,
-            new NotificationDispatcherHarness().Dispatcher,
+            new NotificationDispatcherHarness(emailGateway: gateway).Dispatcher,
             NoPortalRecipientResolver.Instance,
+            FixedRecipientLocale.English,
             new NoOpCorrelation(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<InvoiceSentLog>.Instance,
             CancellationToken.None
@@ -94,11 +94,11 @@ public sealed class DispatchScopeFourHopsTests
 
         await InvoiceSentConsumer.Handle(
             Invoice(),
-            gateway,
             new StubRenderClient(render),
             AllowAllContactPolicyRepository.Instance,
-            new NotificationDispatcherHarness().Dispatcher,
+            new NotificationDispatcherHarness(emailGateway: gateway).Dispatcher,
             NoPortalRecipientResolver.Instance,
+            FixedRecipientLocale.English,
             new NoOpCorrelation(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<InvoiceSentLog>.Instance,
             CancellationToken.None

@@ -11,6 +11,7 @@ using TaxVision.Notification.Application.Consumers.Signature;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Directory;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -217,6 +218,28 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
 
     // ------------------------------------------------------------------
 
+    [Fact]
+    public async Task Sms_leaves_an_audit_row()
+    {
+        var (sms, logs) = (new Sms(), new RecordingNotificationLogs());
+
+        await Handle(
+            Event(purpose: "Completed", items: 1, preferSms: true),
+            new Gateway(),
+            new Scribe(),
+            sms,
+            logs: logs
+        );
+
+        var log = Assert.Single(logs.Logs);
+        Assert.Equal(NotificationChannel.Sms, log.Channel);
+        Assert.Equal("sig.signed_documents_ready.sms", log.Kind);
+        Assert.Equal("+15550001111", log.Recipient);
+        // Ni el cuerpo ni el enlace con su token quedan en el registro.
+        Assert.DoesNotContain("plain-token", log.Subject);
+        Assert.Single(sms.Sent);
+    }
+
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid DeliveryId = Guid.NewGuid();
 
@@ -268,7 +291,8 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
         Sms sms,
         Codec? codec = null,
         ICustomerContactPolicyRepository? policies = null,
-        IRecipientResolver? resolver = null
+        IRecipientResolver? resolver = null,
+        RecordingNotificationLogs? logs = null
     ) =>
         SignedDocumentsDeliveryReadyConsumer.Handle(
             evt,
@@ -282,7 +306,7 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
             ),
             gateway,
             scribe,
-            sms,
+            new NotificationDispatcherHarness(smsSender: sms, logs: logs).Dispatcher,
             TestPlatform.Settings,
             new Correlation(),
             CancellationToken.None
@@ -391,7 +415,8 @@ public sealed class SignedDocumentsDeliveryReadyConsumerTests
             string text,
             CancellationToken ct,
             string? templateKey,
-            string? idempotencyToken
+            string? idempotencyToken,
+            string? sourceRef = null
         )
         {
             Sent.Add(text);

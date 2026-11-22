@@ -60,6 +60,24 @@ public sealed partial class TenantSubscription
         return expired.Count > 0;
     }
 
+    /// <summary>Deja la marca del aviso de fin; falla si el descuento no existe, ya terminó o ya se avisó.</summary>
+    public Result MarkDiscountEndingNoticeSent(Guid discountId, DateTime nowUtc)
+    {
+        if (_discounts.FirstOrDefault(discount => discount.Id == discountId) is not { } discount)
+            return Result.Failure(new Error("Subscription.Discount.NotFound", "The discount does not exist."));
+
+        if (!discount.IsActiveAt(nowUtc))
+            return Result.Failure(new Error("Subscription.Discount.NotActive", "The discount is no longer active."));
+
+        if (discount.EndingNoticeSentAtUtc is not null)
+            return Result.Failure(
+                new Error("Subscription.Discount.EndingNoticeAlreadySent", "The ending notice was already sent.")
+            );
+
+        discount.MarkEndingNoticeSent(nowUtc);
+        return Result.Success();
+    }
+
     /// <summary>El descuento que lleva un cobro, de dónde salió y cómo se lee en el recibo; (0, null, null) si no aplica.</summary>
     /// <param name="chargePlanCode">Plan del cobro; por defecto, el de la suscripción.</param>
     /// <param name="nextCharge">Cobro del cambio de plan: usa el código de un solo cobro pendiente.</param>

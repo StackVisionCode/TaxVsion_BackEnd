@@ -44,6 +44,7 @@ describe('searchSupportAgents', () => {
       upsert: vi.fn(),
       findByUserId: vi.fn(),
       findByUserIds: vi.fn(),
+      findActiveAdmins: vi.fn().mockResolvedValue([]),
       markInactive: vi.fn(),
       markActive: vi.fn(),
     } satisfies UserDirectoryRepository;

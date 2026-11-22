@@ -34,13 +34,15 @@ public static class ReferredOfficeProjectionConsumer
         await unitOfWork.SaveChangesAsync(ct);
 
         if (evt.OnboardingId is { } onboardingId)
-            await ScreenReferralAsync(bus, onboardingId, logger, ct);
+            await ScreenReferralAsync(bus, onboardingId, evt.CorrelationId, logger, ct);
     }
 
-    // Si el alta ya se enlazó antes de que llegara el email del dueño, la revisión antifraude se completa ahora.
+    // Si el alta ya se enlazó antes de que llegara el email del dueño, la revisión antifraude se completa ahora; si
+    // cancela el premio, el comando devuelve el aviso al referidor en su misma transacción.
     private static async Task ScreenReferralAsync(
         IMessageBus bus,
         Guid onboardingId,
+        string correlationId,
         ILogger logger,
         CancellationToken ct
     )
@@ -50,7 +52,7 @@ public static class ReferredOfficeProjectionConsumer
         try
         {
             var screened = await bus.InvokeAsync<Result<ReferralScreeningResult>>(
-                new ScreenReferralCommand(onboardingId),
+                new ScreenReferralCommand(onboardingId, correlationId),
                 ct
             );
             if (screened.IsFailure)

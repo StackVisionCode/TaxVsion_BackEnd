@@ -3,8 +3,6 @@ using System.Text;
 using BuildingBlocks.Common;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
-using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Common;
@@ -59,11 +57,11 @@ public sealed class OffboardingNoticeSender(
     NotificationDispatcher dispatcher,
     IRecipientResolver resolver,
     IUserEmailResolver emails,
-    IEmailDispatchGateway gateway,
     IScribeRenderClient scribe,
     ITenantHostResolver hosts,
     IOptions<PortalOptions> portal,
-    ICorrelationContext correlation
+    ICorrelationContext correlation,
+    IRecipientLocale locales
 )
 {
     /// <summary>Enlace al CRM de la oficina (su subdominio, o el base fijo si no se resolvió).</summary>
@@ -118,31 +116,23 @@ public sealed class OffboardingNoticeSender(
         foreach (var notice in notices)
             await SendEmailsAsync(context, notice, ct);
 
-        var resourceType = NotificationContractNames.For(NotificationCatalog.GetRequired(context.Kind).ResourceType);
         foreach (var notice in notices)
         foreach (var userId in notice.Recipients)
         {
             await RecordInAppAsync(context, notice, userId, ct);
-            await dispatcher.SendPushAsync(
-                new PushDispatchRequest(
-                    context.TenantId,
-                    userId,
-                    notice.Title,
-                    notice.Body,
-                    context.Category,
-                    context.Kind,
-                    context.Kind,
-                    context.DeliveryId,
-                    correlation.CorrelationId,
-                    Data: new Dictionary<string, string>
-                    {
-                        ["kind"] = context.Kind,
-                        ["resourceType"] = resourceType,
-                        ["resourceId"] = context.ResourceId ?? string.Empty,
-                    },
-                    Link: context.Link,
-                    SkipWhenNoDevices: true
-                ),
+            // Conserva su enlace directo (lleva parámetros que /n/open no transporta).
+            await dispatcher.DispatchAsync(
+                Intent(context, new NotificationTarget(userId), context.DeliveryId) with
+                {
+                    Push = new PushContent(
+                        ResourceId: context.ResourceId,
+                        SourceEventId: context.EventId,
+                        SkipWhenNoDevices: true,
+                        Title: notice.Title,
+                        Body: notice.Body,
+                        Link: context.Link
+                    ),
+                },
                 ct
             );
         }
@@ -150,7 +140,7 @@ public sealed class OffboardingNoticeSender(
 
     private async Task SendEmailsAsync(OffboardingNoticeContext context, OffboardingNotice notice, CancellationToken ct)
     {
-        // Un correo por dirección, con su usuario: el gate del gateway aplica inactivo, preferencia y catálogo.
+        // Un correo por dirección, con su usuario: el punto único aplica inactivo, preferencia y catálogo.
         var addresses = new List<(Guid UserId, string Address)>();
         foreach (var userId in notice.Recipients)
         {
@@ -164,23 +154,28 @@ public sealed class OffboardingNoticeSender(
         if (addresses.Count == 0)
             return;
 
-        var render = (
-            await scribe.RenderAsync(context.EmailEventKey, context.TenantId, notice.EmailVariables, ct)
-        ).EnsureRendered(context.EmailEventKey);
-
+        // Un render por idioma y lector; todos antes de encolar.
+        var renders = new RecipientRenders(
+            scribe,
+            context.EmailEventKey,
+            context.TenantId,
+            ScribeRenderAudience.Staff,
+            notice.EmailVariables
+        );
+        var languages = new RecipientLocaleCache(locales, context.TenantId);
+        var targets = new List<NotificationTarget>(addresses.Count);
         foreach (var (userId, address) in addresses)
-            await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
-                    context.TenantId,
-                    address,
-                    context.EmailEventKey,
-                    context.DeliveryId,
-                    correlation.CorrelationId
-                ) with
+        {
+            var locale = await languages.ForUserAsync(userId, ct);
+            await renders.ForAsync(locale, ct);
+            targets.Add(new NotificationTarget(userId, address, Locale: locale));
+        }
+
+        foreach (var target in targets)
+            await dispatcher.DispatchAsync(
+                Intent(context, target, context.DeliveryId) with
                 {
-                    RecipientUserId = userId,
-                    Category = context.Category,
-                    NotificationKind = context.Kind,
+                    Email = new EmailContent(context.EmailEventKey, notice.EmailVariables, Render: renders.ForAsync),
                 },
                 ct
             );
@@ -192,29 +187,35 @@ public sealed class OffboardingNoticeSender(
         Guid userId,
         CancellationToken ct
     ) =>
-        dispatcher.RecordInAppAsync(
-            context.TenantId,
-            NotificationRecipient.ForUser(userId),
-            notice.Title,
-            context.Category,
+        dispatcher.DispatchAsync(
+            Intent(context, new NotificationTarget(userId), context.EventId) with
+            {
+                InApp = new InAppContent(
+                    Params: notice.Params,
+                    ResourceId: context.ResourceId,
+                    ResourceContext: context.ResourceContext,
+                    // Un aviso sin leer del mismo recurso se actualiza en vez de duplicarse.
+                    GroupKey: context.GroupKey,
+                    FallbackTitle: notice.Title,
+                    FallbackBody: notice.Body
+                ),
+            },
+            ct
+        );
+
+    // Correo y push van por DeliveryId (dedupe del hecho); la campana, por el evento.
+    private NotificationIntent Intent(
+        OffboardingNoticeContext context,
+        NotificationTarget target,
+        Guid sourceEventId
+    ) =>
+        new(
             context.Kind,
-            context.EventId,
-            correlation.CorrelationId,
-            recipientUserId: userId,
-            inApp: new InAppNotificationRequest(
-                context.Kind,
-                userId,
-                context.EventId,
-                context.SourceEventType,
-                context.OccurredOn,
-                notice.Title,
-                FallbackBody: notice.Body,
-                ResourceId: context.ResourceId,
-                ResourceContext: context.ResourceContext,
-                Params: notice.Params,
-                // Un aviso sin leer del mismo recurso se actualiza en vez de duplicarse.
-                GroupKey: context.GroupKey
-            ),
-            ct: ct
+            context.TenantId,
+            target,
+            sourceEventId,
+            context.SourceEventType,
+            context.OccurredOn,
+            correlation.CorrelationId
         );
 }

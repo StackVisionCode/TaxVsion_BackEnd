@@ -2,6 +2,7 @@
 #pragma warning disable
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using TaxVision.Referrals.Application.Abstractions;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -11,11 +12,13 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly System.TimeProvider _timeProvider;
+        private readonly TaxVision.Referrals.Application.Abstractions.IReferralNoticeEvents _referralNoticeEvents;
 
-        public QualifyReferralCommandHandler1710025702(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.TimeProvider timeProvider)
+        public QualifyReferralCommandHandler1710025702(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.TimeProvider timeProvider, TaxVision.Referrals.Application.Abstractions.IReferralNoticeEvents referralNoticeEvents)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _timeProvider = timeProvider;
+            _referralNoticeEvents = referralNoticeEvents;
         }
 
 
@@ -85,11 +88,15 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Referrals.Application.Qualifications.QualifyReferral.QualifyReferralHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Referrals.Application.Qualifications.QualifyReferral.QualifyReferralHandler.Handle(qualifyReferralCommand, referralAttributionRepository, referralProgramRepository, referralQualificationRepository, referralRewardCaseRepository, referralRewardQuota, referralIdempotencyExecutor, _timeProvider, cancellation).ConfigureAwait(false);
+                (var outgoing1, var outgoing2) = await TaxVision.Referrals.Application.Qualifications.QualifyReferral.QualifyReferralHandler.Handle(qualifyReferralCommand, referralAttributionRepository, referralProgramRepository, referralQualificationRepository, referralRewardCaseRepository, referralRewardQuota, referralIdempotencyExecutor, _referralNoticeEvents, _timeProvider, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message
                 await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
+
+                
+                // Outgoing, cascaded message
+                await context.EnqueueCascadingAsync(outgoing2).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

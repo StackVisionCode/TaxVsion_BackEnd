@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -50,6 +51,7 @@ public sealed class ScribeInlineAssetsPropagationTests
             scribeClient,
             Options.Create(new PortalOptions()),
             new FakeTenantHostResolver(),
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None
         );

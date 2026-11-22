@@ -1,12 +1,23 @@
+using System.Reflection;
 using System.Security.Cryptography;
+using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using BuildingBlocks.Tenancy;
+using BuildingBlocks.Web.Common;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Calendar.Application.PublicBookings;
+using TaxVision.Calendar.Application.PublicBookings.Abstractions;
 using TaxVision.Calendar.Domain.Appointments;
 using TaxVision.Calendar.Domain.PublicBookings;
+using TaxVision.Calendar.Infrastructure.Jobs;
+using TaxVision.Calendar.Infrastructure.Persistence;
 using TaxVision.Calendar.Tests.Domain;
+using Wolverine.EntityFrameworkCore;
 using Xunit;
 
 namespace TaxVision.Calendar.Tests.Application;
@@ -113,6 +124,36 @@ public sealed class PublicBookingMaintenanceTests
 
         Assert.Null(sent);
         Assert.Null(booking.ReminderSentAtUtc);
+    }
+
+    [Fact]
+    public async Task Job_publishes_with_a_correlation_id()
+    {
+        var booking = Confirmed(confirmedAt: _slot.AddDays(-3));
+        _store.DueReminders.Add(Ref(booking));
+        var outbox = RecordingCalendarOutbox.Create();
+        var services = new ServiceCollection()
+            .AddSingleton<IPublicBookingRepository>(_store)
+            .AddSingleton<IBookingPageRepository>(_store)
+            .AddScoped<ICorrelationContext, CorrelationContext>()
+            .AddScoped(sp => new PublicBookingNotices(
+                _availability,
+                _codec,
+                sp.GetRequiredService<ICorrelationContext>()
+            ))
+            .AddSingleton(outbox)
+            .BuildServiceProvider();
+        var job = new PublicBookingReminderJob(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            NullLogger<PublicBookingReminderJob>.Instance
+        );
+
+        var summary = await job.RunAsync(_slot.AddHours(-20), default);
+
+        Assert.Equal(1, summary.Committed);
+        var published = ((RecordingCalendarOutbox)(object)outbox).Published;
+        var reminder = Assert.IsType<PublicBookingReminderDueIntegrationEvent>(Assert.Single(published));
+        Assert.False(string.IsNullOrWhiteSpace(reminder.CorrelationId));
     }
 
     // ---------- Purgar ----------
@@ -247,4 +288,47 @@ public sealed class PublicBookingMaintenanceTests
     }
 
     private PublicBookingNotices Notices() => new(_availability, _codec, new FixedCorrelation());
+
+    // Outbox de EF en memoria: guarda lo publicado; el guardado no hace nada más.
+    public class RecordingCalendarOutbox : DispatchProxy
+    {
+        internal List<object> Published { get; } = [];
+        private CalendarDbContext? _db;
+
+        internal static IDbContextOutbox<CalendarDbContext> Create()
+        {
+            var outbox = Create<IDbContextOutbox<CalendarDbContext>, RecordingCalendarOutbox>();
+            ((RecordingCalendarOutbox)(object)outbox)._db = new CalendarDbContext(
+                new DbContextOptionsBuilder<CalendarDbContext>()
+                    .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                    .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+                    .Options,
+                new NoTenant()
+            );
+            return outbox;
+        }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod?.Name switch
+            {
+                "get_DbContext" => _db,
+                "PublishAsync" => Record(args![0]!),
+                "SaveChangesAndFlushMessagesAsync" => Task.CompletedTask,
+                _ => throw new NotSupportedException(targetMethod?.Name),
+            };
+
+        private ValueTask Record(object message)
+        {
+            Published.Add(message);
+            return ValueTask.CompletedTask;
+        }
+
+        private sealed class NoTenant : ITenantContext
+        {
+            public Guid TenantId => Guid.Empty;
+            public bool HasTenant => false;
+
+            public void SetTenant(Guid tenantId) { }
+        }
+    }
 }

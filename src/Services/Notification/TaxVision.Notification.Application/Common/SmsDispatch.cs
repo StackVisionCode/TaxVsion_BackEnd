@@ -63,7 +63,14 @@ public sealed class SmsDispatch(
         // trabaja con contenido sensible (OTP). Si no viene, derivamos uno del relatedEventId
         // o del par (templateKey|recipientUserId) para no caer al patrón legacy por texto.
         var effectiveToken = ResolveIdempotencyToken(idempotencyToken, relatedEventId, templateKey, recipientUserId);
-        var sendResult = await smsSender.SendAsync(phoneNumber, text, ct, templateKey, effectiveToken);
+        var sendResult = await smsSender.SendAsync(
+            phoneNumber,
+            text,
+            ct,
+            templateKey,
+            effectiveToken,
+            SmsSourceContext.ForLog(log.Id)
+        );
         if (sendResult.IsSuccess)
         {
             log.MarkSent();

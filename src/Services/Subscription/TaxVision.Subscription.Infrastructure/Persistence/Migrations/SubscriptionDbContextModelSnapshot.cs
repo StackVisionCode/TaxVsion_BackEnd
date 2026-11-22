@@ -2138,6 +2138,9 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<DateTime?>("EndingNoticeSentAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("EndsAtUtc")
                         .HasColumnType("datetime2");
 

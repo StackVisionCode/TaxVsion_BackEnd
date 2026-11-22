@@ -23,7 +23,11 @@ public sealed record PushDispatchRequest(
     string? Link = null,
     bool SkipWhenNoDevices = false,
     // Reintento dirigido: solo estos dispositivos (los que fallaron de forma transitoria).
-    IReadOnlyList<Guid>? DeviceIds = null
+    IReadOnlyList<Guid>? DeviceIds = null,
+    // Vida del aviso en FCM. Null = lo de siempre.
+    TimeSpan? TimeToLive = null,
+    // Solo estas plataformas (p. ej. llamada entrante solo a móvil). Null = todas.
+    IReadOnlySet<PushPlatform>? Platforms = null
 );
 
 /// <param name="Error">Null si salió por al menos un dispositivo o no correspondía enviar.</param>
@@ -47,17 +51,26 @@ public sealed class PushDispatch(
     IUnitOfWork unitOfWork,
     INotificationDispatchMetrics metrics,
     IPushAttemptRecorder pushAttempts,
+    TimeProvider clock,
     ILogger<PushDispatch> logger
 )
 {
     public const string NoDeviceReason = "no_device";
+
+    // Más que lo que tarda un envío a todos los dispositivos; pasado esto, el Pending es un intento muerto.
+    private static readonly TimeSpan PendingInFlight = TimeSpan.FromMinutes(2);
+
+    private static readonly Error NoDevices = new(
+        "Notification.NoPushDevices",
+        "Recipient has no registered push devices."
+    );
 
     /// <summary>
     /// Envía a TODOS los dispositivos activos del usuario (fan-out best-effort:
     /// un solo dispositivo entregado ya cuenta como Sent — mismo criterio que
     /// el multicast nativo de FCM/APNs, para no perder el aviso por un
     /// dispositivo viejo/desinstalado). Falla con `Notification.NoPushDevices`
-    /// si el usuario no tiene ningún token registrado (el log queda Skipped, no Failed).
+    /// si el usuario no tiene ningún token registrado (sin escribir log).
     /// </summary>
     public async Task<Result> SendAsync(PushDispatchRequest request, CancellationToken ct = default)
     {
@@ -77,6 +90,8 @@ public sealed class PushDispatch(
             return PushDispatchOutcome.Done;
 
         var devices = await pushDeviceTokens.ListActiveForUserAsync(request.TenantId, request.RecipientUserId, ct);
+        if (request.Platforms is { } platforms)
+            devices = devices.Where(device => platforms.Contains(device.Platform)).ToList();
         if (request.DeviceIds is { Count: > 0 } targets)
             return await RetryDevicesAsync(request, devices.Where(device => targets.Contains(device.Id)), ct);
         if (devices.Count == 0 && request.SkipWhenNoDevices)
@@ -90,6 +105,27 @@ public sealed class PushDispatch(
             NotificationRecipient.ForPushTarget(request.RecipientUserId),
             ct
         );
+    }
+
+    /// <summary>
+    /// Gate y dispositivos sin llamar a FCM: el envío lo hace la cola de push (N8-04), que repite estos pasos.
+    /// </summary>
+    public async Task<PushDispatchOutcome> EnqueueAsync(
+        PushDispatchRequest request,
+        IPushDeliveryQueue queue,
+        CancellationToken ct = default
+    )
+    {
+        if (!await AllowsAsync(request.TenantId, request.RecipientUserId, request.Category, request.Kind, ct))
+            return PushDispatchOutcome.Done;
+        var devices = await pushDeviceTokens.ListActiveForUserAsync(request.TenantId, request.RecipientUserId, ct);
+        if (!devices.Any(device => request.Platforms?.Contains(device.Platform) ?? true))
+        {
+            metrics.RecordNoRecipient(request.Kind, "Push");
+            return request.SkipWhenNoDevices ? PushDispatchOutcome.Done : new(NoDevices, [], []);
+        }
+        await queue.EnqueueAsync(new DeliverPush(request.TenantId, request), ct);
+        return PushDispatchOutcome.Done;
     }
 
     /// <summary>
@@ -149,6 +185,13 @@ public sealed class PushDispatch(
         CancellationToken ct
     )
     {
+        // Sin dispositivo no hay entrega posible ni fila de auditoría. El error sigue saliendo para Campaigns.
+        if (devices.Count == 0)
+        {
+            metrics.RecordNoRecipient(request.Kind, "Push");
+            return new(NoDevices, [], []);
+        }
+
         if (request.RelatedEventId is { } eventId && await WasSentAsync(request, eventId, recipient, ct))
             return PushDispatchOutcome.Done;
 
@@ -173,18 +216,6 @@ public sealed class PushDispatch(
         }
 
         var log = logResult.Value;
-
-        // Sin dispositivo no hay entrega posible: Skipped, no Failed. El error sigue saliendo para Campaigns.
-        if (devices.Count == 0)
-        {
-            var error = new Error("Notification.NoPushDevices", "Recipient has no registered push devices.");
-            await logs.AddAsync(log, ct);
-            log.MarkSkipped(NoDeviceReason);
-            metrics.RecordNoRecipient(request.Kind, "Push");
-            await unitOfWork.SaveChangesAsync(ct);
-            return new(error, [], []);
-        }
-
         await pushAttempts.RecordAttemptAsync(log, ct);
 
         var anySucceeded = false;
@@ -253,7 +284,8 @@ public sealed class PushDispatch(
                     request.Data,
                     request.Topic,
                     request.Tag,
-                    request.Link
+                    request.Link,
+                    request.TimeToLive
                 ),
                 ct
             );
@@ -279,10 +311,12 @@ public sealed class PushDispatch(
             recipient.Value,
             ct
         );
-        // Pending = se intentó y el resultado no quedó registrado: pudo salir, así que no se manda de nuevo.
-        return existing?.Status
-            is NotificationStatus.Sent
-                or NotificationStatus.Delivered
-                or NotificationStatus.Pending;
+        // Failed no frena el reintento. Un Pending reciente es un envío en curso o recién cortado: pudo salir.
+        return existing?.Status switch
+        {
+            NotificationStatus.Sent or NotificationStatus.Delivered => true,
+            NotificationStatus.Pending => clock.GetUtcNow().UtcDateTime - existing.CreatedAtUtc < PendingInFlight,
+            _ => false,
+        };
     }
 }

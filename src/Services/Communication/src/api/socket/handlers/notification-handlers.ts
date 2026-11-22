@@ -14,6 +14,7 @@ import {
 } from '../../../application/use-cases/notification-queries.js';
 import type { SocketEnvelope } from '../../../contracts/socket/socket-envelope.js';
 import { checkPermission, CommunicationPermissions } from '../../../domain/shared/permissions.js';
+import { emitNotificationBulkApplied } from '../../http/routes/notifications.route.js';
 
 export function registerNotificationHandlers(io: CommunicationIoServer, container: AppContainer): void {
   const emitter = new SocketRealtimeEmitter(io);
@@ -83,6 +84,14 @@ function wireNotifSocket(
       logger.debug({ err: result.error }, 'dismiss rejected');
       return;
     }
+    emitNotificationBulkApplied(emitter, {
+      tenantId,
+      userId,
+      correlationId: '',
+      action: 'dismissed',
+      ids: [result.value.notificationId],
+      asOfUtc: result.value.asOfUtc,
+    });
     emitter.emitToUser({
       tenantId,
       userId,

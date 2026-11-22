@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
+using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
 
@@ -17,6 +18,7 @@ public static class AppointmentBookingRequestedConsumer
     public static async Task Handle(
         AppointmentBookingRequestedIntegrationEvent evt,
         NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -27,11 +29,11 @@ public static class AppointmentBookingRequestedConsumer
         {
             await CalendarRecipients.PushAsync(
                 dispatcher,
+                locales,
                 office,
                 evt.TenantId,
-                heading,
-                "Approve it, assign it to someone or decline it.",
                 NotificationKinds.CalendarBookingRequested,
+                evt.AppointmentId,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct

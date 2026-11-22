@@ -8,6 +8,10 @@ public sealed class NoOpNotificationDispatchMetrics : INotificationDispatchMetri
 {
     public void RecordClientFormPushFailure(string code) { }
 
+    public void RecordNotAllowedByCatalog(string kind, string channel) { }
+
+    public void RecordDelivered(string kind, string channel) { }
+
     public void RecordSent(string kind, string channel) { }
 
     public void RecordSuppressedByPreference(string kind, string channel) { }

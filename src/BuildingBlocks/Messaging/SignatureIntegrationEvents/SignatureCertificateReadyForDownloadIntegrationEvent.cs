@@ -3,6 +3,7 @@ using Wolverine.Attributes;
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
+/// Sin publicador desde 2026-11 (ningún servicio lo emite ni Notification lo consume); se conserva el contrato.
 /// El Certificate of Completion ya está DISPONIBLE en CloudStorage (pasó el scan) y tiene un
 /// share-link de descarga emitido. Signature lo publica desde el consumer de
 /// <c>FileAvailableIntegrationEvent</c> cuando el archivo disponible coincide con el
@@ -15,7 +16,9 @@ namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 /// de entrega independiente.
 /// </para>
 /// </summary>
-[MessageIdentity("BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureCertificateReadyForDownloadIntegrationEvent")]
+[MessageIdentity(
+    "BuildingBlocks.Messaging.SignatureIntegrationEvents.SignatureCertificateReadyForDownloadIntegrationEvent"
+)]
 public sealed record SignatureCertificateReadyForDownloadIntegrationEvent : IntegrationEvent
 {
     public required Guid SignatureRequestId { get; init; }

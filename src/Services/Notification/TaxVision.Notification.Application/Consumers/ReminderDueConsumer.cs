@@ -1,4 +1,5 @@
-﻿using BuildingBlocks.Common;
+using System.Globalization;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.TimeZones;
 using BuildingBlocks.TimeZones.Formatting;
@@ -6,7 +7,6 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
@@ -42,9 +42,8 @@ public static class ReminderDueConsumer
     public static async Task Handle(
         ReminderDueIntegrationEvent evt,
         NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         UserEmailResolver emailResolver,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -52,101 +51,71 @@ public static class ReminderDueConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var title = evt.SnoozeCount > 0 ? $"{evt.Title} (pospuesto {evt.SnoozeCount})" : evt.Title;
-            var body = BuildBody(evt);
+            var locale = await locales.ForUserAsync(evt.TenantId, evt.UserId, ct);
+            var body = BuildBody(evt, locale);
 
             // El correo va PRIMERO, y no es un detalle de estilo: es el único de los tres canales que
             // puede lanzar (EnsureRendered, cuando Scribe está caído) y Wolverine reintenta el
             // mensaje ENTERO. Con el correo al final, cada reintento volvería a registrar el in-app y
             // a mandar el push — el usuario vería el mismo recordatorio repetido hasta la DLQ.
-            await SendEmailAsync(evt, title, body, emailResolver, gateway, scribeClient, portal, correlation, ct);
+            var email = await emailResolver.ResolveAsync(evt.TenantId, evt.UserId, ct);
+            if (email is not null)
+                await dispatcher.DispatchAsync(
+                    Intent(evt, email, correlation) with
+                    {
+                        Email = new EmailContent(
+                            "reminder.due.v1",
+                            new Dictionary<string, object?>
+                            {
+                                ["title"] = evt.Title,
+                                ["body"] = body,
+                                ["category"] = evt.Category,
+                                ["snooze_count"] = evt.SnoozeCount,
+                                ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
+                            },
+                            ScribeRenderAudience.Staff,
+                            // Clave de deduplicación del correo; el kind del catálogo va aparte.
+                            TemplateKey: TemplateKey
+                        ),
+                    },
+                    ct
+                );
 
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(evt.UserId),
-                title,
-                NotificationCategory.Reminders,
-                TemplateKey,
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.UserId,
-                inApp: new InAppNotificationRequest(
-                    NotificationKinds.RemindersDue,
-                    evt.UserId,
-                    evt.EventId,
-                    "reminder.due.v1",
-                    evt.OccurredOn,
-                    title,
-                    FallbackBody: body,
-                    ResourceId: evt.ReminderId.ToString(),
-                    ResourceContext: BuildResourceContext(evt),
-                    Params: new Dictionary<string, string> { ["category"] = evt.Category }
-                ),
-                ct: ct
-            );
-
-            await dispatcher.SendPushAsync(
-                evt.TenantId,
-                evt.UserId,
-                title,
-                body,
-                NotificationCategory.Reminders,
-                TemplateKey,
-                evt.EventId,
-                correlation.CorrelationId,
+            await dispatcher.DispatchAsync(
+                Intent(evt, email: null, correlation) with
+                {
+                    InApp = new InAppContent(
+                        Params: new Dictionary<string, string>
+                        {
+                            ["category"] = evt.Category,
+                            ["title"] = evt.Title,
+                            ["snoozeCount"] = evt.SnoozeCount.ToString(CultureInfo.InvariantCulture),
+                        },
+                        ResourceId: evt.ReminderId.ToString(),
+                        ResourceContext: BuildResourceContext(evt),
+                        TemplateKey: TemplateKey
+                    ),
+                    Push = new PushContent(),
+                },
                 ct
             );
         }
     }
 
-    private static async Task SendEmailAsync(
+    private static NotificationIntent Intent(
         ReminderDueIntegrationEvent evt,
-        string title,
-        string body,
-        UserEmailResolver emailResolver,
-        IEmailDispatchGateway gateway,
-        IScribeRenderClient scribeClient,
-        IOptions<PortalOptions> portal,
-        ICorrelationContext correlation,
-        CancellationToken ct
-    )
-    {
-        var email = await emailResolver.ResolveAsync(evt.TenantId, evt.UserId, ct);
-        if (email is null)
-            return;
-
-        var render = (
-            await scribeClient.RenderAsync(
-                "reminder.due.v1",
-                evt.TenantId,
-                new Dictionary<string, object?>
-                {
-                    ["title"] = title,
-                    ["body"] = body,
-                    ["category"] = evt.Category,
-                    ["snooze_count"] = evt.SnoozeCount,
-                    ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
-                },
-                ct
-            )
-        ).EnsureRendered("reminder.due.v1");
-
-        // El gateway aplica la preferencia (Reminders, Email) del usuario.
-        await gateway.QueueEmailAsync(
-            render.ToDispatchRequest(
-                tenantId: evt.TenantId,
-                to: email,
-                templateKey: TemplateKey,
-                relatedEventId: evt.EventId,
-                correlationId: correlation.CorrelationId
-            ) with
-            {
-                RecipientUserId = evt.UserId,
-                Category = NotificationCategory.Reminders,
-            },
-            ct
+        string? email,
+        ICorrelationContext correlation
+    ) =>
+        new(
+            NotificationKinds.RemindersDue,
+            evt.TenantId,
+            new NotificationTarget(evt.UserId, email),
+            evt.EventId,
+            "reminder.due.v1",
+            evt.OccurredOn,
+            correlation.CorrelationId
         );
-    }
 
     private static Dictionary<string, string> BuildResourceContext(ReminderDueIntegrationEvent evt)
     {
@@ -157,18 +126,19 @@ public static class ReminderDueConsumer
     }
 
     /// <summary>
-    /// El cuerpo que escribió el usuario si lo hay; si no, la hora del ancla <b>en su zona</b> —
-    /// mostrarla en UTC sería inútil justo en el aviso donde la hora es todo el contenido.
+    /// El cuerpo que escribió el usuario si lo hay (tal cual); si no, la hora del ancla <b>en su zona</b> y en su
+    /// idioma — mostrarla en UTC sería inútil justo en el aviso donde la hora es todo el contenido.
     /// </summary>
-    private static string BuildBody(ReminderDueIntegrationEvent evt)
+    private static string BuildBody(ReminderDueIntegrationEvent evt, RecipientLocale locale)
     {
         if (!string.IsNullOrWhiteSpace(evt.Body))
             return evt.Body!;
 
         if (evt.AnchorAtUtc is not { } anchorUtc)
-            return "You have a reminder.";
+            return EmailText.For("reminder.body.generic", locale);
 
         // Fecha, hora y zona escrita: el aviso puede llegar días antes y el dueño puede estar en otra zona.
-        return $"Scheduled for {ZonedTimeFormatter.DateTime(anchorUtc, ResolvedTimeZone.Resolve(evt.TimeZoneId))}.";
+        var date = ZonedTimeFormatter.DateTime(anchorUtc, ResolvedTimeZone.Resolve(evt.TimeZoneId), locale.Language);
+        return EmailText.For("reminder.body.scheduled", locale, new Dictionary<string, string> { ["date"] = date });
     }
 }

@@ -152,6 +152,28 @@ describe('bindCloudStorageNotificationConsumers — contrato de campos con Cloud
     expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('owner-8');
   });
 
+  it('stores title and body keys with params', async () => {
+    const { handlers, notifications } = setup();
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ['cloudstorage.sharelink.folder_item_added', { FileId: 'f1', ShareLinkId: 'l1', CreatedByUserId: 'o1' }],
+      ['cloudstorage.file.blocked_by_dmca_takedown', { FileId: 'f2', CreatedBy: 'o2' }],
+      ['cloudstorage.file.reinstated_from_takedown', { FileId: 'f3', CreatedBy: 'o3' }],
+      ['cloudstorage.file.legal_hold_placed', { FileId: 'f4', CreatedBy: 'o4' }],
+      ['cloudstorage.file.legal_hold_lifted', { FileId: 'f5', CreatedBy: 'o5' }],
+    ];
+
+    for (const [kind, payload] of cases) {
+      await handlers.get(`${kind}.v1`)?.(envelope(`${kind}.v1`, payload));
+    }
+
+    const rows = vi.mocked(notifications.createIfMissing).mock.calls.map(([row]) => row.toSnapshot());
+    expect(rows).toEqual(
+      cases.map(([kind]) =>
+        expect.objectContaining({ kind, titleKey: `notif.${kind}.title`, bodyKey: `notif.${kind}.body`, params: {} }),
+      ),
+    );
+  });
+
   it('no crea ninguna notificacion si CreatedBy/CreatedByUserId falta', async () => {
     const { handlers, notifications } = setup();
 

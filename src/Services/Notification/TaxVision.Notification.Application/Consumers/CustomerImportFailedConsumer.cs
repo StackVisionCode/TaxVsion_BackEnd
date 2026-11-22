@@ -1,10 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CustomerIntegrationEvents;
-using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -21,32 +18,19 @@ public static class CustomerImportFailedConsumer
         {
             // El creador, salvo que Customer haya pasado el aviso a otro (creador retirado).
             var recipient = evt.NotifyUserId ?? evt.CreatedByUserId;
-            var title = "Importación masiva fallida";
-            var body = string.IsNullOrWhiteSpace(evt.Reason)
-                ? "La importación no pudo completarse."
-                : $"La importación no pudo completarse: {evt.Reason}";
-
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(recipient),
-                title,
-                NotificationCategory.Collaboration,
-                "customer.import_failed",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: recipient,
-                inApp: new InAppNotificationRequest(
+            var parameters = new Dictionary<string, string> { ["reason"] = evt.Reason };
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.CustomerImportFailed,
-                    recipient,
+                    evt.TenantId,
+                    new NotificationTarget(recipient),
                     evt.EventId,
                     "customer.import_failed.v1",
                     evt.FailedAtUtc,
-                    title,
-                    FallbackBody: body,
-                    ResourceId: evt.ImportJobId.ToString(),
-                    Params: new Dictionary<string, string> { ["reason"] = evt.Reason }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(Params: parameters, ResourceId: evt.ImportJobId.ToString())
                 ),
-                ct: ct
+                ct
             );
         }
     }

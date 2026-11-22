@@ -947,7 +947,7 @@ services:
       Portal__ClientBaseUrl: ${CLIENT_PORTAL_BASE_URL:-http://localhost:4200}
       Portal__ClientPathPrefix: ${CLIENT_PORTAL_PATH_PREFIX:-/portal}
       Seats__SlotGating__EmitNotifications: ${SEAT_SLOT_GATING_EMIT_NOTIFICATIONS:-false}
-      # Fase 7 del plan de notificaciones dinámicas — default false hasta generar el proyecto en
+      # Push por FCM — default true. Necesita el JSON de la cuenta de servicio, generado en
       # Firebase Console (Configuración del proyecto -> Cuentas de servicio -> Generar nueva clave
       # privada) y decodificar FIREBASE_SERVICE_ACCOUNT_JSON_B64 en TAXVISION_SECRETS_DIR (ver
       # README §Push notifications). El path solo se lee si el flag está en true — FcmPushSender
@@ -1002,12 +1002,10 @@ services:
       # Espejo simetrico de COMMUNICATION_INAPP_SOURCE_* para apagar la publicacion desde Notification
       # cuando el rollback deja al grupo en Communication (Node legacy). Default "Communication" = no publica.
       # Encender un grupo = setear a "Notification" tras verificar en vivo.
-      Notifications__InApp__CustomerImport__Source: ${NOTIFICATIONS_INAPP_SOURCE_CUSTOMER_IMPORT:-Communication}
       Notifications__InApp__Connectors__Source: ${NOTIFICATIONS_INAPP_SOURCE_CONNECTORS:-Communication}
       Notifications__InApp__CloudStorageLegal__Source: ${NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_LEGAL:-Communication}
       Notifications__InApp__CloudStoragePolicy__Source: ${NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY:-Communication}
       Notifications__InApp__Support__Source: ${NOTIFICATIONS_INAPP_SOURCE_SUPPORT:-Communication}
-      Notifications__InApp__Signature__Source: ${NOTIFICATIONS_INAPP_SOURCE_SIGNATURE:-Communication}
       # Fase 4 — proyeccion de asignaciones cliente/preparador (kit CustomerVisibility): pull cross-tenant
       # a Customer.Api para sembrar y auto-curar la tabla. Default 12h; apagar solo para debug.
       CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
@@ -2621,11 +2619,9 @@ services:
       COMMUNICATION_NOTIFICATION_PURGE_BATCH_SIZE: ${COMMUNICATION_NOTIFICATION_PURGE_BATCH_SIZE:-500}
       # T3.7 — quién crea la fila de la campana por grupo: Communication (default) o Notification (.NET).
       # Cambiar a Notification tras desplegar el consumer .NET del grupo; rollback = volver a Communication.
-      COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT: ${COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT:-Communication}
       COMMUNICATION_INAPP_SOURCE_CONNECTORS: ${COMMUNICATION_INAPP_SOURCE_CONNECTORS:-Communication}
       COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL: ${COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL:-Communication}
       COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY: ${COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY:-Communication}
-      COMMUNICATION_INAPP_SOURCE_SIGNATURE: ${COMMUNICATION_INAPP_SOURCE_SIGNATURE:-Communication}
       COMMUNICATION_INAPP_SOURCE_SUPPORT: ${COMMUNICATION_INAPP_SOURCE_SUPPORT:-Communication}
       COMMUNICATION_DB_CONNECTION: ${COMMUNICATION_DB_CONNECTION:?Set COMMUNICATION_DB_CONNECTION in .env}
       COMMUNICATION_REDIS_URI: redis://redis:6379/0

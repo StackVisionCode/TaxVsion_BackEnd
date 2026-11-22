@@ -17,12 +17,12 @@ public static class AppointmentBookingDeclinedConsumer
 
     public static async Task Handle(
         AppointmentBookingDeclinedIntegrationEvent evt,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hosts,
         NotificationDispatcher dispatcher,
         IRecipientResolver recipientResolver,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -59,7 +59,7 @@ public static class AppointmentBookingDeclinedConsumer
                 evt.TenantId,
                 TemplateKey,
                 NotificationKinds.CalendarBookingDeclined,
-                new Dictionary<string, object?>
+                _ => new Dictionary<string, object?>
                 {
                     ["appointment_title"] = evt.Title,
                     ["start_local"] = ScribeDates.Instant(evt.StartUtc),
@@ -68,7 +68,8 @@ public static class AppointmentBookingDeclinedConsumer
                     ["portal_link"] = bookAgain,
                 },
                 scribeClient,
-                gateway,
+                dispatcher,
+                locales,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct,

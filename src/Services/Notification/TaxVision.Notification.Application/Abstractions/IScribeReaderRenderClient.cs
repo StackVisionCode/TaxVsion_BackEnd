@@ -33,4 +33,26 @@ public static class ScribeRenderClientExtensions
         client is IScribeReaderRenderClient readerAware
             ? readerAware.RenderForReaderAsync(eventKey, tenantId, variables, audience, reader, ct)
             : client.RenderAsync(eventKey, tenantId, variables, audience, ct);
+
+    /// <summary>
+    /// Render en el idioma de quien lee: las dos señales de Scribe, la variable <c>language</c> (ramas de texto) y
+    /// el lector (fechas y zona).
+    /// </summary>
+    public static Task<Result<ScribeRenderedEmail>> RenderForRecipientAsync(
+        this IScribeRenderClient client,
+        string eventKey,
+        Guid tenantId,
+        IReadOnlyDictionary<string, object?> variables,
+        ScribeRenderAudience audience,
+        RecipientLocale locale,
+        CancellationToken ct = default
+    ) =>
+        client.RenderAsync(
+            eventKey,
+            tenantId,
+            new Dictionary<string, object?>(variables) { ["language"] = locale.TemplateLanguage },
+            audience,
+            locale.Reader,
+            ct
+        );
 }

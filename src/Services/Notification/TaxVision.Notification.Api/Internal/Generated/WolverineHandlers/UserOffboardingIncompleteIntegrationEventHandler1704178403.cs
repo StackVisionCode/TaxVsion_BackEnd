@@ -23,7 +23,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -51,6 +51,42 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder is not public, so requires service location
             * 
             * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.NotificationIntentDispatch Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.NotificationIntentDispatch
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.SmsDispatch Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.SmsDispatch
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.ISmsSender Lifetime: Scoped ImplementationType: TaxVision.Notification.Infrastructure.Sms.IntegrationEventSmsSender
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.Tenancy.ITenantContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_0
+            * The service registration for BuildingBlocks.Tenancy.ITenantContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
+            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * 
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.PushDispatch Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.PushDispatch
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IPushAttemptRecorder Lifetime: Scoped ImplementationType: TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder
+            * Concrete type TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder is not public, so requires service location
+            * 
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IScribeRenderClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
+            * The service registration for TaxVision.Notification.Application.Abstractions.IScribeRenderClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IRecipientLocale Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.RecipientLocaleResolver
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository Lifetime: Scoped ImplementationFactory: TaxVision.Notification.Infrastructure.DependencyInjection+<>c.<AddNotificationInfrastructure>b__0_8
+            * The service registration for TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.PushLinks Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.PushLinks
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.ITenantHostResolver Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
+            * The service registration for TaxVision.Notification.Application.Abstractions.ITenantHostResolver is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            * 
+            * 
+            * 
             * 
             * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IRecipientResolver Lifetime: Scoped ImplementationType: TaxVision.Notification.Infrastructure.Permissions.RecipientResolver
             * 
@@ -69,12 +105,17 @@ namespace Internal.Generated.WolverineHandlers
             * 
             * Dependency: Descriptor: ServiceType: BuildingBlocks.Common.ICorrelationContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_1
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IRecipientLocale Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.RecipientLocaleResolver
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository Lifetime: Scoped ImplementationFactory: TaxVision.Notification.Infrastructure.DependencyInjection+<>c.<AddNotificationInfrastructure>b__0_8
+            * The service registration for TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var offboardingNoticeSender = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Common.OffboardingNoticeSender>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
             // The actual message body
             var userOffboardingIncompleteIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardingIncompleteIntegrationEvent)context.Envelope.Message;
 

@@ -1,7 +1,5 @@
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
 
@@ -34,26 +32,22 @@ public static class CalendarClientNotices
         if (portalUserId is not { } userId)
             return;
 
-        await dispatcher.RecordInAppAsync(
-            tenantId,
-            NotificationRecipient.ForUser(userId),
-            title,
-            NotificationCategory.Calendar,
-            kind,
-            eventId,
-            correlationId,
-            recipientUserId: userId,
-            inApp: new InAppNotificationRequest(
+        await dispatcher.DispatchAsync(
+            new NotificationIntent(
                 kind,
-                userId,
+                tenantId,
+                new NotificationTarget(userId, CustomerId: customerId),
                 eventId,
                 kind,
                 occurredOn,
-                title,
-                ResourceId: appointmentId.ToString(),
-                ResourceContext: new Dictionary<string, string> { ["customerId"] = customerId.ToString() }
+                correlationId,
+                InApp: new InAppContent(
+                    ResourceId: appointmentId.ToString(),
+                    ResourceContext: new Dictionary<string, string> { ["customerId"] = customerId.ToString() },
+                    FallbackTitle: title
+                )
             ),
-            ct: ct
+            ct
         );
     }
 }

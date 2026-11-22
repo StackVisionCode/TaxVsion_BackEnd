@@ -7,7 +7,17 @@ export const SupportSocketEvents = {
   TicketResolved: 'support.ticket.resolved',
   TicketClosed: 'support.ticket.closed',
   TicketReopened: 'support.ticket.reopened',
+  /** Mensaje nuevo en un ticket, para la cola de soporte (sin texto). */
+  TicketMessage: 'support.ticket.message',
 } as const;
+
+export interface SupportTicketMessageRealtimeDto {
+  readonly ticketId: string;
+  readonly conversationId: string;
+  readonly senderRole: 'Customer' | 'Agent';
+  readonly sentAtUtc: string;
+  readonly assignedAgentId: string | null;
+}
 
 export interface SupportTicketRealtimeDto {
   readonly ticketId: string;

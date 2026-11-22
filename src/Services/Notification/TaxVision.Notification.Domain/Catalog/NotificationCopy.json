@@ -1,0 +1,702 @@
+{
+  "version": 1,
+  "kinds": {
+    "cloudstorage.file.blocked_by_policy": {
+      "en": { "title": "File blocked", "body": "A file was blocked because it goes against our content policy." },
+      "es": { "title": "Archivo bloqueado", "body": "Un archivo fue bloqueado porque va contra nuestra política de contenido." }
+    },
+    "cloudstorage.file.pending_review": {
+      "en": { "title": "File under review", "body": "A file is being reviewed against our content policy. It will be available once approved." },
+      "es": { "title": "Archivo en revisión", "body": "Un archivo está en revisión según nuestra política de contenido. Estará disponible cuando se apruebe." }
+    },
+    "cloudstorage.file.infected": {
+      "en": { "title": "Threat detected in a file", "body": "Review the affected file and take action." },
+      "es": { "title": "Amenaza detectada en un archivo", "body": "Revisa el archivo afectado y toma una acción." }
+    },
+    "cloudstorage.storage_limit_exceeded": {
+      "en": { "title": "Storage limit reached", "body": "Free space or update the storage settings." },
+      "es": { "title": "Límite de almacenamiento alcanzado", "body": "Libera espacio o actualiza la configuración de almacenamiento." }
+    },
+    "cloudstorage.sharelink.folder_item_added": {
+      "en": { "title": "New item in a shared folder", "body": "A new item was added to a folder you shared." },
+      "es": { "title": "Nuevo elemento en una carpeta compartida", "body": "Se agregó un elemento a una carpeta que compartiste." }
+    },
+    "cloudstorage.file.blocked_by_dmca_takedown": {
+      "en": { "title": "File restricted by a legal notice", "body": "Review the legal restriction applied to this file." },
+      "es": { "title": "Archivo restringido por un aviso legal", "body": "Revisa la restricción legal aplicada a este archivo." }
+    },
+    "cloudstorage.file.reinstated_from_takedown": {
+      "en": { "title": "File access restored", "body": "The legal restriction on this file was lifted." },
+      "es": { "title": "Acceso al archivo restaurado", "body": "Se levantó la restricción legal de este archivo." }
+    },
+    "cloudstorage.file.legal_hold_placed": {
+      "en": { "title": "File placed on legal hold", "body": "The file cannot be deleted while the hold is active." },
+      "es": { "title": "Archivo bajo retención legal", "body": "El archivo no puede eliminarse mientras la retención esté activa." }
+    },
+    "cloudstorage.file.legal_hold_lifted": {
+      "en": { "title": "Legal hold lifted", "body": "The file is no longer under legal hold." },
+      "es": { "title": "Retención legal levantada", "body": "El archivo ya no está bajo retención legal." }
+    },
+    "cloudstorage.dmca.counter_notice_submitted": {
+      "en": { "title": "Counter notice submitted", "body": "A counter notice was submitted for review." },
+      "es": { "title": "Contranotificación enviada", "body": "Se envió una contranotificación para revisión." }
+    },
+    "cloudstorage.customer_document_uploaded": {
+      "en": { "title": "Client uploaded documents", "body": "New client documents are ready for review." },
+      "es": { "title": "Un cliente subió documentos", "body": "Hay nuevos documentos del cliente listos para revisar." }
+    },
+    "signature.signer.invited": {
+      "en": { "title": "Signature requested", "body": "A document is waiting for your signature." },
+      "es": { "title": "Firma solicitada", "body": "Hay un documento esperando tu firma." }
+    },
+    "signature.document.signed": {
+      "en": { "title": "Document signed", "body": "A signer completed a document." },
+      "es": { "title": "Documento firmado", "body": "Un firmante completó un documento." }
+    },
+    "signature.document.signed.customer_signer": {
+      "en": { "title": "Your signature was recorded", "body": "Your signature on the document has been recorded." },
+      "es": { "title": "Tu firma quedó registrada", "body": "Tu firma en el documento quedó registrada." }
+    },
+    "signature.request.completed": {
+      "en": { "title": "Signature request completed", "body": "All required signatures were completed." },
+      "es": { "title": "Solicitud de firma completada", "body": "Se completaron todas las firmas requeridas." }
+    },
+    "signature.signer.rejected": {
+      "en": { "title": "Signature declined", "body": "A signer declined the signature request." },
+      "es": { "title": "Firma rechazada", "body": "Un firmante rechazó la solicitud de firma." }
+    },
+    "signature.request.expired": {
+      "en": { "title": "Signature request expired", "body": "The request expired before it was completed." },
+      "es": { "title": "Solicitud de firma vencida", "body": "La solicitud venció antes de completarse." }
+    },
+    "signature.signer.verification_failed": {
+      "en": { "title": "Signer verification failed", "body": "Review the failed signer verification attempt." },
+      "es": { "title": "Falló la verificación del firmante", "body": "Revisa el intento fallido de verificación del firmante." }
+    },
+    "signature.signer.pin_failed": {
+      "en": { "title": "Signer PIN failed", "body": "Review the failed PIN verification attempt." },
+      "es": { "title": "Falló el PIN del firmante", "body": "Revisa el intento fallido de verificación del PIN." }
+    },
+    "signature.request.sealing_failed": {
+      "en": { "title": "Document sealing failed", "body": "The completed request could not be sealed." },
+      "es": { "title": "Falló el sellado del documento", "body": "No se pudo sellar la solicitud completada." }
+    },
+    "signature.request.canceled_by_another": {
+      "en": { "title": "Signature request canceled", "body": "Another participant canceled the request." },
+      "es": { "title": "Solicitud de firma cancelada", "body": "Otro participante canceló la solicitud." }
+    },
+    "customer.bulk_imported": {
+      "en": { "title": "Client import completed", "body": "{summary}" },
+      "es": { "title": "Importación de clientes completada", "body": "{summary}" }
+    },
+    "customer.import_failed": {
+      "en": { "title": "Client import failed", "body": "Review the import errors and try again." },
+      "es": { "title": "Falló la importación de clientes", "body": "Revisa los errores de importación e intenta nuevamente." }
+    },
+    "connectors.oauth.refresh_failed": {
+      "en": { "title": "Reconnect {providerCode}", "body": "Access to the {providerCode} mailbox could not be renewed." },
+      "es": { "title": "Reconecta {providerCode}", "body": "No se pudo renovar el acceso al buzón de {providerCode}." }
+    },
+    "connectors.watch.expired": {
+      "en": { "title": "Mailbox connection expired", "body": "Reconnect {providerCode} to resume incoming mail." },
+      "es": { "title": "La conexión del buzón venció", "body": "Reconecta {providerCode} para reanudar el correo entrante." }
+    },
+    "correspondence.customer_email_received": {
+      "en": { "title": "New email from a client", "body": "Open the conversation to review the new message." },
+      "es": { "title": "Nuevo correo de un cliente", "body": "Abre la conversación para revisar el nuevo mensaje." }
+    },
+    "correspondence.delivery_failed": {
+      "en": { "title": "Email to {recipient} couldn't be delivered", "body": "Open the conversation to see why and fix it." },
+      "es": { "title": "No se pudo entregar el correo a {recipient}", "body": "Abre la conversación para ver el motivo y corregirlo." }
+    },
+    "tasks.task_assigned": {
+      "en": { "title": "Task assigned to you", "body": "Open the task to review the details." },
+      "es": { "title": "Tarea asignada", "body": "Abre la tarea para revisar los detalles." }
+    },
+    "tasks.task_overdue": {
+      "en": { "title": "Task overdue", "body": "A task assigned to you is overdue." },
+      "es": { "title": "Tarea vencida", "body": "Una tarea asignada está vencida." }
+    },
+    "tasks.attachment_rejected": {
+      "en": { "title": "Task attachment rejected", "body": "Review the rejected attachment and the requested changes." },
+      "es": { "title": "Adjunto de tarea rechazado", "body": "Revisa el adjunto rechazado y los cambios solicitados." }
+    },
+    "tasks.client_request_created": {
+      "en": { "title": "New request from your office", "body": "Open the request to see what is needed." },
+      "es": { "title": "Nueva solicitud de tu oficina", "body": "Abre la solicitud para ver lo que se necesita." }
+    },
+    "tasks.client_request_fulfilled": {
+      "en": { "title": "Client request fulfilled", "body": "The requested items are ready for review." },
+      "es": { "title": "Solicitud del cliente completada", "body": "Los elementos solicitados están listos para revisión." }
+    },
+    "tasks.client_request_document_rejected": {
+      "en": { "title": "Document needs changes", "body": "Your office rejected a document in this request." },
+      "es": { "title": "Un documento necesita cambios", "body": "Tu oficina rechazó un documento de esta solicitud." }
+    },
+    "tasks.waiting_on_client": {
+      "en": { "title": "Task waiting on you", "body": "Your office needs information to continue this task." },
+      "es": { "title": "Tarea esperando tu respuesta", "body": "Tu oficina necesita información para continuar esta tarea." }
+    },
+    "reminders.due": {
+      "en": { "title": "Reminder due", "body": "A scheduled reminder is due." },
+      "es": { "title": "Recordatorio pendiente", "body": "Un recordatorio programado está pendiente." }
+    },
+    "calendar.appointment_scheduled": {
+      "en": { "title": "Appointment scheduled", "body": "A new appointment was added to your calendar." },
+      "es": { "title": "Cita programada", "body": "Se agregó una nueva cita a tu calendario." }
+    },
+    "calendar.attendee_added": {
+      "en": { "title": "Added to an appointment", "body": "You were added as an appointment attendee." },
+      "es": { "title": "Agregado a una cita", "body": "Fuiste agregado como participante de una cita." }
+    },
+    "calendar.booking_requested": {
+      "en": { "title": "Booking request", "body": "A client asked for an appointment. Approve it, assign it or decline it." },
+      "es": { "title": "Solicitud de cita", "body": "Un cliente pidió una cita. Apruébala, asígnala o recházala." }
+    },
+    "calendar.booking_confirmed": {
+      "en": { "title": "Appointment confirmed", "body": "Your office confirmed the appointment you asked for." },
+      "es": { "title": "Cita confirmada", "body": "Tu oficina confirmó la cita que pediste." }
+    },
+    "calendar.booking_declined": {
+      "en": { "title": "Appointment not confirmed", "body": "Your office could not confirm the time you asked for." },
+      "es": { "title": "Cita no confirmada", "body": "Tu oficina no pudo confirmar la hora que pediste." }
+    },
+    "calendar.appointment_booked_online": {
+      "en": { "title": "Booked online by a client", "body": "A client booked an appointment with you from the portal." },
+      "es": { "title": "Reservada en línea por un cliente", "body": "Un cliente reservó una cita contigo desde el portal." }
+    },
+    "calendar.appointment_updated": {
+      "en": { "title": "Appointment updated", "body": "The appointment details were changed." },
+      "es": { "title": "Cita actualizada", "body": "Se cambiaron los detalles de la cita." }
+    },
+    "calendar.appointment_rescheduled": {
+      "en": { "title": "Appointment rescheduled", "body": "The appointment time was changed." },
+      "es": { "title": "Cita reprogramada", "body": "Se cambió la hora de la cita." }
+    },
+    "calendar.appointment_cancelled": {
+      "en": { "title": "Appointment canceled", "body": "An appointment was canceled." },
+      "es": { "title": "Cita cancelada", "body": "Se canceló una cita." }
+    },
+    "calendar.attendee_responded": {
+      "en": { "title": "Appointment response received", "body": "An attendee responded to the appointment." },
+      "es": { "title": "Respuesta de cita recibida", "body": "Un participante respondió a la cita." }
+    },
+    "calendar.appointment_starting_soon": {
+      "en": { "title": "Appointment starting soon", "body": "Your appointment will begin soon." },
+      "es": { "title": "La cita comenzará pronto", "body": "Tu cita comenzará pronto." }
+    },
+    "communication.meeting.invitation_created": {
+      "en": { "title": "Meeting invitation", "body": "You were invited to a meeting." },
+      "es": { "title": "Invitación a reunión", "body": "Fuiste invitado a una reunión." }
+    },
+    "communication.chat.messages_missed": {
+      "en": { "title": "New message", "body": "1 unread message in a conversation.", "titleMany": "New messages", "bodyMany": "{count} unread messages in a conversation." },
+      "es": { "title": "Mensaje nuevo", "body": "1 mensaje sin leer en una conversación.", "titleMany": "Mensajes nuevos", "bodyMany": "{count} mensajes sin leer en una conversación." }
+    },
+    "communication.call.missed": {
+      "en": { "title": "Missed call", "body": "You missed a call.", "titleMany": "{count} missed calls", "bodyMany": "You missed several calls from this contact." },
+      "es": { "title": "Llamada perdida", "body": "Perdiste una llamada.", "titleMany": "{count} llamadas perdidas", "bodyMany": "Perdiste varias llamadas de este contacto." }
+    },
+    "communication.call.recording_ready": {
+      "en": { "title": "Call recording ready", "body": "The call recording is ready to review." },
+      "es": { "title": "Grabación de llamada lista", "body": "La grabación de la llamada está lista para revisar." }
+    },
+    "communication.call.recording_failed": {
+      "en": { "title": "Call recording failed", "body": "The call recording could not be processed." },
+      "es": { "title": "Falló la grabación de la llamada", "body": "No se pudo procesar la grabación de la llamada." }
+    },
+    "communication.meeting.recording_ready": {
+      "en": { "title": "Meeting recording ready", "body": "The meeting recording is ready to review." },
+      "es": { "title": "Grabación de reunión lista", "body": "La grabación de la reunión está lista para revisar." }
+    },
+    "communication.meeting.recording_failed": {
+      "en": { "title": "Meeting recording failed", "body": "The meeting recording could not be processed." },
+      "es": { "title": "Falló la grabación de la reunión", "body": "No se pudo procesar la grabación de la reunión." }
+    },
+    "communication.support.opened": {
+      "en": { "title": "New support ticket: {subject}", "body": "A tenant opened a support ticket." },
+      "es": { "title": "Nuevo ticket de soporte: {subject}", "body": "Un tenant abrió un ticket de soporte." }
+    },
+    "communication.support.message_received": {
+      "en": { "title": "New message on a support ticket", "body": "Open the ticket to reply." },
+      "es": { "title": "Mensaje nuevo en un ticket de soporte", "body": "Abre el ticket para responder." }
+    },
+    "communication.support.reply_received": {
+      "en": { "title": "Support replied to your ticket", "body": "Open the ticket to read the reply." },
+      "es": { "title": "Soporte respondió tu ticket", "body": "Abre el ticket para leer la respuesta." }
+    },
+    "communication.support.claimed": {
+      "en": { "title": "Support is working on your ticket", "body": "An agent picked up your ticket." },
+      "es": { "title": "Soporte está atendiendo tu ticket", "body": "Un agente tomó tu ticket." }
+    },
+    "communication.support.resolved": {
+      "en": { "title": "Your support ticket was resolved", "body": "Reopen it if you still need help." },
+      "es": { "title": "Tu ticket de soporte se resolvió", "body": "Reábrelo si todavía necesitas ayuda." }
+    },
+    "communication.support.closed": {
+      "en": { "title": "Your support ticket was closed", "body": "The ticket is closed." },
+      "es": { "title": "Tu ticket de soporte se cerró", "body": "El ticket está cerrado." }
+    },
+    "auth.security_alert": {
+      "en": { "title": "Security alert", "body": "Review recent security activity on your account." },
+      "es": { "title": "Alerta de seguridad", "body": "Revisa la actividad de seguridad reciente de tu cuenta." }
+    },
+    "auth.user_slot_gated": {
+      "en": { "title": "User access paused", "body": "A user needs an available seat to regain access." },
+      "es": { "title": "Acceso de usuario pausado", "body": "Un usuario necesita un asiento disponible para recuperar el acceso." }
+    },
+    "auth.user_slot_unlocked": {
+      "en": { "title": "User access restored", "body": "A seat became available and access was restored." },
+      "es": { "title": "Acceso de usuario restaurado", "body": "Un asiento quedó disponible y se restauró el acceso." }
+    },
+    "subscription.status_changed": {
+      "en": { "title": "Subscription action required", "body": "Review the current subscription status." },
+      "es": { "title": "Acción requerida en la suscripción", "body": "Revisa el estado actual de la suscripción." }
+    },
+    "subscription.renewal_upcoming": {
+      "en": { "title": "Subscription renewal upcoming", "body": "Your subscription renewal date is approaching." },
+      "es": { "title": "Renovación de suscripción próxima", "body": "Se acerca la fecha de renovación de tu suscripción." }
+    },
+    "payment_app.payment_method_expiring_soon": {
+      "en": { "title": "Payment method expiring soon", "body": "Update the payment method before it expires." },
+      "es": { "title": "Método de pago por vencer", "body": "Actualiza el método de pago antes de que venza." }
+    },
+    "payment_client.tenant_payment_succeeded": {
+      "en": { "title": "Payment received", "body": "A tenant payment was completed successfully." },
+      "es": { "title": "Pago recibido", "body": "Un pago del tenant se completó correctamente." }
+    },
+    "payment_client.payout_failed": {
+      "en": { "title": "Payout failed", "body": "Review the payout failure and payment settings." },
+      "es": { "title": "Falló el desembolso", "body": "Revisa el fallo del desembolso y la configuración de pagos." }
+    },
+    "payment_client.connect_account_restricted": {
+      "en": { "title": "Payment account restricted", "body": "Review the payment account restrictions." },
+      "es": { "title": "Cuenta de pagos restringida", "body": "Revisa las restricciones de la cuenta de pagos." }
+    },
+    "payment_client.connect_account_onboarding_required": {
+      "en": { "title": "Payment account setup required", "body": "Complete the payment account setup." },
+      "es": { "title": "Configuración de pagos requerida", "body": "Completa la configuración de la cuenta de pagos." }
+    },
+    "billing.invoice_sent_to_customer": {
+      "en": { "title": "New invoice", "body": "Your office sent you an invoice." },
+      "es": { "title": "Nueva factura", "body": "Tu oficina te envió una factura." }
+    },
+    "billing.invoice_paid": {
+      "en": { "title": "Invoice {invoiceNumber} paid", "body": "{amount} received for this invoice." },
+      "es": { "title": "Factura {invoiceNumber} pagada", "body": "Se recibieron {amount} de esta factura." }
+    },
+    "billing.invoice_payment_rejected": {
+      "en": { "title": "Payment of {amount} not applied", "body": "A payment could not be matched to its invoice. Review it in Billing." },
+      "es": { "title": "Cobro de {amount} sin aplicar", "body": "Un cobro no se pudo aplicar a su factura. Revísalo en Facturación." }
+    },
+    "financial.import_batch.completed": {
+      "en": { "title": "Bank statements analyzed", "body": "{completedDocuments} of {totalDocuments} statements completed · {needsReviewDocuments} to review · {failedDocuments} failed · {rejectedDocuments} rejected." },
+      "es": { "title": "Estados de cuenta analizados", "body": "{completedDocuments} de {totalDocuments} estados completados · {needsReviewDocuments} por revisar · {failedDocuments} con error · {rejectedDocuments} rechazados." }
+    },
+    "financial.portal_import_batch.completed": {
+      "en": { "title": "Your bank statements were processed", "body": "{completedDocuments} of {totalDocuments} statements processed. Your tax office will review the results." },
+      "es": { "title": "Tus estados de cuenta fueron procesados", "body": "{completedDocuments} de {totalDocuments} estados de cuenta procesados. Tu oficina revisará los resultados." }
+    },
+    "financial.portal_import_batch.submitted": {
+      "en": { "title": "Client sent bank statements", "body": "A client submitted {totalDocuments} statements for Financial Insights." },
+      "es": { "title": "Un cliente envió estados de cuenta", "body": "Un cliente envió {totalDocuments} estados de cuenta para Financial Insights." }
+    },
+    "wallet.low_balance": {
+      "serverText": true,
+      "es": { "title": "Saldo bajo en el monedero", "body": "Tu saldo está por debajo del aviso. Agrega fondos para seguir enviando." }
+    },
+    "wallet.auto_recharge_succeeded": {
+      "serverText": true,
+      "es": { "title": "Recarga automática realizada", "body": "Recargamos tu monedero automáticamente. Revisa el recibo en Wallet." }
+    },
+    "wallet.auto_recharge_paused": {
+      "serverText": true,
+      "es": { "title": "Recarga automática en pausa", "body": "No pudimos cobrar la recarga automática y no se reintentará sola. Revísala en Settings → Wallet." }
+    },
+    "wallet.auto_recharge_daily_limit": {
+      "serverText": true,
+      "es": { "title": "Tope diario de recargas alcanzado", "body": "Tu monedero llegó al máximo de recargas automáticas de hoy. Sigue mañana." }
+    },
+    "documents.generation_failed": {
+      "en": { "title": "Document generation failed", "body": "Review the failed document and try again." },
+      "es": { "title": "Falló la generación del documento", "body": "Revisa el documento fallido e intenta nuevamente." }
+    },
+    "tasks.form_request_assigned": {
+      "en": { "title": "Your tax office requested information", "body": "{title}" },
+      "es": { "title": "Tu oficina te pidió información", "body": "{title}" }
+    },
+    "tasks.form_request_submitted": {
+      "en": { "title": "{customerName} submitted a form", "body": "{title}" },
+      "es": { "title": "{customerName} envió un formulario", "body": "{title}" }
+    },
+    "tasks.form_request_returned": {
+      "en": { "title": "Your tax office requested changes", "body": "Open the form to read the notes from your office." },
+      "es": { "title": "Tu oficina pidió cambios", "body": "Abre el formulario para leer las notas de tu oficina." }
+    },
+    "tasks.form_request_completed": {
+      "en": { "title": "Your form was received", "body": "{title}" },
+      "es": { "title": "Recibimos tu formulario", "body": "{title}" }
+    },
+    "tasks.form_request_cancelled": {
+      "en": { "title": "A form request was canceled", "body": "{title}" },
+      "es": { "title": "Se canceló una solicitud de formulario", "body": "{title}" }
+    },
+    "tasks.form_attachment_rejected": {
+      "en": { "title": "A file needs your attention", "body": "A file you uploaded for {title} could not be accepted. Upload it again." },
+      "es": { "title": "Un archivo necesita tu atención", "body": "No pudimos aceptar un archivo que subiste para {title}. Vuelve a subirlo." }
+    },
+    "tasks.form_attachment_rejected_staff": {
+      "en": { "title": "A client file was rejected", "body": "{title}" },
+      "es": { "title": "Se rechazó un archivo del cliente", "body": "{title}" }
+    },
+    "tasks.form_request_reminder": {
+      "en": { "title": "Form reminder", "body": "{title}" },
+      "es": { "title": "Recordatorio de formulario", "body": "{title}" }
+    },
+    "tasks.form_action_failed": {
+      "en": { "title": "A form action needs attention", "body": "{actionType}" },
+      "es": { "title": "Una acción del formulario necesita atención", "body": "{actionType}" }
+    },
+    "communication.meeting.invitation_revoked": {
+      "en": { "title": "Your invitation to {meetingTitle} was revoked", "body": "You can no longer join this meeting." },
+      "es": { "title": "Se revocó tu invitación a {meetingTitle}", "body": "Ya no puedes unirte a esta reunión." }
+    },
+    "communication.meeting.cancelled": {
+      "en": { "title": "{meetingTitle} was canceled", "body": "This meeting will no longer take place." },
+      "es": { "title": "Se canceló {meetingTitle}", "body": "Esta reunión ya no se realizará." }
+    },
+    "communication.meeting.rescheduled": {
+      "en": { "title": "{meetingTitle} was rescheduled", "body": "New time: {scheduledForUtc|datetime}." },
+      "es": { "title": "Se reprogramó {meetingTitle}", "body": "Nueva hora: {scheduledForUtc|datetime}." }
+    },
+    "communication.meeting.reminder": {
+      "en": { "title": "{meetingTitle} starts in {minutesBefore} min", "body": "Get ready to join." },
+      "es": { "title": "{meetingTitle} empieza en {minutesBefore} min", "body": "Prepárate para unirte." }
+    },
+    "communication.chat.group_member_added": {
+      "en": { "title": "Added to {group}", "body": "{actorName} added you to {group}." },
+      "es": { "title": "Te agregaron a {group}", "body": "{actorName} te agregó a {group}." }
+    },
+    "subscription.discount_ending": {
+      "en": { "title": "Your discount ends soon", "body": "Your {discountLabel} discount ends soon. Days left: {daysLeft}. After that, your plan renews at its regular price." },
+      "es": { "title": "Tu descuento termina pronto", "body": "Tu descuento de {discountLabel} termina pronto. Días restantes: {daysLeft}. Después, tu plan se renueva a su precio normal." }
+    },
+    "growth.referral_attributed": {
+      "en": { "title": "Someone signed up with your referral code", "body": "A new office registered with your code. You earn your reward in the Wallet when they pay their plan." },
+      "es": { "title": "Alguien se registró con tu código de referido", "body": "Una oficina nueva se registró con tu código. Recibes tu premio en el Wallet cuando pague su plan." }
+    },
+    "growth.referral_qualified": {
+      "en": { "title": "Your referral paid their plan", "body": "Your reward reaches your Wallet after the waiting period." },
+      "es": { "title": "Tu referido pagó su plan", "body": "Tu premio llega a tu Wallet después del periodo de espera." }
+    },
+    "growth.referral_reward_granted": {
+      "en": { "title": "Your referral reward is in your Wallet", "body": "{amount} was added to your Wallet." },
+      "es": { "title": "Tu premio de referido está en tu Wallet", "body": "Se agregaron {amount} a tu Wallet." }
+    },
+    "growth.referral_reward_rejected": {
+      "en": { "title": "A referral reward was canceled", "body": "This reward won't be paid." },
+      "es": { "title": "Se canceló un premio de referido", "body": "Este premio no se pagará." }
+    },
+    "growth.referral_reward_reversed": {
+      "en": { "title": "A referral reward was reversed", "body": "{amount} was removed from your Wallet because the referred office's payment was refunded or disputed." },
+      "es": { "title": "Se revirtió un premio de referido", "body": "Se quitaron {amount} de tu Wallet porque el pago de la oficina referida se reembolsó o se disputó." }
+    },
+    "tenant.wisp_review_due": {
+      "en": { "title": "Security plan review due {dueOn|date}", "body": "The FTC Safeguards Rule requires reviewing your written information security plan (WISP) at least once a year. Mark it reviewed in Office settings → Compliance." },
+      "es": { "title": "Revisión del plan de seguridad: vence el {dueOn|date}", "body": "La Safeguards Rule de la FTC exige revisar tu plan escrito de seguridad de la información (WISP) al menos una vez al año. Márcalo como revisado en Office settings → Compliance." }
+    },
+    "tenant.security_coordinator_vacated": {
+      "en": { "title": "Your office needs a new security coordinator", "body": "The person designated as your security coordinator is no longer with your office, so the role is now vacant. The FTC Safeguards Rule requires one. Choose a new coordinator in Office settings → Compliance." },
+      "es": { "title": "Tu oficina necesita un nuevo coordinador de seguridad", "body": "La persona designada como coordinador de seguridad ya no está en tu oficina, así que el puesto quedó vacante. La Safeguards Rule de la FTC exige uno. Elige un nuevo coordinador en Office settings → Compliance." }
+    },
+    "campaigns.schedules_paused_on_offboarding": {
+      "en": { "title": "A scheduled campaign was paused", "body": "It was scheduled by someone who's no longer with your office, so it won't send. Cancel it or schedule it again in Campaigns.", "titleMany": "{count} scheduled campaigns were paused", "bodyMany": "They were scheduled by someone who's no longer with your office, so they won't send. Cancel them or schedule them again in Campaigns." },
+      "es": { "title": "Se pausó una campaña programada", "body": "La programó alguien que ya no está en tu oficina, así que no se enviará. Cancélala o vuelve a programarla en Campaigns.", "titleMany": "Se pausaron {count} campañas programadas", "bodyMany": "Las programó alguien que ya no está en tu oficina, así que no se enviarán. Cancélalas o vuelve a programarlas en Campaigns." }
+    },
+    "signature.preparer.attention_required": {
+      "en": { "title": "A signature request needs your attention", "body": "Someone who worked on this signature request is no longer with your office. Open it to see what needs to change." },
+      "es": { "title": "Una solicitud de firma necesita tu atención", "body": "Alguien que trabajó en esta solicitud de firma ya no está en tu oficina. Ábrela para ver qué hay que cambiar." }
+    },
+    "signature.preparer.changed": {
+      "en": { "title": "Signature request preparer changed", "body": "{preparerName} is now the preparer of this signature request." },
+      "es": { "title": "Cambió el preparador de una solicitud de firma", "body": "{preparerName} ahora es el preparador de esta solicitud de firma." }
+    },
+    "cloudstorage.connection.review_required": {
+      "en": { "title": "Reconnect your office's {provider} connection", "body": "Your office's {provider} connection is linked to someone who's no longer with your office. Reconnect it with an account that belongs to your office, or disconnect it." },
+      "es": { "title": "Reconecta la conexión de {provider} de tu oficina", "body": "La conexión de {provider} de tu oficina está vinculada a alguien que ya no está en tu oficina. Reconéctala con una cuenta de tu oficina o desconéctala." }
+    },
+    "connectors.office_mailbox.review_required": {
+      "en": { "title": "Reconnect the office mailbox {mailbox}", "body": "The office mailbox {mailbox} is linked to someone who's no longer with your office. Reconnect it with an account your office controls, or disconnect it." },
+      "es": { "title": "Reconecta el buzón de la oficina {mailbox}", "body": "El buzón de la oficina {mailbox} está vinculado a alguien que ya no está en tu oficina. Reconéctalo con una cuenta que controle tu oficina o desconéctalo." }
+    },
+    "auth.offboarding.incomplete": {
+      "en": { "title": "{userName}'s offboarding didn't finish", "body": "{userName} was offboarded, but these areas haven't confirmed the handover yet: {pendingModules}. Some of their work or access there may still be active. Review it, and contact support if it doesn't clear up." },
+      "es": { "title": "El retiro de {userName} no terminó", "body": "{userName} fue retirado, pero estas áreas aún no confirmaron el traspaso: {pendingModules}. Parte de su trabajo o acceso puede seguir activo. Revísalo y contacta a soporte si no se resuelve." }
+    }
+  },
+  "aliases": {
+    "support.ticket.opened": "communication.support.opened"
+  },
+  "push": {
+    "tasks.task_overdue": {
+      "en": { "title": "Task overdue", "body": "A task assigned to you is past its due date." },
+      "es": { "title": "Tarea vencida", "body": "Una tarea asignada a ti pasó su fecha de vencimiento." }
+    },
+    "tasks.attachment_rejected": {
+      "en": { "title": "File rejected", "body": "A file on one of your tasks did not pass the security scan." },
+      "es": { "title": "Archivo rechazado", "body": "Un archivo de una de tus tareas no pasó el análisis de seguridad." }
+    },
+    "tasks.client_request_fulfilled": {
+      "en": { "title": "Client request fulfilled", "body": "A client uploaded the documents you asked for." },
+      "es": { "title": "Solicitud del cliente completada", "body": "Un cliente subió los documentos que pediste." }
+    },
+    "cloudstorage.file.infected": {
+      "en": { "title": "File blocked", "body": "A file was blocked by the security scan." },
+      "es": { "title": "Archivo bloqueado", "body": "El análisis de seguridad bloqueó un archivo." }
+    },
+    "cloudstorage.storage_limit_exceeded": {
+      "en": { "title": "Storage limit reached", "body": "Your office reached its storage limit." },
+      "es": { "title": "Límite de almacenamiento alcanzado", "body": "Tu oficina alcanzó su límite de almacenamiento." }
+    },
+    "reminders.due": {
+      "en": { "title": "Reminder", "body": "You have a reminder due." },
+      "es": { "title": "Recordatorio", "body": "Tienes un recordatorio pendiente." }
+    },
+    "calendar.appointment_scheduled": {
+      "en": { "title": "New appointment", "body": "Open your calendar for the details." },
+      "es": { "title": "Nueva cita", "body": "Abre tu calendario para ver los detalles." }
+    },
+    "calendar.appointment_booked_online": {
+      "en": { "title": "New online booking", "body": "Open your calendar for the details." },
+      "es": { "title": "Nueva reserva en línea", "body": "Abre tu calendario para ver los detalles." }
+    },
+    "calendar.attendee_added": {
+      "en": { "title": "Added to an appointment", "body": "Open your calendar for the details." },
+      "es": { "title": "Te agregaron a una cita", "body": "Abre tu calendario para ver los detalles." }
+    },
+    "calendar.booking_requested": {
+      "en": { "title": "Booking request", "body": "Approve it, assign it or decline it." },
+      "es": { "title": "Solicitud de cita", "body": "Apruébala, asígnala o recházala." }
+    },
+    "calendar.appointment_updated": {
+      "en": { "title": "Appointment updated", "body": "Open your calendar for the details." },
+      "es": { "title": "Cita actualizada", "body": "Abre tu calendario para ver los detalles." }
+    },
+    "calendar.appointment_rescheduled": {
+      "en": { "title": "Appointment rescheduled", "body": "The time changed. Open your calendar." },
+      "es": { "title": "Cita reprogramada", "body": "Cambió la hora. Abre tu calendario." }
+    },
+    "calendar.appointment_cancelled": {
+      "en": { "title": "Appointment cancelled", "body": "It was taken off your calendar." },
+      "es": { "title": "Cita cancelada", "body": "Se quitó de tu calendario." }
+    },
+    "calendar.appointment_starting_soon": {
+      "en": { "title": "Your appointment starts soon", "body": "It starts in a few minutes." },
+      "es": { "title": "Tu cita empieza pronto", "body": "Empieza en unos minutos." }
+    },
+    "communication.support.opened": {
+      "en": { "title": "New support ticket", "body": "Open the support queue to review it." },
+      "es": { "title": "Nuevo ticket de soporte", "body": "Abre la cola de soporte para revisarlo." }
+    },
+    "communication.support.message_received": {
+      "en": { "title": "Support", "body": "New message on a support ticket." },
+      "es": { "title": "Soporte", "body": "Nuevo mensaje en un ticket de soporte." }
+    },
+    "communication.chat.message": {
+      "en": { "title": "New message", "body": "You have a new message." },
+      "es": { "title": "Nuevo mensaje", "body": "Tienes un mensaje nuevo." }
+    },
+    "communication.call.incoming": {
+      "en": { "title": "Incoming call", "body": "You have an incoming call." },
+      "es": { "title": "Llamada entrante", "body": "Tienes una llamada entrante." }
+    },
+    "communication.call.incoming.video": {
+      "en": { "title": "Incoming call", "body": "Your office is calling with video." },
+      "es": { "title": "Llamada entrante", "body": "Tu oficina te llama por video." }
+    }
+  },
+  "sms": {
+    "auth.mfa_code": {
+      "en": "{brand}: your code is {code}. It expires in a few minutes. Do not share it.",
+      "es": "{brand}: tu codigo es {code}. Vence en pocos minutos. No lo compartas."
+    },
+    "signature.invited": {
+      "en": "{brand}: {fullName}, you have a document to sign. Open it here: {link}",
+      "es": "{brand}: {fullName}, tienes un documento para firmar. Ábrelo aquí: {link}"
+    },
+    "signature.reminder": {
+      "en": "{brand}: {fullName}, you still have a document to sign. Sign it here: {link}",
+      "es": "{brand}: {fullName}, tienes un documento pendiente de firmar. Fírmalo aquí: {link}"
+    },
+    "signature.certificate_ready": {
+      "en": "{brand}: {fullName}, your signature certificate is ready. Download it: {link}",
+      "es": "{brand}: {fullName}, tu certificado de firma está listo. Descárgalo: {link}"
+    },
+    "signature.certificate_ready.document": {
+      "en": "{brand}: {fullName}, the certificate for {documentTitle} is ready. Download it: {link}",
+      "es": "{brand}: {fullName}, el certificado de {documentTitle} está listo. Descárgalo: {link}"
+    },
+    "signature.ready_for_download": {
+      "en": "{brand}: {fullName}, your signed documents are ready. {links}",
+      "es": "{brand}: {fullName}, tus documentos firmados están listos. {links}"
+    },
+    "signature.delivery_ready": {
+      "en": "{brand}: {fullName}, your signed documents are ready: {link}",
+      "es": "{brand}: {fullName}, tus documentos firmados están listos: {link}"
+    },
+    "signature.delivery_ready.partial": {
+      "en": "{brand}: {fullName}, your signed copy is ready: {link}",
+      "es": "{brand}: {fullName}, tu copia firmada está lista: {link}"
+    }
+  },
+  "email": {
+    "task.document_rejected.client_message": {
+      "en": "We couldn't process this file. Please upload it again.",
+      "es": "No pudimos procesar este archivo. Vuelve a subirlo, por favor."
+    },
+    "reminder.body.generic": {
+      "en": "You have a reminder.",
+      "es": "Tienes un recordatorio."
+    },
+    "reminder.body.scheduled": {
+      "en": "Scheduled for {date}.",
+      "es": "Programado para el {date}."
+    },
+    "calendar.series_schedule": {
+      "en": "Follows the series schedule",
+      "es": "Sigue el horario de la serie"
+    },
+    "meeting.untitled": {
+      "en": "Meeting",
+      "es": "Reunión"
+    },
+    "auth.account.client": {
+      "en": "your client portal account",
+      "es": "tu cuenta del portal de clientes"
+    },
+    "auth.account.staff": {
+      "en": "your {brand} workspace account",
+      "es": "tu cuenta de {brand}"
+    },
+    "auth.security_alert.password_changed": {
+      "en": "The password of {account} was changed.",
+      "es": "Se cambió la contraseña de {account}."
+    },
+    "auth.security_alert.mfa_disabled": {
+      "en": "Two-step verification was turned off on {account}.",
+      "es": "Se desactivó la verificación en dos pasos de {account}."
+    },
+    "auth.security_alert.account_locked_out": {
+      "en": "{accountStart} was locked after several failed sign-in attempts.",
+      "es": "{accountStart} quedó bloqueada tras varios intentos fallidos de inicio de sesión."
+    },
+    "auth.security_alert.token_reuse_detected": {
+      "en": "We detected unusual session activity on {account} and signed you out everywhere.",
+      "es": "Detectamos actividad inusual en las sesiones de {account} y cerramos tu sesión en todos los dispositivos."
+    },
+    "auth.security_alert.refresh_token_host_mismatch": {
+      "en": "A session of {account} was used from an unexpected address and was closed.",
+      "es": "Una sesión de {account} se usó desde una dirección inesperada y la cerramos."
+    },
+    "auth.security_alert.email_changed": {
+      "en": "The email address of {account} was changed.",
+      "es": "Se cambió el correo electrónico de {account}."
+    },
+    "auth.security_alert.other": {
+      "en": "We noticed important security activity on {account}.",
+      "es": "Detectamos actividad de seguridad importante en {account}."
+    },
+    "auth.email_change_requested.client": {
+      "en": "Someone asked to change the email of your client portal account at {office} to {newEmail}.",
+      "es": "Alguien pidió cambiar el correo de tu cuenta del portal de clientes de {office} a {newEmail}."
+    },
+    "auth.email_change_requested.staff": {
+      "en": "Someone asked to change the email of your {office} workspace account to {newEmail}.",
+      "es": "Alguien pidió cambiar el correo de tu cuenta de {office} a {newEmail}."
+    },
+    "plan.fallback": {
+      "en": "your plan",
+      "es": "tu plan"
+    },
+    "subscription.item_fallback": {
+      "en": "your subscription",
+      "es": "tu suscripción"
+    },
+    "charge_failure.generic": {
+      "en": "The payment could not be completed.",
+      "es": "No se pudo completar el pago."
+    },
+    "charge_failure.no_payment_method": {
+      "en": "There is no payment method on file for automatic payments.",
+      "es": "No hay un método de pago guardado para los pagos automáticos."
+    },
+    "charge_failure.insufficient_funds": {
+      "en": "The card doesn't have enough available funds.",
+      "es": "La tarjeta no tiene fondos suficientes."
+    },
+    "charge_failure.card_expired": {
+      "en": "The card on file has expired.",
+      "es": "La tarjeta guardada está vencida."
+    },
+    "charge_failure.cvc": {
+      "en": "The card's security code was not accepted.",
+      "es": "No se aceptó el código de seguridad de la tarjeta."
+    },
+    "charge_failure.card_unusable": {
+      "en": "The card on file can no longer be used.",
+      "es": "La tarjeta guardada ya no se puede usar."
+    },
+    "charge_failure.authentication": {
+      "en": "Your bank asked for an extra confirmation that can't be completed automatically.",
+      "es": "Tu banco pidió una confirmación adicional que no se puede completar automáticamente."
+    },
+    "charge_failure.processor": {
+      "en": "The payment processor had a temporary problem.",
+      "es": "El procesador de pagos tuvo un problema temporal."
+    },
+    "charge_failure.declined": {
+      "en": "Your bank declined the charge.",
+      "es": "Tu banco rechazó el cobro."
+    },
+    "charge_failure_effect.subscription_suspended": {
+      "en": "your subscription has been suspended and your team can no longer sign in",
+      "es": "tu suscripción se suspendió y tu equipo ya no puede iniciar sesión"
+    },
+    "charge_failure_effect.seat_suspended": {
+      "en": "the user seat has been suspended and the person assigned to it can no longer sign in",
+      "es": "el puesto de usuario se suspendió y la persona asignada ya no puede iniciar sesión"
+    },
+    "charge_failure_effect.add_on_suspended": {
+      "en": "{addOn} has been paused",
+      "es": "{addOn} quedó en pausa"
+    },
+    "charge_failure_effect.add_on": {
+      "en": "the {item}",
+      "es": "{item}"
+    },
+    "charge_failure_effect.add_on_generic": {
+      "en": "the add-on",
+      "es": "el complemento"
+    },
+    "charge_failure_effect.on_hold": {
+      "en": "the service will remain on hold until the payment is completed",
+      "es": "el servicio seguirá en pausa hasta que se complete el pago"
+    },
+    "referral.reward_fallback": {
+      "en": "Your reward",
+      "es": "Tu premio"
+    },
+    "wallet.paused.payment_failed": {
+      "en": "We couldn't charge {method} for your {amount} automatic recharge.",
+      "es": "No pudimos cobrar a {method} tu recarga automática de {amount}."
+    },
+    "wallet.paused.method_unavailable": {
+      "en": "Your saved payment method {method} is no longer available, so we couldn't run your {amount} automatic recharge.",
+      "es": "Tu método de pago guardado {method} ya no está disponible, así que no pudimos hacer tu recarga automática de {amount}."
+    },
+    "wallet.paused.other": {
+      "en": "We couldn't run your {amount} automatic recharge with {method}.",
+      "es": "No pudimos hacer tu recarga automática de {amount} con {method}."
+    }
+  }
+}

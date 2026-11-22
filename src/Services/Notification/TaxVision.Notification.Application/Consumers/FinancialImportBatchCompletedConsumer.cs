@@ -4,8 +4,6 @@ using BuildingBlocks.Messaging.FinancialInsightsIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -178,39 +176,35 @@ public static class FinancialImportBatchCompletedConsumer
         string body,
         CancellationToken ct
     ) =>
-        dispatcher.RecordInAppAsync(
-            evt.TenantId,
-            NotificationRecipient.ForUser(userId),
-            title,
-            NotificationCategory.DocumentsAndSignatures,
-            kind,
-            evt.EventId,
-            correlation.CorrelationId,
-            recipientUserId: userId,
-            inApp: new InAppNotificationRequest(
+        dispatcher.DispatchAsync(
+            new NotificationIntent(
                 kind,
-                userId,
+                evt.TenantId,
+                new NotificationTarget(userId),
                 evt.EventId,
                 SourceEventType,
                 evt.CompletedAtUtc,
-                title,
-                FallbackBody: body,
-                ResourceId: evt.BatchId.ToString(),
-                ResourceContext: new Dictionary<string, string>
-                {
-                    ["batchId"] = evt.BatchId.ToString(),
-                    ["customerId"] = evt.CustomerId.ToString(),
-                },
-                Params: new Dictionary<string, string>
-                {
-                    ["completedDocuments"] = evt.CompletedDocuments.ToString(),
-                    ["needsReviewDocuments"] = evt.NeedsReviewDocuments.ToString(),
-                    ["failedDocuments"] = evt.FailedDocuments.ToString(),
-                    ["rejectedDocuments"] = evt.RejectedDocuments.ToString(),
-                    ["totalDocuments"] = TotalDocuments(evt).ToString(),
-                }
+                correlation.CorrelationId,
+                InApp: new InAppContent(
+                    Params: new Dictionary<string, string>
+                    {
+                        ["completedDocuments"] = evt.CompletedDocuments.ToString(),
+                        ["needsReviewDocuments"] = evt.NeedsReviewDocuments.ToString(),
+                        ["failedDocuments"] = evt.FailedDocuments.ToString(),
+                        ["rejectedDocuments"] = evt.RejectedDocuments.ToString(),
+                        ["totalDocuments"] = TotalDocuments(evt).ToString(),
+                    },
+                    ResourceId: evt.BatchId.ToString(),
+                    ResourceContext: new Dictionary<string, string>
+                    {
+                        ["batchId"] = evt.BatchId.ToString(),
+                        ["customerId"] = evt.CustomerId.ToString(),
+                    },
+                    FallbackTitle: title,
+                    FallbackBody: body
+                )
             ),
-            ct: ct
+            ct
         );
 
     private static bool NeedsAttention(FinancialImportBatchCompletedIntegrationEvent evt) =>

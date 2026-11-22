@@ -13,12 +13,14 @@ namespace Internal.Generated.WolverineHandlers
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly System.TimeProvider _timeProvider;
         private readonly TaxVision.Referrals.Application.Abstractions.IReferralCodeTokenHasher _referralCodeTokenHasher;
+        private readonly TaxVision.Referrals.Application.Abstractions.IReferralNoticeEvents _referralNoticeEvents;
 
-        public CreateReferralAttributionCommandHandler933253514(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.TimeProvider timeProvider, TaxVision.Referrals.Application.Abstractions.IReferralCodeTokenHasher referralCodeTokenHasher)
+        public CreateReferralAttributionCommandHandler933253514(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.TimeProvider timeProvider, TaxVision.Referrals.Application.Abstractions.IReferralCodeTokenHasher referralCodeTokenHasher, TaxVision.Referrals.Application.Abstractions.IReferralNoticeEvents referralNoticeEvents)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _timeProvider = timeProvider;
             _referralCodeTokenHasher = referralCodeTokenHasher;
+            _referralNoticeEvents = referralNoticeEvents;
         }
 
 
@@ -27,6 +29,7 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: BuildingBlocks.Tenancy.ITenantContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_0
@@ -59,7 +62,6 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for BuildingBlocks.Tenancy.ITenantContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var referralProgramRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Referrals.Application.Abstractions.IReferralProgramRepository>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var growthDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Growth.Infrastructure.Persistence.GrowthDbContext>(serviceScope.ServiceProvider);
             // The actual message body
@@ -82,11 +84,15 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Referrals.Application.Attributions.CreateReferralAttribution.CreateReferralAttributionHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Referrals.Application.Attributions.CreateReferralAttribution.CreateReferralAttributionHandler.Handle(createReferralAttributionCommand, referralProgramRepository, referralCodeRepository, referralAttributionRepository, _referralCodeTokenHasher, referralIdempotencyExecutor, referralCodeShareRepository, _timeProvider, cancellation).ConfigureAwait(false);
+                (var outgoing1, var outgoing2) = await TaxVision.Referrals.Application.Attributions.CreateReferralAttribution.CreateReferralAttributionHandler.Handle(createReferralAttributionCommand, referralProgramRepository, referralCodeRepository, referralAttributionRepository, _referralCodeTokenHasher, referralIdempotencyExecutor, referralCodeShareRepository, _referralNoticeEvents, _timeProvider, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message
                 await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
+
+                
+                // Outgoing, cascaded message
+                await context.EnqueueCascadingAsync(outgoing2).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

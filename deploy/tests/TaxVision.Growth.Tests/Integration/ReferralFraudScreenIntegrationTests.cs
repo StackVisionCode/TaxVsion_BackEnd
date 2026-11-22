@@ -126,14 +126,15 @@ public sealed class ReferralFraudScreenIntegrationTests : IAsyncLifetime
 
         var tenant = new SwitchableTenant();
         await using var screenDb = _database.NewContext(tenant);
-        var screened = await ScreenReferralHandler.Handle(
-            new ScreenReferralCommand(_onboarding),
+        var (screened, _) = await ScreenReferralHandler.Handle(
+            new ScreenReferralCommand(_onboarding, "corr-screen"),
             new ReferralAttributionRepository(screenDb, tenant),
             new ReferralRewardCaseRepository(screenDb, tenant),
             new ReferralFraudReviewRepository(screenDb, tenant),
             new OfficeOwnerSignalsReader(screenDb),
             tenant,
             screenDb,
+            new TaxVision.Growth.Api.IntegrationEvents.ReferralNoticeEvents(),
             TimeProvider.System,
             CancellationToken.None
         );

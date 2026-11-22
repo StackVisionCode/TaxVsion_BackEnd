@@ -798,7 +798,8 @@ public sealed class NotificationTemplateSeedSourceTests
         Assert.Equal("system-base", seed.LayoutKey);
         Assert.Equal(TemplateChannel.Email, seed.Channel);
         // Versión explícita por encima del default (22) y del WISP (23): sin eso el seeder no la publica.
-        Assert.Equal(24, seed.ContentVersion);
+        // v37: salen en el idioma de quien lee.
+        Assert.True(seed.ContentVersion >= 24, $"ContentVersion {seed.ContentVersion} < 24");
         Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
         // Copy para la oficina: sin "tenant" ni códigos de permisos.
         Assert.DoesNotContain("tenant", seed.Html, StringComparison.OrdinalIgnoreCase);
@@ -920,7 +921,7 @@ public sealed class NotificationTemplateSeedSourceTests
             .ToHashSet();
         Assert.Empty(used.Except(declared));
         // Plantilla nueva: versión explícita por encima de las del retiro (24), si no el seeder no la publica.
-        Assert.Equal(25, seed.ContentVersion);
+        Assert.True(seed.ContentVersion >= 25, $"ContentVersion {seed.ContentVersion} < 25");
         Assert.Equal("system-base", seed.LayoutKey);
         Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
 
@@ -953,7 +954,7 @@ public sealed class NotificationTemplateSeedSourceTests
 
         var html = Parser.Parse(seed.Html).Render(context);
 
-        Assert.Equal("Your office needs a new security coordinator", seed.Subject);
+        Assert.Equal("Your office needs a new security coordinator", Parser.Parse(seed.Subject).Render(context));
         Assert.Contains("FTC Safeguards Rule", html);
         Assert.Contains("Office settings &rarr; Compliance", html);
         Assert.Contains("href=\"https://manfer.taxoffix.io/company/settings#compliance\"", html);

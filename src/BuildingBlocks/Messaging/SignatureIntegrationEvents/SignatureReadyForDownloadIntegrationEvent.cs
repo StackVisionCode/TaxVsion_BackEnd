@@ -3,6 +3,7 @@ using Wolverine.Attributes;
 namespace BuildingBlocks.Messaging.SignatureIntegrationEvents;
 
 /// <summary>
+/// Sin publicador desde 2026-11 (ningún servicio lo emite ni Notification lo consume); se conserva el contrato.
 /// El documento sellado ya está DISPONIBLE en CloudStorage (pasó el scan) y tiene un share-link de
 /// descarga emitido. Signature lo publica desde el consumer de <c>FileAvailableIntegrationEvent</c>
 /// cuando el archivo disponible es el sellado de una request — no antes, porque crear el share-link

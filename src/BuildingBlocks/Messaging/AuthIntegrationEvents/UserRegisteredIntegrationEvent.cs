@@ -20,4 +20,8 @@ public sealed record UserRegisteredIntegrationEvent : IntegrationEvent
     // evento (p.ej. Communication.UserPermissionsProjection).
     public string? Name { get; init; }
     public string? LastName { get; init; }
+
+    // Idioma y zona propios; hoy siempre nulos al registrar (aditivo).
+    public string? Language { get; init; }
+    public string? TimeZoneId { get; init; }
 }

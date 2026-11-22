@@ -7,6 +7,7 @@ using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Mfa;
 using TaxVision.Auth.Application.Offboarding;
+using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Application.Users.Avatars;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Offboarding;
@@ -90,7 +91,7 @@ public static class DeactivateUserHandler
         // A5 (R12) — denylist + anuncio + revocación. Antes denylisteaba y revocaba pero NO anunciaba,
         // así que la pestaña abierta del usuario dado de baja se quedaba con la sesión muerta hasta su
         // siguiente request en vez de recibir el logout al instante.
-        await accessCutoff.ForUserAsync(target, "admin_revoke", ct);
+        var revokedSessions = await accessCutoff.ForUserAsync(target, "admin_revoke", ct);
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -117,6 +118,17 @@ public static class DeactivateUserHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
+        if (revokedSessions > 0)
+            await bus.PublishAsync(
+                SessionEndedEvents.ForUser(
+                    target.TenantId,
+                    target.Id,
+                    null,
+                    "admin_revoke",
+                    DateTime.UtcNow,
+                    correlation.CorrelationId
+                )
+            );
         return Result.Success();
     }
 }
@@ -276,7 +288,7 @@ public static class OffboardUserHandler
         var removedAvatars = target.RemoveAvatar();
 
         // Corta el acceso al instante: mismo camino probado que Deactivate (A5: ahora también anuncia).
-        await accessCutoff.ForUserAsync(target, "admin_revoke", ct);
+        var revokedSessions = await accessCutoff.ForUserAsync(target, "admin_revoke", ct);
         var cleaned = await hygiene.RunAsync(target, command.RequestedByUserId, ct);
 
         // Acuse por servicio: la corrida nace en la misma transacción que el evento, así todo acuse la encuentra.
@@ -323,6 +335,17 @@ public static class OffboardUserHandler
                 CorrelationId = audit.CorrelationId,
             }
         );
+        if (revokedSessions > 0)
+            await bus.PublishAsync(
+                SessionEndedEvents.ForUser(
+                    target.TenantId,
+                    target.Id,
+                    null,
+                    "admin_revoke",
+                    DateTime.UtcNow,
+                    audit.CorrelationId
+                )
+            );
 
         var avatarDeletion = UserAvatarMessages.FilesDeletionRequested(
             target,
@@ -380,7 +403,7 @@ public static class UpdateMyProfileHandler
         if (user is null || !user.IsActive)
             return Result.Failure(new Error("User.NotFound", "User does not exist."));
 
-        var nameChanged = user.Name != command.Name || user.LastName != command.LastName;
+        var before = (user.Name, user.LastName, user.TimeZoneId);
 
         var profileResult = user.UpdateProfile(command.Name, command.LastName);
         if (profileResult.IsFailure)
@@ -389,6 +412,9 @@ public static class UpdateMyProfileHandler
         var timeZoneResult = user.SetTimeZone(command.TimeZoneId);
         if (timeZoneResult.IsFailure)
             return timeZoneResult;
+
+        // Compara ya normalizado: un nombre con espacios o la misma zona no cuentan como cambio.
+        var profileChanged = before != (user.Name, user.LastName, user.TimeZoneId);
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -403,10 +429,8 @@ public static class UpdateMyProfileHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
-        // Solo publicar cuando el nombre realmente cambio — evita ruido en el bus
-        // (y en la proyeccion de displayName de Communication) cuando el usuario
-        // solo actualizo su TimeZoneId. Lleva la foto actual: el evento es el perfil completo.
-        if (nameChanged)
+        // Foto del perfil: sale solo si cambió el nombre o la zona. El idioma no se toca aquí.
+        if (profileChanged)
             await bus.PublishAsync(UserAvatarMessages.ProfileUpdated(user, correlation.CorrelationId));
         return Result.Success();
     }

@@ -31,5 +31,7 @@ public sealed class PushDeviceTokenConfiguration : IEntityTypeConfiguration<Push
             t.UserId,
             t.IsActive,
         });
+        // La última alta gana entre oficinas: busca el mismo token fuera de la oficina del alta.
+        builder.HasIndex(t => t.Token);
     }
 }

@@ -2,8 +2,6 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
 
@@ -29,40 +27,24 @@ public static class AppointmentStartingSoonConsumer
 
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            const string title = "Your appointment starts soon";
             foreach (var userId in evt.AttendeeUserIds)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.Calendar,
-                    "calendar.appointment_starting_soon",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
                         NotificationKinds.CalendarAppointmentStartingSoon,
-                        userId,
+                        evt.TenantId,
+                        new NotificationTarget(userId),
                         evt.EventId,
                         "calendar.appointment_starting_soon.v1",
                         evt.OccurredOn,
-                        title,
-                        FallbackBody: "It starts in a few minutes.",
-                        ResourceId: evt.AppointmentId.ToString()
+                        correlation.CorrelationId,
+                        InApp: new InAppContent(
+                            ResourceId: evt.AppointmentId.ToString(),
+                            FallbackTitle: "Your appointment starts soon",
+                            FallbackBody: "It starts in a few minutes."
+                        ),
+                        Push: new PushContent(Tag: $"appointment:{evt.AppointmentId:N}")
                     ),
-                    ct: ct
-                );
-
-                await dispatcher.SendPushAsync(
-                    evt.TenantId,
-                    userId,
-                    title,
-                    "It starts in a few minutes.",
-                    NotificationCategory.Calendar,
-                    "calendar.appointment_starting_soon",
-                    evt.EventId,
-                    correlation.CorrelationId,
                     ct
                 );
             }

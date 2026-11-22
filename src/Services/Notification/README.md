@@ -69,3 +69,43 @@ Los eventos de fallo OAuth y expiracion del watch incluyen `IsOfficeMailbox` y `
 ## Datos sensibles
 
 Los asuntos de plantillas OTP se envían completos al proveedor, pero se guardan como `[redacted]` en Notification y Postmaster. Los cuerpos SMS sensibles siguen la misma regla en Sms.
+
+## Push payload
+
+Todo push lleva el mismo contrato (`PushPayloads`), pensado para la web de hoy y una app móvil:
+
+| Clave de `Data` | Contenido |
+|---|---|
+| `kind` | kind del catálogo (Campañas usa `campaign.push`) |
+| `resourceType`, `resourceId`, `customerId` | el mismo recurso que el in-app del consumer |
+| `tenantId`, `recipientUserId` | oficina y usuario destinatario |
+| `sourceEventId` | solo si el aviso crea su propia fila en la bandeja; el clic la busca con `GET /communication/notifications/by-source/{id}` |
+| `link` | igual que `Link` |
+| `section`, `callId`, `conversationId`, `messageId` | propias de chat y llamadas |
+
+- `Link` (solo web): `{base}/n/open?rt=&rid=&cid=&ev=`. Base del CRM para staff y del portal para cuentas de cliente. Solo ids, nunca texto. WISP y retiro conservan su enlace directo.
+- Título y cuerpo genéricos (`PushText`, sección `push` del archivo de textos) en el idioma de cada destinatario (`IRecipientLocale`): se ven en la pantalla bloqueada, sin datos. El in-app conserva el detalle.
+- Sin dispositivo no se escribe fila en `NotificationLogs`.
+- `PushDispatchRequest.TimeToLive` (llamada entrante: 45 s) y `Platforms` (filtro por plataforma; nadie lo usa todavía).
+- Dispositivos: guardan la sesión de Auth (`sid`); `auth.session.ended.v1` los revoca. El mismo token en otra oficina se desactiva en el alta (la última alta gana).
+
+Pendiente del proyecto móvil: deep links de app, canales de Android por categoría, APNs directo e insignia del icono.
+
+## Archivo de textos
+
+`TaxVision.Notification.Domain/Catalog/NotificationCopy.json` es la fuente única de los textos:
+
+| Sección | Para qué | Quién la lee |
+|---|---|---|
+| `kinds`, `aliases` | Textos in-app por kind (EN/ES) | CRM y portal traducen la bandeja; el backend arma el respaldo inglés (`InAppFallback`) |
+| `push` | Título y cuerpo del push por kind (más `communication.call.incoming.video`) | Solo el backend (`PushText`) |
+| `sms` | SMS por clave (código de acceso y firma) | Solo el backend (`SmsText`) |
+| `email` | Textos que el sistema mete dentro de un correo (motivos, frases de alerta, respaldos como "your plan") | Solo el backend (`EmailText`); lo que escribió una persona viaja tal cual |
+
+- Idiomas: `en` y `es`. Sin idioma, o con otro, sale en inglés (también el SMS del código).
+- SMS en español del código: sin tildes ni emoji (cada carácter fuera de GSM-7 encarece el mensaje).
+- **Copia a los frontends: el archivo entero**, sin recortar secciones. Las tres copias deben tener el mismo `sha256`:
+  - `TaxVsion_Front/src/app/features/notifications/data-access/notification-copy.json`
+  - `CLIENTTAXPROFRONTEND/src/app/core/notifications/notification-copy.json`
+  - Comprobación: `sha256sum` de las tres rutas (backend en LF; en CRM y portal compara lo versionado o normaliza a LF).
+  Las secciones `push`, `sms` y `email` no llevan secretos; los frontends las ignoran.

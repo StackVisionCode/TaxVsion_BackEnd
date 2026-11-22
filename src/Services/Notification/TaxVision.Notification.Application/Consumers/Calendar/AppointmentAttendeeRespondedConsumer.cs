@@ -2,8 +2,6 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Calendar;
 
@@ -33,26 +31,22 @@ public static class AppointmentAttendeeRespondedConsumer
                 _ => "An attendee replied to the appointment",
             };
 
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(evt.OrganizerUserId),
-                title,
-                NotificationCategory.Calendar,
-                "calendar.attendee_responded",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.OrganizerUserId,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.CalendarAttendeeResponded,
-                    evt.OrganizerUserId,
+                    evt.TenantId,
+                    new NotificationTarget(evt.OrganizerUserId),
                     evt.EventId,
                     "calendar.attendee_responded.v1",
                     evt.OccurredOn,
-                    title,
-                    ResourceId: evt.AppointmentId.ToString(),
-                    Params: new Dictionary<string, string> { ["response"] = evt.Response }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(
+                        Params: new Dictionary<string, string> { ["response"] = evt.Response },
+                        ResourceId: evt.AppointmentId.ToString(),
+                        FallbackTitle: title
+                    )
                 ),
-                ct: ct
+                ct
             );
         }
     }

@@ -39,7 +39,11 @@ public sealed class PushDevicesController(IMessageBus bus) : ControllerBase
             userId,
             request.Platform,
             request.Token,
-            request.DeviceId
+            request.DeviceId,
+            // Sesión de Auth del token: al terminar la sesión se revoca este dispositivo.
+            User.TryGetSessionId(out var sessionId)
+                ? sessionId
+                : null
         );
         var result = await bus.InvokeAsync<Result<RegisterPushDeviceTokenResult>>(command, ct);
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

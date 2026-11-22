@@ -34,6 +34,10 @@ export interface SupportClaimedEvent extends IntegrationEvent {
   readonly ticketId: string;
   readonly assignedAgentId: string;
   readonly claimedAtUtc: string;
+  /** Para avisar a quien abrió (Notification). */
+  readonly openedByUserId: string;
+  readonly agentTenantId: string;
+  readonly conversationId: string;
 }
 
 export interface SupportReassignedEvent extends IntegrationEvent {
@@ -71,6 +75,12 @@ export interface SupportMessageAddedEvent extends IntegrationEvent {
   readonly senderUserId: string;
   readonly senderRole: 'Customer' | 'Agent';
   readonly sentAtUtc: string;
+  readonly conversationId: string;
+  readonly agentTenantId: string;
+  readonly openedByUserId: string;
+  readonly assignedAgentId: string | null;
+  /** Solo si no hay agente asignado: los agentes activos con el permiso de soporte. */
+  readonly supportRecipientUserIds: readonly string[];
 }
 
 export interface SupportResolvedEvent extends IntegrationEvent {
@@ -79,6 +89,9 @@ export interface SupportResolvedEvent extends IntegrationEvent {
   readonly resolvedByUserId: string;
   readonly resolvedByAgent: boolean;
   readonly resolvedAtUtc: string;
+  readonly openedByUserId: string;
+  readonly agentTenantId: string;
+  readonly conversationId: string;
 }
 
 export interface SupportClosedEvent extends IntegrationEvent {
@@ -86,6 +99,9 @@ export interface SupportClosedEvent extends IntegrationEvent {
   readonly ticketId: string;
   readonly closedByUserId: string;
   readonly closedAtUtc: string;
+  readonly openedByUserId: string;
+  readonly agentTenantId: string;
+  readonly conversationId: string;
 }
 
 export interface SupportReopenedEvent extends IntegrationEvent {

@@ -88,7 +88,7 @@ public sealed class FireReminderHandlerTests
         var bus = new RecordingMessageBus();
 
         await FireReminderHandler.Handle(
-            new FireReminderCommand(TenantId, Guid.NewGuid(), Grace),
+            new FireReminderCommand(TenantId, Guid.NewGuid(), Grace, "fire-test"),
             reminders,
             new NoOpUnitOfWork(),
             bus,
@@ -108,7 +108,7 @@ public sealed class FireReminderHandlerTests
         RecordingReminderMetrics? metrics = null
     ) =>
         FireReminderHandler.Handle(
-            new FireReminderCommand(reminder.TenantId, reminder.Id, Grace),
+            new FireReminderCommand(reminder.TenantId, reminder.Id, Grace, "fire-test"),
             reminders,
             new NoOpUnitOfWork(),
             bus,
@@ -118,7 +118,7 @@ public sealed class FireReminderHandlerTests
             CancellationToken.None
         );
 
-    private static ReminderAggregate Seed(FakeReminderRepository reminders, DateTime fireAtUtc)
+    internal static ReminderAggregate Seed(FakeReminderRepository reminders, DateTime fireAtUtc)
     {
         // El horizonte del VO rechaza una hora pasada, así que el recordatorio se crea vigente y se
         // "envejece" moviendo su schedule con el mismo método que usa la API.

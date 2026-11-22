@@ -238,11 +238,14 @@ internal sealed class PublicBookingStore : IPublicBookingRepository, IBookingPag
         CancellationToken ct = default
     ) => Task.FromResult<IReadOnlyList<PublicBookingRef>>([]);
 
+    // Las que la prueba marque; el filtro real lo cubre la integración.
+    public List<PublicBookingRef> DueReminders { get; } = [];
+
     public Task<IReadOnlyList<PublicBookingRef>> ListDueRemindersAsync(
         DateTime nowUtc,
         int take,
         CancellationToken ct = default
-    ) => Task.FromResult<IReadOnlyList<PublicBookingRef>>([]);
+    ) => Task.FromResult<IReadOnlyList<PublicBookingRef>>([.. DueReminders]);
 
     public Task<IReadOnlyList<PublicBookingRef>> ListPurgeCandidatesAsync(
         DateTime unverifiedBeforeUtc,

@@ -72,12 +72,14 @@ internal sealed class OverdueTaskSweepJob(
     {
         var now = DateTime.UtcNow;
         var announced = 0;
+        // El job es el origen de la traza: un id por pasada.
+        var correlationId = Guid.NewGuid().ToString("N");
 
         // La consulta excluye las ya marcadas, así que cada vuelta trae las siguientes. El tope de
         // vueltas evita quedarse girando sobre un trozo que colisiona siempre.
         for (var round = 0; round < batchSize / ChunkSize && !ct.IsCancellationRequested; round++)
         {
-            var done = await AnnounceChunkAsync(now, ct);
+            var done = await AnnounceChunkAsync(now, correlationId, ct);
             if (done == 0)
                 break;
 
@@ -88,12 +90,13 @@ internal sealed class OverdueTaskSweepJob(
             logger.LogInformation("OverdueTaskSweepJob announced {Announced} overdue task(s).", announced);
     }
 
-    private async Task<int> AnnounceChunkAsync(DateTime now, CancellationToken ct)
+    private async Task<int> AnnounceChunkAsync(DateTime now, string correlationId, CancellationToken ct)
     {
         using var scope = scopeFactory.CreateScope();
         var tasks = scope.ServiceProvider.GetRequiredService<ITaskRepository>();
         var outbox = scope.ServiceProvider.GetRequiredService<IDbContextOutbox<TasksDbContext>>();
         var correlation = scope.ServiceProvider.GetRequiredService<ICorrelationContext>();
+        using var trace = correlation.Push(correlationId);
         var metrics = scope.ServiceProvider.GetRequiredService<ITaskMetrics>();
 
         var overdue = await tasks.ListOverdueAsync(now, ChunkSize, ct);

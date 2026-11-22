@@ -52,7 +52,7 @@ public sealed class RefreshAccessTokenHandlerTests
         Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
         Assert.Equal(sessionId, sessions.RevokedSessionId);
         Assert.Equal(sessionId, denylist.DeniedSessionId);
-        var alert = Assert.IsType<SecurityAlertIntegrationEvent>(Assert.Single(bus.Published));
+        var alert = Assert.Single(bus.Published.OfType<SecurityAlertIntegrationEvent>());
         Assert.Equal(SecurityAlertType.RefreshTokenHostMismatch, alert.AlertType);
     }
 
@@ -275,7 +275,7 @@ public sealed class RefreshAccessTokenHandlerTests
         await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile, bus);
 
         Assert.True(rotated.IsSuccess);
-        var alert = Assert.IsType<SecurityAlertIntegrationEvent>(Assert.Single(bus.Published));
+        var alert = Assert.Single(bus.Published.OfType<SecurityAlertIntegrationEvent>());
         Assert.Equal(SecurityAlertType.TokenReuseDetected, alert.AlertType);
         Assert.False((await world.Sessions.GetSessionByIdAsync(mobile.SessionId))!.IsActive);
     }

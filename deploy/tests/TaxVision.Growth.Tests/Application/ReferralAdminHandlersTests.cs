@@ -1,5 +1,7 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.GrowthIntegrationEvents;
 using BuildingBlocks.Persistence;
+using TaxVision.Growth.Api.IntegrationEvents;
 using TaxVision.Growth.Tests.Application.Fakes;
 using TaxVision.Growth.Tests.Domain;
 using TaxVision.Referrals.Application.Abstractions;
@@ -38,7 +40,18 @@ public sealed class ReferralAdminHandlersTests
             .Value;
     }
 
-    private static Task<BuildingBlocks.Results.Result<ReviewRewardCaseResult>> Review(
+    private static async Task<BuildingBlocks.Results.Result<ReviewRewardCaseResult>> Review(
+        ReferralRewardCase reward,
+        RewardReviewAction action,
+        string reason = "suspicious",
+        InMemoryReferralRewardCaseRepository? repo = null,
+        Guid? rewardId = null
+    ) => (await ReviewWithNotice(reward, action, reason, repo, rewardId)).Result;
+
+    private static Task<(
+        BuildingBlocks.Results.Result<ReviewRewardCaseResult> Result,
+        object? Notice
+    )> ReviewWithNotice(
         ReferralRewardCase reward,
         RewardReviewAction action,
         string reason = "suspicious",
@@ -46,9 +59,17 @@ public sealed class ReferralAdminHandlersTests
         Guid? rewardId = null
     ) =>
         ReviewRewardCaseHandler.Handle(
-            new ReviewRewardCaseCommand(reward.TenantId, rewardId ?? reward.Id, action, reason, GrowthTestData.ActorId),
+            new ReviewRewardCaseCommand(
+                reward.TenantId,
+                rewardId ?? reward.Id,
+                action,
+                reason,
+                GrowthTestData.ActorId,
+                "review-correlation"
+            ),
             repo ?? new InMemoryReferralRewardCaseRepository(reward),
             new Counting(),
+            new ReferralNoticeEvents(),
             Clock,
             CancellationToken.None
         );
@@ -56,6 +77,27 @@ public sealed class ReferralAdminHandlersTests
     private sealed class Counting : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken ct = default) => Task.FromResult(0);
+    }
+
+    /// <summary>
+    /// El aviso vuelve como mensaje en cascada: Wolverine lo publica por el outbox del mismo mensaje, con el cambio
+    /// de estado. Retener o dar el visto bueno no avisa.
+    /// </summary>
+    [Fact]
+    public async Task Rejecting_publishes_in_the_same_unit()
+    {
+        var reward = NewReward();
+        var flagged = await ReviewWithNotice(reward, RewardReviewAction.Flag);
+
+        var rejected = await ReviewWithNotice(reward, RewardReviewAction.Reject, "self referral");
+
+        Assert.Null(flagged.Notice);
+        Assert.True(rejected.Result.IsSuccess);
+        var notice = Assert.IsType<ReferralRewardRejectedIntegrationEvent>(rejected.Notice);
+        Assert.Equal(reward.Id, notice.RewardCaseId);
+        Assert.Equal(reward.TenantId, notice.TenantId);
+        Assert.Equal("ReviewRejected", notice.ReasonCode);
+        Assert.Equal("review-correlation", notice.CorrelationId);
     }
 
     [Fact]

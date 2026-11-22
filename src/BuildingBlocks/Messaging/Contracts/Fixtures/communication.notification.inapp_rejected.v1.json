@@ -1,0 +1,12 @@
+{
+  "eventId": "6f1c2a3b-5555-4a2b-9c3d-000000000011",
+  "eventType": "communication.notification.inapp_rejected.v1",
+  "tenantId": "4c12d117-766d-479c-a7ce-dfb779a1829b",
+  "correlationId": "corr-456",
+  "occurredOnUtc": "2026-11-22T15:04:05.123Z",
+  "sourceEventId": "9b0d2c4e-6666-4b3c-8d4e-000000000012",
+  "recipientUserId": "1a2b3c4d-7777-4c4d-9e5f-000000000013",
+  "kind": "tasks.task_overdue",
+  "reason": "InvalidPayload",
+  "detail": "params.title,resourceId"
+}

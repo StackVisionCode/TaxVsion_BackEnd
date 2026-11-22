@@ -33,6 +33,12 @@ namespace Internal.Generated.WolverineHandlers
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             
             /*
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository Lifetime: Scoped ImplementationFactory: TaxVision.Notification.Infrastructure.DependencyInjection+<>c.<AddNotificationInfrastructure>b__0_8
+            * The service registration for TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var recipientLocale = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IRecipientLocale>(serviceScope.ServiceProvider);
+            
+            /*
             * The service registration for TaxVision.Notification.Application.Abstractions.IScribeRenderClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var scribeRenderClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IScribeRenderClient>(serviceScope.ServiceProvider);
@@ -43,11 +49,11 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Notification.Application.Abstractions.IOnboardingTokenClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var onboardingTokenClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IOnboardingTokenClient>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var onboardingRegistrationReadyIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.OnboardingRegistrationReadyIntegrationEvent)context.Envelope.Message;
 
@@ -71,7 +77,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Consumers.OnboardingRegistrationReadyConsumer");
                 
                 // The actual message execution
-                await TaxVision.Notification.Application.Consumers.OnboardingRegistrationReadyConsumer.Handle(onboardingRegistrationReadyIntegrationEvent, onboardingTokenClient, onboardingReceiptLookupRepository, emailDispatchGateway, scribeRenderClient, _optionsOfPortalOptions, correlationContext, _loggerForMessage, cancellation).ConfigureAwait(false);
+                await TaxVision.Notification.Application.Consumers.OnboardingRegistrationReadyConsumer.Handle(onboardingRegistrationReadyIntegrationEvent, onboardingTokenClient, onboardingReceiptLookupRepository, emailDispatchGateway, scribeRenderClient, _optionsOfPortalOptions, recipientLocale, correlationContext, _loggerForMessage, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

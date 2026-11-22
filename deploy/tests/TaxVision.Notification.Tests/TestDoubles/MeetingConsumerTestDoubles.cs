@@ -20,9 +20,26 @@ internal sealed class RecordingEmailGateway : IEmailDispatchGateway
     }
 }
 
+/// <summary>Un render pedido a Scribe: plantilla, variables, audiencia y lector (null = sin lector).</summary>
+internal sealed record RecordedRender(
+    string EventKey,
+    IReadOnlyDictionary<string, object?> Variables,
+    ScribeRenderAudience Audience,
+    ScribeReader? Reader
+)
+{
+    public object? Language => Variables.GetValueOrDefault("language");
+}
+
 internal sealed class RecordingScribeRenderClient : IScribeRenderClient, IScribeReaderRenderClient
 {
     public ScribeReader? LastReader { get; private set; }
+
+    /// <summary>Todos los renders, en orden.</summary>
+    public List<RecordedRender> Renders { get; } = [];
+
+    private ScribeReader? pendingReader;
+    private ScribeRenderAudience pendingAudience = ScribeRenderAudience.Staff;
 
     public Task<Result<ScribeRenderedEmail>> RenderForReaderAsync(
         string eventKey,
@@ -34,6 +51,7 @@ internal sealed class RecordingScribeRenderClient : IScribeRenderClient, IScribe
     )
     {
         LastReader = reader;
+        pendingReader = reader;
         return RenderAsync(eventKey, tenantId, variables, audience, ct);
     }
 
@@ -43,7 +61,11 @@ internal sealed class RecordingScribeRenderClient : IScribeRenderClient, IScribe
         IReadOnlyDictionary<string, object?> variables,
         ScribeRenderAudience audience,
         CancellationToken ct = default
-    ) => RenderAsync(eventKey, tenantId, variables, ct);
+    )
+    {
+        pendingAudience = audience;
+        return RenderAsync(eventKey, tenantId, variables, ct);
+    }
 
     public Task<Result<ScribeRenderedText>> RenderTextAsync(
         string eventKey,
@@ -66,6 +88,9 @@ internal sealed class RecordingScribeRenderClient : IScribeRenderClient, IScribe
         Calls++;
         LastEventKey = eventKey;
         LastVariables = variables;
+        Renders.Add(new RecordedRender(eventKey, variables, pendingAudience, pendingReader));
+        pendingReader = null;
+        pendingAudience = ScribeRenderAudience.Staff;
         return Task.FromResult(Result.Success(new ScribeRenderedEmail("subject", "<p>html</p>", "text")));
     }
 }

@@ -73,6 +73,26 @@ public sealed class UserLifecyclePushDeviceConsumerTests
 
     private sealed class FakeDevices : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         private readonly List<PushDeviceToken> _tokens = [];
 
         public PushDeviceToken Add(Guid userId, string token)

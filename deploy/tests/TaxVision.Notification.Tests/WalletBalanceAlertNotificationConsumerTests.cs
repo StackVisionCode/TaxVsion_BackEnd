@@ -173,6 +173,25 @@ public sealed class WalletBalanceAlertNotificationConsumerTests
     }
 
     [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var locales = new FixedRecipientLocale("en");
+        locales.ByUser[Manager] = "es";
+        var h = new Harness(managers: [Manager], locales: locales);
+
+        await h.PausedAsync(Paused("PaymentFailed"));
+
+        var call = Assert.Single(h.Scribe.Calls);
+        Assert.Equal("Es", call.Variables["language"]);
+        Assert.Equal(
+            "No pudimos cobrar a Visa •••• 4242 tu recarga automática de $25.00.",
+            call.Variables["reason_text"]
+        );
+        // La campana sigue con el texto del servidor en inglés (la traduce el frontend por kind).
+        Assert.Contains("couldn't charge Visa •••• 4242", Assert.Single(h.InAppRows).FallbackBody);
+    }
+
+    [Fact]
     public async Task Paused_without_top_up_keys_the_email_by_event()
     {
         var h = new Harness(managers: [Manager]);
@@ -304,20 +323,22 @@ public sealed class WalletBalanceAlertNotificationConsumerTests
         private readonly FakeOffices _offices;
         private readonly FakeEmails _emails;
         private readonly ITenantHostResolver _hosts;
+        private readonly IRecipientLocale _locales;
 
         public Harness(
             IReadOnlyList<Guid> managers,
             Guid? owner = null,
             IReadOnlyList<Guid>? admins = null,
             string? host = null,
-            bool withEmails = true
+            bool withEmails = true,
+            IRecipientLocale? locales = null
         )
         {
+            _locales = locales ?? FixedRecipientLocale.English;
             Resolver = new FakeResolver(managers, owner);
             _offices = new FakeOffices(admins ?? []);
             _emails = new FakeEmails(withEmails);
             _hosts = new FakeTenantHostResolver(host);
-            _dispatcher = new NotificationDispatcherHarness(logs: _logs);
             var real = new EventBasedEmailDispatchGateway(
                 _gatewayPublisher,
                 _logs,
@@ -326,6 +347,7 @@ public sealed class WalletBalanceAlertNotificationConsumerTests
                 NullLogger<EventBasedEmailDispatchGateway>.Instance
             );
             _gateway = new RecordingGateway(real, Queued);
+            _dispatcher = new NotificationDispatcherHarness(logs: _logs, emailGateway: _gateway);
         }
 
         public FakeResolver Resolver { get; }
@@ -348,11 +370,11 @@ public sealed class WalletBalanceAlertNotificationConsumerTests
                 Resolver,
                 _offices,
                 _emails,
-                _gateway,
                 Scribe,
                 _hosts,
                 Options.Create(new PortalOptions()),
-                _correlation
+                _correlation,
+                _locales
             );
 
         public Task LowBalanceAsync(WalletLowBalanceIntegrationEvent evt) =>

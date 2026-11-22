@@ -65,6 +65,56 @@ public sealed class BaseLayoutHtmlTests
         Assert.Matches(@"<img[^>]+cid:logo-header[^>]+alt=""\{\{\s*product_name\s*\}\}""", header);
     }
 
+    /// <summary>Los dos layouts siguen el idioma de quien lee: atributo lang y pie en español.</summary>
+    [Fact]
+    public async Task Layouts_follow_the_recipient_language()
+    {
+        var system = await RenderLayoutAsync(BaseLayoutHtml.SystemBaseV1, "Es");
+        var tenant = await RenderLayoutAsync(BaseLayoutHtml.TenantBaseV1, "Es");
+
+        Assert.Contains("<html lang=\"es\"", system);
+        Assert.Contains("Este es un mensaje automático de", system);
+        Assert.Contains("Todos los derechos reservados", system);
+        Assert.DoesNotContain("All rights reserved", system);
+        Assert.Contains("<html lang=\"es\"", tenant);
+        Assert.Contains("Enviado desde TaxOffix", tenant);
+        Assert.DoesNotContain("Sent from", tenant);
+    }
+
+    /// <summary>Sin language (Notification viejo) los layouts salen en inglés, igual que con "En".</summary>
+    [Fact]
+    public async Task Layouts_without_language_stay_in_english()
+    {
+        foreach (var layout in new[] { BaseLayoutHtml.SystemBaseV1, BaseLayoutHtml.TenantBaseV1 })
+        {
+            var html = await RenderLayoutAsync(layout, language: null);
+
+            Assert.Contains("<html lang=\"en\"", html);
+            Assert.Equal(await RenderLayoutAsync(layout, "En"), html);
+            Assert.DoesNotContain("Todos los derechos", html);
+            Assert.DoesNotContain("Enviado desde", html);
+        }
+        Assert.Contains(
+            "This is an automated message from",
+            await RenderLayoutAsync(BaseLayoutHtml.SystemBaseV1, null)
+        );
+        Assert.Contains("Sent from TaxOffix", await RenderLayoutAsync(BaseLayoutHtml.TenantBaseV1, null));
+    }
+
+    private static async Task<string> RenderLayoutAsync(string layout, string? language)
+    {
+        var context = new TemplateContext();
+        context.SetValue("body", "<p>Hola</p>");
+        context.SetValue("current_year", 2026);
+        context.SetValue("product_name", "TaxOffix");
+        context.SetValue("platform_legal_name", "TaxOffix LLC");
+        context.SetValue("tenant_name", "Acme");
+        context.SetValue("tenant_logo_missing", true);
+        if (language is not null)
+            context.SetValue("language", language);
+        return await Parser.Parse(layout).RenderAsync(context, HtmlEncoder.Default);
+    }
+
     /// <summary>
     /// Sin logo la cabecera cae al nombre de la oficina; con logo va la imagen inline. En ninguno de los
     /// dos casos aparece el aviso de configuracion (v7): tenant-base lo lee el CLIENTE de la oficina.

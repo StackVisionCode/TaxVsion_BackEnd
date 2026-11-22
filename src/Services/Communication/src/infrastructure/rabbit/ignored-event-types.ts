@@ -38,6 +38,7 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserSlotGatedIntegrationEvent',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserSlotPriorityOverriddenIntegrationEvent',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserSlotUnlockedIntegrationEvent',
+  'auth.session.ended.v1',
   'auth.user.offboarding_step_completed.v1',
   'BuildingBlocks.Messaging.AuthIntegrationEvents.UserOffboardingIncompleteIntegrationEvent',
   // Billing — Facturas y cobros aplicados: Notification y PaymentClient. Emitida: Tenant (actividad del equipo).

@@ -4239,6 +4239,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(5)
+                        .HasColumnType("nvarchar(5)");
+
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(100)

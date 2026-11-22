@@ -10,7 +10,7 @@ import type { CustomerPortalAccountRepository } from '../ports/customer-portal-a
 import type { CustomerPreparerAssignmentRepository } from '../ports/customer-preparer-assignment-repository.js';
 import type { CustomerAssignmentProjectionRepository } from '../ports/customer-assignment-projection-repository.js';
 import type { UserPermissionsProjectionRepository } from '../ports/user-permissions-projection-repository.js';
-import { seesAllCustomers } from './customer-visibility.js';
+import { customerChatGateApplies, staffHasCustomerAccess } from './customer-chat-access.js';
 import { ChatEventTypes, type ConversationStartedEvent } from '../../contracts/events/chat-events.js';
 
 /**
@@ -119,9 +119,10 @@ async function resolveCustomerChatAccess(
   const portalAccount = await deps.customerPortalAccounts.findActiveByUserId(customerSide.userId);
   if (!portalAccount) return { involvesCustomer: true, staffHasAccess: false };
 
-  const staffHasAccess =
-    (await seesAllCustomers(staffSide, deps.userPermissions)) ||
-    (await deps.customerAssignments.isAssigned(command.tenantId, portalAccount.customerId, staffSide.userId));
+  const staffHasAccess = await staffHasCustomerAccess(
+    { tenantId: command.tenantId, customerId: portalAccount.customerId, staff: staffSide },
+    deps,
+  );
   return { involvesCustomer: true, staffHasAccess };
 }
 
@@ -153,7 +154,7 @@ export async function startDirectConversation(
   }
 
   const isPrimaryPreparer = await resolveIsPrimaryPreparer(command, deps);
-  if (deps.assignmentVisibilityEnabled || settings.restrictCustomerChatToAssignedPreparer) {
+  if (customerChatGateApplies(settings, deps.assignmentVisibilityEnabled)) {
     const { involvesCustomer, staffHasAccess } = await resolveCustomerChatAccess(command, deps);
     if (involvesCustomer && !staffHasAccess) {
       return Result.fail(

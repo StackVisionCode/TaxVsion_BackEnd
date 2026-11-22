@@ -147,6 +147,13 @@ const rawEnv = z
       .int()
       .positive()
       .default(3600),
+    // Acción masiva por filtro de la bandeja, por persona y ventana.
+    COMMUNICATION_RATE_LIMIT_NOTIFICATIONS_BULK_BY_FILTER_MAX: z.coerce.number().int().positive().default(10),
+    COMMUNICATION_RATE_LIMIT_NOTIFICATIONS_BULK_BY_FILTER_WINDOW_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(60),
     COMMUNICATION_MEETING_INVITATIONS_MAX_PER_MEETING: z.coerce
       .number()
       .int()
@@ -255,7 +262,6 @@ const rawEnv = z
     COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY: z
       .enum(['Communication', 'Notification'])
       .default('Communication'),
-    COMMUNICATION_INAPP_SOURCE_SIGNATURE: z.enum(['Communication', 'Notification']).default('Communication'),
     COMMUNICATION_INAPP_SOURCE_SUPPORT: z.enum(['Communication', 'Notification']).default('Communication'),
 
     // Visibilidad por asignacion (P2) — flag GLOBAL de despliegue, espejo del
@@ -279,6 +285,15 @@ const rawEnv = z
       .string()
       .default('false')
       .transform((value) => value === 'true'),
+
+    // D-N4: minutos sin leer antes del aviso de "mensajes perdidos" en la campanita. 0 = apagado.
+    COMMUNICATION_MISSED_MESSAGES_AFTER_MINUTES: z.coerce.number().int().min(0).max(1440).default(5),
+
+    // D-N30: con la app visible en otra pantalla, el aviso es la insignia y no hay push. 'false' lo vuelve a mandar.
+    COMMUNICATION_CHAT_PUSH_SUPPRESS_WHEN_ACTIVE: z
+      .string()
+      .default('true')
+      .transform((value) => value !== 'false'),
 
     // A6 — gate de modulo: con ON, un tenant cuyo plan no incluye el modulo del permiso recibe 403
     // Authz.ModuleUnavailable. Con OFF (default) el gate sigue midiendo y registrando sin bloquear.
@@ -428,7 +443,6 @@ export const config = {
     connectors: rawEnv.COMMUNICATION_INAPP_SOURCE_CONNECTORS,
     cloudStorageLegal: rawEnv.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL,
     cloudStoragePolicy: rawEnv.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY,
-    signature: rawEnv.COMMUNICATION_INAPP_SOURCE_SIGNATURE,
     support: rawEnv.COMMUNICATION_INAPP_SOURCE_SUPPORT,
   },
 
@@ -484,6 +498,10 @@ export const config = {
     meetingInvitationsCreate: {
       maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_MAX,
       windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_MEETING_INVITATIONS_WINDOW_SECONDS,
+    },
+    notificationsBulkByFilter: {
+      maxPerWindow: rawEnv.COMMUNICATION_RATE_LIMIT_NOTIFICATIONS_BULK_BY_FILTER_MAX,
+      windowSeconds: rawEnv.COMMUNICATION_RATE_LIMIT_NOTIFICATIONS_BULK_BY_FILTER_WINDOW_SECONDS,
     },
     enforceTierQuotas: rawEnv.COMMUNICATION_RATE_LIMIT_ENFORCE_TIER_QUOTAS,
   },
@@ -549,6 +567,12 @@ export const config = {
   },
   portalCallsPermission: {
     enforce: rawEnv.COMMUNICATION_PORTAL_CALLS_PERMISSION_ENFORCE,
+  },
+  chatPush: {
+    suppressWhenActive: rawEnv.COMMUNICATION_CHAT_PUSH_SUPPRESS_WHEN_ACTIVE,
+  },
+  missedMessages: {
+    afterMinutes: rawEnv.COMMUNICATION_MISSED_MESSAGES_AFTER_MINUTES,
   },
 } as const;
 

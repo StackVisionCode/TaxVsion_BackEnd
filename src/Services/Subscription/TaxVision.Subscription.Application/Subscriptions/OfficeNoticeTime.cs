@@ -14,6 +14,12 @@ public static class OfficeNoticeTime
         CivilDays.Between(nowUtc, dueAtUtc, officeZone);
 
     public static bool IsSendHour(DateTime nowUtc, ResolvedTimeZone officeZone) =>
-        TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), officeZone.Zone).Hour
-        == SendHour;
+        LocalHour(nowUtc, officeZone) == SendHour;
+
+    // Para los avisos con marca en la base: si se saltó la franja, salen más tarde ese día.
+    public static bool IsAtOrAfterSendHour(DateTime nowUtc, ResolvedTimeZone officeZone) =>
+        LocalHour(nowUtc, officeZone) >= SendHour;
+
+    private static int LocalHour(DateTime nowUtc, ResolvedTimeZone officeZone) =>
+        TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), officeZone.Zone).Hour;
 }

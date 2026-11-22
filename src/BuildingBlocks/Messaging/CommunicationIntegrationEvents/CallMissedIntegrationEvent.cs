@@ -11,4 +11,8 @@ public sealed record CallMissedIntegrationEvent : IntegrationEvent
     public required string Kind { get; init; }
     public required DateTime RingingAtUtc { get; init; }
     public required DateTime MissedAtUtc { get; init; }
+
+    // Opcionales: ausente = "Timeout" y sin conversación (eventos viejos).
+    public string? Reason { get; init; }
+    public Guid? ConversationId { get; init; }
 }

@@ -416,9 +416,8 @@ jobs:
           # SMTP2GO_API_KEY y CONNECTORS_LISTENER_ENABLED viven en `production-extra`: los escribe el job `deploy`.
           # El JSON de la cuenta de servicio de Firebase ya se decodifica a un archivo
           # (ver step "Write JWT keys...", FIREBASE_SERVICE_ACCOUNT_JSON_B64), pero
-          # Notification__UseFcmPush tiene default false en docker-compose.yml -- sin
-          # este secret en "true" el push por FCM queda apagado en produccion aunque
-          # el archivo este montado.
+          # Notification__UseFcmPush tiene default true en docker-compose.yml: secret
+          # ausente o vacio = push encendido. Ponerlo en "false" lo apaga.
           NOTIFICATION_USE_FCM_PUSH=${{ secrets.NOTIFICATION_USE_FCM_PUSH }}
           TAXVISION_DOMAIN=${{ secrets.TAXVISION_DOMAIN }}
           # Fase X1 (completitud plan v2) — dominio raiz para el cert WILDCARD de Caddy
@@ -434,20 +433,16 @@ jobs:
           # Rollout del puente in-app por grupo. Secret ausente = default "Communication" (compat).
           # Para pasar un grupo al pipeline nuevo (Notification), setear el secret a "Notification"
           # tras verificar la cadena en vivo.
-          COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT=${{ secrets.COMMUNICATION_INAPP_SOURCE_CUSTOMER_IMPORT }}
           COMMUNICATION_INAPP_SOURCE_CONNECTORS=${{ secrets.COMMUNICATION_INAPP_SOURCE_CONNECTORS }}
           COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL=${{ secrets.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_LEGAL }}
           COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY=${{ secrets.COMMUNICATION_INAPP_SOURCE_CLOUDSTORAGE_POLICY }}
-          COMMUNICATION_INAPP_SOURCE_SIGNATURE=${{ secrets.COMMUNICATION_INAPP_SOURCE_SIGNATURE }}
           COMMUNICATION_INAPP_SOURCE_SUPPORT=${{ secrets.COMMUNICATION_INAPP_SOURCE_SUPPORT }}
 
           # Simetrico en Notification. Para que un grupo cambie de fuente ambos secrets se mueven
           # a la vez: en Communication se apaga (= "Notification") y en Notification se enciende.
-          NOTIFICATIONS_INAPP_SOURCE_CUSTOMER_IMPORT=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CUSTOMER_IMPORT }}
           NOTIFICATIONS_INAPP_SOURCE_CONNECTORS=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CONNECTORS }}
           NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_LEGAL=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_LEGAL }}
           NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY }}
-          NOTIFICATIONS_INAPP_SOURCE_SIGNATURE=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_SIGNATURE }}
           NOTIFICATIONS_INAPP_SOURCE_SUPPORT=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_SUPPORT }}
 
           # Retención de NotificationLogs. Secret vacío = defaults del compose (12 meses, batch 500, cada 24h).
@@ -530,7 +525,7 @@ jobs:
           echo "${{ secrets.SIGNATURE_SEALING_PFX_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/signature-sealing.pfx"
           # Fase 7 notificaciones dinamicas — el mount de docker-compose.yml
           # (Notification__Push__Fcm__ServiceAccountJsonPath) requiere que este archivo
-          # exista siempre, aunque Notification__UseFcmPush este en false (default). Si el
+          # exista siempre, aunque Notification__UseFcmPush este en false. Si el
           # secret todavia no esta cargado, "echo '' | base64 -d" produce un archivo vacio
           # valido en vez de romper el mount.
           echo "${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON_B64 }}" | base64 -d > "$TAXVISION_SECRETS_DIR/firebase-service-account.json"

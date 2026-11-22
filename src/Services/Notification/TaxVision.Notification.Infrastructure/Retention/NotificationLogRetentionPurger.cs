@@ -5,28 +5,21 @@ namespace TaxVision.Notification.Infrastructure.Retention;
 
 public sealed class NotificationLogRetentionPurger(NotificationDbContext db)
 {
+    // Un DELETE por lote, sin traer filas: los intentos caen por la cascada de la FK.
     public async Task<int> PurgeAsync(DateTime cutoffUtc, int batchSize, CancellationToken ct)
     {
         var total = 0;
         while (!ct.IsCancellationRequested)
         {
-            var logs = await db
+            var deleted = await db
                 .NotificationLogs.IgnoreQueryFilters()
-                .Include(log => log.Attempts)
                 .Where(log => log.CreatedAtUtc < cutoffUtc)
                 .OrderBy(log => log.CreatedAtUtc)
                 .Take(batchSize)
-                .ToListAsync(ct);
+                .ExecuteDeleteAsync(ct);
+            total += deleted;
 
-            if (logs.Count == 0)
-                return total;
-
-            db.NotificationLogs.RemoveRange(logs);
-            await db.SaveChangesAsync(ct);
-            total += logs.Count;
-            db.ChangeTracker.Clear();
-
-            if (logs.Count < batchSize)
+            if (deleted < batchSize)
                 return total;
         }
 

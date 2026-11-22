@@ -2,6 +2,7 @@
 #pragma warning disable
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using TaxVision.Referrals.Application.Abstractions;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -11,11 +12,13 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly System.TimeProvider _timeProvider;
+        private readonly TaxVision.Referrals.Application.Abstractions.IReferralNoticeEvents _referralNoticeEvents;
 
-        public ReviewRewardCaseCommandHandler1082232784(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.TimeProvider timeProvider)
+        public ReviewRewardCaseCommandHandler1082232784(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.TimeProvider timeProvider, TaxVision.Referrals.Application.Abstractions.IReferralNoticeEvents referralNoticeEvents)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _timeProvider = timeProvider;
+            _referralNoticeEvents = referralNoticeEvents;
         }
 
 
@@ -23,7 +26,7 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: BuildingBlocks.Tenancy.ITenantContext Lifetime: Scoped ImplementationFactory: BuildingBlocks.Web.Common.BuildingBlocksRegistration+<>c.<AddBuildingBlocks>b__0_0
@@ -32,7 +35,7 @@ namespace Internal.Generated.WolverineHandlers
             var referralRewardCaseRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Referrals.Application.Abstractions.IReferralRewardCaseRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var reviewRewardCaseCommand = (TaxVision.Referrals.Application.Rewards.ReviewRewardCase.ReviewRewardCaseCommand)context.Envelope.Message;
 
@@ -54,11 +57,15 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Referrals.Application.Rewards.ReviewRewardCase.ReviewRewardCaseHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Referrals.Application.Rewards.ReviewRewardCase.ReviewRewardCaseHandler.Handle(reviewRewardCaseCommand, referralRewardCaseRepository, unitOfWork, _timeProvider, cancellation).ConfigureAwait(false);
+                (var outgoing1, var outgoing2) = await TaxVision.Referrals.Application.Rewards.ReviewRewardCase.ReviewRewardCaseHandler.Handle(reviewRewardCaseCommand, referralRewardCaseRepository, unitOfWork, _referralNoticeEvents, _timeProvider, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message
                 await context.EnqueueCascadingAsync(outgoing1).ConfigureAwait(false);
+
+                
+                // Outgoing, cascaded message
+                await context.EnqueueCascadingAsync(outgoing2).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

@@ -4,6 +4,7 @@ using BuildingBlocks.Results;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Notifications;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -35,7 +36,14 @@ public sealed class GiftcardShareConsumerTests
     {
         var scribe = new Capturing();
         var gateway = new Gateway();
-        await GiftcardShareConsumer.Handle(evt, gateway, scribe, new Correlation(), CancellationToken.None);
+        await GiftcardShareConsumer.Handle(
+            evt,
+            gateway,
+            scribe,
+            new OfficeZoneStub("Europe/Madrid"),
+            new Correlation(),
+            CancellationToken.None
+        );
         return (scribe, gateway);
     }
 
@@ -49,7 +57,8 @@ public sealed class GiftcardShareConsumerTests
         Assert.Equal("Ana", render.Variables["recipient_name"]);
         Assert.Equal("20% OFF", render.Variables["value_label"]);
         Assert.Equal("GIFT-7K3Q9M2X", render.Variables["code"]);
-        Assert.Equal("Valid until Dec 31, 2026", render.Variables["expires_text"]);
+        // Sin zona comercial, la de la oficina, escrita.
+        Assert.StartsWith("Expires Dec 31, 2026 (Madrid time", (string)render.Variables["expires_text"]!);
         Assert.Equal("https://taxoffix.io/register?gift=GIFT-7K3Q9M2X", render.Variables["redeem_url"]);
         Assert.Equal("Enjoy!", render.Variables["personal_message"]);
         var sent = Assert.Single(gateway.Requests);

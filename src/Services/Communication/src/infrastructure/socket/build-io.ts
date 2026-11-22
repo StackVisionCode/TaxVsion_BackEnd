@@ -73,16 +73,9 @@ export function buildSocketServer(httpServer: HttpServer): CommunicationIoServer
     // pingTimeout amplio para no cortar por un pong lento.
     pingInterval: 10_000,
     pingTimeout: 20_000,
-    // El túnel cloudflared corta el WS de forma intermitente (transport close cada
-    // 5-50s) y socket.io reconecta en ~0.5s. Sin recuperación, en ese hueco se
-    // pierden los eventos server→cliente (mensajes/typing) y el cliente ve el chat
-    // "congelado" hasta refrescar. connectionStateRecovery restaura la sesión
-    // (rooms + datos) y REENTREGA los eventos que se perdieron durante la caída, así
-    // el chat sigue vivo aunque el túnel parpadee. Lo soporta el redis-adapter 8.3.
-    connectionStateRecovery: {
-      maxDisconnectionDuration: 2 * 60_000,
-      skipMiddlewares: false,
-    },
+    // Sin connectionStateRecovery: el redis-adapter no restaura sesiones y lo emitido durante un
+    // corte se pierde. Al reconectar, cada cliente vuelve a unirse a sus salas y pide lo que falta
+    // (bandeja: GET /communication/notifications/since).
     cors: {
       // Misma política que HTTP: orígenes de la plataforma (PlatformSettings) + los extra de config.
       origin: (origin, cb) => cb(null, isAllowedOrigin(origin)),

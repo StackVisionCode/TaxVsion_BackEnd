@@ -6,6 +6,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.Extensions.Logging;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
@@ -110,6 +111,17 @@ public static class RestoreTenantAdminHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
+        if (revokedSessions > 0)
+            await bus.PublishAsync(
+                SessionEndedEvents.ForUser(
+                    user.TenantId,
+                    user.Id,
+                    null,
+                    "actor_type_restored",
+                    DateTime.UtcNow,
+                    correlation.CorrelationId
+                )
+            );
 
         logger.LogInformation(
             "RestoreTenantAdmin: user {UserId} (tenant {TenantId}) restored as TenantAdmin at version {Version}, owner={IsOwner}.",

@@ -4,8 +4,6 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -49,26 +47,22 @@ public static class FileBlockedByPolicyConsumer
             const string body = "A file in your office was blocked because it goes against our content policy.";
             foreach (var userId in recipients)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.StorageAndQuota,
-                    "cloudstorage.file.blocked_by_policy",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
                         NotificationKinds.CloudStorageFileBlockedByPolicy,
-                        userId,
+                        evt.TenantId,
+                        new NotificationTarget(userId),
                         evt.EventId,
                         "cloudstorage.file.blocked_by_policy.v1",
                         evt.OccurredOn,
-                        title,
-                        FallbackBody: body,
-                        ResourceId: evt.FileId.ToString()
+                        correlation.CorrelationId,
+                        InApp: new InAppContent(
+                            ResourceId: evt.FileId.ToString(),
+                            FallbackTitle: title,
+                            FallbackBody: body
+                        )
                     ),
-                    ct: ct
+                    ct
                 );
             }
         }

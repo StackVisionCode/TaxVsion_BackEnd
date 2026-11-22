@@ -9,6 +9,7 @@ using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Onboarding;
+using TaxVision.Notification.Tests.TestDoubles;
 
 namespace TaxVision.Notification.Tests;
 
@@ -69,6 +70,7 @@ public sealed class OnboardingRegistrationReadyConsumerTests
             new RecordingEmailDispatchGateway(),
             scribe,
             Options.Create(new PortalOptions()),
+            FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             NullLogger<OnboardingRegistrationReadyIntegrationEvent>.Instance,
             CancellationToken.None

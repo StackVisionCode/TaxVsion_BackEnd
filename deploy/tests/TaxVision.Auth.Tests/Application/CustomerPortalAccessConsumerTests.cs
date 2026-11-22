@@ -50,7 +50,11 @@ public sealed class CustomerPortalAccessConsumerTests
         Assert.Equal([session.Id], _denylist.Denied);
         Assert.Equal([session.Id], _revocations.Announced);
         Assert.Equal(1, _unitOfWork.SaveChangesCallCount);
-        var published = Assert.IsType<UserDeactivatedIntegrationEvent>(Assert.Single(_bus.Published));
+        var published = Assert.Single(_bus.Published.OfType<UserDeactivatedIntegrationEvent>());
+        Assert.Equal(
+            CustomerArchivedConsumer.CutoffReason,
+            Assert.Single(_bus.Published.OfType<SessionEndedIntegrationEvent>()).Reason
+        );
         Assert.Equal(_portal.Id, published.UserId);
     }
 

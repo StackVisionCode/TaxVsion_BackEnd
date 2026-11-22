@@ -50,6 +50,11 @@ export class PrismaSupportTicketRepository implements SupportTicketRepository {
     return row ? SupportTicket.rehydrate(this.toSnapshot(row)) : null;
   }
 
+  async findByConversationId(conversationId: string): Promise<SupportTicket | null> {
+    const row = await this.prisma.supportTicket.findUnique({ where: { ConversationId: conversationId } });
+    return row ? SupportTicket.rehydrate(this.toSnapshot(row)) : null;
+  }
+
   async findManyForAgentTenant(agentTenantId: string, ids: readonly string[]): Promise<SupportTicket[]> {
     if (ids.length === 0) return [];
     const rows = await this.prisma.supportTicket.findMany({

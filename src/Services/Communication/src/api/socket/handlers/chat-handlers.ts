@@ -76,6 +76,9 @@ import {
   type MessageDto,
 } from '../../../contracts/socket/chat-socket-events.js';
 import type { SocketAck, SocketEnvelope } from '../../../contracts/socket/socket-envelope.js';
+import { attachChatFocus } from './chat-focus.js';
+import { clearMissedMessagesNotice } from '../../../application/use-cases/clear-missed-messages-notice.js';
+import { emitNotificationBulkApplied } from '../../http/routes/notifications.route.js';
 
 // Detrás de cloudflared el WS cae y reconecta en ~0.5s. Si des-registramos la
 // presencia al instante, cada microcaída publica Offline y luego Online (parpadeo:
@@ -211,8 +214,8 @@ async function wireSocket(
   // (emitToConversation → `t:{tenant}:c:{id}`). Sin esto, un socket solo entraba a esa room al
   // ejecutar start_direct/start_group, así que el RECEPTOR de un directo (y los miembros de un grupo
   // que no lo crearon) nunca la recibía en vivo, y en cada reconexión se perdía la membresía
-  // (connectionStateRecovery es best-effort, no un sustituto). Uniéndolo a TODAS sus conversaciones
-  // en cada (re)connect, la entrega es determinista e independiente de quién inició o de la recuperación.
+  // (no hay recuperación de sesión). Uniéndolo a TODAS sus conversaciones en cada (re)connect, la
+  // entrega es determinista e independiente de quién inició.
   try {
     const own = await container.conversations.listForUser({
       tenantId,
@@ -878,6 +881,24 @@ async function wireSocket(
       event: ChatSocketEvents.MessageRead,
       envelope: envelope(result.value.receipt),
     });
+    // D-N4: leer el chat deja leída su fila de "mensajes perdidos" en todas las sesiones.
+    const clearedIds = await clearMissedMessagesNotice(
+      { tenantId, userId, conversationId: parsed.data.conversationId },
+      { notifications: container.notifications },
+    ).catch((err) => {
+      logger.warn({ err }, 'clear missed-messages notice failed');
+      return [] as readonly string[];
+    });
+    if (clearedIds.length > 0) {
+      emitNotificationBulkApplied(emitter, {
+        tenantId,
+        userId,
+        correlationId: socket.id,
+        action: 'read',
+        ids: clearedIds,
+        asOfUtc: new Date().toISOString(),
+      });
+    }
   });
 
   socket.on(ChatSocketEvents.MarkDelivered, async (...args: unknown[]) => {
@@ -916,6 +937,16 @@ async function wireSocket(
 
   const joinedConversationTenant = (conversationId: string): string | null =>
     resolveJoinedConversationTenant(socket.rooms, tenantId, conversationId);
+
+  // Foco del chat: decide si un mensaje merece push (no se reenvía a nadie).
+  const chatFocus = attachChatFocus(socket, {
+    focus: container.conversationFocus,
+    tenantId,
+    userId,
+    sessionId: socket.id,
+    isJoined: (conversationId) => joinedConversationTenant(conversationId) !== null,
+    logger,
+  });
 
   const indicatorIdentity = (conversationTenantId: string): { userId: string; displayName: string } =>
     conversationTenantId === tenantId
@@ -1216,6 +1247,7 @@ async function wireSocket(
 
   socket.on('disconnect', () => {
     clearInterval(heartbeat);
+    void chatFocus.dispose();
     // Baja diferida (ver PRESENCE_DISCONNECT_GRACE_MS): tolera la reconexión de la
     // microcaída sin parpadear a Offline. La sesión vieja mantiene su lease TTL
     // mientras tanto; unregister solo publica Offline si al ejecutarse ya no queda

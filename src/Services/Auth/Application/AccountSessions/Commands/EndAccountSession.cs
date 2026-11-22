@@ -2,8 +2,10 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.RefreshTokens;
+using Wolverine;
 
 namespace TaxVision.Auth.Application.AccountSessions.Commands;
 
@@ -25,6 +27,7 @@ public static class EndAccountSessionHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -60,6 +63,11 @@ public static class EndAccountSessionHandler
             ct
         );
         await unitOfWork.SaveChangesAsync(ct);
+        // Solo si la sesión se cerró entera; si el CRM sigue vivo, la sesión no terminó.
+        if (!workspaceAlive)
+            await bus.PublishAsync(
+                SessionEndedEvents.ForToken(stored, "account_logout", DateTime.UtcNow, correlation.CorrelationId)
+            );
         return Result.Success();
     }
 }

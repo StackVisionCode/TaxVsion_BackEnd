@@ -165,7 +165,12 @@ async function push(
   input: BellNotificationInput,
   deps: { notifications: NotificationRepository; emitter: RealtimeEmitter },
 ): Promise<void> {
-  await pushAndEmitNotification(env, input, deps);
+  // Claves del archivo de textos; estos kinds no llevan parámetros.
+  await pushAndEmitNotification(
+    env,
+    { ...input, titleKey: `notif.${input.kind}.title`, bodyKey: `notif.${input.kind}.body`, params: {} },
+    deps,
+  );
 }
 
 function getString(source: Record<string, unknown>, key: string): string | undefined {

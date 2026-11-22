@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -25,10 +24,10 @@ public static class SubscriptionDiscountEndingNotificationConsumer
         NotificationDispatcher dispatcher,
         IRecipientResolver resolver,
         IUserEmailResolver emails,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribe,
         ITenantHostResolver hosts,
         IOptions<PortalOptions> portal,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         ILogger<SubscriptionDiscountEndingIntegrationEvent> logger,
         CancellationToken ct
@@ -56,7 +55,7 @@ public static class SubscriptionDiscountEndingNotificationConsumer
                 ["days_left"] = evt.DaysUntilEnd.ToString(CultureInfo.InvariantCulture),
                 ["billing_url"] = TenantEmailLinks.StaffBase(host, portal.Value),
             };
-            await SendEmailsAsync(evt, owners, variables, emails, gateway, scribe, correlation, ct);
+            await SendEmailsAsync(evt, owners, variables, dispatcher, emails, scribe, locales, correlation, ct);
 
             await BillingNotificationPublisher.RecordAsync(
                 dispatcher,
@@ -68,9 +67,14 @@ public static class SubscriptionDiscountEndingNotificationConsumer
                 nameof(SubscriptionDiscountEndingIntegrationEvent),
                 evt.OccurredOn,
                 "Your discount ends soon",
-                $"Your {label} discount ends in {evt.DaysUntilEnd} days. After that, your plan renews at its regular price.",
+                $"Your {label} discount ends soon. Days left: {evt.DaysUntilEnd}. After that, your plan renews at its regular price.",
                 evt.DiscountId.ToString(),
-                new Dictionary<string, string> { ["discountId"] = evt.DiscountId.ToString() },
+                new Dictionary<string, string>
+                {
+                    ["discountId"] = evt.DiscountId.ToString(),
+                    ["discountLabel"] = label,
+                    ["daysLeft"] = evt.DaysUntilEnd.ToString(CultureInfo.InvariantCulture),
+                },
                 $"subscription:discount:{evt.DiscountId}:ending",
                 ct
             );
@@ -93,9 +97,10 @@ public static class SubscriptionDiscountEndingNotificationConsumer
         SubscriptionDiscountEndingIntegrationEvent evt,
         IReadOnlyList<Guid> owners,
         Dictionary<string, object?> variables,
+        NotificationDispatcher dispatcher,
         IUserEmailResolver emails,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribe,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -113,23 +118,29 @@ public static class SubscriptionDiscountEndingNotificationConsumer
         if (addresses.Count == 0)
             return;
 
-        var render = (await scribe.RenderAsync(EmailEventKey, evt.TenantId, variables, ct)).EnsureRendered(
-            EmailEventKey
-        );
+        // Un render por idioma y lector; todos antes de encolar.
+        var renders = new RecipientRenders(scribe, EmailEventKey, evt.TenantId, ScribeRenderAudience.Staff, variables);
+        var languages = new RecipientLocaleCache(locales, evt.TenantId);
+        var targets = new List<NotificationTarget>(addresses.Count);
         foreach (var (userId, address) in addresses)
-            await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
+        {
+            var locale = await languages.ForUserAsync(userId, ct);
+            await renders.ForAsync(locale, ct);
+            targets.Add(new NotificationTarget(userId, address, Locale: locale));
+        }
+
+        foreach (var target in targets)
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
+                    NotificationKinds.SubscriptionDiscountEnding,
                     evt.TenantId,
-                    address,
-                    EmailEventKey,
+                    target,
                     evt.EventId,
-                    correlation.CorrelationId
-                ) with
-                {
-                    RecipientUserId = userId,
-                    Category = NotificationCategory.Billing,
-                    NotificationKind = NotificationKinds.SubscriptionDiscountEnding,
-                },
+                    nameof(SubscriptionDiscountEndingIntegrationEvent),
+                    evt.OccurredOn,
+                    correlation.CorrelationId,
+                    Email: new EmailContent(EmailEventKey, variables, Render: renders.ForAsync)
+                ),
                 ct
             );
     }

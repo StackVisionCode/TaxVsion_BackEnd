@@ -163,8 +163,7 @@ async function notifyFileBlockedByPolicy(
   const createdBy = await resolveUploader(env, fileId, deps);
   if (!createdBy) return;
   // Policy B del contrato Actor/Resource/Action: no mandamos actorDisplayName
-  // (el front lo resuelve de su directory cache), ni titleKey/bodyKey (el front
-  // tiene fallback por `kind` en notification-i18n.ts). Sí llenamos los campos
+  // (el front lo resuelve de su directory cache). Sí llenamos los campos
   // de dato: actor + resource + action + category, para que la fila sepa de qué
   // habla sin que el front tenga que adivinar desde `metadata`.
   await pushAndEmitNotification(
@@ -175,6 +174,9 @@ async function notifyFileBlockedByPolicy(
       priority: 'High',
       title: 'File blocked',
       body: 'One of your files was blocked because it goes against our content policy.',
+      titleKey: 'notif.cloudstorage.file.blocked_by_policy.title',
+      bodyKey: 'notif.cloudstorage.file.blocked_by_policy.body',
+      params: {},
       metadata: { fileId },
       category: 'DocumentsStorage',
       actorUserId: null,
@@ -206,6 +208,9 @@ async function notifyFilePendingReview(
       priority: 'Normal',
       title: 'File under review',
       body: 'One of your files is being reviewed against our content policy. It will be available once approved.',
+      titleKey: 'notif.cloudstorage.file.pending_review.title',
+      bodyKey: 'notif.cloudstorage.file.pending_review.body',
+      params: {},
       metadata: { fileId },
       category: 'DocumentsStorage',
       actorUserId: null,

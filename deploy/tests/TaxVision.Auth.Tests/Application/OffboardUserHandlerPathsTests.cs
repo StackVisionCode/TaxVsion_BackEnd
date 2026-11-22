@@ -129,7 +129,8 @@ public sealed class OffboardUserHandlerPathsTests
             log.DetailsJson
         );
 
-        var offboarded = Assert.IsType<UserOffboardedIntegrationEvent>(Assert.Single(world.Bus.Published));
+        var offboarded = Assert.Single(world.Bus.Published.OfType<UserOffboardedIntegrationEvent>());
+        Assert.Equal("admin_revoke", Assert.Single(world.Bus.Published.OfType<SessionEndedIntegrationEvent>()).Reason);
         Assert.Equal(target.TenantId, offboarded.TenantId);
         Assert.Equal(target.Id, offboarded.UserId);
         Assert.Equal(target.Email, offboarded.Email);

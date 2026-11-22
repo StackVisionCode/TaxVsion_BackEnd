@@ -54,6 +54,7 @@ describe('access.changed — cambio de permisos de un usuario', () => {
         markInactive: vi.fn(),
         markActive: vi.fn(),
         searchByDisplayNameOrEmail: vi.fn(),
+        findActiveAdmins: vi.fn().mockResolvedValue([]),
       },
       rolePermissions: { upsert: vi.fn(), findByRoleIds: vi.fn().mockResolvedValue([]) },
       customerPortalAccounts: {

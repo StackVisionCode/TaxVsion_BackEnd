@@ -4,6 +4,7 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.RefreshTokens;
 using Wolverine;
@@ -108,6 +109,14 @@ public static class RefreshAccessTokenHandler
                     CorrelationId = correlation.CorrelationId,
                 }
             );
+            await bus.PublishAsync(
+                SessionEndedEvents.ForToken(
+                    stored,
+                    "refresh_token_host_mismatch",
+                    DateTime.UtcNow,
+                    correlation.CorrelationId
+                )
+            );
             return Result.Failure<AuthTokensResponse>(invalid);
         }
 
@@ -145,6 +154,9 @@ public static class RefreshAccessTokenHandler
                         UserAgent = request.UserAgent,
                         CorrelationId = correlation.CorrelationId,
                     }
+                );
+                await bus.PublishAsync(
+                    SessionEndedEvents.ForToken(stored, "token_reuse", DateTime.UtcNow, correlation.CorrelationId)
                 );
             }
 
@@ -222,6 +234,7 @@ public static class RevokeRefreshTokenHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IMessageBus bus,
         CancellationToken ct
     )
     {
@@ -257,6 +270,10 @@ public static class RevokeRefreshTokenHandler
         }
 
         await unitOfWork.SaveChangesAsync(ct);
+        if (stored.SessionId is not null)
+            await bus.PublishAsync(
+                SessionEndedEvents.ForToken(stored, "user_logout", DateTime.UtcNow, correlation.CorrelationId)
+            );
         return Result.Success();
     }
 }

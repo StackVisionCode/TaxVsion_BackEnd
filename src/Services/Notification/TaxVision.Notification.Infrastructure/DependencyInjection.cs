@@ -50,6 +50,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<NotificationDbContext>());
         services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
+        services.AddScoped<INotificationLogStatusRepository, NotificationLogRepository>();
         services.AddScoped<ISeatGateNotificationLogRepository, SeatGateNotificationLogRepository>();
         services
             .AddOptions<NotificationRetentionOptions>()
@@ -60,6 +61,7 @@ public static class DependencyInjection
             .Validate(options => options.LockMinutes > 0, "LockMinutes must be positive.")
             .ValidateOnStart();
         services.AddScoped<NotificationLogRetentionPurger>();
+        services.AddScoped<PushDeviceTokenRetentionPurger>();
         services.AddSingleton<INotificationRetentionLock, NotificationRetentionLock>();
         services.AddHostedService<NotificationRetentionJob>();
 
@@ -132,6 +134,7 @@ public static class DependencyInjection
         services.AddScoped<UserEmailResolver>();
         services.AddScoped<IUserEmailResolver>(sp => sp.GetRequiredService<UserEmailResolver>());
         services.AddScoped<IClientFormPushRetryScheduler, Messaging.ClientFormPushRetryScheduler>();
+        services.AddScoped<IPushDeliveryQueue, Messaging.PushDeliveryQueue>();
 
         // SMS: por defecto se usa el puente real al microservicio Sms (Infobip resuelve proveedor,
         // opt-out, idempotencia). `Notification:UseSmsBridge=false` cae al stub que solo loguea —
@@ -172,6 +175,7 @@ public static class DependencyInjection
         services.AddScoped<SmsDispatch>();
         services.AddScoped<PushDispatch>();
         services.AddScoped<InAppDispatch>();
+        services.AddScoped<NotificationIntentDispatch>();
         services.AddScoped<NotificationDispatcher>();
         services.AddScoped<TaxVision.Notification.Application.Consumers.Signature.SignedDeliveryLinkResolver>();
         services.AddScoped<TaxVision.Notification.Application.Consumers.Calendar.PublicBookings.PublicBookingEmails>();
@@ -190,6 +194,8 @@ public static class DependencyInjection
             );
         services.AddScoped<ClientFormNotificationSender>();
         services.AddScoped<OffboardingNoticeSender>();
+        services.AddScoped<PushLinks>();
+        services.AddScoped<IRecipientLocale, RecipientLocaleResolver>();
         services.AddScoped<WalletAlertSender>();
 
         // Postmaster es el ÚNICO transporte de salida. Hasta 2026-10-02 esto colgaba del flag

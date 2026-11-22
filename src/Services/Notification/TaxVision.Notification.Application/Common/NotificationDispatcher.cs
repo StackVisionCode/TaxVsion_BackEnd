@@ -1,4 +1,5 @@
 using BuildingBlocks.Results;
+using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
 
@@ -19,10 +20,19 @@ namespace TaxVision.Notification.Application.Common;
 public sealed class NotificationDispatcher(
     SmsDispatch smsDispatch,
     PushDispatch pushDispatch,
-    InAppDispatch inAppDispatch
+    InAppDispatch inAppDispatch,
+    IPushDeliveryQueue pushQueue,
+    NotificationIntentDispatch intentDispatch
 )
 {
     public const string NoDeviceReason = PushDispatch.NoDeviceReason;
+
+    /// <summary>
+    /// Punto único: el catálogo dice qué canales se permiten, qué categoría de preferencia aplica y qué es
+    /// obligatorio. Un canal fuera del catálogo no sale.
+    /// </summary>
+    public Task<DispatchSummary> DispatchAsync(NotificationIntent intent, CancellationToken ct = default) =>
+        intentDispatch.DispatchAsync(intent, ct);
 
     public Task SendSmsAsync(
         Guid tenantId,
@@ -50,6 +60,7 @@ public sealed class NotificationDispatcher(
         );
 
     /// <inheritdoc cref="PushDispatch.SendAsync"/>
+    [Obsolete("Sin Data ni Link: usar la sobrecarga con PushDispatchRequest (PushPayloads.Request).")]
     public Task<Result> SendPushAsync(
         Guid tenantId,
         Guid recipientUserId,
@@ -79,6 +90,13 @@ public sealed class NotificationDispatcher(
     /// <inheritdoc cref="PushDispatch.SendAsync"/>
     public Task<Result> SendPushAsync(PushDispatchRequest request, CancellationToken ct = default) =>
         pushDispatch.SendAsync(request, ct);
+
+    /// <inheritdoc cref="PushDispatch.EnqueueAsync"/>
+    public async Task<Result> EnqueuePushAsync(PushDispatchRequest request, CancellationToken ct = default)
+    {
+        var outcome = await pushDispatch.EnqueueAsync(request, pushQueue, ct);
+        return outcome.Error is null ? Result.Success() : Result.Failure(outcome.Error);
+    }
 
     /// <inheritdoc cref="PushDispatch.DispatchAsync"/>
     public Task<PushDispatchOutcome> DispatchPushAsync(PushDispatchRequest request, CancellationToken ct = default) =>

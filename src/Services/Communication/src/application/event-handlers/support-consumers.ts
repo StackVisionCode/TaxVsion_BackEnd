@@ -10,6 +10,7 @@ import { pushAndEmitNotification } from '../use-cases/push-notification.js';
 import { SupportEventTypes } from '../../contracts/events/support-events.js';
 import {
   SupportSocketEvents,
+  type SupportTicketMessageRealtimeDto,
   type SupportTicketRealtimeDto,
 } from '../../contracts/socket/support-socket-events.js';
 import { CommunicationPermissions } from '../../domain/shared/permissions.js';
@@ -44,6 +45,34 @@ export function bindSupportConsumers(
       day: deps.analyticsDay ? await deps.analyticsDay(env.occurredOnUtc) : dayOf(env.occurredOnUtc),
       increments: {
         supportTicketsOpened: 1,
+      },
+    });
+  });
+
+  register(SupportEventTypes.MessageAdded, async (env) => {
+    const agentTenantId = getString(env.payload, 'agentTenantId', 'AgentTenantId');
+    const ticketId = getString(env.payload, 'ticketId', 'TicketId');
+    const conversationId = getString(env.payload, 'conversationId', 'ConversationId');
+    const senderRole = getString(env.payload, 'senderRole', 'SenderRole');
+    const sentAtUtc = getString(env.payload, 'sentAtUtc', 'SentAtUtc');
+    if (!agentTenantId || !ticketId || !conversationId || !sentAtUtc) return;
+    if (senderRole !== 'Customer' && senderRole !== 'Agent') return;
+    const payload: SupportTicketMessageRealtimeDto = {
+      ticketId,
+      conversationId,
+      senderRole,
+      sentAtUtc,
+      assignedAgentId: getString(env.payload, 'assignedAgentId', 'AssignedAgentId') ?? null,
+    };
+    // Solo al staff del tenant de soporte: la cola marca el ticket sin unirse a la sala.
+    deps.emitter.emitToTenantStaff({
+      tenantId: agentTenantId,
+      event: SupportSocketEvents.TicketMessage,
+      envelope: {
+        eventId: randomUUID(),
+        correlationId: env.correlationId ?? '',
+        emittedAtUtc: new Date().toISOString(),
+        payload,
       },
     });
   });
@@ -141,6 +170,11 @@ async function notifySupportQueue(
 
   const title = `New support ticket: ${payload.subject ?? 'Support request'}`;
   const body = `${payload.priority ?? 'Normal'} priority - ${payload.category ?? 'Other'}.`;
+  const params: Record<string, string> = {
+    ...(payload.subject ? { subject: payload.subject } : {}),
+    ...(payload.priority ? { priority: payload.priority } : {}),
+    ...(payload.category ? { category: payload.category } : {}),
+  };
   // El `env` que viene del evento `support.ticket.opened` tiene `tenantId` =
   // tenant del cliente que abrió el ticket (el pisante). El dispatcher a
   // notifications usa payload.agentTenantId (soporte). Construimos un envelope
@@ -153,10 +187,13 @@ async function notifySupportQueue(
       agentEnv,
       {
         userId,
-        kind: 'support.ticket.opened',
+        kind: 'communication.support.opened',
         priority: payload.priority === 'Urgent' || payload.priority === 'High' ? 'High' : 'Normal',
         title,
         body,
+        titleKey: 'notif.communication.support.opened.title',
+        bodyKey: 'notif.communication.support.opened.body',
+        params,
         metadata: {
           ticketId: payload.ticketId,
           tenantId: payload.tenantId,

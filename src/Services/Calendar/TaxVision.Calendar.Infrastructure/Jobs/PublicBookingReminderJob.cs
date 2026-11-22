@@ -1,3 +1,4 @@
+using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Jobs;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,11 +59,14 @@ internal sealed class PublicBookingReminderJob(
         if (targets.Count == 0)
             return new JobBatchSummary(0, 0, 0, 0);
 
+        // El job es el origen de la traza: un id por pasada.
+        var correlationId = Guid.NewGuid().ToString("N");
         var summary = await TransactionalJobUnit.RunEachAsync<PublicBookingRef, CalendarDbContext>(
             scopeFactory,
             targets,
             async (target, unit, token) =>
             {
+                using var trace = unit.Services.GetRequiredService<ICorrelationContext>().Push(correlationId);
                 var reminder = await PublicBookingMaintenance.RemindAsync(
                     target,
                     unit.Services.GetRequiredService<IPublicBookingRepository>(),

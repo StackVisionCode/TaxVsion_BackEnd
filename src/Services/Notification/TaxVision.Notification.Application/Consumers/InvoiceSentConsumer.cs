@@ -6,8 +6,6 @@ using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Directory.Abstractions;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -33,11 +31,11 @@ public static class InvoiceSentConsumer
 
     public static async Task Handle(
         InvoiceSentToCustomerIntegrationEvent evt,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         ICustomerContactPolicyRepository contactPolicies,
         NotificationDispatcher dispatcher,
         IRecipientResolver recipientResolver,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         ILogger<InvoiceSentLog> logger,
         CancellationToken ct
@@ -60,8 +58,12 @@ public static class InvoiceSentConsumer
             );
             if (emailAllowed && !string.IsNullOrWhiteSpace(evt.CustomerEmail))
             {
+                // Sin cliente (publicaciones viejas) no hay idioma que buscar: inglés.
+                var locale = evt.CustomerId is { } recipientId
+                    ? await locales.ForCustomerAsync(evt.TenantId, recipientId, ct)
+                    : locales.FromEventLanguage(null);
                 var render = (
-                    await scribeClient.RenderAsync(
+                    await scribeClient.RenderForRecipientAsync(
                         EventKey,
                         evt.TenantId,
                         new Dictionary<string, object?>
@@ -77,21 +79,28 @@ public static class InvoiceSentConsumer
                             ["has_pdf"] = evt.PdfFileId is not null,
                         },
                         ScribeRenderAudience.Client,
+                        locale,
                         ct
                     )
                 ).EnsureRendered(EventKey);
                 var renderedMs = timer.ElapsedMilliseconds;
 
-                await gateway.QueueEmailAsync(
-                    render.ToDispatchRequest(
-                        tenantId: evt.TenantId,
-                        to: evt.CustomerEmail,
-                        templateKey: TemplateKey,
-                        relatedEventId: evt.EventId,
-                        correlationId: correlation.CorrelationId
+                // Correo al cliente (sin cuenta del staff): obligatorio por catálogo, sin preferencia.
+                await dispatcher.DispatchAsync(
+                    Intent(
+                        evt,
+                        correlation,
+                        new NotificationTarget(null, evt.CustomerEmail, CustomerId: evt.CustomerId, Locale: locale)
                     ) with
                     {
-                        AttachmentFileIds = evt.PdfFileId is { } pdf ? [pdf] : null,
+                        Email = new EmailContent(
+                            EventKey,
+                            new Dictionary<string, object?>(),
+                            ScribeRenderAudience.Client,
+                            TemplateKey: TemplateKey,
+                            Render: (_, _) => Task.FromResult(render),
+                            AttachmentFileIds: evt.PdfFileId is { } pdf ? [pdf] : null
+                        ),
                     },
                     ct
                 );
@@ -117,38 +126,41 @@ public static class InvoiceSentConsumer
                 );
                 if (portalUserId is { } userId)
                 {
-                    var title = $"Factura {evt.InvoiceNumber} enviada";
-                    await dispatcher.RecordInAppAsync(
-                        evt.TenantId,
-                        NotificationRecipient.ForUser(userId),
-                        title,
-                        NotificationCategory.Billing,
-                        "billing.invoice_sent_to_customer",
-                        evt.EventId,
-                        correlation.CorrelationId,
-                        recipientUserId: userId,
-                        inApp: new InAppNotificationRequest(
-                            NotificationKinds.BillingInvoiceSentToCustomer,
-                            userId,
-                            evt.EventId,
-                            EventKey,
-                            evt.OccurredOn,
-                            title,
-                            FallbackBody: $"Tu oficina te envió la factura {evt.InvoiceNumber}.",
-                            ResourceId: evt.InvoiceId.ToString(),
-                            ResourceContext: new Dictionary<string, string>
-                            {
-                                ["customerId"] = customerId.ToString(),
-                                ["invoiceId"] = evt.InvoiceId.ToString(),
-                            },
-                            Params: new Dictionary<string, string> { ["invoiceNumber"] = evt.InvoiceNumber }
-                        ),
-                        ct: ct
+                    var parameters = new Dictionary<string, string> { ["invoiceNumber"] = evt.InvoiceNumber };
+                    await dispatcher.DispatchAsync(
+                        Intent(evt, correlation, new NotificationTarget(userId)) with
+                        {
+                            InApp = new InAppContent(
+                                Params: parameters,
+                                ResourceId: evt.InvoiceId.ToString(),
+                                ResourceContext: new Dictionary<string, string>
+                                {
+                                    ["customerId"] = customerId.ToString(),
+                                    ["invoiceId"] = evt.InvoiceId.ToString(),
+                                }
+                            ),
+                        },
+                        ct
                     );
                 }
             }
         }
     }
+
+    private static NotificationIntent Intent(
+        InvoiceSentToCustomerIntegrationEvent evt,
+        ICorrelationContext correlation,
+        NotificationTarget target
+    ) =>
+        new(
+            NotificationKinds.BillingInvoiceSentToCustomer,
+            evt.TenantId,
+            target,
+            evt.EventId,
+            EventKey,
+            evt.OccurredOn,
+            correlation.CorrelationId
+        );
 
     /// <summary>Centavos a texto. La plantilla recibe el importe ya formateado, no lo compone.</summary>
     private static string FormatAmount(long cents, string currency) =>

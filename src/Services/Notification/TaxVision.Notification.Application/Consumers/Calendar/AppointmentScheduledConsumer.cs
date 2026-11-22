@@ -1,4 +1,4 @@
-﻿using BuildingBlocks.Common;
+using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CalendarIntegrationEvents;
 using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
@@ -41,11 +41,11 @@ public static class AppointmentScheduledConsumer
 
     public static async Task Handle(
         AppointmentScheduledIntegrationEvent evt,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         ITenantHostResolver hosts,
         NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         IRecipientResolver recipientResolver,
         ICorrelationContext correlation,
         CancellationToken ct
@@ -63,11 +63,11 @@ public static class AppointmentScheduledConsumer
         {
             await CalendarRecipients.PushAsync(
                 dispatcher,
+                locales,
                 evt.Recipients,
                 evt.TenantId,
-                title,
-                "Open your calendar for the details.",
                 kind,
+                evt.AppointmentId,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct
@@ -93,7 +93,7 @@ public static class AppointmentScheduledConsumer
                 evt.TenantId,
                 TemplateKey,
                 NotificationKinds.CalendarAppointmentScheduled,
-                new Dictionary<string, object?>
+                _ => new Dictionary<string, object?>
                 {
                     ["appointment_title"] = evt.Title,
                     ["start_local"] = ScribeDates.Instant(evt.StartUtc),
@@ -103,7 +103,8 @@ public static class AppointmentScheduledConsumer
                     ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
                 },
                 scribeClient,
-                gateway,
+                dispatcher,
+                locales,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct,

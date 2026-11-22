@@ -52,4 +52,54 @@ public sealed class PushDeviceTokenRepository(NotificationDbContext db) : IPushD
             token.Revoke();
         return tokens.Count;
     }
+
+    public Task<int> RevokeForSessionAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid sessionId,
+        CancellationToken ct = default
+    ) =>
+        RevokeTrackedAsync(
+            db.PushDeviceTokens.IgnoreQueryFilters()
+                .Where(t => t.TenantId == tenantId && t.UserId == userId && t.IsActive && t.SessionId == sessionId),
+            ct
+        );
+
+    public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid? exceptSessionId,
+        CancellationToken ct = default
+    ) =>
+        RevokeTrackedAsync(
+            db.PushDeviceTokens.IgnoreQueryFilters()
+                .Where(t =>
+                    t.TenantId == tenantId
+                    && t.UserId == userId
+                    && t.IsActive
+                    && (exceptSessionId == null || t.SessionId == null || t.SessionId != exceptSessionId)
+                ),
+            ct
+        );
+
+    // Entre oficinas a propósito: filtra por el token exacto y solo desactiva.
+    public Task<int> DeactivateTokenInOtherTenantsAsync(
+        string token,
+        Guid exceptTenantId,
+        CancellationToken ct = default
+    ) =>
+        RevokeTrackedAsync(
+            db.PushDeviceTokens.IgnoreQueryFilters()
+                .Where(t => t.Token == token && t.TenantId != exceptTenantId && t.IsActive),
+            ct
+        );
+
+    // Tracked: Revoke() se persiste con el SaveChangesAsync del caller.
+    private static async Task<int> RevokeTrackedAsync(IQueryable<PushDeviceToken> query, CancellationToken ct)
+    {
+        var tokens = await query.ToListAsync(ct);
+        foreach (var token in tokens)
+            token.Revoke();
+        return tokens.Count;
+    }
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using Microsoft.Extensions.Logging;
@@ -23,8 +24,8 @@ public static class MeetingReminderConsumer
     public static async Task Handle(
         MeetingReminderIntegrationEvent evt,
         NotificationDispatcher dispatcher,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         ILogger<MeetingReminderIntegrationEvent> logger,
         CancellationToken ct
@@ -59,7 +60,12 @@ public static class MeetingReminderConsumer
                 $"{when}.",
                 correlation.CorrelationId,
                 context,
-                ct
+                ct,
+                new Dictionary<string, string>
+                {
+                    ["meetingTitle"] = meetingTitle,
+                    ["minutesBefore"] = evt.MinutesBefore.ToString(CultureInfo.InvariantCulture),
+                }
             );
 
             var emails = evt
@@ -69,35 +75,44 @@ public static class MeetingReminderConsumer
             if (emails.Count == 0)
                 return;
 
+            var locale = MeetingNotifications.ExternalLocale(locales, evt.TimeZone);
             var render = (
-                await scribeClient.RenderAsync(
+                await scribeClient.RenderForRecipientAsync(
                     EventKey,
                     evt.TenantId,
                     new Dictionary<string, object?>
                     {
-                        ["meeting_title"] = meetingTitle,
+                        ["meeting_title"] = MeetingNotifications.EmailTitle(evt.MeetingTitle, locale),
                         ["start_local"] = ScribeDates.Instant(evt.ScheduledForUtc),
-                        ["time_zone"] = MeetingNotifications.TimeZoneLabel(evt.TimeZone),
+                        ["time_zone"] = MeetingNotifications.TimeZoneLabel(
+                            evt.TimeZone,
+                            evt.ScheduledForUtc,
+                            locale.Language
+                        ),
                         ["duration_minutes"] = evt.DurationMinutes,
                         ["minutes_before"] = evt.MinutesBefore,
                         ["host_name"] = evt.HostDisplayName,
                         ["meeting_code"] = evt.ShortCode,
                     },
                     ScribeRenderAudience.Client,
-                    ScribeReader.From(null, evt.TimeZone),
+                    locale,
                     ct
                 )
             ).EnsureRendered(EventKey);
 
             foreach (var email in emails)
             {
-                await gateway.QueueEmailAsync(
-                    render.ToDispatchRequest(
-                        tenantId: evt.TenantId,
-                        to: email,
-                        templateKey: EventKey,
-                        relatedEventId: evt.EventId,
-                        correlationId: correlation.CorrelationId
+                await dispatcher.DispatchAsync(
+                    new NotificationIntent(
+                        NotificationKinds.CommunicationMeetingReminder,
+                        evt.TenantId,
+                        // Invitado externo: sin usuario no hay preferencia; idioma y zona ya resueltos.
+                        new NotificationTarget(Email: email, Locale: locale),
+                        evt.EventId,
+                        EventKey,
+                        evt.OccurredOn,
+                        correlation.CorrelationId,
+                        Email: MeetingNotifications.Rendered(EventKey, render, null)
                     ),
                     ct
                 );

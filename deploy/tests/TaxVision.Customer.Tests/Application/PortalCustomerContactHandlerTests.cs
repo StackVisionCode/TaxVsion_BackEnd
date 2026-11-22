@@ -36,6 +36,22 @@ public sealed class PortalCustomerContactHandlerTests
     }
 
     [Fact]
+    public async Task Reads_the_language_of_the_customer_record()
+    {
+        var customer = NewCustomer();
+        customer.ChangeLanguage(Language.Es, PortalUser);
+
+        var result = await GetMyCustomerContactHandler.Handle(
+            new GetMyCustomerContactQuery(TenantId, customer.Id),
+            Repo(customer),
+            TimeProvider.System,
+            CancellationToken.None
+        );
+
+        Assert.Equal("Es", result.Value.Language);
+    }
+
+    [Fact]
     public async Task A_client_without_email_reads_a_null_email()
     {
         var customer = DomainCustomer

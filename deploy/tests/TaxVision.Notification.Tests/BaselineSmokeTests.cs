@@ -69,6 +69,7 @@ public sealed class BaselineSmokeTests
                 new NoProtectedPayloadCodec(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<AuthAccountTokenReader>.Instance
             ),
+            FixedRecipientLocale.English,
             correlation,
             CancellationToken.None
         );
@@ -123,14 +124,13 @@ public sealed class BaselineSmokeTests
             RequiresSequentialSigning = false,
         };
 
-        var harness = new NotificationDispatcherHarness();
+        var harness = new NotificationDispatcherHarness(emailGateway: gateway);
         await SignerInvitedConsumer.Handle(
             evt,
-            gateway,
             scribeClient,
-            new NoOpSmsSender(),
             harness.Dispatcher,
             NoPortalRecipientResolver.Instance,
+            FixedRecipientLocale.English,
             Options.Create(new PortalOptions { BaseUrl = "https://app.test" }),
             TestPlatform.Settings,
             new FakeTenantHostResolver(),
@@ -421,7 +421,8 @@ public sealed class BaselineSmokeTests
             string text,
             CancellationToken ct,
             string? templateKey,
-            string? idempotencyToken
+            string? idempotencyToken,
+            string? sourceRef = null
         ) => Task.FromResult(Result.Success());
     }
 
@@ -435,6 +436,26 @@ public sealed class BaselineSmokeTests
 
     private sealed class EmptyPushDeviceTokenRepository : IPushDeviceTokenRepository
     {
+        public Task<int> RevokeForSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid sessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> RevokeAllActiveForUserExceptSessionAsync(
+            Guid tenantId,
+            Guid userId,
+            Guid? exceptSessionId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
+        public Task<int> DeactivateTokenInOtherTenantsAsync(
+            string token,
+            Guid exceptTenantId,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
+
         public Task<int> RevokeAllActiveForUserAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
             throw new NotSupportedException();
 

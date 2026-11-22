@@ -12,6 +12,10 @@ public static class TenantConnectAccountRestrictedNotificationConsumer
         TenantConnectAccountRestrictedIntegrationEvent evt,
         NotificationDispatcher dispatcher,
         IRecipientResolver resolver,
+        PushLinks links,
+        IRecipientLocale locales,
+        IUserEmailResolver emails,
+        IScribeRenderClient scribe,
         ICorrelationContext correlation,
         CancellationToken ct
     ) =>
@@ -25,6 +29,14 @@ public static class TenantConnectAccountRestrictedNotificationConsumer
             NotificationKinds.PaymentClientConnectAccountRestricted,
             "paymentclient.tenant_connect_account_restricted.v1",
             "Payments account restricted",
+            new OfficeAlertEmail(
+                "payments.connect_account_restricted.v1",
+                new Dictionary<string, object?> { ["restricted_at"] = ScribeDates.Instant(evt.OccurredOn) },
+                links,
+                locales,
+                emails,
+                scribe
+            ),
             dispatcher,
             resolver,
             correlation,

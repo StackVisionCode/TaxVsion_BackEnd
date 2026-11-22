@@ -6,6 +6,7 @@ using BuildingBlocks.Tenancy;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Credentials;
+using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Users;
@@ -291,6 +292,17 @@ public static class ResetPasswordHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
+        if (active.Count > 0)
+            await bus.PublishAsync(
+                SessionEndedEvents.ForUser(
+                    user.TenantId,
+                    user.Id,
+                    null,
+                    "password_change",
+                    now,
+                    correlation.CorrelationId
+                )
+            );
         return Result.Success();
     }
 
@@ -384,6 +396,19 @@ public static class ChangePasswordHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
+        if (active.Any(session => session.Id != command.SessionId))
+        {
+            await bus.PublishAsync(
+                SessionEndedEvents.ForUser(
+                    user.TenantId,
+                    user.Id,
+                    command.SessionId,
+                    "password_change",
+                    now,
+                    correlation.CorrelationId
+                )
+            );
+        }
         return Result.Success();
     }
 }

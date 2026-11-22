@@ -16,6 +16,9 @@ public static class NotificationKinds
 
     public const string SignatureSignerInvited = "signature.signer.invited";
     public const string SignatureDocumentSigned = "signature.document.signed";
+
+    /// <summary>Solo lo emite Communication (Node): el cliente que firmó ve su firma registrada.</summary>
+    public const string SignatureDocumentSignedCustomerSigner = "signature.document.signed.customer_signer";
     public const string SignatureRequestCompleted = "signature.request.completed";
     public const string SignatureSignerRejected = "signature.signer.rejected";
     public const string SignatureRequestExpired = "signature.request.expired";
@@ -75,12 +78,21 @@ public static class NotificationKinds
     public const string CommunicationMeetingReminder = "communication.meeting.reminder";
     public const string CommunicationCallIncoming = "communication.call.incoming";
     public const string CommunicationChatMessage = "communication.chat.message";
+    public const string CommunicationChatMessagesMissed = "communication.chat.messages_missed";
+
+    /// <summary>Solo lo emite Communication (Node): alguien te agregó a un grupo de chat.</summary>
+    public const string CommunicationChatGroupMemberAdded = "communication.chat.group_member_added";
     public const string CommunicationCallMissed = "communication.call.missed";
     public const string CommunicationCallRecordingReady = "communication.call.recording_ready";
     public const string CommunicationCallRecordingFailed = "communication.call.recording_failed";
     public const string CommunicationMeetingRecordingReady = "communication.meeting.recording_ready";
     public const string CommunicationMeetingRecordingFailed = "communication.meeting.recording_failed";
     public const string CommunicationSupportOpened = "communication.support.opened";
+    public const string CommunicationSupportMessageReceived = "communication.support.message_received";
+    public const string CommunicationSupportReplyReceived = "communication.support.reply_received";
+    public const string CommunicationSupportClaimed = "communication.support.claimed";
+    public const string CommunicationSupportResolved = "communication.support.resolved";
+    public const string CommunicationSupportClosed = "communication.support.closed";
 
     public const string AuthSecurityAlert = "auth.security_alert";
     public const string AuthUserSlotGated = "auth.user_slot_gated";

@@ -6,8 +6,6 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -21,7 +19,6 @@ namespace TaxVision.Notification.Application.Consumers;
 public static class OfficeWispReviewDueConsumer
 {
     public const string EmailEventKey = "tenant.wisp_review_due.v1";
-    private const NotificationCategory Category = NotificationCategory.AccountSecurity;
     private static readonly CultureInfo English = CultureInfo.GetCultureInfo("en-US");
 
     public static async Task Handle(
@@ -29,10 +26,10 @@ public static class OfficeWispReviewDueConsumer
         NotificationDispatcher dispatcher,
         IRecipientResolver resolver,
         IUserEmailResolver emails,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribe,
         ITenantHostResolver hosts,
         IOptions<PortalOptions> portal,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         ILogger<OfficeWispReviewDueIntegrationEvent> logger,
         CancellationToken ct
@@ -70,36 +67,21 @@ public static class OfficeWispReviewDueConsumer
             var host = await hosts.ResolveHostAsync(evt.OfficeTenantId, ct);
             var settingsUrl = $"{TenantEmailLinks.StaffBase(host, portal.Value)}/company/settings#compliance";
 
-            await SendEmailsAsync(evt, notice, settingsUrl, recipients, emails, gateway, scribe, correlation, ct);
+            await SendEmailsAsync(
+                evt,
+                notice,
+                settingsUrl,
+                recipients,
+                dispatcher,
+                emails,
+                scribe,
+                locales,
+                correlation,
+                ct
+            );
 
             foreach (var userId in recipients)
-            {
-                await RecordInAppAsync(evt, notice, userId, dispatcher, correlation, ct);
-                await dispatcher.SendPushAsync(
-                    new PushDispatchRequest(
-                        evt.OfficeTenantId,
-                        userId,
-                        notice.Title,
-                        notice.Body,
-                        Category,
-                        NotificationKinds.TenantWispReviewDue,
-                        NotificationKinds.TenantWispReviewDue,
-                        evt.EventId,
-                        correlation.CorrelationId,
-                        Data: new Dictionary<string, string>
-                        {
-                            ["kind"] = NotificationKinds.TenantWispReviewDue,
-                            ["resourceType"] = NotificationContractNames.For(
-                                NotificationResourceType.ComplianceSettings
-                            ),
-                            ["resourceId"] = evt.OfficeTenantId.ToString(),
-                        },
-                        Link: settingsUrl,
-                        SkipWhenNoDevices: true
-                    ),
-                    ct
-                );
-            }
+                await NotifyAsync(evt, notice, settingsUrl, userId, dispatcher, correlation, ct);
         }
     }
 
@@ -108,14 +90,14 @@ public static class OfficeWispReviewDueConsumer
         WispNotice notice,
         string settingsUrl,
         IReadOnlyList<Guid> recipients,
+        NotificationDispatcher dispatcher,
         IUserEmailResolver emails,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribe,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
-        // La preferencia de correo la aplica el gateway (RecipientUserId + Category).
         var addresses = new List<(Guid UserId, string Address)>();
         foreach (var userId in recipients)
         {
@@ -129,75 +111,94 @@ public static class OfficeWispReviewDueConsumer
         if (addresses.Count == 0)
             return;
 
-        var render = (
-            await scribe.RenderAsync(
-                EmailEventKey,
-                evt.OfficeTenantId,
-                new Dictionary<string, object?>
-                {
-                    ["is_overdue"] = notice.IsOverdue,
-                    ["due_date"] = notice.DueDate,
-                    ["settings_url"] = settingsUrl,
-                },
-                ct
-            )
-        ).EnsureRendered(EmailEventKey);
-
+        // Un render por idioma y lector; todos antes de encolar, así un fallo de Scribe no deja correos a medias.
+        var renders = new RecipientRenders(
+            scribe,
+            EmailEventKey,
+            evt.OfficeTenantId,
+            ScribeRenderAudience.Staff,
+            new Dictionary<string, object?>
+            {
+                ["is_overdue"] = notice.IsOverdue,
+                // Fecha tipada: Scribe la imprime en el idioma de quien lee.
+                ["due_date"] = ScribeDates.Date(evt.DueOn),
+                ["settings_url"] = settingsUrl,
+            }
+        );
+        var languages = new RecipientLocaleCache(locales, evt.OfficeTenantId);
+        var targets = new List<NotificationTarget>(addresses.Count);
         foreach (var (userId, address) in addresses)
-            await gateway.QueueEmailAsync(
-                render.ToDispatchRequest(
-                    evt.OfficeTenantId,
-                    address,
-                    EmailEventKey,
-                    evt.EventId,
-                    correlation.CorrelationId
-                ) with
+        {
+            var locale = await languages.ForUserAsync(userId, ct);
+            await renders.ForAsync(locale, ct);
+            targets.Add(new NotificationTarget(userId, address, Locale: locale));
+        }
+
+        foreach (var target in targets)
+            await dispatcher.DispatchAsync(
+                Intent(evt, target, correlation) with
                 {
-                    RecipientUserId = userId,
-                    Category = Category,
+                    Email = new EmailContent(
+                        EmailEventKey,
+                        new Dictionary<string, object?>(),
+                        Render: renders.ForAsync
+                    ),
                 },
                 ct
             );
     }
 
-    private static Task RecordInAppAsync(
+    // Campana y push; el push conserva su enlace directo a Compliance.
+    private static Task NotifyAsync(
         OfficeWispReviewDueIntegrationEvent evt,
         WispNotice notice,
+        string settingsUrl,
         Guid userId,
         NotificationDispatcher dispatcher,
         ICorrelationContext correlation,
         CancellationToken ct
     ) =>
-        dispatcher.RecordInAppAsync(
-            evt.OfficeTenantId,
-            NotificationRecipient.ForUser(userId),
-            notice.Title,
-            Category,
+        dispatcher.DispatchAsync(
+            Intent(evt, new NotificationTarget(userId), correlation) with
+            {
+                InApp = new InAppContent(
+                    Params: new Dictionary<string, string>
+                    {
+                        ["dueOn"] = evt.DueOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        ["dueDate"] = notice.DueDate,
+                        ["stage"] = evt.Stage,
+                    },
+                    ResourceId: evt.OfficeTenantId.ToString(),
+                    // El front abre /company/settings en la sección indicada.
+                    ResourceContext: new Dictionary<string, string> { ["section"] = "compliance" },
+                    // Un aviso sin leer de la misma oficina, vencimiento y etapa se actualiza en vez de duplicarse.
+                    GroupKey: $"tenant.wisp_review_due:{evt.OfficeTenantId:N}:{evt.DueOn:yyyyMMdd}:{evt.Stage}",
+                    FallbackTitle: notice.Title,
+                    FallbackBody: notice.Body
+                ),
+                Push = new PushContent(
+                    SkipWhenNoDevices: true,
+                    Title: notice.Title,
+                    Body: notice.Body,
+                    Link: settingsUrl
+                ),
+            },
+            ct
+        );
+
+    private static NotificationIntent Intent(
+        OfficeWispReviewDueIntegrationEvent evt,
+        NotificationTarget target,
+        ICorrelationContext correlation
+    ) =>
+        new(
             NotificationKinds.TenantWispReviewDue,
+            evt.OfficeTenantId,
+            target,
             evt.EventId,
-            correlation.CorrelationId,
-            recipientUserId: userId,
-            inApp: new InAppNotificationRequest(
-                NotificationKinds.TenantWispReviewDue,
-                userId,
-                evt.EventId,
-                "tenant.office_wisp_review_due.v1",
-                evt.OccurredOn,
-                notice.Title,
-                FallbackBody: notice.Body,
-                ResourceId: evt.OfficeTenantId.ToString(),
-                // El front abre /company/settings en la sección indicada.
-                ResourceContext: new Dictionary<string, string> { ["section"] = "compliance" },
-                Params: new Dictionary<string, string>
-                {
-                    ["dueOn"] = evt.DueOn.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                    ["dueDate"] = notice.DueDate,
-                    ["stage"] = evt.Stage,
-                },
-                // Un aviso sin leer de la misma oficina, vencimiento y etapa se actualiza en vez de duplicarse.
-                GroupKey: $"tenant.wisp_review_due:{evt.OfficeTenantId:N}:{evt.DueOn:yyyyMMdd}:{evt.Stage}"
-            ),
-            ct: ct
+            "tenant.office_wisp_review_due.v1",
+            evt.OccurredOn,
+            correlation.CorrelationId
         );
 
     private sealed record WispNotice(bool IsOverdue, string DueDate, string Title, string Body)

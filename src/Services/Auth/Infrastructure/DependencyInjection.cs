@@ -65,6 +65,7 @@ public static class DependencyInjection
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IInvitationRepository, InvitationRepository>();
         services.AddScoped<ISessionRepository, SessionRepository>();
+        services.AddScoped<IExpiredSessionQuery, SessionRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IMfaRepository, MfaRepository>();
         services.AddScoped<ICredentialTokenRepository, CredentialTokenRepository>();

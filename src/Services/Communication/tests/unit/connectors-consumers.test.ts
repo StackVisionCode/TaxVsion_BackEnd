@@ -96,6 +96,37 @@ describe('bindConnectorsConsumers — contrato de campos con Connectors (.NET)',
     expect(vi.mocked(notifications.createIfMissing).mock.calls[0]![0]!.userId).toBe('connector-owner-2');
   });
 
+  it('stores title and body keys with params', async () => {
+    const { handlers, notifications } = setup();
+
+    await handlers.get('connectors.oauth.refresh_failed.v1')?.(
+      envelope('connectors.oauth.refresh_failed.v1', {
+        AccountId: 'account-1',
+        ProviderCode: 'Gmail',
+        CreatedByUserId: 'connector-owner-1',
+      }),
+    );
+    await handlers.get('connectors.watch.expired.v1')?.(
+      envelope('connectors.watch.expired.v1', {
+        AccountId: 'account-2',
+        ProviderCode: 'Graph',
+        CreatedByUserId: 'connector-owner-2',
+      }),
+    );
+
+    const [refresh, expired] = vi.mocked(notifications.createIfMissing).mock.calls.map(([row]) => row.toSnapshot());
+    expect(refresh).toMatchObject({
+      titleKey: 'notif.connectors.oauth.refresh_failed.title',
+      bodyKey: 'notif.connectors.oauth.refresh_failed.body',
+      params: { providerCode: 'Gmail' },
+    });
+    expect(expired).toMatchObject({
+      titleKey: 'notif.connectors.watch.expired.title',
+      bodyKey: 'notif.connectors.watch.expired.body',
+      params: { providerCode: 'Graph' },
+    });
+  });
+
   it('no crea ninguna notificacion si CreatedByUserId falta', async () => {
     const { handlers, notifications } = setup();
 

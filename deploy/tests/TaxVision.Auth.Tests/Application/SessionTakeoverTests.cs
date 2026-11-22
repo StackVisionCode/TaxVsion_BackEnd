@@ -125,6 +125,7 @@ public sealed class SessionTakeoverTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -133,6 +134,48 @@ public sealed class SessionTakeoverTests
         Assert.False(sessions.RevokeAllCalled);
         Assert.Single(denylist.Denied);
         Assert.Single(publisher.Published);
+    }
+
+    [Fact]
+    public async Task Takeover_publishes_session_ended_for_the_superseded_session()
+    {
+        var user = BuildUser();
+        var web = BuildSession(user.Id);
+        var mobile = BuildSession(user.Id, SessionSurface.Mobile);
+        var bus = new FakeMessageBus();
+        var store = new FakeTakeoverStore
+        {
+            ToConsume = new SessionTakeoverPayload(TenantId, user.Id, ["pwd"], null, Surface: SessionSurface.Mobile),
+        };
+
+        await TakeoverSessionHandler.Handle(
+            new TakeoverSessionCommand(Guid.NewGuid(), Surface: SessionSurface.Mobile),
+            store,
+            new StubUsers(user),
+            new StubTenants(BuildTenant()),
+            new FakeRoles(),
+            new FakeIssuer(),
+            new FakeSessions { Active = [web, mobile] },
+            new FakeMfa(),
+            new FakeSecureTokens(),
+            new RecordingDenylist(),
+            new RecordingRevocationPublisher(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
+
+        var ended = Assert.Single(
+            bus.Published.OfType<BuildingBlocks.Messaging.AuthIntegrationEvents.SessionEndedIntegrationEvent>()
+        );
+        Assert.Equal(mobile.Id, ended.SessionId);
+        Assert.Equal("single_session_superseded", ended.Reason);
+        Assert.Equal("Mobile", ended.Channel);
+        Assert.Equal(TenantId, ended.TenantId);
+        Assert.Equal(user.Id, ended.UserId);
     }
 
     [Fact]
@@ -242,6 +285,7 @@ public sealed class SessionTakeoverTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -271,6 +315,7 @@ public sealed class SessionTakeoverTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -308,6 +353,7 @@ public sealed class SessionTakeoverTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -353,6 +399,7 @@ public sealed class SessionTakeoverTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 
@@ -424,6 +471,7 @@ public sealed class SessionTakeoverTests
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
+            new FakeMessageBus(),
             CancellationToken.None
         );
 

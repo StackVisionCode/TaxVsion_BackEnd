@@ -18,10 +18,10 @@ public static class AppointmentDetailsChangedConsumer
 
     public static async Task Handle(
         AppointmentDetailsChangedIntegrationEvent evt,
-        IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         NotificationDispatcher dispatcher,
+        IRecipientLocale locales,
         ICorrelationContext correlation,
         CancellationToken ct
     )
@@ -43,11 +43,11 @@ public static class AppointmentDetailsChangedConsumer
         {
             await CalendarRecipients.PushAsync(
                 dispatcher,
+                locales,
                 recipients,
                 evt.TenantId,
-                heading,
-                "Open your calendar for the details.",
                 NotificationKinds.CalendarAppointmentUpdated,
+                evt.AppointmentId,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct
@@ -73,7 +73,7 @@ public static class AppointmentDetailsChangedConsumer
                 evt.TenantId,
                 TemplateKey,
                 NotificationKinds.CalendarAppointmentUpdated,
-                new Dictionary<string, object?>
+                locale => new Dictionary<string, object?>
                 {
                     ["appointment_title"] = evt.Title,
                     ["previous_title"] = titleChanged ? evt.PreviousTitle : null,
@@ -82,12 +82,14 @@ public static class AppointmentDetailsChangedConsumer
                     ["location_changed"] = evt.ChangedFields.Contains("Location"),
                     ["description"] = evt.Description,
                     ["description_changed"] = evt.ChangedFields.Contains("Description"),
-                    ["start_local"] = (object?)ScribeDates.Instant(evt.StartUtc) ?? "Follows the series schedule",
+                    ["start_local"] =
+                        (object?)ScribeDates.Instant(evt.StartUtc) ?? EmailText.For("calendar.series_schedule", locale),
                     ["time_zone"] = evt.TimeZoneId,
                     ["portal_link"] = portal.Value.BaseUrl.TrimEnd('/'),
                 },
                 scribeClient,
-                gateway,
+                dispatcher,
+                locales,
                 evt.EventId,
                 correlation.CorrelationId,
                 ct,

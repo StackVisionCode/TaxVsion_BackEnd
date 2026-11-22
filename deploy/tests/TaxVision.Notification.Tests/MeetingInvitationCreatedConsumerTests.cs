@@ -1,6 +1,7 @@
 using BuildingBlocks.Messaging.CommunicationIntegrationEvents;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Consumers.Communication;
 using TaxVision.Notification.Domain.Notifications;
@@ -64,7 +65,7 @@ public sealed class MeetingInvitationCreatedConsumerTests
         // Scribe imprime la hora en la zona de la reunión, con su rótulo.
         Assert.Equal("2026-11-05T18:00:00.0000000Z", TypedDates.Instant(variables["start_local"]));
         Assert.Equal("America/Santo_Domingo", harness.Render.LastReader?.TimeZoneId);
-        Assert.Equal("America/Santo_Domingo", variables["time_zone"]);
+        Assert.Equal("Santo Domingo time, GMT-4", variables["time_zone"]);
         // El vencimiento ya no dice "UTC": va tipado, en la misma zona que "When".
         Assert.NotNull(TypedDates.Instant(variables["expires_at"]));
         Assert.Equal(45, variables["duration_minutes"]);
@@ -186,15 +187,32 @@ public sealed class MeetingInvitationCreatedConsumerTests
         Assert.Empty(harness.Gateway.Queued);
     }
 
-    private static Task Handle(Harness harness, MeetingInvitationCreatedIntegrationEvent evt) =>
+    /// <summary>El invitado con cuenta lo lee en su idioma; la hora, en la zona de la reunión.</summary>
+    [Fact]
+    public async Task Email_is_rendered_with_the_recipient_language()
+    {
+        var harness = new Harness();
+
+        await Handle(harness, Invitation("cliente@example.com"), new FixedRecipientLocale("es", "America/Chicago"));
+
+        var render = Assert.Single(harness.Render.Renders);
+        Assert.Equal("Es", render.Language);
+        Assert.Equal(new ScribeReader("es", "America/Santo_Domingo"), render.Reader);
+    }
+
+    private static Task Handle(
+        Harness harness,
+        MeetingInvitationCreatedIntegrationEvent evt,
+        IRecipientLocale? locales = null
+    ) =>
         MeetingInvitationCreatedConsumer.Handle(
             evt,
             harness.Dispatcher.Dispatcher,
-            harness.Gateway,
             harness.Render,
             new CalendarInviteBuilder(TestPlatform.Settings),
             TestPlatform.Settings,
             Options.Create(new PortalOptions()),
+            locales ?? FixedRecipientLocale.English,
             new TestCorrelationContext(),
             NullLogger<MeetingInvitationCreatedLog>.Instance,
             CancellationToken.None
@@ -241,7 +259,7 @@ public sealed class MeetingInvitationCreatedConsumerTests
             // El gateway real aplica el gate de entrega (inactivo, preferencia, catálogo).
             Gateway = new GatedEmailGateway(Preferences, Directory);
             // El in-app no depende de la preferencia de email que se prueba acá: el dispatcher usa la suya (siempre on).
-            Dispatcher = new NotificationDispatcherHarness(logs: Logs);
+            Dispatcher = new NotificationDispatcherHarness(logs: Logs, emailGateway: Gateway);
         }
     }
 }

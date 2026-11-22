@@ -15,9 +15,14 @@ public sealed class InAppDispatch(
     IIntegrationEventPublisher publisher,
     IUnitOfWork unitOfWork,
     INotificationDispatchMetrics metrics,
+    IUserEmailDirectoryRepository directory,
+    ICustomerPortalAccountProjectionRepository portalAccounts,
     ILogger<InAppDispatch> logger
 )
 {
+    // Nombre del actor por evento: con muchos destinatarios se busca una sola vez.
+    private readonly Dictionary<(Guid TenantId, Guid UserId), string?> actorNames = [];
+
     /// <summary>
     /// Registra una notificación in-app (sin envío externo). <paramref name="recipientUserId"/>
     /// es opcional porque <paramref name="recipient"/> a veces no es un usuario real (ej. un
@@ -59,22 +64,65 @@ public sealed class InAppDispatch(
             subject,
             templateKey,
             relatedEventId,
-            correlationId
+            correlationId,
+            // El kind del catálogo: con él se encuentra la fila si Communication la rechaza.
+            kind: inApp?.Kind
         );
         if (logResult.IsFailure)
             return;
 
-        logResult.Value.MarkSent();
+        if (inApp is not null)
+            inApp = await WithActorNameAsync(tenantId, inApp, ct);
+        var published = TryBuildEvent(tenantId, correlationId, inApp, out var evt);
+        // Sin entrada en el catálogo no se publica nada: la fila no puede decir Sent.
+        if (inApp is not null && !published)
+            logResult.Value.MarkFailed(KindNotInCatalog);
+        else
+            logResult.Value.MarkSent();
         await logs.AddAsync(logResult.Value, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
-        if (TryBuildEvent(tenantId, correlationId, inApp, out var evt))
+        if (published)
             await publisher.PublishAsync(evt!, ct);
 
+        if (inApp is not null && !published)
+        {
+            metrics.RecordFailed(inAppKind, "InApp");
+            return;
+        }
+
         // InApp considerado "sent" al publicar el integration event — el consumer Node persistirá la
-        // fila y emitirá el socket. Un fallo real de Node queda fuera del scope de este contador
-        // (sería un contador propio en Communication).
+        // fila y emitirá el socket. Si la rechaza, avisa y la fila pasa a Failed (InAppRejectedConsumer).
         metrics.RecordSent(inAppKind, "InApp");
+    }
+
+    public const string KindNotInCatalog = "kind_not_in_catalog";
+
+    // NF5: el staff ve quién hizo la acción (nombre del directorio); el portal nunca recibe nombres.
+    private async Task<InAppNotificationRequest> WithActorNameAsync(
+        Guid tenantId,
+        InAppNotificationRequest inApp,
+        CancellationToken ct
+    )
+    {
+        if (!NotificationCatalog.TryGet(inApp.Kind, out var entry) || entry is null)
+            return inApp;
+        if (
+            entry.RecipientPolicy == NotificationRecipientPolicy.CustomerPortal
+            || entry.Category == NotificationCatalogCategory.Portal
+        )
+            return inApp with { ActorDisplayName = null };
+        if (inApp.ActorUserId is null && string.IsNullOrWhiteSpace(inApp.ActorDisplayName))
+            return inApp;
+        // Kinds compartidos (llamada perdida, mensajes perdidos): decide quién lo recibe.
+        if (await portalAccounts.GetByUserAsync(tenantId, inApp.RecipientUserId, ct) is not null)
+            return inApp with { ActorDisplayName = null };
+        if (inApp.ActorUserId is not { } actorId || !string.IsNullOrWhiteSpace(inApp.ActorDisplayName))
+            return inApp;
+
+        if (!actorNames.TryGetValue((tenantId, actorId), out var name))
+            actorNames[(tenantId, actorId)] = name = (await directory.FindAsync(tenantId, actorId, ct))?.DisplayName;
+        return string.IsNullOrWhiteSpace(name) ? inApp : inApp with { ActorDisplayName = name };
     }
 
     private bool TryBuildEvent(

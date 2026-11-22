@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Application.Directory.Abstractions;
+using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers.Signature;
 
@@ -26,7 +27,7 @@ public static class SignatureRequestReminderDueConsumer
         SignatureRequestReminderDueIntegrationEvent evt,
         IEmailDispatchGateway gateway,
         IScribeRenderClient scribeClient,
-        ISmsSender smsSender,
+        NotificationDispatcher dispatcher,
         ICustomerContactPolicyRepository contactPolicies,
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
@@ -63,16 +64,27 @@ public static class SignatureRequestReminderDueConsumer
             // Canal preferido del firmante: SMS con el enlace si lo eligió y tiene teléfono, si no email.
             if (prefersSms)
             {
-                var body =
-                    evt.Language == "Es"
-                        ? $"{platform.Current.BrandName}: {evt.FullName}, tienes un documento pendiente de firmar. Fírmalo aquí: {inviteLink}"
-                        : $"{platform.Current.BrandName}: {evt.FullName}, you still have a document to sign. Sign it here: {inviteLink}";
-                await smsSender.SendAsync(
+                var body = SmsText.For(
+                    SmsText.SignatureReminder,
+                    evt.Language,
+                    new Dictionary<string, string>
+                    {
+                        ["brand"] = platform.Current.BrandName,
+                        ["fullName"] = evt.FullName,
+                        ["link"] = inviteLink,
+                    }
+                );
+                await dispatcher.SendSmsAsync(
+                    evt.TenantId,
                     evt.PhoneE164!,
                     body,
-                    ct,
-                    templateKey: null,
-                    idempotencyToken: evt.EventId.ToString("N")
+                    NotificationCategory.DocumentsAndSignatures,
+                    "sig.request_reminder_due.sms",
+                    evt.EventId,
+                    correlationId,
+                    recipientUserId: null,
+                    idempotencyToken: evt.EventId.ToString("N"),
+                    ct: ct
                 );
                 return;
             }

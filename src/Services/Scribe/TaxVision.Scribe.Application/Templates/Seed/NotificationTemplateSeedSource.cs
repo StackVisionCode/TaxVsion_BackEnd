@@ -11,9 +11,8 @@ namespace TaxVision.Scribe.Application.Templates.Seed;
 /// auditoría existente en NotificationLog.TemplateKey), y el HTML/subject Fluid sobre el layout
 /// <c>system-base</c>. El HTML es solo el contenido interno: la cáscara (barra, card, wordmark,
 /// footer) la aporta el base layout. Cada template abre con eyebrow + acento + H1 (el layout no
-/// puede leer el eyebrow, ver BuildLayoutVariables). Idioma por defecto: inglés — los eventos de los
-/// 17 templates no-Signature no llevan idioma del destinatario, así que serían ramas muertas. Los 6
-/// de Signature sí son bilingües porque su evento trae <c>signer.Language</c>.
+/// puede leer el eyebrow, ver BuildLayoutVariables). Idioma por defecto: inglés; con <c>language = "Es"</c>
+/// salen en español las bilingües (firma, Client Forms, demo y las de <c>SpanishVersions</c>).
 /// </summary>
 public sealed record NotificationTemplateSeed(
     string EventKey,
@@ -95,7 +94,10 @@ public static partial class NotificationTemplateSeedSource
     // Propiedad computada (no field initializer): "All" aparece antes que las definiciones en este
     // archivo, y los field initializers de una clase estática corren en orden textual — un
     // `{ get; } = [...]` aquí capturaría null en cada una. `=>` evalúa on-access, ya inicializado.
-    public static IReadOnlyList<NotificationTemplateSeed> All =>
+    // Las que tienen versión en español (ver .Spanish.cs) salen con rama por language.
+    public static IReadOnlyList<NotificationTemplateSeed> All => [.. Seeds.Select(WithSpanish)];
+
+    private static IReadOnlyList<NotificationTemplateSeed> Seeds =>
         [
             InvoiceSent,
             Invitation,
@@ -190,6 +192,15 @@ public static partial class NotificationTemplateSeedSource
             WalletAutoRechargeSucceeded,
             WalletAutoRechargePaused,
             WalletAutoRechargeDailyLimit,
+            PayoutFailed,
+            ConnectAccountRestricted,
+            ConnectAccountOnboardingRequired,
+            FileInfected,
+            DmcaTakedown,
+            DmcaCounterNotice,
+            DmcaReinstated,
+            LegalHoldPlaced,
+            LegalHoldLifted,
         ];
 
     // v2: tildes en el español de los push.
@@ -334,6 +345,18 @@ public static partial class NotificationTemplateSeedSource
         ["wallet.auto_recharge_paused"] =
             "Automatic recharge is paused and won't retry on its own. Review it in Settings.",
         ["wallet.auto_recharge_daily_limit"] = "Today's automatic recharge limit was reached. It continues tomorrow.",
+        ["payments.payout_failed.v1"] = "A payout to your office's bank account failed. Check your bank details.",
+        ["payments.connect_account_restricted.v1"] =
+            "Online payments are paused for your office. Provide the missing information to turn them back on.",
+        ["payments.connect_account_onboarding_required.v1"] =
+            "Your payment provider needs a few more details before you can accept online payments.",
+        ["storage.file_infected.v1"] = "A file with malware was found and moved to quarantine.",
+        ["storage.dmca_takedown.v1"] = "A file was blocked after a DMCA notice. Review it as soon as possible.",
+        ["storage.dmca_counter_notice.v1"] =
+            "A counter-notice was submitted for a file blocked by a DMCA notice. Review it.",
+        ["storage.dmca_reinstated.v1"] = "A file blocked by a DMCA notice is available again.",
+        ["storage.legal_hold_placed.v1"] = "A file is on legal hold and can't be deleted until the hold is lifted.",
+        ["storage.legal_hold_lifted.v1"] = "A file is no longer on legal hold.",
         ["seats.user_gated.v1"] = "A team member lost access because the office is over its active seat limit.",
         ["seats.user_unlocked.v1"] = "A team member can access the office again.",
         ["tenant.wisp_review_due.v1"] =
@@ -455,6 +478,8 @@ public static partial class NotificationTemplateSeedSource
     {
         if (!Preheaders.TryGetValue(definition.TemplateKey, out var preheader))
             return definition.Variables;
+        if (SpanishVersions.TryGetValue(definition.TemplateKey, out var spanish) && spanish.Preheader is { } es)
+            preheader = Bilingual(es, preheader);
 
         return
         [
@@ -549,7 +574,13 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("is_overdue", VariableType.Bool, true, "false", "true when the review date already passed."),
-                ("due_date", VariableType.String, true, null, "Review due date, already formatted (en-US)."),
+                (
+                    "due_date",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Fecha tipada del vencimiento; un texto ya formateado se imprime tal cual."
+                ),
                 ("settings_url", VariableType.Url, true, null, "Office settings → Compliance in the office CRM."),
                 (
                     "product_name",
@@ -1149,7 +1180,7 @@ public static partial class NotificationTemplateSeedSource
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Verification</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Your verification code</td></tr>
-              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Your verification code for <strong style="color:#23384B;">{{ reason }}</strong> is:</td></tr>
+              <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Your verification code for <strong style="color:#23384B;">{% case reason_code %}{% when 'login' %}signing in{% when 'email_change' %}confirming your new email{% when 'phone_verify', 'phone_verification' %}verifying your phone{% when 'continue' %}continuing{% else %}{{ reason }}{% endcase %}</strong> is:</td></tr>
               <tr><td style="padding:14px 0 18px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:12px;"><tr><td align="center" style="padding:22px 16px 6px 16px;font-family:Arial,Helvetica,sans-serif;font-size:34px;line-height:40px;letter-spacing:10px;font-weight:bold;color:#1E466B;mso-line-height-rule:exactly;">{{ code }}</td></tr><tr><td align="center" style="padding:0 16px 18px 16px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:18px;color:#70869A;mso-line-height-rule:exactly;">Valid for a few minutes</td></tr></table></td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Never share this code. The {{ product_name }} team will never ask you for it by phone, chat, or email.</td></tr>
             </table>
@@ -1157,7 +1188,20 @@ public static partial class NotificationTemplateSeedSource
             Variables:
             [
                 ("code", VariableType.String, true, null, "Código OTP de un solo uso."),
-                ("reason", VariableType.String, true, null, "Motivo en texto ya traducido (p. ej. 'sign in')."),
+                (
+                    "reason_code",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Motivo: login, email_change, phone_verify o continue. La plantilla escribe la frase en cada idioma."
+                ),
+                (
+                    "reason",
+                    VariableType.String,
+                    false,
+                    null,
+                    "Motivo ya redactado (compatibilidad): se usa solo si no llega reason_code."
+                ),
                 (
                     "product_name",
                     VariableType.String,
@@ -1932,7 +1976,7 @@ public static partial class NotificationTemplateSeedSource
             ContentVersion: ReferralRewardGrantedVersion
         );
 
-    private const int SubscriptionDiscountEndingVersion = 34;
+    private const int SubscriptionDiscountEndingVersion = 39;
 
     /// <summary>Cobro automático y alta muestran el descuento y su código enmascarado.</summary>
     private const int DiscountReceiptsVersion = 35;
@@ -1942,13 +1986,13 @@ public static partial class NotificationTemplateSeedSource
             EventKey: "subscription.discount_ending.v1",
             TemplateKey: "subscription.discount_ending",
             Name: "Subscription — Discount ending",
-            Subject: "Your {{ discount_label }} discount ends in {{ days_left }} days",
+            Subject: "Your {{ discount_label }} discount ends in {{ days_left }} {% if days_left == '1' %}day{% else %}days{% endif %}",
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Billing</td></tr>
               <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;mso-line-height-rule:exactly;">Your discount ends soon</td></tr>
-              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Your <strong style="color:#23384B;">{{ discount_label }}</strong> discount on {{ product_name }} ends in {{ days_left }} days.</td></tr>
+              <tr><td style="padding-bottom:14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">Your <strong style="color:#23384B;">{{ discount_label }}</strong> discount on {{ product_name }} ends in {{ days_left }} {% if days_left == '1' %}day{% else %}days{% endif %}.</td></tr>
               <tr><td style="padding-bottom:4px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">After that, your plan renews at its regular price. There's nothing you need to do.</td></tr>
               <tr>
                 <td align="left" style="padding:26px 0 18px 0;">
@@ -2189,10 +2233,10 @@ public static partial class NotificationTemplateSeedSource
                 ("plan_name", VariableType.String, true, "your plan", "Nombre del plan."),
                 (
                     "grace_end_date",
-                    VariableType.String,
+                    VariableType.Date,
                     false,
                     null,
-                    "Fin de la ventana de gracia ya formateado; si falta, se omite la fecha."
+                    "Fecha tipada del fin de la gracia; si falta, se omite la fecha."
                 ),
                 (
                     "failure_reason",

@@ -56,6 +56,7 @@ public sealed class MfaChallengeRequestedConsumerTests
             scribe,
             portalAccounts,
             new NotificationDispatcherHarness().Dispatcher,
+            FixedRecipientLocale.English,
             Options.Create(new PortalOptions()),
             TestPlatform.Settings,
             new NoopCorrelation(),

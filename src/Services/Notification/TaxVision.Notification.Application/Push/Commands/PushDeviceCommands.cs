@@ -15,7 +15,8 @@ public sealed record RegisterPushDeviceTokenCommand(
     Guid UserId,
     PushPlatform Platform,
     string Token,
-    string? DeviceId
+    string? DeviceId,
+    Guid? SessionId = null
 );
 
 public sealed record RegisterPushDeviceTokenResult(Guid Id, PushPlatform Platform, bool WasReactivated);
@@ -26,13 +27,18 @@ public static class RegisterPushDeviceTokenHandler
         RegisterPushDeviceTokenCommand command,
         IPushDeviceTokenRepository repository,
         IUnitOfWork unitOfWork,
+        TimeProvider clock,
         CancellationToken ct
     )
     {
+        var now = clock.GetUtcNow().UtcDateTime;
+        // La última alta gana: el mismo navegador o app deja de recibir avisos de otra oficina.
+        await repository.DeactivateTokenInOtherTenantsAsync(command.Token.Trim(), command.TenantId, ct);
+
         var existing = await repository.FindByTokenAsync(command.TenantId, command.Token, ct);
         if (existing is not null)
         {
-            existing.Reactivate(command.UserId, command.Platform, command.DeviceId);
+            existing.Reactivate(command.UserId, command.Platform, command.DeviceId, command.SessionId, now);
             await unitOfWork.SaveChangesAsync(ct);
             return Result.Success(new RegisterPushDeviceTokenResult(existing.Id, existing.Platform, true));
         }
@@ -42,7 +48,9 @@ public static class RegisterPushDeviceTokenHandler
             command.UserId,
             command.Platform,
             command.Token,
-            command.DeviceId
+            command.DeviceId,
+            command.SessionId,
+            now
         );
         if (created.IsFailure)
             return Result.Failure<RegisterPushDeviceTokenResult>(created.Error);

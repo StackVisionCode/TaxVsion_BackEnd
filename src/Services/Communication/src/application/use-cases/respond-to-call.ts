@@ -5,7 +5,14 @@ import type { CustomerPortalAccountRepository } from '../ports/customer-portal-a
 import type { EffectiveSettingsResolver } from '../ports/effective-settings-resolver.js';
 import type { IdempotencyStore } from '../ports/idempotency-store.js';
 import type { IntegrationEventPublisher } from '../ports/integration-event-publisher.js';
-import { CallEventTypes, type CallAcceptedEvent, type CallEndedEvent } from '../../contracts/events/call-events.js';
+import {
+  CallEventTypes,
+  type CallAcceptedEvent,
+  type CallEndedEvent,
+  type CallMissedEvent,
+} from '../../contracts/events/call-events.js';
+import type { CallSnapshot } from '../../domain/calls/call.js';
+import { appendCallSystemMessage, callSystemMessageBody, type CallSystemMessageDeps } from './append-call-system-message.js';
 import type { CallStateDto, CallPeerDto } from '../../contracts/socket/call-socket-events.js';
 import { resolveAvatars, type AvatarResolver } from './resolve-avatars.js';
 
@@ -45,6 +52,9 @@ export interface RespondCallDeps {
   readonly effectiveSettings?: Pick<EffectiveSettingsResolver, 'resolve'> | undefined;
   /** F5: foto del peer al aceptar. Opcional (sin el, el peer sale sin `avatarFileId`). */
   readonly avatars?: AvatarResolver;
+  /** Mensaje de sistema en el chat al cancelar o rechazar. Sin ellos no se escribe. */
+  readonly conversations?: CallSystemMessageDeps['conversations'] | undefined;
+  readonly emitter?: CallSystemMessageDeps['emitter'] | undefined;
 }
 
 async function resolveCalleeCustomerId(command: RespondCommand, deps: RespondCallDeps): Promise<string | null> {
@@ -142,6 +152,7 @@ export async function respondToCall(
       recordingFileId: snapshot.recordingFileId,
     };
     await deps.publisher.enqueue(endedEvent);
+    await recordUnanswered(command, snapshot, now, deps);
   }
 
   const state: CallStateDto = {
@@ -184,4 +195,47 @@ export async function respondToCall(
     token: reservation.token,
   });
   return Result.ok(result);
+}
+
+/**
+ * Llamada que nunca se contestó. Cancelada por quien llama: "Missed call" y aviso a quien recibía
+ * (`call.missed`, motivo Cancelled). Rechazada: solo "Declined call" (D-N33: sin aviso a quien llamó).
+ * `cancel` solo pasa desde Ringing, así que nunca compite con el job de perdidas.
+ */
+async function recordUnanswered(
+  command: RespondCommand,
+  snapshot: CallSnapshot,
+  now: Date,
+  deps: RespondCallDeps,
+): Promise<void> {
+  if (snapshot.acceptedAtUtc) return;
+  const endedAt = snapshot.endedAtUtc ?? now;
+  if (snapshot.conversationId && deps.conversations && deps.emitter) {
+    await appendCallSystemMessage(
+      {
+        tenantId: snapshot.tenantId,
+        conversationId: snapshot.conversationId,
+        body: callSystemMessageBody({ status: command.action === 'reject' ? 'Declined' : 'MissedCall', kind: snapshot.kind }),
+        now: endedAt,
+      },
+      { conversations: deps.conversations, emitter: deps.emitter },
+    ).catch(() => undefined);
+  }
+  if (command.action !== 'cancel') return;
+  const missed: CallMissedEvent = {
+    eventId: randomUUID(),
+    eventType: CallEventTypes.Missed,
+    tenantId: snapshot.tenantId,
+    correlationId: command.correlationId,
+    occurredOnUtc: endedAt.toISOString(),
+    callId: snapshot.id,
+    callerUserId: snapshot.callerUserId,
+    calleeUserId: snapshot.calleeUserId,
+    kind: snapshot.kind,
+    ringingAtUtc: snapshot.ringingAtUtc.toISOString(),
+    missedAtUtc: endedAt.toISOString(),
+    reason: 'Cancelled',
+    conversationId: snapshot.conversationId,
+  };
+  await deps.publisher.enqueue(missed);
 }

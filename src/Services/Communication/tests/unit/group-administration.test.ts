@@ -14,6 +14,7 @@ import { startGroupConversation } from '../../src/application/use-cases/start-gr
 import { addGroupParticipant } from '../../src/application/use-cases/add-group-participant.js';
 import { removeGroupParticipant } from '../../src/application/use-cases/remove-group-participant.js';
 import {
+  notifyAddedToGroup,
   removeUserFromGroups,
   setGroupAdminsOnly,
   updateGroupInfo,
@@ -229,6 +230,30 @@ describe('administración de grupos (efectos)', () => {
     expect(h.conversationAudit.entries.at(-1)).toMatchObject({ action: 'MemberAdded', actorUserId: admin, targetUserId: client2 });
     expect(h.created).toHaveLength(1);
     expect(h.events.some((e) => e.event === ChatSocketEvents.MessageNew)).toBe(true);
+  });
+
+  it('stores title and body keys with params', async () => {
+    const h = harness({ settings: { groupsAllowMultipleClients: true } });
+    const id = await groupWithAdmin(h);
+    await addGroupParticipant({ tenantId, correlationId: 'c', clientKey: u(), conversationId: id, actor: actor(admin, 'Beto'), newMemberUserId: client2 }, h.deps);
+
+    expect(h.created[0]?.toSnapshot()).toMatchObject({
+      kind: 'communication.chat.group_member_added',
+      titleKey: 'notif.communication.chat.group_member_added.title',
+      bodyKey: 'notif.communication.chat.group_member_added.body',
+      params: { group: 'Tax team', actorName: 'Beto' },
+      title: 'Added to Tax team',
+    });
+  });
+
+  it('omits the group param when the group has no title', async () => {
+    const h = harness();
+    await notifyAddedToGroup(
+      { tenantId, sourceEventId: u(), correlationId: 'c', conversationId: u(), groupTitle: null, addedUserId: staff, actor: actor(admin, 'Beto') },
+      h.deps,
+    );
+
+    expect(h.created[0]?.toSnapshot().params).toEqual({ actorName: 'Beto' });
   });
 
   // E2E F8: la bitácora decía "A former member" porque el front solo conocía a los miembros actuales.

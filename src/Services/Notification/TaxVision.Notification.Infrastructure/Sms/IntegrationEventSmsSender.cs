@@ -36,7 +36,8 @@ public sealed class IntegrationEventSmsSender(
         string text,
         CancellationToken ct,
         string? templateKey,
-        string? idempotencyToken
+        string? idempotencyToken,
+        string? sourceRef = null
     )
     {
         if (string.IsNullOrWhiteSpace(phoneNumber))
@@ -59,8 +60,10 @@ public sealed class IntegrationEventSmsSender(
                 Body = text,
                 CustomerId = DeterministicCustomerId(phoneNumber),
                 IdempotencyKey = DeriveIdempotencyKey(tenantId, trimmedPhone, templateKey, idempotencyToken, text),
-                SourceContext = string.IsNullOrWhiteSpace(templateKey)
-                    ? "notification:sms"
+                // Con la fila de auditoría, Sms devuelve su id en los resultados y la fila se marca.
+                SourceContext =
+                    !string.IsNullOrWhiteSpace(sourceRef) ? sourceRef
+                    : string.IsNullOrWhiteSpace(templateKey) ? "notification:sms"
                     : $"notification:sms:{templateKey}",
                 TemplateKey = templateKey,
             }

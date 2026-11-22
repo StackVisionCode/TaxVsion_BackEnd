@@ -48,7 +48,7 @@ public sealed class SubscriptionDiscountEndingNotificationConsumerTests
         Assert.Equal(Owner, row.RecipientUserId);
         Assert.Equal(NotificationKinds.SubscriptionDiscountEnding, row.Kind);
         Assert.Equal("Your discount ends soon", row.FallbackTitle);
-        Assert.Contains("Your 20% discount ends in 7 days", row.FallbackBody);
+        Assert.Contains("Your 20% discount ends soon. Days left: 7.", row.FallbackBody);
         Assert.Equal($"subscription:discount:{DiscountId}:ending", row.GroupKey);
         Assert.Single(h.InAppRows.Select(r => r.GroupKey).Distinct());
     }
@@ -61,7 +61,7 @@ public sealed class SubscriptionDiscountEndingNotificationConsumerTests
         await h.HandleAsync(Ending(percent: null, amountCents: 500));
 
         Assert.Equal("$5.00", h.Scribe.LastVariables["discount_label"]);
-        Assert.Contains("Your $5.00 discount ends in 7 days", h.InAppRows[0].FallbackBody);
+        Assert.Contains("Your $5.00 discount ends soon. Days left: 7.", h.InAppRows[0].FallbackBody);
     }
 
     [Fact]
@@ -101,10 +101,13 @@ public sealed class SubscriptionDiscountEndingNotificationConsumerTests
 
     private sealed class Harness(string? host = null, bool withOwner = true)
     {
-        public NotificationDispatcherHarness Dispatcher { get; } = new();
+        public RecordingEmailGateway Gateway { get; } = new();
+        private NotificationDispatcherHarness? dispatcher;
+
+        // El correo sale por el punto único, que encola en este gateway.
+        public NotificationDispatcherHarness Dispatcher => dispatcher ??= new(emailGateway: Gateway);
         public OwnerResolver Resolver { get; } = new(withOwner);
         public RecordingScribeRenderClient Scribe { get; } = new();
-        public RecordingEmailGateway Gateway { get; } = new();
         public PassThroughCorrelation Correlation { get; } = new();
 
         public IReadOnlyList<InAppNotificationRequestedIntegrationEvent> InAppRows =>
@@ -116,10 +119,10 @@ public sealed class SubscriptionDiscountEndingNotificationConsumerTests
                 Dispatcher.Dispatcher,
                 Resolver,
                 new OwnerEmail(),
-                Gateway,
                 Scribe,
                 new FakeTenantHostResolver(host),
                 Options.Create(new PortalOptions()),
+                FixedRecipientLocale.English,
                 Correlation,
                 NullLogger<SubscriptionDiscountEndingIntegrationEvent>.Instance,
                 default

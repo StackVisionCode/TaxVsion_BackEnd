@@ -2,8 +2,6 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -32,44 +30,27 @@ public static class TaskAttachmentRejectedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var title = $"Archivo rechazado: {evt.DisplayName}";
-
-            await dispatcher.RecordInAppAsync(
-                evt.TenantId,
-                NotificationRecipient.ForUser(evt.AttachedByUserId),
-                title,
-                NotificationCategory.DocumentsAndSignatures,
-                "task.attachment_rejected",
-                evt.EventId,
-                correlation.CorrelationId,
-                recipientUserId: evt.AttachedByUserId,
-                inApp: new InAppNotificationRequest(
+            await dispatcher.DispatchAsync(
+                new NotificationIntent(
                     NotificationKinds.TasksAttachmentRejected,
-                    evt.AttachedByUserId,
+                    evt.TenantId,
+                    new NotificationTarget(evt.AttachedByUserId),
                     evt.EventId,
                     "tasks.attachment_rejected.v1",
                     evt.OccurredOn,
-                    title,
-                    FallbackBody: $"El escaneo lo marcó como «{evt.Reason}» en «{evt.TaskTitle}».",
-                    ResourceId: evt.TaskId.ToString(),
-                    Params: new Dictionary<string, string>
-                    {
-                        ["displayName"] = evt.DisplayName,
-                        ["taskTitle"] = evt.TaskTitle,
-                    }
+                    correlation.CorrelationId,
+                    InApp: new InAppContent(
+                        Params: new Dictionary<string, string>
+                        {
+                            ["displayName"] = evt.DisplayName,
+                            ["taskTitle"] = evt.TaskTitle,
+                            ["reason"] = evt.Reason,
+                        },
+                        ResourceId: evt.TaskId.ToString(),
+                        TemplateKey: "task.attachment_rejected"
+                    ),
+                    Push: new PushContent()
                 ),
-                ct: ct
-            );
-
-            await dispatcher.SendPushAsync(
-                evt.TenantId,
-                evt.AttachedByUserId,
-                title,
-                $"El escaneo lo marcó como «{evt.Reason}» en la tarea «{evt.TaskTitle}». Habrá que reemplazarlo.",
-                NotificationCategory.DocumentsAndSignatures,
-                "task.attachment_rejected",
-                evt.EventId,
-                correlation.CorrelationId,
                 ct
             );
         }

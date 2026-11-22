@@ -9,8 +9,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
+using TaxVision.Notification.Application.Push.Consumers;
 using TaxVision.Notification.Domain.Notifications;
 using TaxVision.Notification.Domain.Preferences;
+using TaxVision.Notification.Infrastructure.Messaging;
 using TaxVision.Notification.Infrastructure.Notifications;
 using TaxVision.Notification.Infrastructure.Persistence;
 using TaxVision.Notification.Infrastructure.Persistence.Repositories;
@@ -22,6 +24,8 @@ using Wolverine.SqlServer;
 namespace TaxVision.Notification.Tests.Integration;
 
 public sealed record PushFanOutCommand(Guid TenantId, Guid EventId, IReadOnlyList<Guid> Recipients);
+
+public sealed record PushEnqueueFanOutCommand(Guid TenantId, Guid EventId, IReadOnlyList<Guid> Recipients);
 
 public sealed class FlakyFanOut
 {
@@ -52,6 +56,43 @@ public static class PushFanOutTestHandler
                     "not07.tpl",
                     command.EventId,
                     "not-07"
+                ),
+                ct
+            );
+            if (flaky.FailAfterFirstRecipient)
+            {
+                flaky.FailAfterFirstRecipient = false;
+                throw new InvalidOperationException("Simulated failure on the next recipient.");
+            }
+        }
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+}
+
+/// <summary>N8-04: el consumer solo encola; el envío lo hace la cola de push cuando el consumer confirma.</summary>
+public static class PushEnqueueFanOutTestHandler
+{
+    public static async Task Handle(
+        PushEnqueueFanOutCommand command,
+        NotificationDispatcher dispatcher,
+        FlakyFanOut flaky,
+        IUnitOfWork unitOfWork,
+        CancellationToken ct
+    )
+    {
+        foreach (var userId in command.Recipients)
+        {
+            await dispatcher.EnqueuePushAsync(
+                new PushDispatchRequest(
+                    command.TenantId,
+                    userId,
+                    "Title",
+                    "Body",
+                    NotificationCategory.DocumentsAndSignatures,
+                    "not07.kind",
+                    "not07.tpl",
+                    command.EventId,
+                    "n8-04"
                 ),
                 ct
             );
@@ -96,6 +137,11 @@ public sealed class PushFanOutIntegrationTests : IAsyncLifetime
                 options.ServiceLocationPolicy = ServiceLocationPolicy.AllowedButWarn;
                 options.Discovery.DisableConventionalDiscovery();
                 options.Discovery.IncludeType(typeof(PushFanOutTestHandler));
+                options.Discovery.IncludeType(typeof(PushEnqueueFanOutTestHandler));
+                options.Discovery.IncludeType(typeof(DeliverPushConsumer));
+                options.PublishMessage<DeliverPush>().ToLocalQueue(NotificationLanes.Push);
+                options.LocalQueue(NotificationLanes.Push).MaximumParallelMessages(8).UseDurableInbox();
+                options.Policies.AddMiddleware(typeof(HandlerBusMiddleware));
                 options.Durability.Mode = DurabilityMode.Solo;
                 options.PersistMessagesWithSqlServer(_database.ConnectionString);
                 options.AutoBuildMessageStorageOnStartup = AutoCreate.CreateOrUpdate;
@@ -120,8 +166,18 @@ public sealed class PushFanOutIntegrationTests : IAsyncLifetime
                 services.AddScoped<SmsDispatch>();
                 services.AddScoped<PushDispatch>();
                 services.AddScoped<InAppDispatch>();
+                services.AddSingleton<IUserEmailDirectoryRepository, InMemoryUserEmailDirectoryRepository>();
+                services.AddSingleton<ICustomerPortalAccountProjectionRepository, TestPortalAccounts>();
+                services.AddScoped<NotificationIntentDispatch>();
+                services.AddSingleton<IEmailDispatchGateway, TestDispatchers.UnusedEmailGateway>();
+                services.AddSingleton<IScribeRenderClient, TestDispatchers.UnusedScribe>();
+                services.AddSingleton<IRecipientLocale>(FixedRecipientLocale.English);
+                services.AddSingleton(TestPushLinks.Create());
                 services.AddScoped<NotificationDispatcher>();
                 services.AddScoped<IPushAttemptRecorder, PushAttemptRecorder>();
+                services.AddSingleton(TimeProvider.System);
+                services.AddScoped<HandlerBus>();
+                services.AddScoped<IPushDeliveryQueue, PushDeliveryQueue>();
             })
             .StartAsync();
     }
@@ -187,6 +243,44 @@ public sealed class PushFanOutIntegrationTests : IAsyncLifetime
 
         Assert.Equal(0, _fcm.CallsFor("token-first"));
         Assert.Equal(1, _fcm.CallsFor("token-second"));
+    }
+
+    [Fact]
+    public async Task EnqueuedPush_LeavesOnlyAfterTheConsumerCommits()
+    {
+        var eventId = Guid.NewGuid();
+        var bus = _host.Services.GetRequiredService<IMessageBus>();
+        var command = new PushEnqueueFanOutCommand(_tenant, eventId, [_first, _second]);
+        _flaky.FailAfterFirstRecipient = true;
+
+        // El rollback del consumer se lleva lo encolado: FCM no recibe nada.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => bus.InvokeAsync(command));
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        Assert.Equal(0, _fcm.CallsFor("token-first"));
+
+        await bus.InvokeAsync(command);
+        await WaitForSentAsync(eventId, expected: 2);
+
+        Assert.Equal(1, _fcm.CallsFor("token-first"));
+        Assert.Equal(1, _fcm.CallsFor("token-second"));
+    }
+
+    private async Task WaitForSentAsync(Guid eventId, int expected)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (DateTime.UtcNow < deadline)
+        {
+            await using var db = _database.NewContext();
+            var sent = await db
+                .NotificationLogs.IgnoreQueryFilters()
+                .CountAsync(l =>
+                    l.TenantId == _tenant && l.RelatedEventId == eventId && l.Status == NotificationStatus.Sent
+                );
+            if (sent >= expected)
+                return;
+            await Task.Delay(200);
+        }
+        Assert.Fail($"The push queue did not send {expected} pushes in time.");
     }
 
     private sealed class CountingPushSender : IPushSender

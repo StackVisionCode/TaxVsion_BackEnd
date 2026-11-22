@@ -287,11 +287,14 @@ internal sealed class RecordingMessageBus : IMessageBus
     /// <summary>Si se asigna, atiende <c>InvokeAsync</c>; si no, lanza como el resto.</summary>
     public Action? OnInvoke { get; set; }
 
+    public List<object> Invoked { get; } = [];
+
     public Task InvokeAsync(object message, CancellationToken cancellation = default, TimeSpan? timeout = null)
     {
         if (OnInvoke is null)
             throw new NotImplementedException();
 
+        Invoked.Add(message);
         OnInvoke();
         return Task.CompletedTask;
     }

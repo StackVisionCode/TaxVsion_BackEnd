@@ -4,8 +4,6 @@ using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
-using TaxVision.Notification.Domain.Notifications;
-using TaxVision.Notification.Domain.Preferences;
 
 namespace TaxVision.Notification.Application.Consumers;
 
@@ -17,15 +15,16 @@ public static class FileReinstatedFromTakedownConsumer
         NotificationDispatcher dispatcher,
         IInAppSourceGate inAppSource,
         IRecipientResolver recipientResolver,
+        PushLinks links,
+        IRecipientLocale locales,
+        IUserEmailResolver emails,
+        IScribeRenderClient scribe,
         ICorrelationContext correlation,
         CancellationToken ct
     )
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            if (!inAppSource.PublishesInApp(InAppSourceGroup.CloudStorageLegal))
-                return;
-
             var recipients = await OfficeAlertRecipients.ResolveOwnerAndSubscribersAsync(
                 evt.TenantId,
                 NotificationPermissions.StorageAlerts,
@@ -38,30 +37,49 @@ public static class FileReinstatedFromTakedownConsumer
                 ct
             );
 
-            const string title = "Archivo reinstalado";
-            const string body = "Legal reinstalo un archivo tras resolver un reclamo DMCA.";
+            if (recipients.Count == 0)
+                return;
+
+            var intent = new NotificationIntent(
+                NotificationKinds.CloudStorageDmcaReinstated,
+                evt.TenantId,
+                new NotificationTarget(),
+                evt.EventId,
+                "cloudstorage.file.reinstated_from_takedown.v1",
+                evt.OccurredOn,
+                correlation.CorrelationId
+            );
+            // Correo obligatorio: no depende de quién publica la campana (T3.7).
+            var variables = new Dictionary<string, object?>
+            {
+                ["reinstated_at"] = ScribeDates.Instant(evt.OccurredOn),
+                ["notice_reference"] = evt.DmcaNoticeId.ToString(),
+                ["action_url"] = await OfficeAlertEmails.FileUrlAsync(links, evt.TenantId, evt.FileId, ct),
+            };
+            await OfficeAlertEmails.SendAsync(
+                intent,
+                "storage.dmca_reinstated.v1",
+                variables,
+                recipients,
+                dispatcher,
+                emails,
+                scribe,
+                locales,
+                ct
+            );
+
+            if (!inAppSource.PublishesInApp(InAppSourceGroup.CloudStorageLegal))
+                return;
+
             foreach (var userId in recipients)
             {
-                await dispatcher.RecordInAppAsync(
-                    evt.TenantId,
-                    NotificationRecipient.ForUser(userId),
-                    title,
-                    NotificationCategory.StorageAndQuota,
-                    "cloudstorage.file.reinstated_from_takedown",
-                    evt.EventId,
-                    correlation.CorrelationId,
-                    recipientUserId: userId,
-                    inApp: new InAppNotificationRequest(
-                        NotificationKinds.CloudStorageDmcaReinstated,
-                        userId,
-                        evt.EventId,
-                        "cloudstorage.file.reinstated_from_takedown.v1",
-                        evt.OccurredOn,
-                        title,
-                        FallbackBody: body,
-                        ResourceId: evt.FileId.ToString()
-                    ),
-                    ct: ct
+                await dispatcher.DispatchAsync(
+                    intent with
+                    {
+                        Target = new NotificationTarget(userId),
+                        InApp = new InAppContent(ResourceId: evt.FileId.ToString()),
+                    },
+                    ct
                 );
             }
         }

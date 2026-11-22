@@ -1,3 +1,4 @@
+using System.Globalization;
 using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.CampaignsIntegrationEvents;
@@ -89,6 +90,8 @@ public static class CampaignSchedulesPausedOnOffboardingConsumer
                         new Dictionary<string, string>
                         {
                             ["campaignCount"] = count.ToString(),
+                            // Nombre del archivo de textos (titleMany cuando count > 1).
+                            ["count"] = count.ToString(CultureInfo.InvariantCulture),
                             ["scheduleCount"] = evt.Schedules.Count.ToString(),
                         }
                     ),

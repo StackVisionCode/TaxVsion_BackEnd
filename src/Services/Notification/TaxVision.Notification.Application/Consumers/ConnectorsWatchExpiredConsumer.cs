@@ -24,7 +24,8 @@ public static class ConnectorsWatchExpiredConsumer
             if (!inAppSource.PublishesInApp(InAppSourceGroup.Connectors))
                 return;
 
-            var title = "Tu cuenta de correo necesita reconexión";
+            var parameters = new Dictionary<string, string> { ["providerCode"] = evt.ProviderCode };
+            var (title, body) = InAppFallback.For(NotificationKinds.ConnectorsWatchExpired, parameters);
             var recipients = await MailboxAlertRecipients.ResolveAsync(
                 evt.TenantId,
                 evt.CreatedByUserId,
@@ -52,9 +53,9 @@ public static class ConnectorsWatchExpiredConsumer
                         "connectors.watch.expired.v1",
                         evt.ExpiredAtUtc,
                         title,
-                        FallbackBody: $"Dejamos de recibir correo nuevo de tu cuenta {evt.ProviderCode}. Reconéctala para reanudar la sincronización.",
+                        FallbackBody: body,
                         ResourceId: evt.AccountId.ToString(),
-                        Params: new Dictionary<string, string> { ["providerCode"] = evt.ProviderCode }
+                        Params: parameters
                     ),
                     ct: ct
                 );

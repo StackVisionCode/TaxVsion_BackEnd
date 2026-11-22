@@ -532,7 +532,8 @@ builder.Host.UseWolverine(options =>
 
     // Eventos publicados por Auth
     options.PublishMessage<UserRegisteredIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<InvitationCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Lleva el token de la invitación: va solo a la cola de Notification, nunca al fanout.
+    options.PublishMessage<InvitationCreatedIntegrationEvent>().ToRabbitQueue("notification-events");
     options.PublishMessage<UserDeactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserReactivatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserOffboardedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -543,10 +544,15 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<UserSlotPriorityOverriddenIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<UserRolesChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<RolePermissionsChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<PasswordResetRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<MfaChallengeRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Lleva el token de reseteo: va solo a la cola de Notification, nunca al fanout.
+    options.PublishMessage<PasswordResetRequestedIntegrationEvent>().ToRabbitQueue("notification-events");
+    // Lleva el código MFA: va solo a la cola de Notification, nunca al fanout.
+    options.PublishMessage<MfaChallengeRequestedIntegrationEvent>().ToRabbitQueue("notification-events");
     options.PublishMessage<SecurityAlertIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<EmailChangeRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Fin de sesión (solo ids): Notification revoca el push de esa sesión.
+    options.PublishMessage<SessionEndedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Lleva el token de cambio de correo: va solo a la cola de Notification, nunca al fanout.
+    options.PublishMessage<EmailChangeRequestedIntegrationEvent>().ToRabbitQueue("notification-events");
     options.PublishMessage<UserProfileUpdatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantRecoveryRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantDomainCreatedIntegrationEvent>().ToRabbitExchange("taxvision-events");
@@ -560,13 +566,15 @@ builder.Host.UseWolverine(options =>
     options.PublishMessage<TenantSubdomainChangedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantDomainReservedIntegrationEvent>().ToRabbitExchange("taxvision-events");
     options.PublishMessage<TenantResolutionFailedIntegrationEvent>().ToRabbitExchange("taxvision-events");
-    options.PublishMessage<OnboardingOtpRequestedIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Lleva el código de alta: va solo a la cola de Notification, nunca al fanout.
+    options.PublishMessage<OnboardingOtpRequestedIntegrationEvent>().ToRabbitQueue("notification-events");
     options.PublishMessage<OnboardingRegistrationReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // El comprador declaró un código de referido: Growth registra la atribución por evento (sin M2M de Auth).
     options.PublishMessage<OnboardingReferralDeclaredIntegrationEvent>().ToRabbitExchange("taxvision-events");
+    // Lleva el token de reanudación del pago: va solo a la cola de Notification, nunca al fanout.
     options
         .PublishMessage<OnboardingPaymentFailedNotificationRequestedIntegrationEvent>()
-        .ToRabbitExchange("taxvision-events");
+        .ToRabbitQueue("notification-events");
     options.PublishMessage<OnboardingReceiptReadyIntegrationEvent>().ToRabbitExchange("taxvision-events");
     // Mantenimiento: completa en PaymentApp los pagos de alta viejos (oficina + recibo).
     options.PublishMessage<OnboardingPaymentLinkReplayedIntegrationEvent>().ToRabbitExchange("taxvision-events");
