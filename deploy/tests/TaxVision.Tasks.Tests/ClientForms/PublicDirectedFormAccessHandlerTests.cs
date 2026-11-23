@@ -437,6 +437,65 @@ public sealed class PublicDirectedFormAccessHandlerTests
         Assert.Empty(bus.Published);
     }
 
+    // Recargar el enlace de un formulario ya enviado: se avisa sin pedir ni mandar otro código.
+    [Fact]
+    public async Task Link_of_a_submitted_request_says_so_and_sends_no_code()
+    {
+        var fixture = Fixture();
+        Submit(fixture);
+        var bus = new FakeMessageBus();
+
+        var access = await GetAccessAsync(fixture, Now.AddMinutes(1));
+        var challenge = await RequestChallengeAsync(fixture, Now.AddMinutes(1), bus);
+
+        Assert.True(access.IsSuccess);
+        Assert.True(access.Value.AlreadySubmitted);
+        Assert.True(challenge.IsSuccess);
+        Assert.Empty(bus.Published);
+    }
+
+    [Fact]
+    public async Task Link_of_a_pending_request_is_not_marked_as_submitted()
+    {
+        var fixture = Fixture();
+
+        var access = await GetAccessAsync(fixture, Now.AddMinutes(1));
+
+        Assert.True(access.IsSuccess);
+        Assert.False(access.Value.AlreadySubmitted);
+    }
+
+    // Devuelto para cambios: el externo vuelve a entrar con código para corregir.
+    [Fact]
+    public async Task Link_of_a_returned_request_asks_for_a_code_again()
+    {
+        var fixture = Fixture();
+        Submit(fixture);
+        Assert.True(fixture.Request.ReturnForChanges("Fix the address", [], UserId, Now.AddMinutes(1)).IsSuccess);
+        var bus = new FakeMessageBus();
+
+        var access = await GetAccessAsync(fixture, Now.AddMinutes(2));
+        var challenge = await RequestChallengeAsync(fixture, Now.AddMinutes(2), bus);
+
+        Assert.True(access.IsSuccess);
+        Assert.False(access.Value.AlreadySubmitted);
+        Assert.True(challenge.IsSuccess);
+        Assert.Single(bus.Published);
+    }
+
+    private static void Submit(FixtureState fixture) =>
+        Assert.True(
+            fixture
+                .Request.Submit(
+                    new ProtectedAnswers("{}", 1),
+                    [],
+                    [],
+                    FormActor.ExternalSession(fixture.Participant.Id, Guid.NewGuid()),
+                    Now
+                )
+                .IsSuccess
+        );
+
     private static Task<Result<PublicFormSessionResponse>> VerifyAsync(
         FixtureState fixture,
         string code,

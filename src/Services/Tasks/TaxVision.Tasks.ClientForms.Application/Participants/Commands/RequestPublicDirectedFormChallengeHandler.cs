@@ -47,7 +47,12 @@ public static class RequestPublicDirectedFormChallengeHandler
             capabilities,
             ct
         );
-        if (context is null || !await CanIssueAsync(context, command.NowUtc, challenges, security, options, ct))
+        // Ya enviado: no se manda otro código; misma respuesta que cualquier otro caso sin envío.
+        if (
+            context is null
+            || context.AlreadySubmitted
+            || !await CanIssueAsync(context, command.NowUtc, challenges, security, options, ct)
+        )
             return Result.Success();
         var issued = await IssueAsync(context, command.NowUtc, notices, security, ct);
         if (issued is not { } challenge)
