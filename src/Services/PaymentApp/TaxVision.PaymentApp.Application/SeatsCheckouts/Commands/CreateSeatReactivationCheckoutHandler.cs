@@ -32,6 +32,7 @@ public static class CreateSeatReactivationCheckoutHandler
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
         ICheckoutReturnUrlGuard returnUrls,
+        IOnboardingPaymentMethodCatalog paymentMethods,
         CancellationToken ct
     )
     {
@@ -47,6 +48,15 @@ public static class CreateSeatReactivationCheckoutHandler
         );
         if (verify.IsFailure)
             return Result.Failure<SeatsCheckoutResponse>(verify.Error);
+
+        var method = await CheckoutPaymentMethodGuard.EnsureAvailableAsync(
+            paymentMethods,
+            command.Provider,
+            command.Method,
+            ct
+        );
+        if (method.IsFailure)
+            return Result.Failure<SeatsCheckoutResponse>(method.Error);
 
         var request = new HostedCheckoutRequest(
             command.IdempotencyKey,

@@ -14,11 +14,16 @@ public sealed record ValidateInvitationQuery(string Token);
 
 /// <summary>Estado efectivo de cara al frontend: <c>Pending</c> muestra el formulario; el resto muestra la
 /// pantalla "esta invitación ya no es válida". <c>Invalid</c> = token no encontrado.</summary>
+/// <remarks><c>FirstName</c>/<c>LastName</c> solo van con <c>NamesLocked</c>: el nombre que la oficina registró
+/// del cliente de portal, que el front muestra fijo.</remarks>
 public sealed record InvitationValidationResponse(
     string Status,
     string? Email,
     string? ActorType,
-    InvitationTenantBrand? Tenant
+    InvitationTenantBrand? Tenant,
+    string? FirstName = null,
+    string? LastName = null,
+    bool NamesLocked = false
 );
 
 /// <summary>Datos mínimos de la oficina para pintar el branding correcto (por subdominio) en la página.</summary>
@@ -54,8 +59,17 @@ public static class ValidateInvitationHandler
         var tenant = await tenants.GetByIdAsync(invitation.TenantId, ct);
         var brand = tenant is null ? null : new InvitationTenantBrand(tenant.Id, tenant.Name, tenant.SubDomain);
 
+        var locked = invitation.HasLockedName;
         return Result.Success(
-            new InvitationValidationResponse(effectiveStatus, invitation.Email, invitation.ActorType.ToString(), brand)
+            new InvitationValidationResponse(
+                effectiveStatus,
+                invitation.Email,
+                invitation.ActorType.ToString(),
+                brand,
+                locked ? invitation.InviteeFirstName : null,
+                locked ? invitation.InviteeLastName : null,
+                locked
+            )
         );
     }
 }

@@ -129,8 +129,9 @@ public sealed class ReminderScheduler(IServiceProvider serviceProvider, ILogger<
     // Métodos privados: cada uno una responsabilidad
     // ------------------------------------------------------------------
 
+    // Con orden, solo se le recuerda a quien tiene el turno.
     private static IEnumerable<Signer> PendingSigners(SignatureRequest request) =>
-        request.Signers.Where(s => s.Status is SignerStatus.Pending or SignerStatus.InProgress);
+        request.CurrentTurnSigners().Where(s => s.CurrentTokenId is not null);
 
     private static SignatureRequestReminderDueIntegrationEvent BuildReminderEvent(
         SignatureRequest request,

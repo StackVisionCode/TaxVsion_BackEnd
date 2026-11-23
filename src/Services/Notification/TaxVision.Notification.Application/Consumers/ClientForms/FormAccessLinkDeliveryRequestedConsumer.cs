@@ -59,7 +59,7 @@ public static class FormAccessLinkDeliveryRequestedConsumer
                     content.Language,
                     new Dictionary<string, object?>
                     {
-                        ["participant_name"] = content.Name,
+                        ["participant_name"] = ParticipantNames.ForGreeting(content.Name),
                         ["form_title"] = content.Title,
                         ["access_link"] = link,
                         ["expires_at"] = ScribeDates.Instant(command.ExpiresAtUtc),

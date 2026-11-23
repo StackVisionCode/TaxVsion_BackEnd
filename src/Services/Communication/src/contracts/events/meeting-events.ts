@@ -257,6 +257,8 @@ export interface MeetingRecordingReadyEvent extends IntegrationEvent {
   readonly readyAtUtc: string;
   /** Fase 1B — antes ausente; Notification lo usaba como recipient simbolico `meeting:{id}`. */
   readonly hostUserId: string;
+  /** Título de la reunión para el correo de "grabación lista" (opcional: los consumidores viejos lo ignoran). */
+  readonly meetingTitle?: string;
   /**
    * Quien acepto/rechazo grabar. Presente cuando el meeting paso por el
    * flujo de consent (Fase Backend 3, publicado desde el consumer de

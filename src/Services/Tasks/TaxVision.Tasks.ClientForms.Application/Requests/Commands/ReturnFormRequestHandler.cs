@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.DataCollection.Engine;
@@ -6,10 +7,14 @@ using TaxVision.DataCollection.Engine.Answers;
 using TaxVision.DataCollection.Engine.Definitions;
 using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Common.Abstractions;
+using TaxVision.Tasks.ClientForms.Application.Participants.Abstractions;
+using TaxVision.Tasks.ClientForms.Application.Participants.Commands;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Templates.Abstractions;
+using TaxVision.Tasks.ClientForms.Domain.Participants;
 using TaxVision.Tasks.ClientForms.Domain.Requests;
 using Wolverine;
+using Kinds = BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormParticipantNotificationKinds;
 
 namespace TaxVision.Tasks.ClientForms.Application.Requests.Commands;
 
@@ -27,6 +32,10 @@ public static class ReturnFormRequestHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         IClientFormsMetrics metrics,
+        IFormParticipantRepository participants,
+        IFormAccessGrantRepository grants,
+        IFormExternalAccessSecurity security,
+        IProtectedPayloadCodec codec,
         CancellationToken ct
     )
     {
@@ -37,6 +46,10 @@ public static class ReturnFormRequestHandler
         if (valid.IsFailure)
             return Result.Failure<FormRequestResponse>(valid.Error);
         var returned = ReturnForChanges(found.Value, command);
+        // Externo sin vincular: el aviso de devolución sale de aquí, con un enlace nuevo emitido en la misma transacción.
+        var notice = returned.IsSuccess
+            ? await PrepareExternalNoticeAsync(found.Value, command, participants, grants, security, ct)
+            : null;
         var saved = await ReviewSupport.SaveReviewed(
             returned,
             found.Value,
@@ -51,9 +64,89 @@ public static class ReturnFormRequestHandler
         );
         // Guardar antes de publicar (T-8): un conflicto no deja salir el aviso de una devolución revertida.
         if (saved.IsSuccess)
-            await PublishReturnedAsync(found.Value, command.ByUserId, bus, correlation);
+            await PublishAsync(found.Value, command.ByUserId, notice, codec, bus, correlation);
         return saved;
     }
+
+    private static async Task PublishAsync(
+        FormRequest request,
+        Guid byUserId,
+        ExternalNotice? notice,
+        IProtectedPayloadCodec codec,
+        IMessageBus bus,
+        ICorrelationContext correlation
+    )
+    {
+        var fact = await PublishReturnedAsync(request, byUserId, bus, correlation);
+        if (notice is not null)
+            await bus.PublishAsync(NoticeCommand(fact, notice, codec, correlation));
+    }
+
+    private sealed record ExternalNotice(FormParticipant Participant, string? AccessToken, DateTime? ExpiresAtUtc);
+
+    // Con cliente (directo o vinculado) el aviso ya sale del hecho en Notification.
+    private static async Task<ExternalNotice?> PrepareExternalNoticeAsync(
+        FormRequest request,
+        ReturnFormRequestCommand command,
+        IFormParticipantRepository participants,
+        IFormAccessGrantRepository grants,
+        IFormExternalAccessSecurity security,
+        CancellationToken ct
+    )
+    {
+        if (
+            request.Participant.Kind != FormParticipantKind.External
+            || request.Participant.CustomerId is not null
+            || request.Participant.ParticipantId is not { } participantId
+        )
+            return null;
+        var participant = await participants.GetAsync(request.TenantId, participantId, ct);
+        if (participant is null)
+            return null;
+        if (request.Origin != FormRequestOrigin.Directed)
+            return new ExternalNotice(participant, null, null);
+
+        var grant = await grants.GetByRequestAsync(request.TenantId, request.Id, ct);
+        if (grant is null)
+            return new ExternalNotice(participant, null, null);
+        var token = security.GenerateToken();
+        var expiresAtUtc = command.NowUtc.Add(ResendExternalFormAccessHandler.GrantLifetime);
+        var reissued = grant.ReissueForReturn(token.TokenHash, token.TokenLast4, expiresAtUtc, command.NowUtc);
+        return reissued.IsSuccess
+            ? new ExternalNotice(participant, token.RawToken, expiresAtUtc)
+            : new ExternalNotice(participant, null, null);
+    }
+
+    // El id del hecho fija el del comando: una reentrega pide el mismo aviso y Notification lo deduplica.
+    private static FormParticipantNotificationRequestedIntegrationEvent NoticeCommand(
+        FormRequestReturnedIntegrationEvent fact,
+        ExternalNotice notice,
+        IProtectedPayloadCodec codec,
+        ICorrelationContext correlation
+    ) =>
+        new()
+        {
+            EventId = fact.EventId,
+            CommandId = fact.EventId,
+            TenantId = fact.TenantId,
+            CorrelationId = correlation.CorrelationId,
+            FormRequestId = fact.FormRequestId,
+            Participant = fact.Participant,
+            Kind = Kinds.Returned,
+            Payload = codec.Protect(
+                ClientFormProtectedPayloadSchemas.ParticipantNotification,
+                new ProtectedPayloadBinding(fact.TenantId, fact.FormRequestId, fact.Participant),
+                new FormParticipantNotificationPayload(
+                    notice.Participant.Email,
+                    notice.Participant.FullName,
+                    fact.Title,
+                    new Dictionary<string, string> { ["comment_count"] = fact.FieldCommentCount.ToString() },
+                    notice.Participant.Language,
+                    notice.AccessToken,
+                    notice.ExpiresAtUtc
+                )
+            ),
+        };
 
     private static Task<Result<FormRequest>> LoadVisibleAsync(
         ReturnFormRequestCommand command,
@@ -118,7 +211,7 @@ public static class ReturnFormRequestHandler
     private static Result ReturnForChanges(FormRequest request, ReturnFormRequestCommand command) =>
         request.ReturnForChanges(command.Message, command.FieldComments, command.ByUserId, command.NowUtc);
 
-    private static async Task PublishReturnedAsync(
+    private static async Task<FormRequestReturnedIntegrationEvent> PublishReturnedAsync(
         FormRequest request,
         Guid byUserId,
         IMessageBus bus,
@@ -128,8 +221,8 @@ public static class ReturnFormRequestHandler
         var revision = request.Submission!.Revisions.Single(item =>
             item.RevisionNumber == request.CurrentRevisionNumber
         );
-        await bus.PublishAsync(
-            FormRequestIntegrationEventFactory.Returned(request, revision, byUserId, correlation.CorrelationId)
-        );
+        var fact = FormRequestIntegrationEventFactory.Returned(request, revision, byUserId, correlation.CorrelationId);
+        await bus.PublishAsync(fact);
+        return fact;
     }
 }

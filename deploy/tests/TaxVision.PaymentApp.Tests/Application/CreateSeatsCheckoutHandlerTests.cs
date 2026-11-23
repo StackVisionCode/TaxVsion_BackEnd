@@ -52,6 +52,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            FakePaymentMethodCatalog.AllEnabled(),
             CancellationToken.None
         );
 
@@ -88,6 +89,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            FakePaymentMethodCatalog.AllEnabled(),
             CancellationToken.None
         );
 
@@ -130,6 +132,7 @@ public sealed class CreateSeatsCheckoutHandlerTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            FakePaymentMethodCatalog.AllEnabled(),
             CancellationToken.None
         );
 
@@ -192,6 +195,9 @@ public sealed class CreateSeatsCheckoutHandlerTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            new FakePaymentMethodCatalog(
+                FakePaymentMethodCatalog.Option(PaymentProviderCode.Manual, PaymentMethodKind.Manual)
+            ),
             CancellationToken.None
         );
 

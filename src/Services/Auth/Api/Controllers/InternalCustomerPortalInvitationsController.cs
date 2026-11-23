@@ -20,7 +20,12 @@ namespace TaxVision.Auth.Api.Controllers;
 [AllowActorTypes(ActorType.Service)]
 public sealed class InternalCustomerPortalInvitationsController(IMessageBus bus) : ControllerBase
 {
-    public sealed record IssuePortalInvitationRequest(string Email, Guid? RequestedByUserId);
+    public sealed record IssuePortalInvitationRequest(
+        string Email,
+        Guid? RequestedByUserId,
+        string? FirstName = null,
+        string? LastName = null
+    );
 
     [HttpPost]
     [RateLimitExempt(
@@ -40,7 +45,14 @@ public sealed class InternalCustomerPortalInvitationsController(IMessageBus bus)
             return Forbid();
 
         var result = await bus.InvokeAsync<Result<PortalInvitationResult>>(
-            new IssueCustomerPortalInvitationCommand(tenantId, customerId, request.Email, request.RequestedByUserId),
+            new IssueCustomerPortalInvitationCommand(
+                tenantId,
+                customerId,
+                request.Email,
+                request.RequestedByUserId,
+                request.FirstName,
+                request.LastName
+            ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);

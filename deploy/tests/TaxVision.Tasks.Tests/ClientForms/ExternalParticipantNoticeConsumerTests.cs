@@ -11,11 +11,11 @@ public sealed class ExternalParticipantNoticeConsumerTests
     private static readonly Guid TenantId = FormActionTestDoubles.TenantId;
 
     [Fact]
-    public async Task Returned_to_an_unlinked_external_requests_a_confidential_notice()
+    public async Task Completed_for_an_unlinked_external_requests_a_confidential_notice()
     {
         var participant = Participant();
         var bus = new FakeMessageBus();
-        var evt = Returned(External(participant.Id));
+        var evt = Completed(External(participant.Id));
 
         await ExternalParticipantNoticeConsumer.Handle(
             evt,
@@ -27,7 +27,7 @@ public sealed class ExternalParticipantNoticeConsumerTests
         );
 
         var command = Assert.IsType<FormParticipantNotificationRequestedIntegrationEvent>(Assert.Single(bus.Published));
-        Assert.Equal(FormParticipantNotificationKinds.Returned, command.Kind);
+        Assert.Equal(FormParticipantNotificationKinds.Completed, command.Kind);
         Assert.Equal(evt.EventId, command.CommandId);
         Assert.Equal(evt.FormRequestId, command.FormRequestId);
         Assert.DoesNotContain("guest@example.com", command.Payload.Cipher, StringComparison.OrdinalIgnoreCase);
@@ -40,7 +40,7 @@ public sealed class ExternalParticipantNoticeConsumerTests
         Assert.Equal("guest@example.com", payload.Email);
         Assert.Equal("Guest Person", payload.Name);
         Assert.Equal("Intake", payload.Title);
-        Assert.Equal("3", payload.Params["comment_count"]);
+        Assert.Empty(payload.Params);
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class ExternalParticipantNoticeConsumerTests
         var repository = new ActionParticipantRepository(participant);
 
         await ExternalParticipantNoticeConsumer.Handle(
-            Returned(new ClientFormParticipant { Kind = "Customer", CustomerId = Guid.NewGuid() }),
+            Completed(new ClientFormParticipant { Kind = "Customer", CustomerId = Guid.NewGuid() }),
             repository,
             FormActionTestDoubles.Codec,
             bus,
@@ -59,7 +59,7 @@ public sealed class ExternalParticipantNoticeConsumerTests
             CancellationToken.None
         );
         await ExternalParticipantNoticeConsumer.Handle(
-            Returned(
+            Completed(
                 new ClientFormParticipant
                 {
                     Kind = "External",
@@ -148,7 +148,7 @@ public sealed class ExternalParticipantNoticeConsumerTests
         var bus = new FakeMessageBus();
 
         await ExternalParticipantNoticeConsumer.Handle(
-            Returned(External(Guid.NewGuid())),
+            Completed(External(Guid.NewGuid())),
             new ActionParticipantRepository(Participant()),
             FormActionTestDoubles.Codec,
             bus,
@@ -174,7 +174,7 @@ public sealed class ExternalParticipantNoticeConsumerTests
     private static ClientFormParticipant External(Guid participantId) =>
         new() { Kind = "External", ParticipantId = participantId };
 
-    private static FormRequestReturnedIntegrationEvent Returned(ClientFormParticipant participant) =>
+    private static FormRequestCompletedIntegrationEvent Completed(ClientFormParticipant participant) =>
         new()
         {
             TenantId = TenantId,
@@ -182,7 +182,6 @@ public sealed class ExternalParticipantNoticeConsumerTests
             Participant = participant,
             Title = "Intake",
             RevisionNumber = 1,
-            FieldCommentCount = 3,
-            ReturnedByUserId = Guid.NewGuid(),
+            CompletedByUserId = Guid.NewGuid(),
         };
 }

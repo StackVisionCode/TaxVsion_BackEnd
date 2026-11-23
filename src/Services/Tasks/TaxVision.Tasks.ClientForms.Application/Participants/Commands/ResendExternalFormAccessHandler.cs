@@ -22,7 +22,7 @@ public sealed record ResendExternalFormAccessCommand(
 
 public static class ResendExternalFormAccessHandler
 {
-    private static readonly TimeSpan GrantLifetime = TimeSpan.FromDays(14);
+    internal static readonly TimeSpan GrantLifetime = TimeSpan.FromDays(14);
 
     public static async Task<Result> Handle(
         ResendExternalFormAccessCommand command,

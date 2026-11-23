@@ -71,6 +71,46 @@ describe('resolveCeilings', () => {
     expect(c.maxRecordingMinutesMeeting).toBe(30);
   });
 
+  // Plan a la medida: la excepción de una oficina reemplaza el global (puede ser mayor); sin excepción, manda el global.
+  it('an office override can go above the platform global, never above the technical limit', () => {
+    const overridden = limits({
+      maxMeetingMinutes: 120,
+      maxMeetingParticipants: 25,
+      maxRecordingMinutesMeeting: 9999,
+      overriddenKeys: [
+        'communication.max_meeting_minutes',
+        'communication.max_participants_per_meeting',
+        'communication.max_recording_minutes.meeting',
+      ],
+    });
+    const c = resolveCeilings({ platform, limits: overridden, constraints: null });
+    expect(c.maxMeetingDurationMinutes).toBe(120);
+    expect(c.maxParticipants).toBe(25);
+    expect(c.maxRecordingMinutesMeeting).toBe(120);
+
+    const huge = limits({ maxMeetingMinutes: 9999, overriddenKeys: ['communication.max_meeting_minutes'] });
+    expect(resolveCeilings({ platform, limits: huge, constraints: null }).maxMeetingDurationMinutes).toBe(
+      TECHNICAL_LIMITS.maxMeetingDurationMinutes.max,
+    );
+  });
+
+  it('without an override the plan value never passes the global, as before', () => {
+    const c = resolveCeilings({ platform, limits: limits({ maxMeetingMinutes: 120, maxMeetingParticipants: 25 }), constraints: null });
+    expect(c.maxMeetingDurationMinutes).toBe(60);
+    expect(c.maxParticipants).toBe(10);
+  });
+
+  it('a per-office cap set by the platform still lowers an override', () => {
+    const constraints = TenantCommunicationConstraints.empty(tenantId);
+    constraints.update({ maxMeetingDurationMinutes: 90 }, { userId: randomUUID() });
+    const c = resolveCeilings({
+      platform,
+      limits: limits({ maxMeetingMinutes: 120, overriddenKeys: ['communication.max_meeting_minutes'] }),
+      constraints: constraints.toSnapshot(),
+    });
+    expect(c.maxMeetingDurationMinutes).toBe(90);
+  });
+
   it('values are clamped to the technical range even if a layer is corrupt', () => {
     const c = resolveCeilings({ platform, limits: limits({ maxMeetingParticipants: 1 }), constraints: null });
     expect(c.maxParticipants).toBe(TECHNICAL_LIMITS.maxParticipants.min);

@@ -250,6 +250,14 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("InvitedByUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("InviteeFirstName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("InviteeLastName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<DateTime?>("LastSentAtUtc")
                         .HasColumnType("datetime2");
 
@@ -3825,6 +3833,38 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.HasIndex("RoleId");
 
                     b.ToTable("UserRoles", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Auth.Domain.Sessions.PlatformSessionPolicy", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<int>("AbsoluteLifetimeHours")
+                        .HasColumnType("int");
+
+                    b.Property<int>("IdleTimeoutMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Version")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("WarningSeconds")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PlatformSessionPolicies", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Domain.Sessions.UserSession", b =>

@@ -80,6 +80,7 @@ builder.Services.AddHostedService<SeatExpirationJob>();
 builder.Services.AddHostedService<AddOnExpirationJob>();
 builder.Services.AddHostedService<RenewalNotificationJob>();
 builder.Services.AddHostedService<SubscriptionDiscountJob>();
+builder.Services.AddHostedService<EntitlementOverrideExpiryJob>();
 builder.Services.AddHostedService<SeatCheckoutReconciliationJob>();
 
 // Los seeders del catálogo solo actúan contra una base vacía; este pone al día la que YA existe:

@@ -344,6 +344,21 @@ function lowest(global: number, ...others: Array<number | null | undefined>): nu
   return result;
 }
 
+/**
+ * Plan a la medida: el techo de partida de un límite. Si la clave es una excepción de la oficina, su valor
+ * REEMPLAZA el global (puede ser mayor: para eso se da). Si no, el plan solo puede bajar el global, como siempre.
+ * En los dos casos después aplican el tope por oficina de PlatformAdmin y el límite técnico.
+ */
+function startingCeiling(
+  global: number,
+  plan: number | null | undefined,
+  key: string,
+  limits: TenantCommunicationLimitsSnapshot | null,
+): number {
+  const overridden = plan !== null && plan !== undefined && (limits?.overriddenKeys ?? []).includes(key);
+  return overridden ? plan : lowest(global, plan);
+}
+
 /** Valor de oficina acotado al techo; null = el techo mismo (o el default dado). */
 function officeValue(office: number | null, ceiling: number, fallback: number, range: TechnicalLimitKey): number {
   const chosen = office ?? fallback;
@@ -356,32 +371,43 @@ export function resolveCeilings(input: {
   constraints: TenantCommunicationConstraintsSnapshot | null;
 }): EffectiveCeilings {
   const { platform, limits, constraints } = input;
+  const start = (global: number, plan: number | null | undefined, key: string) =>
+    startingCeiling(global, plan, key, limits);
+  const meetingMinutes = lowest(
+    start(platform.maxMeetingDurationMinutes, limits?.maxMeetingMinutes, 'communication.max_meeting_minutes'),
+    constraints?.maxMeetingDurationMinutes,
+  );
   return {
     maxParticipants: clampToTechnical(
       'maxParticipants',
-      lowest(platform.defaultMaxParticipants, limits?.maxMeetingParticipants, constraints?.maxMeetingParticipants),
+      lowest(
+        start(platform.defaultMaxParticipants, limits?.maxMeetingParticipants, 'communication.max_participants_per_meeting'),
+        constraints?.maxMeetingParticipants,
+      ),
     ),
-    maxMeetingDurationMinutes: clampToTechnical(
-      'maxMeetingDurationMinutes',
-      lowest(platform.maxMeetingDurationMinutes, limits?.maxMeetingMinutes, constraints?.maxMeetingDurationMinutes),
-    ),
+    maxMeetingDurationMinutes: clampToTechnical('maxMeetingDurationMinutes', meetingMinutes),
     maxRecordingMinutesMeeting: clampToTechnical(
       'maxRecordingMinutes',
       lowest(
-        platform.maxRecordingMinutesMeeting,
-        limits?.maxRecordingMinutesMeeting,
+        start(platform.maxRecordingMinutesMeeting, limits?.maxRecordingMinutesMeeting, 'communication.max_recording_minutes.meeting'),
         constraints?.maxRecordingMinutesMeeting,
         // Una grabación de reunión nunca dura más que la reunión (C-04).
-        lowest(platform.maxMeetingDurationMinutes, limits?.maxMeetingMinutes, constraints?.maxMeetingDurationMinutes),
+        meetingMinutes,
       ),
     ),
     maxRecordingMinutesAudioCall: clampToTechnical(
       'maxRecordingMinutes',
-      lowest(platform.maxRecordingMinutesAudioCall, limits?.maxRecordingMinutesAudioCall, constraints?.maxRecordingMinutesAudioCall),
+      lowest(
+        start(platform.maxRecordingMinutesAudioCall, limits?.maxRecordingMinutesAudioCall, 'communication.max_recording_minutes.audio_call'),
+        constraints?.maxRecordingMinutesAudioCall,
+      ),
     ),
     maxRecordingMinutesVideoCall: clampToTechnical(
       'maxRecordingMinutes',
-      lowest(platform.maxRecordingMinutesVideoCall, limits?.maxRecordingMinutesVideoCall, constraints?.maxRecordingMinutesVideoCall),
+      lowest(
+        start(platform.maxRecordingMinutesVideoCall, limits?.maxRecordingMinutesVideoCall, 'communication.max_recording_minutes.video_call'),
+        constraints?.maxRecordingMinutesVideoCall,
+      ),
     ),
     meetingChatAttachmentsPerMinute: clampToTechnical('meetingChatAttachmentsPerMinute', platform.meetingChatAttachmentsPerMinute),
     meetingChatAttachmentsPerMeeting: clampToTechnical('meetingChatAttachmentsPerMeeting', platform.meetingChatAttachmentsPerMeeting),

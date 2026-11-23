@@ -108,10 +108,14 @@ public static class AcceptInvitationHandler
             );
         }
 
+        // Portal con nombre registrado: manda el de la oficina, no el del body (el bloqueo del front es solo UX).
+        var (name, lastName) = invitation.HasLockedName
+            ? (invitation.InviteeFirstName!, invitation.InviteeLastName!)
+            : (command.Name, command.LastName);
         var userResult = User.Register(
             invitation.TenantId,
-            command.Name,
-            command.LastName,
+            name,
+            lastName,
             invitation.Email,
             passwordHasher.Hash(command.Password),
             invitation.ActorType,

@@ -3,6 +3,7 @@
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -13,12 +14,14 @@ namespace Internal.Generated.WolverineHandlers
         private readonly BuildingBlocks.Messaging.ClientFormsIntegrationEvents.IProtectedPayloadCodec _protectedPayloadCodec;
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Logging.ILogger<BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormParticipantNotificationRequestedIntegrationEvent> _loggerForMessage;
+        private readonly Microsoft.Extensions.Options.IOptions<TaxVision.Notification.Application.Common.PortalOptions> _optionsOfPortalOptions;
 
-        public FormParticipantNotificationRequestedIntegrationEventHandler1874164561(BuildingBlocks.Messaging.ClientFormsIntegrationEvents.IProtectedPayloadCodec protectedPayloadCodec, Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormParticipantNotificationRequestedIntegrationEvent> loggerForMessage)
+        public FormParticipantNotificationRequestedIntegrationEventHandler1874164561(BuildingBlocks.Messaging.ClientFormsIntegrationEvents.IProtectedPayloadCodec protectedPayloadCodec, Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Logging.ILogger<BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormParticipantNotificationRequestedIntegrationEvent> loggerForMessage, Microsoft.Extensions.Options.IOptions<TaxVision.Notification.Application.Common.PortalOptions> optionsOfPortalOptions)
         {
             _protectedPayloadCodec = protectedPayloadCodec;
             _serviceScopeFactory = serviceScopeFactory;
             _loggerForMessage = loggerForMessage;
+            _optionsOfPortalOptions = optionsOfPortalOptions;
         }
 
 
@@ -26,11 +29,19 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for TaxVision.Notification.Application.Abstractions.ITenantHostResolver is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            */
+            var tenantHostResolver = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.ITenantHostResolver>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository Lifetime: Scoped ImplementationFactory: TaxVision.Notification.Infrastructure.DependencyInjection+<>c.<AddNotificationInfrastructure>b__0_8
@@ -117,9 +128,6 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var clientFormNotificationSender = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Common.ClientFormNotificationSender>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
@@ -145,7 +153,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Consumers.ClientForms.FormParticipantNotificationRequestedConsumer");
                 
                 // The actual message execution
-                await TaxVision.Notification.Application.Consumers.ClientForms.FormParticipantNotificationRequestedConsumer.Handle(formParticipantNotificationRequestedIntegrationEvent, _protectedPayloadCodec, clientFormNotificationSender, correlationContext, _loggerForMessage, cancellation).ConfigureAwait(false);
+                await TaxVision.Notification.Application.Consumers.ClientForms.FormParticipantNotificationRequestedConsumer.Handle(formParticipantNotificationRequestedIntegrationEvent, _protectedPayloadCodec, clientFormNotificationSender, tenantHostResolver, _optionsOfPortalOptions, correlationContext, _loggerForMessage, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

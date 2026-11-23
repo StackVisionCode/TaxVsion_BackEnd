@@ -41,6 +41,8 @@ public static class RequestPortalInvitationHandler
             customer.TenantId,
             customer.Id,
             customer.PrimaryEmail.Value,
+            customer.PersonalName?.FirstName,
+            customer.PersonalName?.LastName,
             cmd.RequestedByUserId,
             ct
         );

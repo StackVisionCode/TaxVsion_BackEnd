@@ -771,6 +771,51 @@ public sealed class AcceptInvitationHandlerTests
         Assert.Contains(permission.Code, rolesChanged.PermissionCodes);
     }
 
+    // La oficina registró el nombre del cliente: aceptar ignora el que llegue en el body.
+    [Fact]
+    public async Task AcceptInvitation_for_the_portal_keeps_the_name_the_office_registered()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenant = Tenant.Register(tenantId, "Acme", "acme", TenantKind.Customer, "America/Santo_Domingo").Value;
+        var systemRole = Role.Create(tenantId, Role.SystemCustomerPortal, null, isSystem: true).Value;
+        var invitation = Invitation
+            .Create(
+                tenantId,
+                "client@example.com",
+                UserActorType.CustomerPortal,
+                customerId: Guid.NewGuid(),
+                invitedByUserId: Guid.NewGuid(),
+                tokenHash: FixedTokenHash,
+                expiresAtUtc: DateTime.UtcNow.AddDays(1)
+            )
+            .Value;
+        invitation.RecordInviteeName("Ana", "Gomez");
+        var users = new FakeUserRepository();
+        var roles = new FakeRoleRepository();
+        roles.Seed(systemRole);
+
+        var result = await AcceptInvitationHandler.Handle(
+            new AcceptInvitationCommand(RawToken, "Someone", "Else", "Str0ng-Passw0rd!"),
+            new FakeInvitationRepository(invitation),
+            new FakeInvitationTokenService(),
+            users,
+            new FakeTenantRegistry(tenant),
+            new FakePasswordHasher(),
+            roles,
+            new FakeLoginThrottler(),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            new FakeCorrelationContext(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.Equal("Ana", users.Added!.Name);
+        Assert.Equal("Gomez", users.Added.LastName);
+    }
+
     /// <summary>
     /// D-8: alguien que se retiró puede volver a la oficina con el mismo email. La invitación crea una cuenta
     /// NUEVA (otro Guid); la retirada queda intacta como registro histórico y el login resuelve la nueva.

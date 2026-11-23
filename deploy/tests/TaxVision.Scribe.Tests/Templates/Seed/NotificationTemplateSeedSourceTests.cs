@@ -125,6 +125,108 @@ public sealed class NotificationTemplateSeedSourceTests
         Assert.True(seed.ContentVersion > 21 || templateKey == "task.form_participant_reminder.v1");
     }
 
+    // ---------- Grabación de reunión lista: correo al anfitrión ----------
+
+    [Theory]
+    [InlineData("En", "Your meeting recording is ready", "Open recording")]
+    [InlineData("Es", "La grabación de tu reunión está lista", "Abrir grabación")]
+    public void Meeting_recording_ready_email_renders_in_both_languages(string language, string heading, string button)
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            s => s.EventKey == "communication.meeting.recording_ready.v1"
+        );
+        foreach (var name in new[] { "meeting_title", "duration_minutes", "ready_at", "action_url", "language" })
+            Assert.Contains(seed.Variables, v => v.Name == name);
+        Assert.Contains(seed.Variables, v => v.Name == "meeting_title" && !v.Required);
+
+        (string Subject, string Html) RenderWith(string? title)
+        {
+            var context = new TemplateContext();
+            context.SetValue("language", language);
+            context.SetValue("meeting_title", title ?? string.Empty);
+            context.SetValue("duration_minutes", 10);
+            context.SetValue("ready_at", "2026-11-20 10:00");
+            context.SetValue("action_url", "https://office.taxoffix.io/meetings?meetingId=m1");
+            context.SetValue("product_name", "TaxOffix");
+            return (
+                Parser.Parse(seed.Subject).Render(context, NullEncoder.Default),
+                Parser.Parse(seed.Html).Render(context, NullEncoder.Default)
+            );
+        }
+
+        var withTitle = RenderWith("Quarterly review");
+        Assert.Contains(heading, withTitle.Html, StringComparison.Ordinal);
+        Assert.Contains(button, withTitle.Html, StringComparison.Ordinal);
+        Assert.Contains("Quarterly review", withTitle.Subject, StringComparison.Ordinal);
+        Assert.Contains(
+            "href=\"https://office.taxoffix.io/meetings?meetingId=m1\"",
+            withTitle.Html,
+            StringComparison.Ordinal
+        );
+        Assert.Contains("10 min", withTitle.Html, StringComparison.Ordinal);
+        // Sin título, el asunto no queda con un hueco ("Recording ready: ").
+        Assert.DoesNotContain(": ", RenderWith(null).Subject.TrimEnd() + " ", StringComparison.Ordinal);
+    }
+
+    // ---------- Externos: botón al devolver y saludo sin nombre ----------
+
+    [Theory]
+    [InlineData("En", "Review changes")]
+    [InlineData("Es", "Revisar cambios")]
+    public void External_changes_requested_shows_the_button_only_with_a_new_link(string language, string button)
+    {
+        var seed = Assert.Single(
+            NotificationTemplateSeedSource.All,
+            s => s.TemplateKey == "task.form_participant_returned.v1"
+        );
+        Assert.Contains(seed.Variables, v => v.Name == "access_link" && !v.Required);
+        Assert.Contains(seed.Variables, v => v.Name == "expires_at" && !v.Required);
+
+        string RenderWith(string? link)
+        {
+            var context = new TemplateContext();
+            context.SetValue("language", language);
+            context.SetValue("form_title", "Organizer");
+            context.SetValue("comment_count", 2);
+            context.SetValue("access_link", link ?? string.Empty);
+            context.SetValue("expires_at", "2026-12-07 10:00");
+            return Parser.Parse(seed.Html).Render(context, NullEncoder.Default);
+        }
+
+        var withLink = RenderWith("https://office.taxoffix.io/forms/access#token=t");
+        Assert.Contains(button, withLink, StringComparison.Ordinal);
+        Assert.Contains("href=\"https://office.taxoffix.io/forms/access#token=t\"", withLink, StringComparison.Ordinal);
+        Assert.DoesNotContain(button, RenderWith(null), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("task.form_access_link.v1")]
+    [InlineData("task.form_participant_returned.v1")]
+    [InlineData("task.form_participant_completed.v1")]
+    [InlineData("task.form_participant_reminder.v1")]
+    [InlineData("task.form_participant_cancelled.v1")]
+    [InlineData("task.form_participant_attachment_rejected.v1")]
+    public void External_emails_greet_generically_without_a_name(string templateKey)
+    {
+        var seed = Assert.Single(NotificationTemplateSeedSource.All, s => s.TemplateKey == templateKey);
+
+        string RenderWithoutName(string language)
+        {
+            var context = new TemplateContext();
+            context.SetValue("language", language);
+            context.SetValue("form_title", "Organizer");
+            context.SetValue("comment_count", 2);
+            context.SetValue("expires_at", "2026-12-07 10:00");
+            context.SetValue("participant_name", string.Empty);
+            return Parser.Parse(seed.Html).Render(context, NullEncoder.Default);
+        }
+
+        Assert.Contains(">Hi,<", RenderWithoutName("En"), StringComparison.Ordinal);
+        Assert.Contains(">Hola,<", RenderWithoutName("Es"), StringComparison.Ordinal);
+        Assert.True(seed.ContentVersion >= 41, $"{templateKey}: ContentVersion {seed.ContentVersion} < 41");
+    }
+
     [Fact]
     public void Spanish_client_form_texts_carry_their_accents()
     {

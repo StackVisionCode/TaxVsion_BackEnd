@@ -60,6 +60,10 @@ internal sealed class SubscriptionIntegrationDb
         await using var db = NewContext();
         await db.AuditLogs.Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();
         await db.EntitlementSnapshots.IgnoreQueryFilters().Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();
+        await db
+            .TenantEntitlementOverrides.IgnoreQueryFilters()
+            .Where(x => x.TenantId == TenantId)
+            .ExecuteDeleteAsync();
         await db.Seats.IgnoreQueryFilters().Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();
         await db.TenantAddOns.IgnoreQueryFilters().Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();
         await db.SeatPurchaseIntents.IgnoreQueryFilters().Where(x => x.TenantId == TenantId).ExecuteDeleteAsync();

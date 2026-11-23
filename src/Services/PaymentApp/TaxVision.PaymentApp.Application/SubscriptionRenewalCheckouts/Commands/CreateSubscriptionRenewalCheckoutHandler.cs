@@ -33,6 +33,7 @@ public static class CreateSubscriptionRenewalCheckoutHandler
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
         ICheckoutReturnUrlGuard returnUrls,
+        IOnboardingPaymentMethodCatalog paymentMethods,
         CancellationToken ct
     )
     {
@@ -49,6 +50,15 @@ public static class CreateSubscriptionRenewalCheckoutHandler
         );
         if (verify.IsFailure)
             return Result.Failure<SubscriptionRenewalCheckoutResponse>(verify.Error);
+
+        var method = await CheckoutPaymentMethodGuard.EnsureAvailableAsync(
+            paymentMethods,
+            command.Provider,
+            command.Method,
+            ct
+        );
+        if (method.IsFailure)
+            return Result.Failure<SubscriptionRenewalCheckoutResponse>(method.Error);
 
         var request = new HostedCheckoutRequest(
             command.IdempotencyKey,

@@ -76,6 +76,50 @@ public sealed class ValidateInvitationHandlerTests
         Assert.Equal("CustomerPortal", result.Value.ActorType);
     }
 
+    [Fact]
+    public async Task Portal_invitation_returns_the_registered_name_locked()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenant = Tenant.Register(tenantId, "Manfer", "manfer", TenantKind.Customer, "America/Santo_Domingo").Value;
+        var invitation = Pending(tenantId, "client@example.com", UserActorType.CustomerPortal);
+        invitation.RecordInviteeName("Ana", "Gomez");
+
+        var result = await Validate(invitation, tenant);
+
+        Assert.Equal("Ana", result.FirstName);
+        Assert.Equal("Gomez", result.LastName);
+        Assert.True(result.NamesLocked);
+    }
+
+    [Fact]
+    public async Task Employee_or_unnamed_portal_invitation_keeps_the_name_editable()
+    {
+        var tenantId = Guid.NewGuid();
+        var tenant = Tenant.Register(tenantId, "Manfer", "manfer", TenantKind.Customer, "America/Santo_Domingo").Value;
+        var employee = Pending(tenantId, "newhire@example.com", UserActorType.TenantEmployee);
+        employee.RecordInviteeName("Ana", "Gomez");
+        var business = Pending(tenantId, "office@example.com", UserActorType.CustomerPortal);
+
+        var forEmployee = await Validate(employee, tenant);
+        var forBusiness = await Validate(business, tenant);
+
+        Assert.False(forEmployee.NamesLocked);
+        Assert.Null(forEmployee.FirstName);
+        Assert.False(forBusiness.NamesLocked);
+        Assert.Null(forBusiness.FirstName);
+    }
+
+    private static async Task<InvitationValidationResponse> Validate(Invitation invitation, Tenant tenant) =>
+        (
+            await ValidateInvitationHandler.Handle(
+                new ValidateInvitationQuery(RawToken),
+                new FakeInvitationRepo(invitation),
+                new FakeTokenService(),
+                new FakeTenantRegistry(tenant),
+                CancellationToken.None
+            )
+        ).Value;
+
     private static Invitation Pending(Guid tenantId, string email, UserActorType actorType, Guid? customerId = null) =>
         Invitation
             .Create(

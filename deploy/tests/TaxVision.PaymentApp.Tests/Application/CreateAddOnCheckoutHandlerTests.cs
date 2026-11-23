@@ -46,6 +46,7 @@ public sealed class CreateAddOnCheckoutHandlerTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            FakePaymentMethodCatalog.AllEnabled(),
             CancellationToken.None
         );
 
@@ -87,11 +88,58 @@ public sealed class CreateAddOnCheckoutHandlerTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            new FakePaymentMethodCatalog(
+                FakePaymentMethodCatalog.Option(PaymentProviderCode.Manual, PaymentMethodKind.Manual)
+            ),
             CancellationToken.None
         );
 
         Assert.True(result.IsFailure);
         Assert.Equal("PaymentMethod.UnsupportedForCheckout", result.Error.Code);
+        Assert.Null(payments.Added);
+        Assert.Null(provider.LastRequest);
+    }
+
+    [Fact]
+    public async Task PayPal_turned_off_by_the_platform_is_rejected_before_calling_the_provider()
+    {
+        var payments = new FakeSaaSPaymentRepository();
+        var provider = new FakePaymentProvider(
+            PaymentProviderCode.PayPal,
+            new HashSet<PaymentMethodKind> { PaymentMethodKind.Wallet }
+        );
+        var command = Command(Guid.NewGuid(), Guid.NewGuid()) with
+        {
+            Provider = PaymentProviderCode.PayPal,
+            Method = PaymentMethodKind.Wallet,
+        };
+
+        var result = await CreateAddOnCheckoutHandler.Handle(
+            command,
+            payments,
+            new FakePaymentAdapterFactory(provider),
+            new FakePaymentAuditLogWriter(),
+            new FakeUnitOfWork(),
+            new FakePaymentAppMetrics(),
+            new FakeCorrelationContext(),
+            new FakePurchaseIntentAmountVerifier(),
+            NullLogger<SaaSPayment>.Instance,
+            TestPlatform.Settings,
+            TestPlatform.ReturnUrls,
+            new FakePaymentMethodCatalog(
+                FakePaymentMethodCatalog.Option(PaymentProviderCode.Stripe, PaymentMethodKind.Card),
+                FakePaymentMethodCatalog.Option(
+                    PaymentProviderCode.PayPal,
+                    PaymentMethodKind.Wallet,
+                    enabled: false,
+                    disabledReason: "maintenance"
+                )
+            ),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("PaymentMethod.Disabled", result.Error.Code);
         Assert.Null(payments.Added);
         Assert.Null(provider.LastRequest);
     }

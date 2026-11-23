@@ -47,4 +47,28 @@ describe('subscription.entitlements_changed — revisión de los límites', () =
 
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ usagePeriodAnchorUtc: new Date('2026-03-15T14:00:00Z') }));
   });
+
+  // Plan a la medida: el evento dice qué claves son excepción de la oficina; un evento viejo sin la lista = ninguna.
+  it('guarda qué claves son excepción de la oficina', async () => {
+    const handlers = new Map<string, (env: IncomingEnvelope) => Promise<void>>();
+    const upsert = vi.fn();
+    bindSubscriptionConsumers((eventType, handler) => void handlers.set(eventType, handler), {
+      limits: { findByTenantId: vi.fn(), upsert } as never,
+    } as never);
+    const handler = handlers.get('subscription.entitlements_changed.v1');
+    const envelope = (payload: Record<string, unknown>): IncomingEnvelope => ({
+      eventId: 'evt-3',
+      eventType: 'subscription.entitlements_changed.v1',
+      tenantId: 'tenant-1',
+      correlationId: 'corr-3',
+      occurredOnUtc: new Date().toISOString(),
+      payload,
+    });
+
+    await handler?.(envelope({ PlanCode: 'enterprise', RevisionNumber: 9, EntitlementValues: {}, OverriddenKeys: ['communication.max_meeting_minutes'] }));
+    await handler?.(envelope({ PlanCode: 'enterprise', RevisionNumber: 10, EntitlementValues: {} }));
+
+    expect(upsert).toHaveBeenNthCalledWith(1, expect.objectContaining({ overriddenKeys: ['communication.max_meeting_minutes'] }));
+    expect(upsert).toHaveBeenNthCalledWith(2, expect.objectContaining({ overriddenKeys: [] }));
+  });
 });

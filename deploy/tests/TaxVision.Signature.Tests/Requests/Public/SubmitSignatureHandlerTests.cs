@@ -46,6 +46,50 @@ public sealed class SubmitSignatureHandlerTests
         Assert.Empty(bus.Messages.OfType<SignatureRequestCompletedIntegrationEvent>());
     }
 
+    // Firma con orden: cuando el primero firma, recién ahí le llega la solicitud al segundo, una sola vez.
+    [Fact]
+    public async Task In_order_signing_by_the_first_invites_the_second_once()
+    {
+        var (request, first, second) = NewInProgressWithTwoSigners(sequential: true);
+        Assert.Null(second.CurrentTokenId);
+        var bus = new CapturingBus();
+
+        var result = await SubmitAsync(
+            request,
+            first,
+            bus,
+            new SubmitSignatureCommand("token", SignatureCaptureMethod.Typed, "Signer One", null, "127.0.0.1", "tests")
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Code : null);
+        var invited = Assert.Single(bus.Messages.OfType<SignerInvitedIntegrationEvent>());
+        Assert.Equal(second.Id, invited.SignerId);
+        Assert.NotNull(second.CurrentTokenId);
+    }
+
+    [Fact]
+    public async Task The_last_signer_invites_nobody()
+    {
+        var (request, first, second) = NewInProgressWithTwoSigners(sequential: true);
+        await SubmitAsync(
+            request,
+            first,
+            new CapturingBus(),
+            new SubmitSignatureCommand("token", SignatureCaptureMethod.Typed, "Signer One", null, "127.0.0.1", "tests")
+        );
+        var bus = new CapturingBus();
+
+        await SubmitAsync(
+            request,
+            second,
+            bus,
+            new SubmitSignatureCommand("token", SignatureCaptureMethod.Typed, "Signer Two", null, "127.0.0.1", "tests")
+        );
+
+        Assert.Empty(bus.Messages.OfType<SignerInvitedIntegrationEvent>());
+        Assert.Equal(SignatureRequestStatus.Completed, request.Status);
+    }
+
     [Fact]
     public async Task TypedNameMismatch_FailsBeforeCapturingFieldValues()
     {
@@ -176,12 +220,24 @@ public sealed class SubmitSignatureHandlerTests
         );
 
     private static (SignatureRequest Request, Signer First, Signer Second) NewInProgressWithTwoSigners(
-        bool withTextField = false
+        bool withTextField = false,
+        bool sequential = false
     )
     {
         var limits = TestSignatureLimits.Default;
         var request = SignatureRequest
-            .CreateDraft(limits, Guid.NewGuid(), Guid.NewGuid(), "Engagement", null, "Fiscal", 72, false, false, false)
+            .CreateDraft(
+                limits,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Engagement",
+                null,
+                "Fiscal",
+                72,
+                sequential,
+                false,
+                false
+            )
             .Value;
         var document = request.AddDocument(limits, Guid.NewGuid(), "Engagement").Value;
         var first = AddSignerWithField(request, document.Id, "one@example.test", "Signer One");
@@ -209,6 +265,9 @@ public sealed class SubmitSignatureHandlerTests
                 .IsSuccess
         );
         Assert.True(request.Send(DateTime.UtcNow).IsSuccess);
+        // Como el envío real: los del turno reciben su enlace.
+        foreach (var due in request.SignersDueForInvitation())
+            request.RotateSignerToken(due.Id, $"jti-{due.Order}");
         return (request, first, second);
     }
 

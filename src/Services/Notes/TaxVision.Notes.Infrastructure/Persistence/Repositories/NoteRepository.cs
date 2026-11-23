@@ -99,11 +99,11 @@ public sealed class NoteRepository(NotesDbContext db) : INoteRepository
         CancellationToken ct = default
     )
     {
-        var visible = ApplyAssignmentFilter(
-            VisibleTo(tenantId, actorUserId, actorHasViewAll),
-            tenantId,
-            assignedToUserId
-        );
+        // Mis notas (y "My notes" = mis privadas) solo traen lo que escribió el actor: son suyas aunque ya no
+        // tenga asignado al cliente.
+        var visible = criteria.Scope is NoteFeedScope.Mine or NoteFeedScope.Private
+            ? VisibleTo(tenantId, actorUserId, actorHasViewAll)
+            : ApplyAssignmentFilter(VisibleTo(tenantId, actorUserId, actorHasViewAll), tenantId, assignedToUserId);
         var filtered = ApplyFeedCriteria(visible, actorUserId, criteria);
         var totalCount = await filtered.CountAsync(ct);
 

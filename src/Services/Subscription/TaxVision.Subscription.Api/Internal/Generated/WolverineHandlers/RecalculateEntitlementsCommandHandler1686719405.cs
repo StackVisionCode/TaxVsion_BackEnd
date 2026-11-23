@@ -26,14 +26,13 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
             var tenantEntitlementSnapshotRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ITenantEntitlementSnapshotRepository>(serviceScope.ServiceProvider);
+            var tenantEntitlementOverrideRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ITenantEntitlementOverrideRepository>(serviceScope.ServiceProvider);
             var addOnDefinitionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.IAddOnDefinitionRepository>(serviceScope.ServiceProvider);
             var tenantAddOnRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ITenantAddOnRepository>(serviceScope.ServiceProvider);
             var subscriptionSeatRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ISubscriptionSeatRepository>(serviceScope.ServiceProvider);
@@ -42,6 +41,8 @@ namespace Internal.Generated.WolverineHandlers
             var subscriptionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Subscription.Application.Abstractions.ISubscriptionRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var recalculateEntitlementsCommand = (TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements.RecalculateEntitlementsCommand)context.Envelope.Message;
 
@@ -63,7 +64,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements.RecalculateEntitlementsHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements.RecalculateEntitlementsHandler.Handle(recalculateEntitlementsCommand, subscriptionRepository, planRepository, moduleRepository, subscriptionSeatRepository, tenantAddOnRepository, addOnDefinitionRepository, tenantEntitlementSnapshotRepository, _cacheService, unitOfWork, context, correlationContext, _loggerOfTenantEntitlementSnapshot, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Subscription.Application.Entitlements.Commands.RecalculateEntitlements.RecalculateEntitlementsHandler.Handle(recalculateEntitlementsCommand, subscriptionRepository, planRepository, moduleRepository, subscriptionSeatRepository, tenantAddOnRepository, addOnDefinitionRepository, tenantEntitlementOverrideRepository, tenantEntitlementSnapshotRepository, _cacheService, unitOfWork, context, correlationContext, _loggerOfTenantEntitlementSnapshot, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

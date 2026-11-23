@@ -12,9 +12,8 @@ public sealed record PublicSignerView(
     SignerStatus SignerStatus,
     bool RequiresConsent,
     bool HasAcceptedConsent,
-    bool RequiresSequentialSigning,
-    bool IsSignerNextInSequence,
-    int Order,
+    // False si con orden aún no le toca. No se expone el orden ni cuántos firman.
+    bool IsReadyForSigner,
     DateTime? ExpiresAtUtc,
     string SignerFullName,
     string SignerEmail,

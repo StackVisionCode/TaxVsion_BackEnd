@@ -46,4 +46,11 @@ public sealed record TenantEntitlementsChangedIntegrationEvent : IntegrationEven
     /// "module.signatures" -&gt; "True"). Mismo contenido que expondría
     /// GET /entitlements/summary en el instante del recálculo.</summary>
     public required IReadOnlyDictionary<string, string> EntitlementValues { get; init; }
+
+    /// <summary>
+    /// Claves de <see cref="EntitlementValues"/> cuyo valor base es una excepción de ESTA oficina (plan a la
+    /// medida) y no el de su plan. Opcional y aditivo: un mensaje viejo llega null y se lee como "ninguna".
+    /// Communication lo usa para dejar que la excepción pase el máximo global de la plataforma.
+    /// </summary>
+    public IReadOnlyList<string>? OverriddenKeys { get; init; }
 }

@@ -35,8 +35,9 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var onboardingPaymentMethodCatalog = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.PaymentApp.Application.Abstractions.Payments.IOnboardingPaymentMethodCatalog>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -73,7 +74,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.PaymentApp.Application.PlanChangeCheckouts.Commands.CreatePlanChangeCheckoutHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.PaymentApp.Application.PlanChangeCheckouts.Commands.CreatePlanChangeCheckoutHandler.Handle(createPlanChangeCheckoutCommand, saaSPaymentRepository, paymentAdapterFactory, paymentAuditLogWriter, unitOfWork, _paymentAppMetrics, correlationContext, _purchaseIntentAmountVerifier, _loggerOfSaaSPayment, _platformSettings, _checkoutReturnUrlGuard, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.PaymentApp.Application.PlanChangeCheckouts.Commands.CreatePlanChangeCheckoutHandler.Handle(createPlanChangeCheckoutCommand, saaSPaymentRepository, paymentAdapterFactory, paymentAuditLogWriter, unitOfWork, _paymentAppMetrics, correlationContext, _purchaseIntentAmountVerifier, _loggerOfSaaSPayment, _platformSettings, _checkoutReturnUrlGuard, onboardingPaymentMethodCatalog, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

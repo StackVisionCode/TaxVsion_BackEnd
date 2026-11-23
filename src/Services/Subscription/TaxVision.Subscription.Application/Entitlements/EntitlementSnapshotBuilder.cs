@@ -14,7 +14,11 @@ namespace TaxVision.Subscription.Application.Entitlements;
 /// estado actual: edición CONTRATADA (con las reglas de <see cref="ContractedEntitlementPolicy"/>) + add-ons
 /// activos + seats. Publicar una edición nueva no cambia la foto de nadie (D4). Determinista — el mismo
 /// estado siempre produce el mismo conjunto de entries (salvo ComputedAtUtc/RevisionNumber).
-/// No hay overrides administrativos todavía (fuera de alcance de esta fase).
+/// <para>
+/// Orden de las capas: edición contratada → notas de la oficina (plan a la medida) → add-ons → asientos.
+/// La nota reemplaza el valor DEL PLAN y no el final: así lo que la oficina paga aparte (add-ons, asientos)
+/// se sigue sumando encima y nunca queda inútil.
+/// </para>
 /// </summary>
 public static class EntitlementSnapshotBuilder
 {
@@ -29,6 +33,7 @@ public static class EntitlementSnapshotBuilder
         ISubscriptionSeatRepository seats,
         ITenantAddOnRepository tenantAddOns,
         IAddOnDefinitionRepository addOnDefinitions,
+        ITenantEntitlementOverrideRepository overrides,
         ITenantEntitlementSnapshotRepository snapshots,
         CancellationToken ct
     )
@@ -59,8 +64,14 @@ public static class EntitlementSnapshotBuilder
             return Result.Failure<TenantEntitlementSnapshot>(baseEntries.Error);
 
         var entries = baseEntries.Value;
+        var nowUtc = DateTime.UtcNow;
+        // Igual que los add-ons: sin acceso (oficina que no paga) las notas no cuentan y la foto queda como hoy.
+        var overridden = grantsAccess
+            ? await ApplyOverridesAsync(tenantId, overrides, entries, nowUtc, ct)
+            : (IReadOnlySet<string>)new HashSet<string>();
         if (grantsAccess)
             await MergeActiveAddOnsAsync(tenantId, tenantAddOns, addOnDefinitions, entries, ct);
+        KeepOverrideMark(entries, overridden);
 
         var (seatCount, availableSeatCount) = await CountSeatsAsync(tenantId, seats, ct);
         var previousRevision = (await snapshots.GetByTenantIdAsync(tenantId, ct))?.RevisionNumber ?? 0;
@@ -74,8 +85,45 @@ public static class EntitlementSnapshotBuilder
             seatCount,
             availableSeatCount,
             entries.Values.ToList(),
-            DateTime.UtcNow
+            nowUtc
         );
+    }
+
+    /// <summary>
+    /// Pone encima del plan las notas vigentes de la oficina y devuelve qué claves tocó. Una nota vencida se
+    /// ignora aquí mismo: aunque el job de vencimientos se atrase, ningún recálculo la vuelve a aplicar.
+    /// </summary>
+    private static async Task<IReadOnlySet<string>> ApplyOverridesAsync(
+        Guid tenantId,
+        ITenantEntitlementOverrideRepository overrides,
+        Dictionary<string, EntitlementEntry> entries,
+        DateTime nowUtc,
+        CancellationToken ct
+    )
+    {
+        var applied = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in await overrides.GetByTenantIdAsync(tenantId, ct))
+        {
+            if (!item.IsInForceAt(nowUtc))
+                continue;
+
+            entries[item.Key] = item.ToEntry();
+            applied.Add(item.Key);
+        }
+
+        return applied;
+    }
+
+    /// <summary>
+    /// Un add-on que suma sobre una nota deja la línea marcada como AddOn (así marca el merger). Se vuelve a
+    /// marcar como Override para que los consumidores sepan que la base de ese límite es una excepción de la
+    /// oficina (Communication la deja pasar el máximo global por eso).
+    /// </summary>
+    private static void KeepOverrideMark(Dictionary<string, EntitlementEntry> entries, IReadOnlySet<string> overridden)
+    {
+        foreach (var key in overridden)
+            if (entries.TryGetValue(key, out var entry) && entry.Source != EntitlementSource.Override)
+                entries[key] = entry with { Source = EntitlementSource.Override };
     }
 
     private static async Task MergeActiveAddOnsAsync(

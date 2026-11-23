@@ -30,7 +30,15 @@ export function enableExpr(intervals: readonly Interval[], segStartMs: number, s
   if (local.length === 0) return null;
   const first = local[0] as Interval;
   if (local.length === 1 && first.start <= 0 && first.end >= segEndMs - segStartMs) return 'always';
-  return local.map((i) => `between(t,${sec(i.start)},${sec(i.end)})`).join('+');
+  return sumTree(local.map((i) => `between(t,${sec(i.start)},${sec(i.end)})`));
+}
+
+/** Suma en árbol balanceado: ffmpeg falla con más de 100 sumandos seguidos ("Cannot allocate memory"). */
+function sumTree(terms: readonly string[]): string {
+  if (terms.length === 1) return terms[0] as string;
+  const mid = Math.ceil(terms.length / 2);
+  const group = (part: readonly string[]) => (part.length === 1 ? (part[0] as string) : `(${sumTree(part)})`);
+  return `${group(terms.slice(0, mid))}+${group(terms.slice(mid))}`;
 }
 
 interface DrawText {

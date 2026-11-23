@@ -104,6 +104,86 @@ public sealed class SignatureRequestConsentAndSequentialTests
         Assert.Equal(SignatureRequestStatus.Completed, request.Status);
     }
 
+    // -------------------- Turno e invitación (firma con orden) --------------------
+
+    [Fact]
+    public void In_order_only_the_first_pending_signer_has_the_turn()
+    {
+        var request = NewInProgressSequential(signers: 3);
+
+        var turn = request.CurrentTurnSigners();
+
+        Assert.Equal([1], turn.Select(s => s.Order));
+    }
+
+    [Fact]
+    public void Without_order_every_pending_signer_has_the_turn()
+    {
+        var request = NewInProgressSequential(signers: 3, sequential: false);
+
+        Assert.Equal(3, request.CurrentTurnSigners().Count);
+    }
+
+    [Fact]
+    public void When_the_first_signs_the_turn_moves_to_the_second()
+    {
+        var request = NewInProgressSequential(signers: 3);
+        var first = request.Signers.Single(s => s.Order == 1);
+
+        request.MarkSignerSigned(first.Id, DateTime.UtcNow, null, null);
+
+        Assert.Equal([2], request.CurrentTurnSigners().Select(s => s.Order));
+        Assert.True(request.IsSignersTurn(request.Signers.Single(s => s.Order == 2).Id));
+        Assert.False(request.IsSignersTurn(request.Signers.Single(s => s.Order == 3).Id));
+    }
+
+    // El enlace emitido (CurrentTokenId) es la marca de "ya invitado": no se invita dos veces.
+    [Fact]
+    public void A_signer_already_invited_is_not_due_again()
+    {
+        var request = NewInProgressSequential(signers: 2);
+        var first = request.Signers.Single(s => s.Order == 1);
+        Assert.Equal([first.Id], request.SignersDueForInvitation().Select(s => s.Id));
+
+        request.RotateSignerToken(first.Id, "jti-1");
+
+        Assert.Empty(request.SignersDueForInvitation());
+    }
+
+    [Fact]
+    public void Only_signers_with_a_link_count_as_invited()
+    {
+        var request = NewInProgressSequential(signers: 3);
+        var first = request.Signers.Single(s => s.Order == 1);
+        request.RotateSignerToken(first.Id, "jti-1");
+
+        Assert.Equal([first.Id], request.InvitedPendingSigners().Select(s => s.Id));
+    }
+
+    // Un enlace viejo de alguien sin turno no puede anular la solicitud de todos ni aceptar por adelantado.
+    [Fact]
+    public void A_signer_out_of_turn_cannot_reject()
+    {
+        var request = NewInProgressSequential(signers: 2);
+        var second = request.Signers.Single(s => s.Order == 2);
+
+        var result = request.MarkSignerRejected(second.Id, DateTime.UtcNow, "no", null, null);
+
+        Assert.Equal("Signature.Request.NotYourTurn", result.Error.Code);
+        Assert.Equal(SignatureRequestStatus.InProgress, request.Status);
+    }
+
+    [Fact]
+    public void A_signer_out_of_turn_cannot_accept_consent()
+    {
+        var request = NewInProgressSequential(signers: 2, consent: true);
+        var second = request.Signers.Single(s => s.Order == 2);
+
+        var result = request.AcceptSignerConsent(second.Id, DateTime.UtcNow, null, null);
+
+        Assert.Equal("Signature.Request.NotYourTurn", result.Error.Code);
+    }
+
     // ================== helpers ==================
 
     private static SignatureRequest NewInProgressWithConsent()
@@ -146,6 +226,31 @@ public sealed class SignatureRequestConsentAndSequentialTests
             )
             .Value;
         AddSignerAndReady(draft, "s@example.com");
+        draft.Send(DateTime.UtcNow);
+        return draft;
+    }
+
+    private static SignatureRequest NewInProgressSequential(int signers, bool sequential = true, bool consent = false)
+    {
+        var draft = SignatureRequest
+            .CreateDraft(
+                TestSignatureLimits.Default,
+                Guid.NewGuid(),
+                Guid.NewGuid(),
+                "Sequential",
+                null,
+                "Fiscal",
+                Guid.NewGuid(),
+                tokenExpirationHours: 72,
+                requiresSequentialSigning: sequential,
+                requiresConsent: consent,
+                generateCertificate: false
+            )
+            .Value;
+        for (var i = 1; i <= signers; i++)
+            AddSignerWithField(draft, $"s{i}@example.com", $"Signer {i}");
+        var hash = DocumentHash.Create(new string('b', 64)).Value;
+        draft.AttachVerifiedDocument(draft.Documents[0].Id, VerifiedDocument.Create(hash, 50).Value);
         draft.Send(DateTime.UtcNow);
         return draft;
     }

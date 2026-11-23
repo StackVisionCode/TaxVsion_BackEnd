@@ -39,6 +39,7 @@ public sealed class RefreshAccessTokenHandlerTests
             new ExplodingTenantRegistry(),
             new ExplodingRoleRepository(),
             new ExplodingAuthSessionIssuer(),
+            new FakeSessionLifetimeGate(),
             denylist,
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
@@ -75,6 +76,7 @@ public sealed class RefreshAccessTokenHandlerTests
             new ExplodingTenantRegistry(),
             new ExplodingRoleRepository(),
             new ExplodingAuthSessionIssuer(),
+            new FakeSessionLifetimeGate(),
             denylist,
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
@@ -280,11 +282,37 @@ public sealed class RefreshAccessTokenHandlerTests
         Assert.False((await world.Sessions.GetSessionByIdAsync(mobile.SessionId))!.IsActive);
     }
 
+    // Inactividad o máximo de sesión: el servidor corta la sesión aunque el navegador siga renovando.
+    [Fact]
+    public async Task A_session_past_the_platform_policy_is_revoked_and_refused()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, refresh) = await world.StartWorkspaceSessionAsync();
+        var bus = new FakeMessageBus();
+
+        var result = await RefreshAsync(
+            world,
+            refresh,
+            SessionSurface.Workspace,
+            bus,
+            new FakeSessionLifetimeGate("idle_timeout")
+        );
+
+        Assert.Equal("Auth.SessionExpired", result.Error.Code);
+        Assert.False((await world.Sessions.GetSessionByIdAsync(sessionId))!.IsActive);
+        Assert.Contains(sessionId, world.Denylist.Denied);
+        var log = Assert.Single(world.Audit.Logs);
+        Assert.Equal(AuthAuditAction.SessionEndedByPolicy, log.Action);
+        Assert.Equal("""{"reason":"idle_timeout"}""", log.DetailsJson);
+        Assert.Single(bus.Published.OfType<SessionEndedIntegrationEvent>());
+    }
+
     private static Task<BuildingBlocks.Results.Result<AuthTokensResponse>> RefreshAsync(
         AccountSessionFixture world,
         string refreshToken,
         SessionSurface surface,
-        FakeMessageBus? bus = null
+        FakeMessageBus? bus = null,
+        FakeSessionLifetimeGate? gate = null
     ) =>
         RefreshAccessTokenHandler.Handle(
             new RefreshAccessTokenCommand(refreshToken, ResolvedTenantId: null, surface),
@@ -294,6 +322,7 @@ public sealed class RefreshAccessTokenHandlerTests
             world.Tenants,
             world.Roles,
             world.Issuer,
+            gate ?? new FakeSessionLifetimeGate(),
             world.Denylist,
             world.Audit,
             world.Request,

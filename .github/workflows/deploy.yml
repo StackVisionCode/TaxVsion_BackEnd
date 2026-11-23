@@ -442,7 +442,7 @@ jobs:
           # a la vez: en Communication se apaga (= "Notification") y en Notification se enciende.
           NOTIFICATIONS_INAPP_SOURCE_CONNECTORS=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CONNECTORS }}
           NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_LEGAL=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_LEGAL }}
-          NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY }}
+          # NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY vive en `production-extra` (cupo lleno): lo escribe el job `deploy`.
           NOTIFICATIONS_INAPP_SOURCE_SUPPORT=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_SUPPORT }}
 
           # Retención de NotificationLogs. Secret vacío = defaults del compose (12 meses, batch 500, cada 24h).
@@ -649,6 +649,9 @@ jobs:
           # Calendar M2M (calendar-worker): lo leen Auth (registro del cliente) y Calendar. Sin él
           # Calendar no obtiene token: el portal no ve nombres de preparadores ni el dominio de la oficina.
           CALENDAR_SERVICE_CLIENT_SECRET=${{ secrets.CALENDAR_SERVICE_CLIENT_SECRET }}
+          # T3.7: quién crea la campana del grupo CloudStoragePolicy en Notification (.NET). Los otros tres
+          # NOTIFICATIONS_INAPP_SOURCE_* siguen en `production`. Vacío = "Communication".
+          NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY=${{ secrets.NOTIFICATIONS_INAPP_SOURCE_CLOUDSTORAGE_POLICY }}
           EOF
 
       # Clave RSA de los enlaces de firma (Signature__SignerJwt__PrivateKeyPem). Vive en

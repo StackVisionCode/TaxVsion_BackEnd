@@ -41,10 +41,9 @@ public static class RejectSignatureHandler
         return Result.Success();
     }
 
+    // Solo los que ya recibieron su enlace: con orden, los siguientes no saben de la solicitud.
     private static IReadOnlyList<Signer> CollectPendingSignersExcluding(SignatureRequest request, Guid excluded) =>
-        request
-            .Signers.Where(s => s.Id != excluded && s.Status is SignerStatus.Pending or SignerStatus.InProgress)
-            .ToList();
+        request.InvitedPendingSigners().Where(s => s.Id != excluded).ToList();
 
     private static Task PublishRejectedAsync(
         SignatureRequest request,

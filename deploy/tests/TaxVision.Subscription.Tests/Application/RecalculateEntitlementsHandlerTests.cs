@@ -133,6 +133,38 @@ public sealed class RecalculateEntitlementsHandlerTests
         Assert.Equal(subscription.CurrentPeriodStartUtc, published.CurrentPeriodStartUtc);
     }
 
+    // Plan a la medida: el evento dice qué claves son excepción de la oficina; sin excepción, la lista va vacía.
+    [Fact]
+    public async Task The_event_names_the_keys_that_come_from_an_office_override()
+    {
+        var plan = AddOnTestCatalog.PlanWith("starter", ["customers"]);
+        var subscription = AddOnTestCatalog.ActiveSubscription(Tenant, plan);
+        var note = TenantEntitlementOverride
+            .Grant(
+                Tenant,
+                EntitlementKey.Create("communication.max_meeting_minutes").Value,
+                EntitlementValueType.Int,
+                "120",
+                "r",
+                null,
+                Actor,
+                DateTime.UtcNow
+            )
+            .Value;
+        var withNote = new CapturingMessageBus();
+        var without = new CapturingMessageBus();
+
+        await RecalculateAsync(subscription, plan, [], new FakeSnapshotRepo(), withNote, overrides: new(note));
+        await RecalculateAsync(subscription, plan, [], new FakeSnapshotRepo(), without);
+
+        var published = Assert.Single(withNote.Published.OfType<TenantEntitlementsChangedIntegrationEvent>());
+        Assert.Equal(["communication.max_meeting_minutes"], published.OverriddenKeys);
+        Assert.Equal("120", published.EntitlementValues["communication.max_meeting_minutes"]);
+        Assert.Empty(
+            Assert.Single(without.Published.OfType<TenantEntitlementsChangedIntegrationEvent>()).OverriddenKeys!
+        );
+    }
+
     // Sin la marca (compras, admin, reposición de SUB-BB2) siempre sube la revisión y avisa, como hasta hoy.
     [Fact]
     public async Task WithoutOnlyIfChanged_AlwaysPublishes()
@@ -180,7 +212,8 @@ public sealed class RecalculateEntitlementsHandlerTests
         FakeSnapshotRepo snapshots,
         CapturingMessageBus bus,
         bool onlyIfChanged = false,
-        IUnitOfWork? unitOfWork = null
+        IUnitOfWork? unitOfWork = null,
+        FakeEntitlementOverrideRepo? overrides = null
     )
     {
         var result = await RecalculateEntitlementsHandler.Handle(
@@ -191,6 +224,7 @@ public sealed class RecalculateEntitlementsHandlerTests
             new FakeSeatRepo(),
             new FakeTenantAddOnRepo([.. addOns.Select(a => AddOnTestCatalog.Owned(subscription.TenantId, a))]),
             new FakeAddOnDefinitionRepository(addOns),
+            overrides ?? new FakeEntitlementOverrideRepo(),
             snapshots,
             new NoOpCache(),
             unitOfWork ?? new FakeUnitOfWork(),

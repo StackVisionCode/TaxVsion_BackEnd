@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TaxVision.Notification.Application.Abstractions;
 using TaxVision.Notification.Application.Common;
 using TaxVision.Notification.Domain.Catalog;
@@ -11,8 +12,8 @@ namespace TaxVision.Notification.Application.Consumers.ClientForms;
 
 /// <summary>
 /// Avisos por email a un participante externo sin vincular (P-14.7). Va al email del comando, sin
-/// <c>ContactPolicy</c> porque no hay cliente, igual que los firmantes externos de Signature. No lleva
-/// enlace: el token se guarda hasheado y el enlace del correo de acceso sigue sirviendo.
+/// <c>ContactPolicy</c> porque no hay cliente, igual que los firmantes externos de Signature. Solo la
+/// devolución puede traer un enlace nuevo (cifrado en el payload); los demás avisos van sin enlace.
 /// </summary>
 public static class FormParticipantNotificationRequestedConsumer
 {
@@ -20,6 +21,8 @@ public static class FormParticipantNotificationRequestedConsumer
         FormParticipantNotificationRequestedIntegrationEvent command,
         IProtectedPayloadCodec codec,
         ClientFormNotificationSender sender,
+        ITenantHostResolver hosts,
+        IOptions<PortalOptions> portal,
         ICorrelationContext correlation,
         ILogger<FormParticipantNotificationRequestedIntegrationEvent> logger,
         CancellationToken ct
@@ -40,6 +43,13 @@ public static class FormParticipantNotificationRequestedConsumer
             var content = Unprotect(command, codec, logger);
             if (content is null)
                 return;
+            var variables = Variables(content);
+            if (content.AccessToken is { } token && content.AccessExpiresAtUtc is { } expiresAtUtc)
+            {
+                var host = await hosts.ResolveHostAsync(command.TenantId, ct);
+                variables["access_link"] = TenantEmailLinks.PublicFormAccess(host, portal.Value, token);
+                variables["expires_at"] = ScribeDates.Instant(expiresAtUtc);
+            }
 
             var result = await sender.SendExternalEmailAsync(
                 new ClientFormExternalEmailRequest(
@@ -49,7 +59,7 @@ public static class FormParticipantNotificationRequestedConsumer
                     templateKey,
                     content.Email,
                     content.Language,
-                    Variables(content)
+                    variables
                 ),
                 ct
             );
@@ -115,7 +125,7 @@ public static class FormParticipantNotificationRequestedConsumer
     {
         var variables = new Dictionary<string, object?>
         {
-            ["participant_name"] = content.Name,
+            ["participant_name"] = ParticipantNames.ForGreeting(content.Name),
             ["form_title"] = content.Title,
             ["language"] = content.Language,
         };

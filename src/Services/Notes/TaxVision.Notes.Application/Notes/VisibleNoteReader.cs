@@ -63,9 +63,10 @@ public sealed class VisibleNoteReader(INoteRepository notes, IOptions<NotesVisib
         if (note is null || !NoteVisibilityPolicy.CanStaffView(note, actorUserId, actorHasViewAll))
             return null;
 
-        // Nota de un cliente no asignado al actor: no se revela.
+        // Nota de un cliente no asignado al actor: no se revela, salvo que la haya escrito él ("My notes").
         if (
             restrictToAssignments
+            && note.CreatedByUserId != actorUserId
             && note.Reference.TargetType == NoteTargetType.Customer
             && note.Reference.TargetId is { } customerId
             && !await notes.IsCustomerAssignedAsync(tenantId, customerId, actorUserId, ct)

@@ -341,6 +341,26 @@ public interface ITenantEntitlementSnapshotRepository
     Task UpsertAsync(TenantEntitlementSnapshot snapshot, long expectedPreviousRevision, CancellationToken ct = default);
 }
 
+/// <summary>Plan a la medida: los valores propios de cada oficina, uno por clave.</summary>
+public interface ITenantEntitlementOverrideRepository
+{
+    /// <summary>Todos los de la oficina, vigentes o vencidos (el cálculo decide cuáles aplican).</summary>
+    Task<IReadOnlyList<TenantEntitlementOverride>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+
+    Task<TenantEntitlementOverride?> GetForUpdateAsync(Guid tenantId, string key, CancellationToken ct = default);
+
+    Task AddAsync(TenantEntitlementOverride item, CancellationToken ct = default);
+
+    void Remove(TenantEntitlementOverride item);
+
+    /// <summary>De todas las oficinas: vencidos cuyo recálculo todavía no se hizo, los más viejos primero.</summary>
+    Task<IReadOnlyList<TenantEntitlementOverride>> ListExpiryPendingAsync(
+        DateTime nowUtc,
+        int take,
+        CancellationToken ct = default
+    );
+}
+
 /// <summary>RateLimit Fase 6 — catálogo completo, consultado por otros servicios vía
 /// GET internal/plan-rate-limits (mismo patrón de exposición M2M de datos
 /// globales de Subscription que GetInternalPlanPricingHandler).</summary>

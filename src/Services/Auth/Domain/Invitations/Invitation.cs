@@ -50,6 +50,19 @@ public sealed class Invitation : TenantEntity
     public int ResendCount { get; private set; }
     public DateTime? LastSentAtUtc { get; private set; }
 
+    /// <summary>Nombre que la oficina tiene registrado del cliente (copia de Customer al invitar).</summary>
+    public string? InviteeFirstName { get; private set; }
+    public string? InviteeLastName { get; private set; }
+
+    public const int MaxNameLength = 100;
+
+    /// <summary>
+    /// Solo el portal con nombre registrado lo bloquea: el cliente no elige su nombre, lo fija la oficina.
+    /// Un cliente Business o sin nombre personal lo escribe al aceptar.
+    /// </summary>
+    public bool HasLockedName =>
+        ActorType == UserActorType.CustomerPortal && InviteeFirstName is not null && InviteeLastName is not null;
+
     public const int MaxAcceptAttempts = 5;
     public int AcceptAttempts { get; private set; }
 
@@ -169,6 +182,22 @@ public sealed class Invitation : TenantEntity
     }
 
     public void MarkSent() => LastSentAtUtc = DateTime.UtcNow;
+
+    /// <summary>Guarda (o refresca en un reenvío) el nombre registrado; incompleto o vacío queda sin nombre.</summary>
+    public void RecordInviteeName(string? firstName, string? lastName)
+    {
+        var first = NormalizeName(firstName);
+        var last = NormalizeName(lastName);
+        (InviteeFirstName, InviteeLastName) = first is null || last is null ? (null, null) : (first, last);
+    }
+
+    private static string? NormalizeName(string? value)
+    {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+            return null;
+        return trimmed.Length > MaxNameLength ? trimmed[..MaxNameLength] : trimmed;
+    }
 
     /// <summary>Fase 18 — máx. 5 intentos fallidos de canje sobre la misma invitación (policy de
     /// password / conflicto de email tras un token válido), tras eso se trata como inválida.</summary>

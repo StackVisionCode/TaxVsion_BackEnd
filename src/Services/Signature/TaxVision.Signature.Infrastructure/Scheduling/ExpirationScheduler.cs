@@ -116,9 +116,8 @@ public sealed class ExpirationScheduler(IServiceProvider serviceProvider, ILogge
                 )
                     return false;
 
-                var pending = request
-                    .Signers.Where(s => s.Status is SignerStatus.Pending or SignerStatus.InProgress)
-                    .ToList();
+                // Solo se avisa a quien recibió su enlace (con orden, los siguientes nunca lo vieron).
+                var pending = request.InvitedPendingSigners();
                 var result = request.MarkExpired(now);
                 if (result.IsFailure)
                 {

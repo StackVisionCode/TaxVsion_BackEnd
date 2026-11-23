@@ -131,6 +131,7 @@ export async function attachMeetingRecording(
       participantCount: snapshot.participants.length,
       readyAtUtc: snapshot.updatedAtUtc.toISOString(),
       hostUserId: snapshot.hostUserId,
+      meetingTitle: snapshot.title,
     };
     await deps.publisher.enqueue(event);
 

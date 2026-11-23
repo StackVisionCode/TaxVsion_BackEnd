@@ -13,12 +13,17 @@ using Wolverine;
 
 namespace TaxVision.Auth.Application.Customers.Commands;
 
-/// <summary>Customer pide el acceso al portal de un cliente con el email que Customer tiene registrado.</summary>
+/// <summary>
+/// Customer pide el acceso al portal de un cliente con el email que Customer tiene registrado. El nombre
+/// (opcional: un cliente Business no tiene nombre personal) queda fijo en la cuenta al aceptar.
+/// </summary>
 public sealed record IssueCustomerPortalInvitationCommand(
     Guid TenantId,
     Guid CustomerId,
     string Email,
-    Guid? RequestedByUserId
+    Guid? RequestedByUserId,
+    string? FirstName = null,
+    string? LastName = null
 );
 
 public enum PortalInvitationOutcome
@@ -131,6 +136,7 @@ public static class IssueCustomerPortalInvitationHandler
             isResend = false;
         }
 
+        invitation.RecordInviteeName(command.FirstName, command.LastName);
         await audit.AddAsync(
             AuthAuditLog.Record(
                 command.TenantId,

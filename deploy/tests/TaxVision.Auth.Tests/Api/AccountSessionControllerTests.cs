@@ -132,6 +132,7 @@ public sealed class AccountSessionControllerTests
             {
                 "AuthController.Me",
                 "AuthController.Reauthenticate",
+                "SessionPolicyController.Get",
                 "TermsController.Accept",
                 "TermsController.Status",
                 "UserSlotPriorityController.GetReport",

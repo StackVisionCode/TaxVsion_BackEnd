@@ -280,6 +280,10 @@ public sealed class FormRequestStaffCommandTests
             bus ?? new FakeMessageBus(),
             new TestCorrelationContext(),
             metrics ?? new RecordingClientFormsMetrics(),
+            null!,
+            null!,
+            null!,
+            null!,
             default
         );
 

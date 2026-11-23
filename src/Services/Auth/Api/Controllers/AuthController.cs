@@ -141,15 +141,16 @@ public sealed class AuthController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    /// <summary>
+    /// Cierra la sesión de ese refresh token. Anónimo como el refresh: el refresh token es el secreto, y quien sale por
+    /// inactividad ya no tiene un access token vigente (dura menos que la inactividad). Solo puede cortar su propia sesión.
+    /// </summary>
     [HttpPost("revoke")]
-    [Authorize]
-    [AllowActorTypes(
-        ActorType.TenantEmployee,
-        ActorType.TenantAdmin,
-        ActorType.CustomerPortal,
-        ActorType.PlatformAdmin
+    [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo — el refresh token es el secreto portador y solo corta su propia sesión; sin JWT que particionar. Lo acota el limiter nativo \"auth-refresh\" por IP."
     )]
-    [RateLimit("auth.g.session_manage")]
+    [EnableRateLimiting("auth-refresh")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Revoke(RevokeRefreshTokenCommand command, CancellationToken ct)
     {
