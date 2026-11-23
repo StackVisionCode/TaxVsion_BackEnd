@@ -34,6 +34,8 @@ internal sealed class CustomerPortalAccessClient(
         Guid tenantId,
         Guid customerId,
         string email,
+        string? firstName,
+        string? lastName,
         Guid requestedByUserId,
         CancellationToken ct = default
     ) =>
@@ -42,7 +44,13 @@ internal sealed class CustomerPortalAccessClient(
             customerId,
             HttpMethod.Post,
             "portal-invitation",
-            new { email, requestedByUserId },
+            new
+            {
+                email,
+                requestedByUserId,
+                firstName,
+                lastName,
+            },
             InvitationUnavailable,
             ct
         );

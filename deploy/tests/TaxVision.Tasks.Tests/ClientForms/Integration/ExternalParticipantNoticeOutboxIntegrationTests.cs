@@ -38,7 +38,7 @@ public sealed class ExternalParticipantNoticeOutboxIntegrationTests : IAsyncLife
                     options.Discovery.IncludeType(typeof(NoticeProbeHandler));
                     options.Policies.AddMiddleware(
                         typeof(FailAfterHandlerMiddleware),
-                        chain => chain.MessageType == typeof(FormRequestReturnedIntegrationEvent)
+                        chain => chain.MessageType == typeof(FormRequestCompletedIntegrationEvent)
                     );
                     options
                         .PublishMessage<FormParticipantNotificationRequestedIntegrationEvent>()
@@ -83,7 +83,8 @@ public sealed class ExternalParticipantNoticeOutboxIntegrationTests : IAsyncLife
         await scope
             .ServiceProvider.GetRequiredService<IMessageBus>()
             .InvokeAsync(
-                new FormRequestReturnedIntegrationEvent
+                // La devolución ya no pasa por el consumer (la avisa su handler): se mide con Completed.
+                new FormRequestCompletedIntegrationEvent
                 {
                     TenantId = _tenantId,
                     CorrelationId = "bb-17",
@@ -91,8 +92,7 @@ public sealed class ExternalParticipantNoticeOutboxIntegrationTests : IAsyncLife
                     Participant = new ClientFormParticipant { Kind = "External", ParticipantId = _participantId },
                     Title = "Intake",
                     RevisionNumber = 1,
-                    FieldCommentCount = 1,
-                    ReturnedByUserId = Guid.NewGuid(),
+                    CompletedByUserId = Guid.NewGuid(),
                 }
             );
     }

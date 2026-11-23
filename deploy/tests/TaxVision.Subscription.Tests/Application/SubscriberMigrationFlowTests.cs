@@ -61,6 +61,34 @@ public sealed class SubscriberMigrationFlowTests
         Assert.Equal("Migration.UsageUnavailable", Office(preview, unknown).BlockedReason);
     }
 
+    // Plan a la medida: la excepción se conserva al migrar, así que la edición nueva no le cambia ese límite.
+    [Fact]
+    public async Task Office_with_an_override_is_not_blocked_by_that_limit()
+    {
+        var s = Scenario(toPrice: 69m, toSeats: 2, toStorage: 10 * GiB);
+        var withNotes = s.Office();
+        var withoutNotes = s.Office();
+        var reads = new FakeSubscriberMigrationReads(
+            new()
+            {
+                [withNotes.TenantId] = new OfficeHoldings(0, null)
+                {
+                    OverriddenKeys = new HashSet<string> { "seats.max", "storage.max_bytes" },
+                },
+            }
+        );
+        var users = UsersOf((withNotes, 5), (withoutNotes, 5));
+        var storage = new FakeStorageUsageClient(
+            new() { [withNotes.TenantId] = 30 * GiB, [withoutNotes.TenantId] = 1 }
+        );
+
+        var preview = await Planner(s, users, storage, reads)
+            .PreviewAsync(s.Plan.Id, s.To.Id, "AtNextRenewal", 30, Now, default);
+
+        Assert.Null(Office(preview, withNotes).BlockedReason);
+        Assert.Equal("Migration.ExceedsSeats", Office(preview, withoutNotes).BlockedReason);
+    }
+
     // Si la edición nueva no recorta nada, no hace falta preguntarle a nadie cuánto usa.
     [Fact]
     public async Task An_only_improvement_change_needs_no_usage_lookup()

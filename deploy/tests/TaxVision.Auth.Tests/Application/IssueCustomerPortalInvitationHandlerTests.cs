@@ -117,6 +117,24 @@ public sealed class IssueCustomerPortalInvitationHandlerTests
         Assert.Equal(IssueCustomerPortalInvitationHandler.AccessDeactivated, result.Error);
     }
 
+    [Fact]
+    public async Task The_invitation_keeps_the_clients_name_and_a_resend_refreshes_it()
+    {
+        var world = new AccountSessionFixture();
+        var context = new Context(world);
+        var customerId = Guid.NewGuid();
+
+        await context.InviteAsync(customerId, "Ana", "Gomez");
+        var invitation = Assert.Single(context.Invitations.Invitations);
+        Assert.Equal("Ana", invitation.InviteeFirstName);
+        Assert.Equal("Gomez", invitation.InviteeLastName);
+
+        await context.InviteAsync(customerId, "Ana María", "Gómez");
+
+        Assert.Equal("Ana María", invitation.InviteeFirstName);
+        Assert.Equal("Gómez", invitation.InviteeLastName);
+    }
+
     private static User Portal(AccountSessionFixture world, Guid customerId) =>
         User.Register(world.Tenant.Id, "Ana", "Client", Email, "hash", UserActorType.CustomerPortal, customerId).Value;
 
@@ -126,9 +144,20 @@ public sealed class IssueCustomerPortalInvitationHandlerTests
         public FakeMessageBus Bus { get; } = new();
         private readonly SequentialInvitationTokenService _tokens = new();
 
-        public Task<Result<PortalInvitationResult>> InviteAsync(Guid customerId) =>
+        public Task<Result<PortalInvitationResult>> InviteAsync(
+            Guid customerId,
+            string? firstName = null,
+            string? lastName = null
+        ) =>
             IssueCustomerPortalInvitationHandler.Handle(
-                new IssueCustomerPortalInvitationCommand(world.Tenant.Id, customerId, Email, world.Admin.Id),
+                new IssueCustomerPortalInvitationCommand(
+                    world.Tenant.Id,
+                    customerId,
+                    Email,
+                    world.Admin.Id,
+                    firstName,
+                    lastName
+                ),
                 world.Users,
                 world.Tenants,
                 Invitations,

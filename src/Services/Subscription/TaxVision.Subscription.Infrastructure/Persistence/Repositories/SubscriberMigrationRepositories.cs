@@ -62,6 +62,13 @@ public sealed class SubscriberMigrationReads(SubscriptionDbContext db) : ISubscr
             .AsNoTracking()
             .Where(snapshot => ids.Contains(snapshot.TenantId))
             .ToListAsync(ct);
+        var nowUtc = DateTime.UtcNow;
+        var overridden = await db
+            .TenantEntitlementOverrides.IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(item => ids.Contains(item.TenantId) && (item.ExpiresAtUtc == null || item.ExpiresAtUtc > nowUtc))
+            .Select(item => new { item.TenantId, item.Key })
+            .ToListAsync(ct);
 
         return ids.ToDictionary(
             id => id,
@@ -74,7 +81,13 @@ public sealed class SubscriberMigrationReads(SubscriptionDbContext db) : ISubscr
                 return new OfficeHoldings(
                     seats.GetValueOrDefault(id),
                     long.TryParse(storage, out var bytes) ? bytes : null
-                );
+                )
+                {
+                    OverriddenKeys = overridden
+                        .Where(row => row.TenantId == id)
+                        .Select(row => row.Key)
+                        .ToHashSet(StringComparer.Ordinal),
+                };
             }
         );
     }

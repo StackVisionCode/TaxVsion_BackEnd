@@ -3,17 +3,14 @@ using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
-using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
 namespace TaxVision.Signature.Application.Requests.Commands.Send;
 
 /// <summary>
-/// Transiciona <c>Ready → InProgress</c>. Emite un token público firmado por firmante
-/// y publica un <see cref="SignerInvitedIntegrationEvent"/> por cada uno, además del
-/// <see cref="SignatureRequestSentIntegrationEvent"/> global. Fases separadas por
-/// métodos privados con nombre autoexplicativo — no acumulan responsabilidad.
+/// Transiciona <c>Ready → InProgress</c> y publica el <see cref="SignatureRequestSentIntegrationEvent"/>.
+/// Invita solo a los firmantes del turno: con orden, al primero; sin orden, a todos.
 /// </summary>
 public static class SendSignatureRequestHandler
 {
@@ -42,43 +39,16 @@ public static class SendSignatureRequestHandler
 
         // Emitir los tokens ANTES de guardar: cada emisión registra el jti actual del firmante en el
         // aggregate (para poder revocar ese enlace en un futuro reenvío), y el save lo persiste.
-        var invitations = IssueInvitations(request, tokenService);
+        var invitations = SignerInvitationIssuer.IssueDue(request, tokenService);
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
 
         await PublishSentEventAsync(request, sentAt, cmd.SentByUserId, correlation, bus);
-        await PublishInvitationsAsync(request, invitations, correlation, bus);
+        await SignerInvitationIssuer.PublishAsync(request, invitations, correlation, bus);
         return Result.Success();
     }
 
-    private sealed record SignerInvitation(Guid SignerId, string Token);
-
-    // ============== Fase A: emitir tokens por firmante ==============
-
-    private static IReadOnlyList<SignerInvitation> IssueInvitations(
-        SignatureRequest request,
-        ISigningTokenService tokenService
-    )
-    {
-        var invitations = new List<SignerInvitation>(request.Signers.Count);
-        foreach (var signer in request.Signers)
-        {
-            var payload = new SigningTokenPayload(
-                TenantId: request.TenantId,
-                SignatureRequestId: request.Id,
-                SignerId: signer.Id,
-                RevocationEpoch: request.RevocationEpoch,
-                ExpiresAtUtc: request.ExpiresAtUtc,
-                TokenId: Guid.NewGuid().ToString("N")
-            );
-            var token = tokenService.Issue(payload);
-            request.RotateSignerToken(signer.Id, payload.TokenId);
-            invitations.Add(new SignerInvitation(signer.Id, token));
-        }
-        return invitations;
-    }
-
-    // ============== Fase B: publicar Sent global ==============
+    // ============== Publicar Sent global ==============
 
     private static Task PublishSentEventAsync(
         SignatureRequest request,
@@ -101,41 +71,6 @@ public static class SendSignatureRequestHandler
                 }
             )
             .AsTask();
-
-    // ============== Fase C: publicar SignerInvited por firmante ==============
-
-    private static async Task PublishInvitationsAsync(
-        SignatureRequest request,
-        IReadOnlyList<SignerInvitation> invitations,
-        ICorrelationContext correlation,
-        IMessageBus bus
-    )
-    {
-        foreach (var invitation in invitations)
-        {
-            var signer = request.Signers.First(s => s.Id == invitation.SignerId);
-            var evt = new SignerInvitedIntegrationEvent
-            {
-                TenantId = request.TenantId,
-                CorrelationId = correlation.CorrelationId,
-                SignatureRequestId = request.Id,
-                SignerId = signer.Id,
-                Email = signer.Email.Value,
-                FullName = signer.FullName.Value,
-                Order = signer.Order,
-                Language = signer.Language,
-                PhoneE164 = signer.PhoneNumber?.Value,
-                PreferredChannel = SignerChannelResolver.PreferredChannelFor(signer),
-                PublicToken = invitation.Token,
-                ExpiresAtUtc = request.ExpiresAtUtc,
-                RevocationEpoch = request.RevocationEpoch,
-                RequiresConsent = request.RequiresConsent,
-                RequiresSequentialSigning = request.RequiresSequentialSigning,
-                MappedCustomerId = signer.MappedCustomerId,
-            };
-            await bus.PublishAsync(evt);
-        }
-    }
 
     private static Result NotFound() =>
         Result.Failure(

@@ -132,12 +132,17 @@ public sealed class CallAndRecordingConsumersDeliveryTests
                 HostUserId = staff,
             },
             recorder.Dispatcher,
+            DeliveryCase.Emails(recorder),
+            DeliveryCase.Host,
+            DeliveryCase.Portal,
             recorder.Correlation,
             CancellationToken.None
         );
 
         DeliveryCase.Same(
             [
+                "email to=staff@example.com tpl=communication.meeting.recording_ready.v1 event=evt scope=System confidential=False idem= attachments=0",
+                "event NotificationsEmailSendRequestedIntegrationEvent To=staff@example.com TemplateKey=communication.meeting.recording_ready.v1",
                 "inapp kind=communication.call.missed to=staff cat=CalendarMeetings priority=High title=Missed call body=You missed a video call. rt=conversation rid=customer ctx=callId=resource;callerUserId=other;conversationId=customer;kind=Video params=kind=Video action=open src=evt srcType=communication.call.missed.v1 group=call-missed:other actor=other/ at=2026-11-20T15:00:00.0000000Z",
                 "inapp kind=communication.call.recording_failed to=other cat=CalendarMeetings priority=High title=Call recording failed body=The call recording could not be processed. rt=recording rid= ctx=callId=resource params=reason=storage action=review src=evt srcType=communication.call.recording_failed.v1 group= actor=/ at=2026-11-20T15:00:00.0000000Z",
                 "inapp kind=communication.call.recording_failed to=staff cat=CalendarMeetings priority=High title=Call recording failed body=The call recording could not be processed. rt=recording rid= ctx=callId=resource params=reason=storage action=review src=evt srcType=communication.call.recording_failed.v1 group= actor=/ at=2026-11-20T15:00:00.0000000Z",
@@ -146,6 +151,7 @@ public sealed class CallAndRecordingConsumersDeliveryTests
                 "inapp kind=communication.chat.messages_missed to=staff cat=Work priority=Normal title=New messages body=You have unread messages in a conversation. rt=conversation rid=resource ctx= params=count=3 action=open src=evt srcType=communication.chat.messages_missed.v1 group=chat:resource actor=other/ at=2026-11-20T15:00:00.0000000Z",
                 "inapp kind=communication.meeting.recording_failed to=staff cat=CalendarMeetings priority=High title=Meeting recording failed body=The meeting recording could not be processed. rt=recording rid= ctx=meetingId=resource params=reason=storage action=review src=evt srcType=communication.meeting.recording_failed.v1 group= actor=/ at=2026-11-20T15:00:00.0000000Z",
                 "inapp kind=communication.meeting.recording_ready to=staff cat=CalendarMeetings priority=Normal title=Meeting recording ready body=The meeting recording is ready to review. rt=recording rid=customer ctx=meetingId=resource params=durationSeconds=600;participantCount=3 action=open src=evt srcType=communication.meeting.recording_ready.v1 group= actor=/ at=2026-11-20T15:00:00.0000000Z",
+                "log Email kind=communication.meeting.recording_ready.v1 tpl=communication.meeting.recording_ready.v1 to=staff@example.com status=Pending event=evt subject=subject",
                 "log InApp kind=communication.call.missed tpl=communication.call.missed to=user:staff status=Sent event=evt subject=Missed call",
                 "log InApp kind=communication.call.recording_failed tpl=communication.call.recording_failed to=user:other status=Sent event=evt subject=Call recording failed",
                 "log InApp kind=communication.call.recording_failed tpl=communication.call.recording_failed to=user:staff status=Sent event=evt subject=Call recording failed",
@@ -154,6 +160,9 @@ public sealed class CallAndRecordingConsumersDeliveryTests
                 "log InApp kind=communication.chat.messages_missed tpl=communication.chat.messages_missed to=user:staff status=Sent event=evt subject=New messages",
                 "log InApp kind=communication.meeting.recording_failed tpl=communication.meeting.recording_failed to=user:staff status=Sent event=evt subject=Meeting recording failed",
                 "log InApp kind=communication.meeting.recording_ready tpl=communication.meeting.recording_ready to=user:staff status=Sent event=evt subject=Meeting recording ready",
+                "log Push kind=communication.meeting.recording_ready tpl=communication.meeting.recording_ready to=staff status=Sent event=evt subject=Meeting recording ready",
+                "push token=token-staff title=Meeting recording ready body=Your meeting recording is ready to review. link=https://office.example.com/n/open?rt=recording&rid=customer&ev=evt tag=meeting-recording:resource ttl=1.00:00:00 data=kind=communication.meeting.recording_ready;link=https://office.example.com/n/open?rt=recording&rid=customer&ev=evt;recipientUserId=staff;resourceId=customer;resourceType=recording;sourceEventId=evt;tenantId=tenant",
+                "render communication.meeting.recording_ready.v1 audience=Staff vars=action_url=https://office.example.com/meetings?meetingId=resource;duration_minutes=10;language=En;meeting_title=null;ready_at={\"$instant\":\"2026-11-20T15:00:00.0000000Z\"}",
             ],
             recorder.Lines()
         );

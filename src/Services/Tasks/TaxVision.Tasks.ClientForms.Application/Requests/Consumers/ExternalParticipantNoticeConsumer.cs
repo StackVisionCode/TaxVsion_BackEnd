@@ -12,23 +12,10 @@ namespace TaxVision.Tasks.ClientForms.Application.Requests.Consumers;
 /// P-14.7: un externo sin vincular no recibe avisos desde el hecho (no hay cliente al que avisar), así
 /// que Tasks los pide a Notification con un comando cifrado. Escucha sus propios hechos para no
 /// tocar cada transición: el comando sale aunque el hecho lo haya publicado un job o un consumer.
+/// La devolución no pasa por aquí: su aviso lo manda <c>ReturnFormRequestHandler</c> con el enlace nuevo.
 /// </summary>
 public static class ExternalParticipantNoticeConsumer
 {
-    public static Task Handle(
-        FormRequestReturnedIntegrationEvent evt,
-        IFormParticipantRepository participants,
-        IProtectedPayloadCodec codec,
-        IMessageBus bus,
-        ICorrelationContext correlation,
-        CancellationToken ct
-    ) =>
-        RequestAsync(
-            new(evt, evt.Participant, evt.FormRequestId, evt.Title, Kinds.Returned, CommentCount(evt)),
-            new(participants, codec, bus, correlation),
-            ct
-        );
-
     public static Task Handle(
         FormRequestReminderDueIntegrationEvent evt,
         IFormParticipantRepository participants,
@@ -89,9 +76,6 @@ public static class ExternalParticipantNoticeConsumer
         );
 
     private static readonly IReadOnlyDictionary<string, string> NoParams = new Dictionary<string, string>();
-
-    private static Dictionary<string, string> CommentCount(FormRequestReturnedIntegrationEvent evt) =>
-        new() { ["comment_count"] = evt.FieldCommentCount.ToString() };
 
     private static Dictionary<string, string> Rejection(FormAttachmentRejectedIntegrationEvent evt) =>
         new() { ["file_extension"] = evt.FileExtension, ["reason_code"] = evt.ReasonCode };

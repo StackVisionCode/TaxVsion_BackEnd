@@ -130,4 +130,24 @@ public sealed class GetNoteHandlerTests
 
         Assert.True(result.IsSuccess);
     }
+
+    // Coherente con "My notes": el autor abre su nota aunque ya no tenga asignado al cliente.
+    [Fact]
+    public async Task Get_returns_the_authors_own_note_of_an_unassigned_customer()
+    {
+        var tenantId = Guid.NewGuid();
+        var authorId = Guid.NewGuid();
+        var note = MakeNote(tenantId, authorId, NoteVisibility.Private, NoteTargetType.Customer, Guid.NewGuid());
+        var repo = new FakeNoteRepository();
+        repo.Seed(note);
+
+        var result = await GetNoteHandler.Handle(
+            new GetNoteQuery(tenantId, note.Id, authorId, ActorHasViewAll: false, CanViewAllCustomers: false),
+            repo,
+            Visibility(enabled: true),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+    }
 }

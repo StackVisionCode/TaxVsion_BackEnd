@@ -79,6 +79,10 @@ public static class AuthAuditAction
     // Refresh token presentado en la ruta de otra superficie (web en la móvil o al revés). Solo deja rastro.
     public const string RefreshTokenSurfaceMismatch = "auth.token.surface_mismatch";
     public const string SessionRevoked = "auth.session.revoked";
+
+    // Política de sesión de la plataforma: el cambio (PlatformAdmin) y la sesión cortada por inactividad o máximo.
+    public const string SessionPolicyUpdated = "auth.session_policy.updated";
+    public const string SessionEndedByPolicy = "auth.session.ended_by_policy";
     public const string AllSessionsRevoked = "auth.session.all_revoked";
     public const string PasswordChanged = "auth.password.changed";
     public const string PasswordResetRequested = "auth.password.reset_requested";

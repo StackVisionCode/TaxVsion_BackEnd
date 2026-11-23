@@ -53,4 +53,13 @@ describe('PrismaLimitsRepository (SQL Server) — revisión de entitlements', ()
     await repo.upsert(snapshot(8, 2));
     expect((await repo.findByTenantId(tenantId))?.maxConcurrentCalls).toBe(2);
   });
+
+  // Plan a la medida: las claves con excepción se guardan y se leen igual; sin lista, vuelve vacía.
+  it('guarda y lee las claves que son excepción de la oficina', async () => {
+    await repo.upsert({ ...snapshot(20, 4), overriddenKeys: ['communication.max_meeting_minutes'] });
+    expect((await repo.findByTenantId(tenantId))?.overriddenKeys).toEqual(['communication.max_meeting_minutes']);
+
+    await repo.upsert(snapshot(21, 4));
+    expect((await repo.findByTenantId(tenantId))?.overriddenKeys).toEqual([]);
+  });
 });

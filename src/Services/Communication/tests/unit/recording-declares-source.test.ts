@@ -84,6 +84,27 @@ describe('Grabaciones — declaran su origen en CloudStorage', () => {
     ]);
   });
 
+  // El correo de "grabación lista" nombra la reunión: el evento lleva su título.
+  it('el aviso de grabación lista lleva el título de la reunión', async () => {
+    const meeting = meetingWith({ tenantId: u(), hostUserId: u(), title: 'Quarterly review' });
+    const rt = runtime(meeting);
+    const fileId = u();
+    await rt.recordingSessions.save(
+      sessionWith({
+        tenantId: meeting.tenantId,
+        scope: RecordingScope.Meeting,
+        scopeId: meeting.id,
+        state: RecordingSessionState.Processing,
+        fileId,
+      }),
+    );
+
+    await markRecordingFileAvailable({ tenantId: meeting.tenantId, fileId }, rt.deps);
+
+    const ready = rt.publisher.events.find((e) => e.eventType === 'communication.meeting.recording_ready.v1');
+    expect(ready).toEqual(expect.objectContaining({ meetingTitle: 'Quarterly review' }));
+  });
+
   it('una llamada con un cliente declara call · recording con ese cliente', async () => {
     const customerId = u();
     const call = callWith({

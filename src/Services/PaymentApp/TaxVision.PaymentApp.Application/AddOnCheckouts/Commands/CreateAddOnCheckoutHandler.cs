@@ -34,6 +34,7 @@ public static class CreateAddOnCheckoutHandler
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
         ICheckoutReturnUrlGuard returnUrls,
+        IOnboardingPaymentMethodCatalog paymentMethods,
         CancellationToken ct
     )
     {
@@ -50,6 +51,15 @@ public static class CreateAddOnCheckoutHandler
         );
         if (verify.IsFailure)
             return Result.Failure<AddOnCheckoutResponse>(verify.Error);
+
+        var method = await CheckoutPaymentMethodGuard.EnsureAvailableAsync(
+            paymentMethods,
+            command.Provider,
+            command.Method,
+            ct
+        );
+        if (method.IsFailure)
+            return Result.Failure<AddOnCheckoutResponse>(method.Error);
 
         var request = new HostedCheckoutRequest(
             command.IdempotencyKey,

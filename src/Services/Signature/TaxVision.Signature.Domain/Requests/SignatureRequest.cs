@@ -1576,6 +1576,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+        if (IsOutOfTurn(signer))
+            return NotYourTurn();
 
         if (signer.IsPinLockedAt(attemptedAtUtc))
             return Result.Failure(
@@ -1645,6 +1647,9 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
             return Result.Failure<SignerVerificationChallenge>(
                 new Error("Signature.Request.SignerMissing", "Signer not found in this request.")
             );
+        // El código cuesta (SMS): nunca se manda a quien todavía no tiene el turno.
+        if (IsOutOfTurn(signer))
+            return Result.Failure<SignerVerificationChallenge>(NotYourTurn().Error);
 
         // Cooldown (evita spam del endpoint público): rechaza si el firmante pidió otro challenge del MISMO
         // método hace menos de lo que fija la plataforma. Cambiar de método NO tiene cooldown.
@@ -1755,6 +1760,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+        if (IsOutOfTurn(signer))
+            return NotYourTurn();
 
         var recordResult = signer.RecordConsentAcceptance(acceptedAtUtc, clientIp, userAgent);
         if (recordResult.IsFailure)
@@ -2078,6 +2085,8 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
         var signer = FindSignerOrNull(signerId);
         if (signer is null)
             return Result.Failure(new Error("Signature.Request.SignerMissing", "Signer not found in this request."));
+        if (IsOutOfTurn(signer))
+            return NotYourTurn();
 
         var recordResult = signer.RecordRejected(rejectedAtUtc, reason, clientIp, userAgent);
         if (recordResult.IsFailure)
@@ -2721,6 +2730,55 @@ public sealed class SignatureRequest : AggregateRoot, IHasOwner
     }
 
     private bool AllSignersHaveSigned() => _signers.Count > 0 && _signers.All(s => s.Status == SignerStatus.Signed);
+
+    /// <summary>
+    /// Quién tiene el turno ahora. Con orden: solo el pendiente de menor <c>Order</c>; sin orden: todos los
+    /// pendientes. Es la única regla de turno del agregado: la usan el envío, la firma (para invitar al siguiente),
+    /// los recordatorios, el reenvío y las guardas de cada acción del firmante.
+    /// </summary>
+    public IReadOnlyList<Signer> CurrentTurnSigners()
+    {
+        var pending = _signers.Where(signer => signer.Status is SignerStatus.Pending or SignerStatus.InProgress);
+        if (!RequiresSequentialSigning)
+            return pending.ToList();
+        return pending.OrderBy(signer => signer.Order).Take(1).ToList();
+    }
+
+    public bool IsSignersTurn(Guid signerId) => CurrentTurnSigners().Any(signer => signer.Id == signerId);
+
+    /// <summary>
+    /// A quién hay que mandarle la solicitud ahora: los del turno que todavía no tienen enlace. El enlace emitido
+    /// (<see cref="Signer.CurrentTokenId"/>) es la marca de "ya invitado", así que invitar es idempotente: si el
+    /// handler corre dos veces, la segunda no encuentra a nadie.
+    /// </summary>
+    public IReadOnlyList<Signer> SignersDueForInvitation() =>
+        Status == SignatureRequestStatus.InProgress
+            ? CurrentTurnSigners().Where(signer => signer.CurrentTokenId is null).ToList()
+            : [];
+
+    /// <summary>Pendientes que ya recibieron su enlace: los únicos a los que se avisa de un rechazo o vencimiento.</summary>
+    public IReadOnlyList<Signer> InvitedPendingSigners() =>
+        _signers
+            .Where(signer =>
+                signer.Status is SignerStatus.Pending or SignerStatus.InProgress && signer.CurrentTokenId is not null
+            )
+            .ToList();
+
+    /// <summary>
+    /// Con orden, un firmante sin turno no puede actuar (pedir código, aceptar, verificar, rechazar ni firmar).
+    /// Sin esta guarda, un enlace viejo de alguien sin turno podía anular la solicitud de todos.
+    /// </summary>
+    /// <summary>Pendiente sin turno. Un firmante que ya firmó o rechazó cae en su propio error de estado terminal.</summary>
+    private bool IsOutOfTurn(Signer signer) =>
+        signer.Status is SignerStatus.Pending or SignerStatus.InProgress && !IsSignersTurn(signer.Id);
+
+    private static Result NotYourTurn() =>
+        Result.Failure(
+            new Error(
+                "Signature.Request.NotYourTurn",
+                "This request is sequential and it is not this signer's turn yet."
+            )
+        );
 
     /// <summary>
     /// Determina si <paramref name="signer"/> es el próximo pendiente cuando la solicitud

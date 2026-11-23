@@ -127,6 +127,8 @@ model TenantCommunicationLimits {
   SupportEnabled               Boolean  @default(true)
   IsSuspended                  Boolean  @default(false)
   EnabledModulesJson           String   @default("[]") @db.NVarChar(Max)
+  // Plan a la medida: claves cuyo valor es una excepción de la oficina (pueden pasar el global).
+  OverriddenKeysJson           String   @default("[]") @db.NVarChar(Max)
   // Claves communication.* nuevas del catálogo (null = no definidas por el plan).
   MaxRecordingMinutesMeeting   Int?
   MaxRecordingMinutesAudioCall Int?

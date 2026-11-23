@@ -75,6 +75,8 @@ public static class SubmitSignatureHandler
         if (sign.IsFailure)
             return Result.Failure(sign.Error);
 
+        // Firma con orden: si este firmante terminó, el siguiente recibe su enlace ahora.
+        var invitations = SignerInvitationIssuer.IssueDue(request, tokenService);
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(request.TenantId, ct);
         var readyDocumentIds = sign
@@ -88,6 +90,7 @@ public static class SubmitSignatureHandler
             await PublishDocumentsReadyForSealingAsync(request, readyDocumentIds, signedAt, correlation, bus);
         if (!signerWasSigned && signer.Status == SignerStatus.Signed)
             await PublishSignedAsync(request, signer, signedAt, cmd.ClientIp, correlation, bus);
+        await SignerInvitationIssuer.PublishAsync(request, invitations, correlation, bus);
         // F7 — si el aggregate dejó enganchada la copia parcial, dispara el pipeline de delivery.
         if (
             sign.Value.Count > 0

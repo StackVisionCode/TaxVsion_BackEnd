@@ -1,9 +1,7 @@
 using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Signature.Application.Abstractions;
-using TaxVision.Signature.Application.Messaging;
 using TaxVision.Signature.Domain.Requests;
 using Wolverine;
 
@@ -42,6 +40,12 @@ public static class ResendSignerInvitationHandler
                 new Error("Signature.Signer.NotPending", "Only pending signers can receive a resent invitation.")
             );
 
+        // Firma con orden: quien aún no tiene turno no recibe enlace.
+        if (!request.IsSignersTurn(signer.Id))
+            return Result.Failure(
+                new Error("Signature.Request.NotYourTurn", "This signer's turn has not started yet.")
+            );
+
         var recordResult = request.RecordReminderDispatched(DateTime.UtcNow);
         if (recordResult.IsFailure)
             return recordResult;
@@ -66,41 +70,7 @@ public static class ResendSignerInvitationHandler
         }
 
         await unitOfWork.SaveChangesAsync(ct);
-        await PublishInvitationAsync(request, signer, token, correlation, bus);
+        await bus.PublishAsync(SignerInvitationIssuer.Build(request, signer, token, correlation));
         return Result.Success();
-    }
-
-    // ------------------------------------------------------------------
-    // Métodos privados: una responsabilidad cada uno
-    // ------------------------------------------------------------------
-
-    private static Task PublishInvitationAsync(
-        SignatureRequest request,
-        Signer signer,
-        string token,
-        ICorrelationContext correlation,
-        IMessageBus bus
-    )
-    {
-        var evt = new SignerInvitedIntegrationEvent
-        {
-            TenantId = request.TenantId,
-            CorrelationId = correlation.CorrelationId,
-            SignatureRequestId = request.Id,
-            SignerId = signer.Id,
-            Email = signer.Email.Value,
-            FullName = signer.FullName.Value,
-            Order = signer.Order,
-            Language = signer.Language,
-            PhoneE164 = signer.PhoneNumber?.Value,
-            PreferredChannel = SignerChannelResolver.PreferredChannelFor(signer),
-            PublicToken = token,
-            ExpiresAtUtc = request.ExpiresAtUtc,
-            RevocationEpoch = request.RevocationEpoch,
-            RequiresConsent = request.RequiresConsent,
-            RequiresSequentialSigning = request.RequiresSequentialSigning,
-            MappedCustomerId = signer.MappedCustomerId,
-        };
-        return bus.PublishAsync(evt).AsTask();
     }
 }

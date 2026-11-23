@@ -618,6 +618,47 @@ public sealed class ClientFormsConsumerTests
         Assert.Equal("guest@example.com", queued.To);
     }
 
+    [Fact]
+    public async Task Access_link_never_greets_with_an_email()
+    {
+        var tenantId = Guid.NewGuid();
+        var formRequestId = Guid.NewGuid();
+        var participant = ExternalParticipant(Guid.NewGuid());
+        var codec = RealCodec();
+        var render = new RenderClient();
+
+        await FormAccessLinkDeliveryRequestedConsumer.Handle(
+            new FormAccessLinkDeliveryRequestedIntegrationEvent
+            {
+                TenantId = tenantId,
+                CorrelationId = "corr-link-name",
+                CommandId = Guid.NewGuid(),
+                FormRequestId = formRequestId,
+                Participant = participant,
+                ExpiresAtUtc = DateTime.UtcNow.AddDays(7),
+                Payload = codec.Protect(
+                    ClientFormProtectedPayloadSchemas.AccessLink,
+                    new ProtectedPayloadBinding(tenantId, formRequestId, participant),
+                    new FormAccessLinkDeliveryPayload(
+                        "guest@example.com",
+                        "guest@example.com",
+                        "secret-token",
+                        "Organizer"
+                    )
+                ),
+            },
+            codec,
+            Sender(new NotificationDispatcherHarness(), render, new EmailGateway()),
+            new HostResolver(),
+            Options.Create(new PortalOptions()),
+            new Correlation(),
+            NullLogger<FormAccessLinkDeliveryRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.Null(render.Variables["participant_name"]);
+    }
+
     [Theory]
     [InlineData(FormParticipantNotificationKinds.Returned, "task.form_participant_returned.v1")]
     [InlineData(FormParticipantNotificationKinds.Reminder, "task.form_participant_reminder.v1")]
@@ -635,6 +676,8 @@ public sealed class ClientFormsConsumerTests
             command,
             codec,
             Sender(new NotificationDispatcherHarness(), render, gateway),
+            new HostResolver(),
+            Options.Create(new PortalOptions()),
             new Correlation(),
             NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
             CancellationToken.None
@@ -662,6 +705,8 @@ public sealed class ClientFormsConsumerTests
             ),
             codec,
             Sender(new NotificationDispatcherHarness(), render, new EmailGateway()),
+            new HostResolver(),
+            Options.Create(new PortalOptions()),
             new Correlation(),
             NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
             CancellationToken.None
@@ -685,6 +730,8 @@ public sealed class ClientFormsConsumerTests
             ParticipantNotice(codec, "unsupported", new Dictionary<string, string>()),
             codec,
             Sender(new NotificationDispatcherHarness(), render, gateway),
+            new HostResolver(),
+            Options.Create(new PortalOptions()),
             new Correlation(),
             NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
             CancellationToken.None
@@ -713,6 +760,8 @@ public sealed class ClientFormsConsumerTests
             command,
             codec,
             Sender(new NotificationDispatcherHarness(), new RenderClient(), gateway),
+            new HostResolver(),
+            Options.Create(new PortalOptions()),
             new Correlation(),
             logger,
             CancellationToken.None
@@ -1034,6 +1083,8 @@ public sealed class ClientFormsConsumerTests
             ParticipantNotice(codec, FormParticipantNotificationKinds.Reminder, new Dictionary<string, string>(), "Es"),
             codec,
             Sender(new NotificationDispatcherHarness(), render, new EmailGateway()),
+            new HostResolver(),
+            Options.Create(new PortalOptions()),
             new Correlation(),
             NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
             CancellationToken.None
@@ -1042,11 +1093,95 @@ public sealed class ClientFormsConsumerTests
         Assert.Equal("Es", render.Variables["language"]);
     }
 
+    [Fact]
+    public async Task Returned_notice_with_a_new_link_renders_the_button_variables()
+    {
+        var codec = RealCodec();
+        var render = new RenderClient();
+        var expires = new DateTime(2026, 12, 7, 12, 0, 0, DateTimeKind.Utc);
+
+        await HandleParticipantNotice(
+            codec,
+            render,
+            ParticipantNotice(
+                codec,
+                FormParticipantNotificationKinds.Returned,
+                new Dictionary<string, string> { ["comment_count"] = "2" },
+                accessToken: "secret-token",
+                accessExpiresAtUtc: expires
+            )
+        );
+
+        Assert.Contains(
+            "secret-token",
+            Assert.IsType<string>(render.Variables["access_link"]),
+            StringComparison.Ordinal
+        );
+        Assert.True(render.Variables.ContainsKey("expires_at"));
+    }
+
+    [Fact]
+    public async Task Returned_notice_without_a_link_keeps_the_text_only_version()
+    {
+        var codec = RealCodec();
+        var render = new RenderClient();
+
+        await HandleParticipantNotice(
+            codec,
+            render,
+            ParticipantNotice(codec, FormParticipantNotificationKinds.Returned, new Dictionary<string, string>())
+        );
+
+        Assert.False(render.Variables.ContainsKey("access_link"));
+    }
+
+    // Participantes guardados antes del arreglo con el email como nombre: el saludo pasa a genérico.
+    [Theory]
+    [InlineData("guest@example.com")]
+    [InlineData("Other@Mail.com")]
+    public async Task Participant_notice_never_greets_with_an_email(string storedName)
+    {
+        var codec = RealCodec();
+        var render = new RenderClient();
+
+        await HandleParticipantNotice(
+            codec,
+            render,
+            ParticipantNotice(
+                codec,
+                FormParticipantNotificationKinds.Reminder,
+                new Dictionary<string, string>(),
+                name: storedName
+            )
+        );
+
+        Assert.Null(render.Variables["participant_name"]);
+    }
+
+    private static Task HandleParticipantNotice(
+        IProtectedPayloadCodec codec,
+        RenderClient render,
+        FormParticipantNotificationRequestedIntegrationEvent command
+    ) =>
+        FormParticipantNotificationRequestedConsumer.Handle(
+            command,
+            codec,
+            Sender(new NotificationDispatcherHarness(), render, new EmailGateway()),
+            new HostResolver(),
+            Options.Create(new PortalOptions()),
+            new Correlation(),
+            NullLogger<FormParticipantNotificationRequestedIntegrationEvent>.Instance,
+            CancellationToken.None
+        );
+
     private static FormParticipantNotificationRequestedIntegrationEvent ParticipantNotice(
         IProtectedPayloadCodec codec,
         string kind,
         IReadOnlyDictionary<string, string> parameters,
-        string language = "En"
+        string language = "En",
+        string? name = "Guest",
+        string? accessToken = null,
+        DateTime? accessExpiresAtUtc = null
     )
     {
         var tenantId = Guid.NewGuid();
@@ -1064,7 +1199,15 @@ public sealed class ClientFormsConsumerTests
             Payload = codec.Protect(
                 ClientFormProtectedPayloadSchemas.ParticipantNotification,
                 new ProtectedPayloadBinding(tenantId, formRequestId, participant),
-                new FormParticipantNotificationPayload("guest@example.com", "Guest", "Intake", parameters, language)
+                new FormParticipantNotificationPayload(
+                    "guest@example.com",
+                    name,
+                    "Intake",
+                    parameters,
+                    language,
+                    accessToken,
+                    accessExpiresAtUtc
+                )
             ),
         };
     }

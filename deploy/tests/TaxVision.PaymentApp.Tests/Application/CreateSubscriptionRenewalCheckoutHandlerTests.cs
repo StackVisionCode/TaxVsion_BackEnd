@@ -50,6 +50,7 @@ public sealed class CreateSubscriptionRenewalCheckoutHandlerTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            FakePaymentMethodCatalog.AllEnabled(),
             CancellationToken.None
         );
 
@@ -84,6 +85,7 @@ public sealed class CreateSubscriptionRenewalCheckoutHandlerTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            FakePaymentMethodCatalog.AllEnabled(),
             CancellationToken.None
         );
 
@@ -132,6 +134,7 @@ public sealed class CreateSubscriptionRenewalCheckoutHandlerTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            FakePaymentMethodCatalog.AllEnabled(),
             CancellationToken.None
         );
 

@@ -62,6 +62,7 @@ public static class DependencyInjection
         services.AddScoped<ITenantAddOnRepository, TenantAddOnRepository>();
         services.AddScoped<IAddOnPurchaseIntentRepository, AddOnPurchaseIntentRepository>();
         services.AddScoped<ITenantEntitlementSnapshotRepository, TenantEntitlementSnapshotRepository>();
+        services.AddScoped<ITenantEntitlementOverrideRepository, TenantEntitlementOverrideRepository>();
         services.AddScoped<ISubscriptionAuditLogWriter, SubscriptionAuditLogWriter>();
         services.AddScoped<IPlanRateLimitRepository, PlanRateLimitRepository>();
         services.AddScoped<ISubscriptionAuditLogRepository, SubscriptionAuditLogRepository>();

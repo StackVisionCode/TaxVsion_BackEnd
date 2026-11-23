@@ -59,9 +59,7 @@ public static class ViewPublicSignerHandler
             SignerStatus: signer.Status,
             RequiresConsent: request.RequiresConsent,
             HasAcceptedConsent: signer.HasAcceptedConsent,
-            RequiresSequentialSigning: request.RequiresSequentialSigning,
-            IsSignerNextInSequence: IsNextInSequence(request, signer),
-            Order: signer.Order,
+            IsReadyForSigner: request.IsSignersTurn(signer.Id),
             ExpiresAtUtc: request.ExpiresAtUtc,
             SignerFullName: signer.FullName.Value,
             SignerEmail: signer.Email.Value,
@@ -88,19 +86,6 @@ public static class ViewPublicSignerHandler
                 FieldTypography.MinFontSizePt
             )
         );
-
-    private static bool IsNextInSequence(SignatureRequest request, Signer signer)
-    {
-        if (!request.RequiresSequentialSigning)
-            return true;
-        var next = request
-            .Signers.Where(s =>
-                s.Status is Domain.Requests.SignerStatus.Pending or Domain.Requests.SignerStatus.InProgress
-            )
-            .OrderBy(s => s.Order)
-            .FirstOrDefault();
-        return next?.Id == signer.Id;
-    }
 
     private static PublicSignerFieldView MapField(SignatureField field) =>
         new(

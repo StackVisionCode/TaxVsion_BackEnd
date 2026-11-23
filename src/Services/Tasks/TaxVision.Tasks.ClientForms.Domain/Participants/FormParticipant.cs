@@ -140,7 +140,8 @@ public sealed partial class FormParticipant : AggregateRoot
 
     private static Result<(string? FullName, string? Phone)> NormalizeContact(string? fullName, string? phoneE164)
     {
-        var name = string.IsNullOrWhiteSpace(fullName) ? null : fullName.Trim();
+        // Un email no es un nombre: sin nombre, el correo saluda de forma genérica.
+        var name = string.IsNullOrWhiteSpace(fullName) || fullName.Contains('@') ? null : fullName.Trim();
         var phone = string.IsNullOrWhiteSpace(phoneE164) ? null : phoneE164.Trim();
         if (name?.Length > 200 || (phone is not null && !PhoneRegex().IsMatch(phone)))
             return Result.Failure<(string?, string?)>(FormParticipantErrors.InvalidContact);

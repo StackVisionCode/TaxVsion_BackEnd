@@ -107,6 +107,8 @@ public sealed class CustomerPortalMfaHandlerTests
             Guid tenantId,
             Guid customerId,
             string email,
+            string? firstName,
+            string? lastName,
             Guid requestedByUserId,
             CancellationToken ct = default
         ) => throw new NotSupportedException();

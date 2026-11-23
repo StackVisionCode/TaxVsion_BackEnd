@@ -7,7 +7,9 @@ namespace BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 /// sin vincular: el equivalente de los avisos al cliente, que salen del hecho. Es un comando punto a
 /// punto a Notification porque lleva el email del externo, y ese dato nunca va por el fanout.
 /// </summary>
-[MessageIdentity("BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormParticipantNotificationRequestedIntegrationEvent")]
+[MessageIdentity(
+    "BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormParticipantNotificationRequestedIntegrationEvent"
+)]
 public sealed record FormParticipantNotificationRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid CommandId { get; init; }
@@ -20,13 +22,18 @@ public sealed record FormParticipantNotificationRequestedIntegrationEvent : Inte
     public required ProtectedPayload Payload { get; init; }
 }
 
-/// <summary>Params: solo texto inocuo (contadores, extensión, códigos). Nunca respuestas ni nombres de archivo.</summary>
+/// <summary>
+/// Params: solo texto inocuo (contadores, extensión, códigos). Nunca respuestas ni nombres de archivo.
+/// <c>AccessToken</c> (opcional): enlace nuevo que acompaña al aviso de devolución; viaja solo cifrado.
+/// </summary>
 public sealed record FormParticipantNotificationPayload(
     string Email,
     string? Name,
     string Title,
     IReadOnlyDictionary<string, string> Params,
-    string Language = "En"
+    string Language = "En",
+    string? AccessToken = null,
+    DateTime? AccessExpiresAtUtc = null
 );
 
 public static class FormParticipantNotificationKinds

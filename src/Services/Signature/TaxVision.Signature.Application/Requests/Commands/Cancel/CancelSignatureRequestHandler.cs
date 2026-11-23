@@ -40,11 +40,9 @@ public static class CancelSignatureRequestHandler
             new Error("Signature.Request.NotFound", "The signature request does not exist for this tenant.")
         );
 
+    // Solo los que ya recibieron su enlace.
     private static IReadOnlyList<Guid> CollectPendingSignerIds(SignatureRequest request) =>
-        request
-            .Signers.Where(s => s.Status is SignerStatus.Pending or SignerStatus.InProgress)
-            .Select(s => s.Id)
-            .ToList();
+        request.InvitedPendingSigners().Select(s => s.Id).ToList();
 
     private static Task PublishCanceledEventAsync(
         SignatureRequest request,

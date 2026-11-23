@@ -73,6 +73,7 @@ public sealed class EntitlementSnapshotBuilderTests
             new FakeSeatRepo(seats),
             new FakeTenantAddOnRepo([]),
             new FakeAddOnDefinitionRepository(),
+            new FakeEntitlementOverrideRepo(),
             new FakeSnapshotRepo(),
             CancellationToken.None
         );
@@ -101,6 +102,7 @@ public sealed class EntitlementSnapshotBuilderTests
             new FakeSeatRepo(),
             new FakeTenantAddOnRepo([]),
             new FakeAddOnDefinitionRepository(),
+            new FakeEntitlementOverrideRepo(),
             new FakeSnapshotRepo(),
             CancellationToken.None
         );
@@ -202,6 +204,7 @@ public sealed class EntitlementSnapshotBuilderTests
             new FakeSeatRepo(),
             new FakeTenantAddOnRepo(addOns),
             addOnDefs,
+            new FakeEntitlementOverrideRepo(),
             new FakeSnapshotRepo(),
             CancellationToken.None
         );
@@ -298,6 +301,192 @@ public sealed class EntitlementSnapshotBuilderTests
             )
             .Value;
         def.AddFeature(AddOnFeature.Create(def.Id, EntitlementKey.Create("module.email").Value, true).Value);
+        def.Publish(Guid.Empty, nowUtc);
+
+        var addOn = TenantAddOn
+            .Purchase(tenantId, def, 1, Money.Zero("USD"), BillingCycle.Monthly, true, Guid.Empty, nowUtc)
+            .Value;
+        return (def, addOn);
+    }
+
+    // Plan a la medida: sin notas, la foto sale exactamente igual que antes de existir esta función.
+    [Fact]
+    public async Task Office_without_overrides_gets_exactly_the_same_snapshot()
+    {
+        var tenantId = Guid.NewGuid();
+        var plan = BuildPublishedPlan();
+        var subscription = BuildSubscription(tenantId, plan, SubscriptionStatus.Active);
+        var otherOffice = Override(Guid.NewGuid(), "seats.max", EntitlementValueType.Int, "99");
+
+        var without = await BuildWithAsync(tenantId, plan, subscription, new FakeEntitlementOverrideRepo());
+        var withOtherOfficeNote = await BuildWithAsync(
+            tenantId,
+            plan,
+            subscription,
+            new FakeEntitlementOverrideRepo(otherOffice)
+        );
+
+        Assert.Equal(Lines(without), Lines(withOtherOfficeNote));
+        Assert.DoesNotContain(without.Entries, e => e.Source == EntitlementSource.Override);
+    }
+
+    [Fact]
+    public async Task Override_replaces_the_plan_value_and_paid_add_ons_still_add_on_top()
+    {
+        var tenantId = Guid.NewGuid();
+        var plan = BuildPublishedPlan();
+        var subscription = BuildSubscription(tenantId, plan, SubscriptionStatus.Active);
+        var (definition, addOn) = BuildSeatsAddOn(tenantId, extraSeats: 2);
+
+        var snapshot = await BuildWithAsync(
+            tenantId,
+            plan,
+            subscription,
+            new FakeEntitlementOverrideRepo(Override(tenantId, "seats.max", EntitlementValueType.Int, "10")),
+            new FakeTenantAddOnRepo([addOn]),
+            new FakeAddOnDefinitionRepository(definition)
+        );
+
+        // 10 de la nota (en vez de los 3 del plan) + 2 del add-on pagado.
+        var seats = snapshot.Entries.Single(e => e.Key.Value == "seats.max");
+        Assert.Equal("12", seats.Value);
+        Assert.Equal(EntitlementSource.Override, seats.Source);
+    }
+
+    [Fact]
+    public async Task Override_can_grant_a_key_the_plan_does_not_have()
+    {
+        var tenantId = Guid.NewGuid();
+        var plan = BuildPublishedPlan();
+        var subscription = BuildSubscription(tenantId, plan, SubscriptionStatus.Active);
+
+        var snapshot = await BuildWithAsync(
+            tenantId,
+            plan,
+            subscription,
+            new FakeEntitlementOverrideRepo(Override(tenantId, "module.email", EntitlementValueType.Bool, "true"))
+        );
+
+        Assert.Equal("true", ModuleValue(snapshot, "module.email"));
+    }
+
+    [Theory]
+    [InlineData(SubscriptionStatus.Suspended)]
+    [InlineData(SubscriptionStatus.Cancelled)]
+    [InlineData(SubscriptionStatus.Expired)]
+    public async Task Office_that_is_not_paying_does_not_keep_its_overrides(SubscriptionStatus status)
+    {
+        var tenantId = Guid.NewGuid();
+        var plan = BuildPublishedPlan();
+        var subscription = BuildSubscription(tenantId, plan, status);
+
+        var snapshot = await BuildWithAsync(
+            tenantId,
+            plan,
+            subscription,
+            new FakeEntitlementOverrideRepo(
+                Override(tenantId, "seats.max", EntitlementValueType.Int, "10"),
+                Override(tenantId, "module.email", EntitlementValueType.Bool, "true")
+            )
+        );
+
+        Assert.Equal("3", ModuleValue(snapshot, "seats.max"));
+        Assert.Null(ModuleValue(snapshot, "module.email"));
+    }
+
+    [Fact]
+    public async Task Expired_override_no_longer_applies()
+    {
+        var tenantId = Guid.NewGuid();
+        var plan = BuildPublishedPlan();
+        var subscription = BuildSubscription(tenantId, plan, SubscriptionStatus.Active);
+        var grantedAt = DateTime.UtcNow.AddDays(-2);
+        var expired = TenantEntitlementOverride
+            .Grant(
+                tenantId,
+                EntitlementKey.Create("seats.max").Value,
+                EntitlementValueType.Int,
+                "10",
+                "r",
+                grantedAt.AddDays(1),
+                Guid.Empty,
+                grantedAt
+            )
+            .Value;
+
+        var snapshot = await BuildWithAsync(tenantId, plan, subscription, new FakeEntitlementOverrideRepo(expired));
+
+        Assert.Equal("3", ModuleValue(snapshot, "seats.max"));
+    }
+
+    private static TenantEntitlementOverride Override(
+        Guid tenantId,
+        string key,
+        EntitlementValueType type,
+        string value
+    ) =>
+        TenantEntitlementOverride
+            .Grant(tenantId, EntitlementKey.Create(key).Value, type, value, "r", null, Guid.Empty, DateTime.UtcNow)
+            .Value;
+
+    private static string[] Lines(TenantEntitlementSnapshot snapshot) =>
+        snapshot
+            .Entries.OrderBy(e => e.Key.Value, StringComparer.Ordinal)
+            .Select(e => $"{e.Key.Value}|{e.ValueType}|{e.Value}|{e.Status}|{e.Source}|{e.ExpiresAtUtc:O}")
+            .ToArray();
+
+    private static async Task<TenantEntitlementSnapshot> BuildWithAsync(
+        Guid tenantId,
+        SubscriptionPlan plan,
+        TenantSubscription subscription,
+        FakeEntitlementOverrideRepo overrides,
+        FakeTenantAddOnRepo? addOns = null,
+        FakeAddOnDefinitionRepository? definitions = null
+    )
+    {
+        var result = await EntitlementSnapshotBuilder.BuildAsync(
+            tenantId,
+            new FakeSubscriptionRepo(subscription),
+            new FakePlanRepo(plan),
+            new FakeModuleRepo(ModuleCatalog),
+            new FakeSeatRepo(),
+            addOns ?? new FakeTenantAddOnRepo([]),
+            definitions ?? new FakeAddOnDefinitionRepository(),
+            overrides,
+            new FakeSnapshotRepo(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        return result.Value;
+    }
+
+    private static (AddOnDefinition Definition, TenantAddOn AddOn) BuildSeatsAddOn(Guid tenantId, int extraSeats)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var def = AddOnDefinition
+            .Create(
+                AddOnCode.Create("seats.pack").Value,
+                "Seats",
+                "Seats",
+                "capacity",
+                false,
+                [BillingCycle.Monthly],
+                Guid.Empty,
+                nowUtc
+            )
+            .Value;
+        def.AddEntitlementDefinition(
+            AddOnEntitlementDefinition
+                .Create(
+                    def.Id,
+                    EntitlementKey.Create("seats.max").Value,
+                    EntitlementValueType.Int,
+                    extraSeats.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    AddOnMergeStrategy.Sum
+                )
+                .Value
+        );
         def.Publish(Guid.Empty, nowUtc);
 
         var addOn = TenantAddOn

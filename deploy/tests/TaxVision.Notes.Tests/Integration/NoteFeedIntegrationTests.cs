@@ -132,6 +132,31 @@ public sealed class NoteFeedIntegrationTests(NotesApiFactory factory) : IClassFi
         AssertSameIds([assigned.Id, general.Id], ids);
     }
 
+    // "My notes" = solo mis privadas, también las de un cliente que ya no tengo asignado; nada Team ni Client-visible.
+    [Fact]
+    public async Task My_notes_are_only_my_private_notes_including_unassigned_customers()
+    {
+        var privateOfUnassigned = await SeedAsync(
+            employeeA,
+            NoteVisibility.Private,
+            NoteTargetType.Customer,
+            Guid.NewGuid()
+        );
+        var privateGeneral = await SeedAsync(employeeA, NoteVisibility.Private);
+        await SeedAsync(employeeA, NoteVisibility.Team);
+        await SeedAsync(employeeA, NoteVisibility.ClientVisible, NoteTargetType.Customer, Guid.NewGuid());
+        await SeedAsync(employeeB, NoteVisibility.Private);
+
+        var ids = await FeedIdsAsync(
+            employeeA,
+            hasViewAll: false,
+            new NoteFeedCriteria(Scope: NoteFeedScope.Private),
+            assignedTo: employeeA
+        );
+
+        AssertSameIds([privateOfUnassigned.Id, privateGeneral.Id], ids);
+    }
+
     [Fact]
     public async Task Paginates_on_the_server()
     {

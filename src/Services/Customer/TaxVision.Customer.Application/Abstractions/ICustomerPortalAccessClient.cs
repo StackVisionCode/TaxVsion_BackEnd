@@ -17,10 +17,13 @@ public sealed record PortalMfaResetOutcome(string Outcome);
 /// </summary>
 public interface ICustomerPortalAccessClient
 {
+    /// <remarks>Nombre y apellido: los que la oficina registró; Auth los fija en la cuenta (null en un Business).</remarks>
     Task<Result<PortalInvitationOutcome>> IssueInvitationAsync(
         Guid tenantId,
         Guid customerId,
         string email,
+        string? firstName,
+        string? lastName,
         Guid requestedByUserId,
         CancellationToken ct = default
     );

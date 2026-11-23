@@ -248,3 +248,43 @@ public sealed class FakeSnapshotRepo(TenantEntitlementSnapshot? existing = null)
         return Task.CompletedTask;
     }
 }
+
+public sealed class FakeEntitlementOverrideRepo(params TenantEntitlementOverride[] items)
+    : ITenantEntitlementOverrideRepository
+{
+    private readonly List<TenantEntitlementOverride> _items = [.. items];
+
+    public IReadOnlyList<TenantEntitlementOverride> Items => _items;
+
+    public Task<IReadOnlyList<TenantEntitlementOverride>> GetByTenantIdAsync(
+        Guid tenantId,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<TenantEntitlementOverride>>(_items.Where(i => i.TenantId == tenantId).ToList());
+
+    public Task<TenantEntitlementOverride?> GetForUpdateAsync(
+        Guid tenantId,
+        string key,
+        CancellationToken ct = default
+    ) => Task.FromResult(_items.FirstOrDefault(i => i.TenantId == tenantId && i.Key == key));
+
+    public Task AddAsync(TenantEntitlementOverride item, CancellationToken ct = default)
+    {
+        _items.Add(item);
+        return Task.CompletedTask;
+    }
+
+    public void Remove(TenantEntitlementOverride item) => _items.Remove(item);
+
+    public Task<IReadOnlyList<TenantEntitlementOverride>> ListExpiryPendingAsync(
+        DateTime nowUtc,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<TenantEntitlementOverride>>(
+            _items
+                .Where(i => i.ExpiresAtUtc <= nowUtc && i.ExpiryAppliedAtUtc is null)
+                .OrderBy(i => i.ExpiresAtUtc)
+                .Take(take)
+                .ToList()
+        );
+}

@@ -130,8 +130,18 @@ function extractLimitsSnapshot(env: IncomingEnvelope): TenantCommunicationLimits
     maxCallMinutes: num('communication.max_call_minutes'),
     usagePeriodAnchorUtc: getUtcDate(env.payload, 'currentPeriodStartUtc', 'CurrentPeriodStartUtc'),
     revisionNumber: getNumber(env.payload, 'revisionNumber', 'RevisionNumber'),
+    overriddenKeys: getStringList(env.payload, 'overriddenKeys', 'OverriddenKeys'),
     updatedAtUtc: new Date(),
   };
+}
+
+/** Lista de textos del evento; un evento viejo sin la propiedad se lee como lista vacía. */
+function getStringList(src: Record<string, unknown>, ...keys: string[]): string[] {
+  for (const key of keys) {
+    const value = src[key];
+    if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string');
+  }
+  return [];
 }
 
 function getNumber(src: Record<string, unknown>, ...keys: string[]): number | null {

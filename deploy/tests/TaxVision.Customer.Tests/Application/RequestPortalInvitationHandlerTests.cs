@@ -27,6 +27,19 @@ public sealed class RequestPortalInvitationHandlerTests
         Assert.Equal((TenantId, customer.Id, "ana@example.com", Admin), portal.LastCall);
     }
 
+    // Auth fija este nombre en la cuenta de portal: el cliente no lo escribe al aceptar.
+    [Fact]
+    public async Task Sends_the_clients_registered_name_with_the_invitation()
+    {
+        var portal = new FakePortalAccess(
+            Result.Success(new PortalInvitationOutcome("Invited", "ana@example.com", DateTime.UtcNow))
+        );
+
+        await HandleAsync(NewCustomer(), portal);
+
+        Assert.Equal(("Ana", "Client"), portal.LastName);
+    }
+
     [Fact]
     public async Task A_rejection_from_auth_reaches_the_crm_with_its_reason()
     {
@@ -110,16 +123,20 @@ public sealed class RequestPortalInvitationHandlerTests
     private sealed class FakePortalAccess(Result<PortalInvitationOutcome> outcome) : ICustomerPortalAccessClient
     {
         public (Guid TenantId, Guid CustomerId, string Email, Guid RequestedBy)? LastCall { get; private set; }
+        public (string? First, string? Last)? LastName { get; private set; }
 
         public Task<Result<PortalInvitationOutcome>> IssueInvitationAsync(
             Guid tenantId,
             Guid customerId,
             string email,
+            string? firstName,
+            string? lastName,
             Guid requestedByUserId,
             CancellationToken ct = default
         )
         {
             LastCall = (tenantId, customerId, email, requestedByUserId);
+            LastName = (firstName, lastName);
             return Task.FromResult(outcome);
         }
 

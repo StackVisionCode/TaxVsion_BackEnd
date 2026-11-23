@@ -21,6 +21,7 @@ public static class RecalculateEntitlementsHandler
         ISubscriptionSeatRepository seats,
         ITenantAddOnRepository tenantAddOns,
         IAddOnDefinitionRepository addOnDefinitions,
+        ITenantEntitlementOverrideRepository overrides,
         ITenantEntitlementSnapshotRepository snapshots,
         ICacheService cache,
         IUnitOfWork unitOfWork,
@@ -40,6 +41,7 @@ public static class RecalculateEntitlementsHandler
             seats,
             tenantAddOns,
             addOnDefinitions,
+            overrides,
             snapshots,
             ct
         );
@@ -80,6 +82,10 @@ public static class RecalculateEntitlementsHandler
                 MaxStaffUsers = maxStaffUsers,
                 CurrentPeriodStartUtc = subscription?.CurrentPeriodStartUtc,
                 EntitlementValues = BuildEntitlementValues(snapshot),
+                OverriddenKeys = snapshot
+                    .Entries.Where(entry => entry.Source == EntitlementSource.Override)
+                    .Select(entry => entry.Key.Value)
+                    .ToArray(),
                 CorrelationId = correlation.CorrelationId,
             }
         );

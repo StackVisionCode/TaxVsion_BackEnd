@@ -330,6 +330,7 @@ public sealed class SessionEndedPublishingTests
             _world.Tenants,
             _world.Roles,
             _world.Issuer,
+            new FakeSessionLifetimeGate(),
             _world.Denylist,
             _world.Audit,
             _world.Request,

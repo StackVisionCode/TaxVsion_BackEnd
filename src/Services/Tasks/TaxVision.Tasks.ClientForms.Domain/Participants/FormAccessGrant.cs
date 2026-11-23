@@ -78,6 +78,24 @@ public sealed class FormAccessGrant : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>
+    /// Enlace nuevo que emite el sistema al devolver el formulario para cambios. No cuenta para
+    /// <see cref="MaxIssues"/>: pedir cambios nunca debe dejar al participante sin enlace.
+    /// </summary>
+    public Result ReissueForReturn(string tokenHash, string tokenLast4, DateTime expiresAtUtc, DateTime nowUtc)
+    {
+        if (RevokedAtUtc.HasValue)
+            return Result.Failure(FormParticipantErrors.AccessGrantUnavailable);
+        if (string.IsNullOrWhiteSpace(tokenHash) || tokenLast4.Length != 4 || expiresAtUtc <= nowUtc)
+            return Result.Failure(FormParticipantErrors.AccessGrantInvalid);
+        TokenHash = tokenHash;
+        TokenLast4 = tokenLast4;
+        ExpiresAtUtc = expiresAtUtc;
+        LastUsedAtUtc = null;
+        IssuedAtUtc = nowUtc;
+        return Result.Success();
+    }
+
     public Result RecordUsed(DateTime nowUtc)
     {
         if (!IsAvailableAt(nowUtc))

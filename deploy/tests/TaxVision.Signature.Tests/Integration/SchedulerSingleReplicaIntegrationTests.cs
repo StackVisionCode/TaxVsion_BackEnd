@@ -120,6 +120,9 @@ public sealed class SchedulerSingleReplicaIntegrationTests(SchedulerHostFixture 
     {
         var request = NewRequest(expirationHours, out _);
         Assert.True(request.Send(DateTime.UtcNow.AddHours(-sentHoursAgo)).IsSuccess);
+        // Como el envío real: los del turno reciben su enlace.
+        foreach (var due in request.SignersDueForInvitation())
+            request.RotateSignerToken(due.Id, Guid.NewGuid().ToString("N"));
         await using var db = host.Database.NewContext(_tenantId);
         db.SignatureRequests.Add(request);
         await db.SaveChangesAsync();

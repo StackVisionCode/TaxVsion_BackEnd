@@ -34,6 +34,22 @@ public sealed class FormExternalParticipantDomainTests
         Assert.Equal(FormParticipantErrors.InvalidTransition, participant.UpdateContact("Other", null).Error);
     }
 
+    // El saludo nunca debe ser "Hi correo@...": un nombre con forma de email no es un nombre.
+    [Theory]
+    [InlineData("guest@example.com")]
+    [InlineData(" Guest@Example.com ")]
+    [InlineData("other@mail.com")]
+    public void Participant_does_not_keep_an_email_as_its_name(string fullName)
+    {
+        var participant = FormParticipant
+            .Create(Guid.NewGuid(), "guest@example.com", fullName, null, FormParticipantSource.DirectedRequest, Now)
+            .Value;
+
+        Assert.Null(participant.FullName);
+        Assert.True(participant.UpdateContact("someone@else.com", null).IsSuccess);
+        Assert.Null(participant.FullName);
+    }
+
     [Fact]
     public void Intake_link_counts_only_submissions_and_enforces_limit()
     {

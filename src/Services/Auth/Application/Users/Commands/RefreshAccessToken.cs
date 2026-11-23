@@ -32,6 +32,7 @@ public static class RefreshAccessTokenHandler
         ITenantRegistry tenants,
         IRoleRepository roles,
         IAuthSessionIssuer issuer,
+        ISessionLifetimeGate lifetime,
         IAccessTokenDenylist denylist,
         IAuthAuditWriter audit,
         IRequestContext request,
@@ -166,6 +167,36 @@ public static class RefreshAccessTokenHandler
         var session = await sessions.GetSessionByIdAsync(stored.SessionId.Value, ct);
         if (session is null || !session.IsActive)
             return Result.Failure<AuthTokensResponse>(invalid);
+
+        // Política de la plataforma: sin actividad (el front deja de renovar) o pasado el máximo, la sesión se corta
+        // aquí aunque el navegador siga intentando. Es la defensa del servidor; el aviso del front es solo la UX.
+        if (await lifetime.EndReasonAsync(session, ct) is { } endReason)
+        {
+            await sessions.RevokeSessionAsync(session.Id, endReason, ct);
+            await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
+            await audit.AddAsync(
+                AuthAuditLog.Record(
+                    stored.TenantId,
+                    stored.UserId,
+                    AuthAuditAction.SessionEndedByPolicy,
+                    true,
+                    request.IpAddress,
+                    request.UserAgent,
+                    correlation.CorrelationId,
+                    targetType: "Session",
+                    targetId: session.Id,
+                    detailsJson: $$"""{"reason":"{{endReason}}"}"""
+                ),
+                ct
+            );
+            await unitOfWork.SaveChangesAsync(ct);
+            await bus.PublishAsync(
+                SessionEndedEvents.ForToken(stored, endReason, DateTime.UtcNow, correlation.CorrelationId)
+            );
+            return Result.Failure<AuthTokensResponse>(
+                new Error("Auth.SessionExpired", "Your session ended. Please sign in again.")
+            );
+        }
 
         var user = await users.GetByIdAsync(stored.UserId, ct);
         if (user is null || !user.IsActive)

@@ -20,4 +20,7 @@ public sealed record MeetingRecordingReadyIntegrationEvent : IntegrationEvent
 
     /// <summary>Fase 1B — antes ausente; Notification usaba un recipient simbolico "meeting:{id}".</summary>
     public required Guid HostUserId { get; init; }
+
+    /// <summary>Título de la reunión para el correo (opcional: los publicadores viejos no lo mandan).</summary>
+    public string? MeetingTitle { get; init; }
 }

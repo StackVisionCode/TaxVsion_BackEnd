@@ -96,7 +96,7 @@ public sealed class InvitationsController(IMessageBus bus) : ControllerBase
     [HttpGet("validate")]
     [AllowAnonymous]
     [RateLimitExempt(
-        "Anónimo, solo lectura por token de alta entropía (no enumerable). Devuelve únicamente lo que quien tiene el token ya conoce (email destinatario + oficina); no muta ni consume la invitación."
+        "Anónimo, solo lectura por token de alta entropía (no enumerable). Devuelve únicamente lo que quien tiene el token ya conoce (email destinatario, oficina y, en el portal, el nombre con que la oficina lo invitó); no muta ni consume la invitación."
     )]
     [ProducesResponseType<InvitationValidationResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Validate([FromQuery] string token, CancellationToken ct)

@@ -26,6 +26,11 @@ export interface TenantCommunicationLimitsSnapshot {
   readonly maxCallMinutes: number | null;
   /** Inicio del período de la suscripción: su día local es el ancla del cupo mensual (P11). null = mes UTC. */
   readonly usagePeriodAnchorUtc?: Date | null;
+  /**
+   * Plan a la medida: claves `communication.*` cuyo valor es una excepción de ESTA oficina (no el de su plan).
+   * Esas pueden pasar el máximo global de la plataforma; las demás no. Ausente o vacío = ninguna.
+   */
+  readonly overriddenKeys?: readonly string[];
   /** Revisión de entitlements del evento; null en mensajes viejos (se aplica sin comparar). */
   readonly revisionNumber: number | null;
   readonly updatedAtUtc: Date;

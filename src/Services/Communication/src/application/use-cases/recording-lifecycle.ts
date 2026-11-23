@@ -540,6 +540,7 @@ export async function markRecordingFileAvailable(
       participantCount: snap.participants.length,
       readyAtUtc: (s.readyAtUtc ?? new Date()).toISOString(),
       hostUserId: snap.hostUserId,
+      meetingTitle: snap.title,
     };
     await deps.publisher.enqueue(event);
     await declareRecordingFile(deps, { scope: 'Meeting', meeting }, s.scopeId, s.recordingFileId ?? input.fileId, correlationId);

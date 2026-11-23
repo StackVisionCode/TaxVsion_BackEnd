@@ -11,11 +11,13 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly TaxVision.Auth.Application.Abstractions.ISecureTokenService _secureTokenService;
+        private readonly TaxVision.Auth.Application.Abstractions.ISessionLifetimeGate _sessionLifetimeGate;
 
-        public RefreshAccessTokenCommandHandler434157652(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, TaxVision.Auth.Application.Abstractions.ISecureTokenService secureTokenService)
+        public RefreshAccessTokenCommandHandler434157652(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, TaxVision.Auth.Application.Abstractions.ISecureTokenService secureTokenService, TaxVision.Auth.Application.Abstractions.ISessionLifetimeGate sessionLifetimeGate)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _secureTokenService = secureTokenService;
+            _sessionLifetimeGate = sessionLifetimeGate;
         }
 
 
@@ -24,6 +26,7 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -47,7 +50,6 @@ namespace Internal.Generated.WolverineHandlers
             var sessionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.ISessionRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var refreshAccessTokenCommand = (TaxVision.Auth.Application.Users.Commands.RefreshAccessTokenCommand)context.Envelope.Message;
 
@@ -69,7 +71,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Auth.Application.Users.Commands.RefreshAccessTokenHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Auth.Application.Users.Commands.RefreshAccessTokenHandler.Handle(refreshAccessTokenCommand, sessionRepository, _secureTokenService, userRepository, tenantRegistry, roleRepository, authSessionIssuer, accessTokenDenylist, authAuditWriter, requestContext, correlationContext, unitOfWork, context, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Auth.Application.Users.Commands.RefreshAccessTokenHandler.Handle(refreshAccessTokenCommand, sessionRepository, _secureTokenService, userRepository, tenantRegistry, roleRepository, authSessionIssuer, _sessionLifetimeGate, accessTokenDenylist, authAuditWriter, requestContext, correlationContext, unitOfWork, context, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

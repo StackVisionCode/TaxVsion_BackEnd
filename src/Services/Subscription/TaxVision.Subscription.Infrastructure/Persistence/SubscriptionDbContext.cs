@@ -46,6 +46,7 @@ public sealed class SubscriptionDbContext(DbContextOptions<SubscriptionDbContext
     public DbSet<SubscriptionTenantSettings> TenantSettings => Set<SubscriptionTenantSettings>();
     public DbSet<AddOnDefinition> AddOnDefinitions => Set<AddOnDefinition>();
     public DbSet<TenantAddOn> TenantAddOns => Set<TenantAddOn>();
+    public DbSet<TenantEntitlementOverride> TenantEntitlementOverrides => Set<TenantEntitlementOverride>();
     public DbSet<AddOnPurchaseIntent> AddOnPurchaseIntents => Set<AddOnPurchaseIntent>();
     public DbSet<TenantEntitlementSnapshot> EntitlementSnapshots => Set<TenantEntitlementSnapshot>();
     public DbSet<SubscriptionAuditLog> AuditLogs => Set<SubscriptionAuditLog>();

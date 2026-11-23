@@ -17,8 +17,11 @@ public sealed class SubscriberMigrationJob(
     IServiceScopeFactory scopeFactory,
     IDistributedLockFactory lockFactory,
     ILogger<SubscriberMigrationJob> logger
-) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(10))
+) : PeriodicSubscriptionJob(scopeFactory, lockFactory, logger, Interval, TimeSpan.FromMinutes(10))
 {
+    // El aviso mínimo es de 30 días; una migración inmediata espera a lo sumo esto.
+    internal static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
+
     protected override string JobName => "subscriber-migration";
 
     protected override async Task RunOnceAsync(IServiceProvider services, CancellationToken ct)

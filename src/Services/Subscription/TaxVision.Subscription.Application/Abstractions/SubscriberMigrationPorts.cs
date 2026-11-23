@@ -9,7 +9,11 @@ public interface IStorageUsageClient
 }
 
 /// <summary>Lo que una oficina tiene además de su plan: asientos comprados vivos y la cuota de su foto actual.</summary>
-public sealed record OfficeHoldings(int LiveSeats, long? SnapshotStorageMaxBytes);
+public sealed record OfficeHoldings(int LiveSeats, long? SnapshotStorageMaxBytes)
+{
+    /// <summary>Claves con una excepción vigente (plan a la medida). La migración no les cambia el valor.</summary>
+    public IReadOnlySet<string> OverriddenKeys { get; init; } = new HashSet<string>();
+}
 
 /// <summary>Lecturas entre oficinas para las migraciones (solo el admin de plataforma). Cruza tenants a propósito.</summary>
 public interface ISubscriberMigrationReads

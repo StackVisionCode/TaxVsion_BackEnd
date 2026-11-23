@@ -56,6 +56,7 @@ public sealed class CheckoutReturnUrlTests
             NullLogger<SaaSPayment>.Instance,
             TestPlatform.Settings,
             TestPlatform.ReturnUrls,
+            FakePaymentMethodCatalog.AllEnabled(),
             CancellationToken.None
         );
 

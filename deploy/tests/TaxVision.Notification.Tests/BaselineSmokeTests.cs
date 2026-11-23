@@ -188,7 +188,16 @@ public sealed class BaselineSmokeTests
             HostUserId = Guid.NewGuid(),
         };
 
-        await MeetingRecordingReadyConsumer.Handle(evt, dispatcher, correlation, CancellationToken.None);
+        // Sin correo ni dispositivos: queda solo el aviso en la app.
+        await MeetingRecordingReadyConsumer.Handle(
+            evt,
+            dispatcher,
+            new NoAddress(),
+            new FakeTenantHostResolver("office.example.com"),
+            Microsoft.Extensions.Options.Options.Create(new PortalOptions()),
+            correlation,
+            CancellationToken.None
+        );
 
         Assert.Single(logRepo.Logs);
         var log = logRepo.Logs[0];
@@ -528,5 +537,11 @@ public sealed class BaselineSmokeTests
             SentToQueue.Add((queueName, message));
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class NoAddress : IUserEmailResolver
+    {
+        public Task<string?> ResolveAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
+            Task.FromResult<string?>(null);
     }
 }

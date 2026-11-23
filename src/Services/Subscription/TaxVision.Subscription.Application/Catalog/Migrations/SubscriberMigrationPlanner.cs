@@ -179,8 +179,10 @@ public sealed class SubscriberMigrationPlanner(
         if (office.ScheduledVersionId is not null)
             return "Subscription.VersionChangeAlreadyScheduled";
 
+        // Plan a la medida: una excepción vigente se conserva al cambiar de edición, así que ese límite no baja
+        // con la migración y no hay nada que medir para él.
         // Asientos: los del plan más los comprados, contra la gente que hoy ocupa cupo.
-        if (comparison.SeatsTo < comparison.SeatsFrom)
+        if (comparison.SeatsTo < comparison.SeatsFrom && !holdings.OverriddenKeys.Contains(CommercialTerms.SeatsMaxKey))
         {
             var occupancy = await users.GetAsync(office.TenantId, ct);
             if (occupancy is null)
@@ -190,7 +192,10 @@ public sealed class SubscriberMigrationPlanner(
         }
 
         // Almacenamiento: la cuota del plan más lo que suman sus add-ons, contra lo que ya usa.
-        if (comparison.StorageToBytes < comparison.StorageFromBytes)
+        if (
+            comparison.StorageToBytes < comparison.StorageFromBytes
+            && !holdings.OverriddenKeys.Contains(CommercialTerms.StorageMaxBytesKey)
+        )
         {
             var used = await storage.GetUsedBytesAsync(office.TenantId, ct);
             if (used is null)

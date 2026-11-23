@@ -20,6 +20,8 @@ public sealed class InvitationConfiguration : IEntityTypeConfiguration<Invitatio
         builder.Property(invitation => invitation.ExpiresAtUtc).IsRequired();
         builder.Property(invitation => invitation.RoleIdsJson).HasMaxLength(1024);
         builder.Property(invitation => invitation.ResendCount).IsRequired();
+        builder.Property(invitation => invitation.InviteeFirstName).HasMaxLength(Invitation.MaxNameLength);
+        builder.Property(invitation => invitation.InviteeLastName).HasMaxLength(Invitation.MaxNameLength);
 
         builder.HasIndex(invitation => invitation.TokenHash).IsUnique();
         builder.HasIndex(invitation => new

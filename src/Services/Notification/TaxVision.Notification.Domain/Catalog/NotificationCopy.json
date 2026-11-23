@@ -494,6 +494,10 @@
       "en": { "title": "Your appointment starts soon", "body": "It starts in a few minutes." },
       "es": { "title": "Tu cita empieza pronto", "body": "Empieza en unos minutos." }
     },
+    "communication.meeting.recording_ready": {
+      "en": { "title": "Meeting recording ready", "body": "Your meeting recording is ready to review." },
+      "es": { "title": "Grabación de reunión lista", "body": "La grabación de tu reunión está lista para revisar." }
+    },
     "communication.support.opened": {
       "en": { "title": "New support ticket", "body": "Open the support queue to review it." },
       "es": { "title": "Nuevo ticket de soporte", "body": "Abre la cola de soporte para revisarlo." }

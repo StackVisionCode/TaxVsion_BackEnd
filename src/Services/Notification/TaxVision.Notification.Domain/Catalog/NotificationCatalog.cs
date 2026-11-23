@@ -789,7 +789,7 @@ public static class NotificationCatalog
             NotificationCatalogCategory.CalendarMeetings,
             NotificationPriority.Normal,
             NotificationRecipientPolicy.ExplicitUser,
-            InApp,
+            InAppEmailPush,
             false,
             "recording",
             NotificationAction.Open,

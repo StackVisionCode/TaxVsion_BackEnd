@@ -49,6 +49,24 @@ describe('enable y entradas', () => {
     );
   });
 
+  it('muchos tramos → árbol balanceado: ffmpeg no acepta más de 100 sumandos seguidos', () => {
+    const intervals = Array.from({ length: 300 }, (_, i) => ({ start: i * 3000, end: i * 3000 + 1000 }));
+    const expr = enableExpr(intervals, 0, 900_000) as string;
+
+    // Sumandos por nivel de paréntesis: ninguno pasa de 2.
+    const terms: number[] = [1];
+    let widest = 1;
+    for (const ch of expr.replace(/between\(t,[\d.]+,[\d.]+\)/g, 'B')) {
+      if (ch === '(') terms.push(1);
+      else if (ch === ')') terms.pop();
+      else if (ch === '+') widest = Math.max(widest, (terms[terms.length - 1] = (terms.at(-1) ?? 1) + 1));
+    }
+    expect(widest).toBeLessThanOrEqual(2);
+    expect(expr.match(/between\(t,/g)).toHaveLength(300);
+    expect(expr).toContain('between(t,0.000,1.000)');
+    expect(expr).toContain('between(t,897.000,898.000)');
+  });
+
   it('pista empezada antes del segmento → -ss; después → -itsoffset; siempre -reinit_filter 0', () => {
     expect(clipInputArgs({ track: track('a', 2000, 60_000), from: 10_000, to: 20_000, visible: [] }, 10_000)).toEqual([
       '-reinit_filter', '0', '-ss', '8.000', '-t', '11.000', '-i', '/spool/s/a.webm',

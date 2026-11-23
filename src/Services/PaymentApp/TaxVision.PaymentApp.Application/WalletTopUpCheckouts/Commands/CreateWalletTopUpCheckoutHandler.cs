@@ -35,6 +35,7 @@ public static class CreateWalletTopUpCheckoutHandler
         ILogger<SaaSPayment> logger,
         IPlatformSettings platform,
         ICheckoutReturnUrlGuard returnUrls,
+        IOnboardingPaymentMethodCatalog paymentMethods,
         CancellationToken ct
     )
     {
@@ -51,6 +52,15 @@ public static class CreateWalletTopUpCheckoutHandler
         );
         if (verify.IsFailure)
             return Result.Failure<WalletTopUpCheckoutResponse>(verify.Error);
+
+        var method = await CheckoutPaymentMethodGuard.EnsureAvailableAsync(
+            paymentMethods,
+            command.Provider,
+            command.Method,
+            ct
+        );
+        if (method.IsFailure)
+            return Result.Failure<WalletTopUpCheckoutResponse>(method.Error);
 
         var request = new HostedCheckoutRequest(
             command.IdempotencyKey,

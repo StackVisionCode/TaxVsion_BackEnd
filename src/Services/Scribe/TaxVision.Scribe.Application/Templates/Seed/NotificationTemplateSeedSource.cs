@@ -181,6 +181,7 @@ public static partial class NotificationTemplateSeedSource
             MeetingCancelled,
             MeetingRescheduled,
             MeetingReminder,
+            MeetingRecordingReady,
             PublicDemoVerificationCode,
             PublicDemoConfirmed,
             PublicDemoNewBooking,
@@ -205,6 +206,9 @@ public static partial class NotificationTemplateSeedSource
 
     // v2: tildes en el español de los push.
     private const int PushVersion = 2;
+
+    // Externos: saludo genérico sin nombre y botón con enlace nuevo al devolver.
+    private const int ExternalGreetingVersion = 41;
 
     // v21: los emails de Client Forms a clientes y externos responden a language (P-21.5).
     // v22: el preheader también tiene rama en español.
@@ -437,6 +441,10 @@ public static partial class NotificationTemplateSeedSource
         ["communication.meeting.cancelled.v1"] = "A meeting you were invited to was cancelled.",
         ["communication.meeting.rescheduled.v1"] = "A meeting you were invited to has a new time.",
         ["communication.meeting.reminder.v1"] = "Your meeting is about to start.",
+        ["communication.meeting.recording_ready.v1"] = Bilingual(
+            "La grabación de tu reunión está lista para revisar.",
+            "Your meeting recording is ready to review."
+        ),
         ["demo.verification_code.v1"] = Bilingual(
             "Tu código para confirmar la demo. Vence en pocos minutos.",
             "Your code to confirm the demo. It expires in a few minutes."
@@ -1113,6 +1121,45 @@ public static partial class NotificationTemplateSeedSource
             ],
             ContentVersion: TypedDatesVersion
         );
+
+    // Grabación lista: solo al anfitrión, en su idioma. El título lo escribe una persona: Fluid lo escapa.
+    private static NotificationTemplateSeed MeetingRecordingReady { get; } =
+        new(
+            EventKey: "communication.meeting.recording_ready.v1",
+            TemplateKey: "communication.meeting.recording_ready.v1",
+            Name: "Communication — Grabación de reunión lista",
+            Subject: "{% if language == 'Es' %}Grabación lista{% if meeting_title != blank %}: {{ meeting_title }}{% endif %}{% else %}Recording ready{% if meeting_title != blank %}: {{ meeting_title }}{% endif %}{% endif %}",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Grabación{% else %}Recording{% endif %}</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">{% if language == 'Es' %}La grabación de tu reunión está lista{% else %}Your meeting recording is ready{% endif %}</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">{% if language == 'Es' %}{% if meeting_title != blank %}La grabación de <strong style="color:#23384B;">{{ meeting_title }}</strong>{% else %}La grabación{% endif %} ({{ duration_minutes }} min) terminó de procesarse y ya puedes revisarla.{% else %}{% if meeting_title != blank %}The recording of <strong style="color:#23384B;">{{ meeting_title }}</strong>{% else %}The recording{% endif %} ({{ duration_minutes }} min) finished processing and is ready to review.{% endif %}</td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;mso-line-height-rule:exactly;">{% if language == 'Es' %}Lista desde {{ ready_at | office_date }}.{% else %}Ready since {{ ready_at | office_date }}.{% endif %}</td></tr>
+              <tr><td style="padding-top:4px;"><a href="{{ action_url }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Abrir grabación{% else %}Open recording{% endif %}</a></td></tr>
+              <tr><td style="padding-top:18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:20px;color:#70869A;mso-line-height-rule:exactly;">{% if language == 'Es' %}Recibes este aviso porque fuiste el anfitrión. Puedes apagar estos correos en tus preferencias de notificaciones.{% else %}You're getting this because you hosted the meeting. You can turn these emails off in your notification preferences.{% endif %}</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("meeting_title", VariableType.String, false, null, "Título de la reunión (opcional)."),
+                ("duration_minutes", VariableType.Number, true, null, "Duración en minutos, redondeada hacia arriba."),
+                (
+                    "ready_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Instante tipado: Scribe lo imprime en la zona de la oficina y el idioma del anfitrión."
+                ),
+                ("action_url", VariableType.Url, true, null, "Enlace a la reunión en el CRM."),
+                Language,
+                ProductName,
+            ],
+            ContentVersion: RecordingReadyEmailVersion
+        );
+
+    /// <summary>Plantilla nueva: versión propia, por encima de las demás.</summary>
+    private const int RecordingReadyEmailVersion = 42;
 
     private static NotificationTemplateSeed PasswordReset { get; } =
         new(
@@ -3327,7 +3374,7 @@ public static partial class NotificationTemplateSeedSource
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Tu formulario seguro está listo{% else %}A secure form is ready{% endif %}</td></tr>
-              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if participant_name != blank %}{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,{% else %}{% if language == 'Es' %}Hola,{% else %}Hi,{% endif %}{% endif %}</td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Tu oficina de impuestos te pidió completar <strong>{{ form_title }}</strong>. Antes de mostrarte cualquier información, verificaremos tu identidad por correo.{% else %}Your tax office asked you to complete <strong>{{ form_title }}</strong>. You will verify your identity by email before any information is shown.{% endif %}</td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Este enlace vence {{ expires_at | office_deadline }}.{% else %}This link expires {{ expires_at | office_deadline }}.{% endif %}</td></tr>
               <tr><td style="padding-top:16px;"><a href="{{ access_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Abrir formulario seguro{% else %}Open secure form{% endif %}</a></td></tr>
@@ -3347,7 +3394,7 @@ public static partial class NotificationTemplateSeedSource
                 ),
                 Language,
             ],
-            ContentVersion: TypedDatesVersion
+            ContentVersion: ExternalGreetingVersion
         );
 
     private static NotificationTemplateSeed FormAccessCode { get; } =
@@ -3519,9 +3566,11 @@ public static partial class NotificationTemplateSeedSource
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Hace falta hacer cambios{% else %}Changes are needed{% endif %}</td></tr>
-              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if participant_name != blank %}{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,{% else %}{% if language == 'Es' %}Hola,{% else %}Hi,{% endif %}{% endif %}</td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Tu oficina de impuestos pidió cambios en {{ comment_count }} punto(s) de <strong>{{ form_title }}</strong>.{% else %}Your tax office asked for changes on {{ comment_count }} item(s) in <strong>{{ form_title }}</strong>.{% endif %}</td></tr>
-              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Abre el enlace seguro del correo que te enviamos antes para leer sus notas. Si el enlace venció, pide a tu oficina que te envíe uno nuevo.{% else %}Open the secure link from the email we sent you earlier to read their notes. If the link expired, ask your office to send you a new one.{% endif %}</td></tr>
+              {% if access_link != blank %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Abre el enlace seguro para leer sus notas y enviar los cambios. Este enlace vence {{ expires_at | office_deadline }}; el anterior ya no funciona.{% else %}Open the secure link to read their notes and send your changes. This link expires {{ expires_at | office_deadline }}; the previous one no longer works.{% endif %}</td></tr>
+              <tr><td style="padding-top:16px;"><a href="{{ access_link }}" style="display:inline-block;padding:14px 28px;background:#1E466B;color:#FFFFFF;text-decoration:none;border-radius:8px;font-family:Arial,Helvetica,sans-serif;font-weight:bold;">{% if language == 'Es' %}Revisar cambios{% else %}Review changes{% endif %}</a></td></tr>
+              {% else %}<tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Abre el enlace seguro del correo que te enviamos antes para leer sus notas. Si el enlace venció, pide a tu oficina que te envíe uno nuevo.{% else %}Open the secure link from the email we sent you earlier to read their notes. If the link expired, ask your office to send you a new one.{% endif %}</td></tr>{% endif %}
             </table>
             """,
             Variables:
@@ -3529,9 +3578,17 @@ public static partial class NotificationTemplateSeedSource
                 ("participant_name", VariableType.String, false, null, "Optional participant name."),
                 ("form_title", VariableType.String, true, null, "Form request title."),
                 ("comment_count", VariableType.Number, true, null, "Number of field comments."),
+                ("access_link", VariableType.Url, false, null, "New secure link issued on return (optional)."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    false,
+                    null,
+                    "Vencimiento del enlace nuevo; Scribe lo imprime en la zona de la oficina."
+                ),
                 Language,
             ],
-            ContentVersion: ClientFormsBilingualVersion
+            ContentVersion: ExternalGreetingVersion
         );
 
     private static NotificationTemplateSeed FormParticipantCompleted { get; } =
@@ -3543,7 +3600,7 @@ public static partial class NotificationTemplateSeedSource
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Recibimos tu formulario{% else %}Your form was received{% endif %}</td></tr>
-              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if participant_name != blank %}{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,{% else %}{% if language == 'Es' %}Hola,{% else %}Hi,{% endif %}{% endif %}</td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Tu oficina de impuestos marcó <strong>{{ form_title }}</strong> como completado. Gracias. No necesitas hacer nada más.{% else %}Your tax office marked <strong>{{ form_title }}</strong> as complete. Thank you. You don't need to do anything else.{% endif %}</td></tr>
             </table>
             """,
@@ -3553,7 +3610,7 @@ public static partial class NotificationTemplateSeedSource
                 ("form_title", VariableType.String, true, null, "Form request title."),
                 Language,
             ],
-            ContentVersion: ClientFormsBilingualVersion
+            ContentVersion: ExternalGreetingVersion
         );
 
     private static NotificationTemplateSeed FormParticipantReminder { get; } =
@@ -3565,7 +3622,7 @@ public static partial class NotificationTemplateSeedSource
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}{% if is_overdue %}Este formulario está vencido{% else %}Un formulario te espera{% endif %}{% else %}{% if is_overdue %}This form is overdue{% else %}A form is waiting for you{% endif %}{% endif %}</td></tr>
-              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if participant_name != blank %}{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,{% else %}{% if language == 'Es' %}Hola,{% else %}Hi,{% endif %}{% endif %}</td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Abre el enlace seguro del correo anterior para completar{% else %}Open the secure link from the earlier email to complete{% endif %} <strong>{{ form_title }}</strong>.</td></tr>
             </table>
             """,
@@ -3577,7 +3634,7 @@ public static partial class NotificationTemplateSeedSource
                 ("language", VariableType.String, true, "En", "Recipient language: Es or En."),
             ],
             // v2: tildes en el español. v3: preheader bilingüe.
-            ContentVersion: 3
+            ContentVersion: ExternalGreetingVersion
         );
 
     private static NotificationTemplateSeed FormRequestSubmitted { get; } =
@@ -3636,7 +3693,7 @@ public static partial class NotificationTemplateSeedSource
             Html: """
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Se canceló esta solicitud{% else %}This form request was cancelled{% endif %}</td></tr>
-              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if participant_name != blank %}{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,{% else %}{% if language == 'Es' %}Hola,{% else %}Hi,{% endif %}{% endif %}</td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Tu oficina de impuestos canceló <strong>{{ form_title }}</strong>. El enlace que recibiste ya no funciona y no necesitas hacer nada más. Si crees que es un error, comunícate con tu oficina.{% else %}Your tax office cancelled <strong>{{ form_title }}</strong>. The link you received no longer works, and you don't need to do anything else. If you think this is a mistake, contact your office.{% endif %}</td></tr>
             </table>
             """,
@@ -3646,7 +3703,7 @@ public static partial class NotificationTemplateSeedSource
                 ("form_title", VariableType.String, true, null, "Form request title."),
                 Language,
             ],
-            ContentVersion: ClientFormsBilingualVersion
+            ContentVersion: ExternalGreetingVersion
         );
 
     private static NotificationTemplateSeed FormParticipantAttachmentRejected { get; } =
@@ -3658,7 +3715,7 @@ public static partial class NotificationTemplateSeedSource
             Html: $$$"""
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr><td style="padding-bottom:16px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;color:#23384B;">{% if language == 'Es' %}Vuelve a subir un archivo{% else %}Please upload a file again{% endif %}</td></tr>
-              {% if participant_name %}<tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,</td></tr>{% endif %}
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if participant_name != blank %}{% if language == 'Es' %}Hola{% else %}Hi{% endif %} <strong>{{ participant_name }}</strong>,{% else %}{% if language == 'Es' %}Hola,{% else %}Hi,{% endif %}{% endif %}</td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;">{% if language == 'Es' %}No pudimos aceptar uno de tus archivos (.{{ file_extension }}) de <strong>{{ form_title }}</strong>.{% else %}One of your files (.{{ file_extension }}) for <strong>{{ form_title }}</strong> couldn't be accepted.{% endif %}</td></tr>
               <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{{{RejectionMessage}}}</td></tr>
               <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;">{% if language == 'Es' %}Abre el enlace seguro del correo que te enviamos antes para volver a subirlo. Si el enlace venció, pide a tu oficina que te envíe uno nuevo.{% else %}Open the secure link from the email we sent you earlier to upload it again. If the link expired, ask your office to send you a new one.{% endif %}</td></tr>
@@ -3673,7 +3730,7 @@ public static partial class NotificationTemplateSeedSource
                 ("client_message_es", VariableType.String, false, null, "The same fixed message in Spanish."),
                 Language,
             ],
-            ContentVersion: ClientFormsBilingualVersion
+            ContentVersion: ExternalGreetingVersion
         );
 
     /// <summary>

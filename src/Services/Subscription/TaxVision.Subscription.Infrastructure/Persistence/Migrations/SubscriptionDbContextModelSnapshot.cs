@@ -787,6 +787,65 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                     b.ToTable("Modules", (string)null);
                 });
 
+            modelBuilder.Entity("TaxVision.Subscription.Domain.Entitlements.TenantEntitlementOverride", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ExpiryAppliedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ValueType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAtUtc")
+                        .HasDatabaseName("IX_TenantEntitlementOverrides_ExpiresAtUtc_Pending")
+                        .HasFilter("[ExpiresAtUtc] IS NOT NULL AND [ExpiryAppliedAtUtc] IS NULL");
+
+                    b.HasIndex("TenantId", "Key")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TenantEntitlementOverrides_TenantId_Key");
+
+                    b.ToTable("TenantEntitlementOverrides", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Subscription.Domain.Entitlements.TenantEntitlementSnapshot", b =>
                 {
                     b.Property<Guid>("TenantId")
