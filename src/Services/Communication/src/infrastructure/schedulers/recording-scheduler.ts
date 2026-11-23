@@ -27,7 +27,7 @@ export function startRecordingScheduler(
     try {
       await deps.lock.withLock(LOCK_KEY, Math.max(config.intervalSeconds * 3000, 5_000), async () => {
         const report = await runRecordingSweep(new Date(), deps);
-        if (report.warned + report.stoppedByLimit + report.ready + report.failed > 0) {
+        if (report.warned + report.stoppedByLimit + report.ready + report.failed + report.recovered > 0) {
           logger.info(report, 'RecordingScheduler: tick applied changes');
         }
       });

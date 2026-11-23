@@ -254,6 +254,75 @@ describe('HTTP API v1', () => {
     await waitFor(async () => (await queue.depth()) === 2);
   });
 
+  // Communication pregunta el estado antes de dar una composición por perdida.
+  it('GET /v1/sessions/:id informa el estado de la sesión y 404 si no existe', async () => {
+    const { call, store } = await setup();
+    expect((await call('GET', '/v1/sessions/ghost')).statusCode).toBe(404);
+    expect((await call('GET', '/v1/sessions/ghost')).json().code).toBe('Recording.SessionNotFound');
+
+    await call('POST', '/v1/sessions', sessionBody());
+    await call('POST', '/v1/sessions/sess-1/tracks', trackBody());
+    const capturing = await call('GET', '/v1/sessions/sess-1');
+    expect(capturing.statusCode).toBe(200);
+    expect(capturing.json()).toMatchObject({ sessionId: 'sess-1', state: 'capturing', trackCount: 1, failure: null });
+
+    await call('POST', '/v1/sessions/sess-1/stop', { stoppedAtUtc: new Date().toISOString(), reason: 'User', timeline });
+    const queued = (await call('GET', '/v1/sessions/sess-1')).json();
+    expect(queued.state).toBe('queued');
+    expect(typeof queued.jobId).toBe('string');
+
+    const manifest = await store.readManifest('sess-1');
+    if (!manifest) throw new Error('manifest');
+    manifest.state = 'failed';
+    manifest.failure = { reason: 'ComposeError', message: 'ffmpeg exited with 1', atUtc: new Date().toISOString() };
+    await store.writeManifest(manifest);
+    expect((await call('GET', '/v1/sessions/sess-1')).json()).toMatchObject({
+      state: 'failed',
+      failure: { reason: 'ComposeError', message: 'ffmpeg exited with 1' },
+    });
+  });
+
+  // Si el evento `composed` se pierde, Communication recupera el resultado preguntando el estado.
+  it('GET /v1/sessions/:id entrega el resultado solo cuando la composición vigente terminó', async () => {
+    const { call, store } = await setup();
+    await call('POST', '/v1/sessions', sessionBody());
+    await call('POST', '/v1/sessions/sess-1/tracks', trackBody());
+    await call('POST', '/v1/sessions/sess-1/stop', { stoppedAtUtc: new Date().toISOString(), reason: 'User', timeline });
+    const manifest = await store.readManifest('sess-1');
+    if (!manifest?.jobId) throw new Error('manifest');
+    const audioTracks = [{ trackId: 't1', userId: 'u1', fileId: 'audio-1', source: 'camera' as const, startOffsetMs: 0, durationMs: 9000 }];
+    manifest.result = {
+      jobId: manifest.jobId,
+      composedFileId: 'file-1',
+      composedSizeBytes: 4096,
+      format: 'mp4',
+      durationSeconds: 9,
+      composedAtUtc: new Date().toISOString(),
+      videoTrackCount: 1,
+      audioTracks,
+    };
+    await store.writeManifest(manifest);
+    // Sigue en cola: ese resultado todavía no está publicado.
+    expect((await call('GET', '/v1/sessions/sess-1')).json().result).toBeNull();
+
+    manifest.state = 'composed';
+    await store.writeManifest(manifest);
+    expect((await call('GET', '/v1/sessions/sess-1')).json().result).toEqual({
+      composedFileId: 'file-1',
+      composedSizeBytes: 4096,
+      format: 'mp4',
+      durationSeconds: 9,
+      videoTrackCount: 1,
+      audioTracks,
+    });
+
+    // Un recompose en curso deja el resultado anterior fuera: pertenece a otro trabajo.
+    manifest.state = 'queued';
+    manifest.jobId = 'another-job';
+    await store.writeManifest(manifest);
+    expect((await call('GET', '/v1/sessions/sess-1')).json().result).toBeNull();
+  });
+
   it('DELETE /v1/sessions/:id aborta, descarta el spool y es idempotente', async () => {
     const { call, store, launcher, bus } = await setup();
     await call('POST', '/v1/sessions', sessionBody());

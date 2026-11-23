@@ -20,6 +20,8 @@ import {
   handleRecordingComposed,
   markRecordingFileAvailable,
   markRecordingFileRejected,
+  diagnoseRecording,
+  recomposeRecording,
   stopRecordingBySystem,
   type RecordingLifecycleDeps,
 } from '../../src/application/use-cases/recording-lifecycle.js';
@@ -553,5 +555,330 @@ describe('recording sweep', () => {
 
     expect(report.failed).toBe(1);
     expect(session.toSnapshot().failureReason).toBe('StorageRejected');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Recomposición resistente: una grabación nunca se pierde por un plazo mal medido ni por un
+// resultado que llega tarde. Cada caso corresponde a un fallo real o a un camino que lo permitía.
+// ---------------------------------------------------------------------------------------------
+
+const HOUR_MS = 3_600_000;
+
+/** Captura falsa con estado de composición y resultado de recompose configurables. */
+function captureReporting(status: string, recomposeResult = Result.okVoid(), composed?: unknown) {
+  const asked: string[] = [];
+  const capture = {
+    available: true,
+    begin: async () => Result.okVoid(),
+    stop: async () => Result.okVoid(),
+    abort: async () => undefined,
+    recompose: async () => recomposeResult,
+    compositionStatus: async (session: RecordingSession) => {
+      asked.push(session.id);
+      return { status, ...(composed ? { composed } : {}) };
+    },
+  } as unknown as RecordingCaptureService;
+  return { capture, asked };
+}
+
+const noMetadata = { getMetadata: async () => null } as unknown as CloudStorageMetadataClient;
+
+function sweepDeps(rt: ReturnType<typeof runtime>, capture?: RecordingCaptureService) {
+  return {
+    ...rt.deps,
+    ...(capture ? { capture } : {}),
+    effectiveSettings: new FakeEffectiveSettingsResolver(),
+    cloudStorageMetadata: noMetadata,
+  };
+}
+
+function composedPayload(session: RecordingSession, meetingId: string, composedFileId: string) {
+  return {
+    sessionId: session.id,
+    scope: 'Meeting' as const,
+    scopeId: meetingId,
+    composedFileId,
+    composedSizeBytes: 2048,
+    format: 'mp4',
+    durationSeconds: 60,
+    audioTracks: [],
+    videoTrackCount: 1,
+  };
+}
+
+describe('RecordingSession (recomposición resistente)', () => {
+  const base = () => ({ tenantId: u(), scope: RecordingScope.Meeting, scopeId: u(), requestedByUserId: u() });
+
+  it('anota cuándo empezó a componer, también al recomponer', () => {
+    const now = new Date('2026-11-23T05:45:21.000Z');
+    const stopping = serverSession({ ...base(), state: RecordingSessionState.Stopping });
+    expect(stopping.beginComposing(now).isSuccess).toBe(true);
+    expect(stopping.toSnapshot().composingSinceUtc).toEqual(now);
+
+    const failed = serverSession({
+      ...base(),
+      state: RecordingSessionState.Failed,
+      patch: { failureReason: 'CompositionTimeout', stoppedAtUtc: new Date(now.getTime() - 5 * HOUR_MS) },
+    });
+    expect(failed.beginRecomposing(now).isSuccess).toBe(true);
+    expect(failed.toSnapshot().composingSinceUtc).toEqual(now);
+  });
+
+  it('acepta el compuesto que llega tarde a una grabación fallida por la composición', () => {
+    const timedOut = serverSession({ ...base(), state: RecordingSessionState.Failed, patch: { failureReason: 'CompositionTimeout' } });
+    const applied = timedOut.composed({ composedFileId: u(), composedSizeBytes: 10, format: 'mp4', durationSeconds: 5, manifest: { audioTracks: [], videoTrackCount: 0 } });
+    expect(applied.isSuccess).toBe(true);
+    expect(timedOut.sessionState).toBe('Processing');
+    expect(timedOut.toSnapshot().failureReason).toBeNull();
+  });
+
+  it('no acepta un compuesto tardío si el fallo fue de almacenamiento o si ya se purgó', () => {
+    const input = { composedFileId: u(), composedSizeBytes: 10, format: 'mp4', durationSeconds: 5, manifest: { audioTracks: [], videoTrackCount: 0 } };
+    const rejected = serverSession({ ...base(), state: RecordingSessionState.Failed, patch: { failureReason: 'StorageRejected' } });
+    expect(rejected.composed(input).isSuccess).toBe(false);
+
+    const purged = serverSession({ ...base(), state: RecordingSessionState.Failed, patch: { failureReason: 'CompositionTimeout', purgedAtUtc: new Date() } });
+    expect(purged.composed(input).isSuccess).toBe(false);
+  });
+
+  it('si falla la recomposición de una grabación que ya estaba lista, conserva el video anterior', () => {
+    const fileId = u();
+    const ready = serverSession({ ...base(), state: RecordingSessionState.Ready, patch: { recordingFileId: fileId, composedFileId: fileId, readyAtUtc: new Date() } });
+    ready.beginRecomposing();
+    expect(ready.restoreAfterFailedRecomposition()).toBe(true);
+    expect(ready.sessionState).toBe('Ready');
+    expect(ready.toSnapshot().recordingFileId).toBe(fileId);
+
+    // Primera composición: no hay video anterior que conservar.
+    const first = serverSession({ ...base(), state: RecordingSessionState.Stopping });
+    first.beginComposing();
+    expect(first.restoreAfterFailedRecomposition()).toBe(false);
+    expect(first.sessionState).toBe('Composing');
+  });
+});
+
+describe('recomposición resistente (ciclo de vida y barrido)', () => {
+  async function meetingWithSession(state: RecordingSessionState, patch: Partial<RecordingSessionSnapshot>) {
+    const rt = runtime();
+    const { meeting, host } = liveMeeting();
+    await rt.meetings.save(meeting);
+    const session = serverSession({ tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, requestedByUserId: host.userId, state, patch });
+    await rt.recordingSessions.save(session);
+    return { rt, meeting, session };
+  }
+
+  // El fallo de producción del 2026-11-23: la reunión terminó horas antes del recompose.
+  it('el barrido no tumba un recompose pedido horas después de terminar la reunión', async () => {
+    const { rt, meeting, session } = await meetingWithSession(RecordingSessionState.Failed, {
+      failureReason: 'CompositionTimeout',
+      stoppedAtUtc: new Date(Date.now() - 5 * HOUR_MS),
+    });
+
+    const result = await recomposeRecording({ tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, correlationId: 'c' }, rt.deps);
+    const report = await runRecordingSweep(new Date(), sweepDeps(rt));
+
+    expect(result.isSuccess).toBe(true);
+    expect(report.failed).toBe(0);
+    expect(session.sessionState).toBe('Composing');
+  });
+
+  it('pasado el plazo, pregunta al recorder: si sigue trabajando no la da por perdida', async () => {
+    const { rt, session } = await meetingWithSession(RecordingSessionState.Composing, { composingSinceUtc: new Date(Date.now() - 2 * HOUR_MS) });
+    const { capture, asked } = captureReporting('working');
+
+    const report = await runRecordingSweep(new Date(), sweepDeps(rt, capture));
+
+    expect(asked).toEqual([session.id]);
+    expect(report.failed).toBe(0);
+    expect(session.sessionState).toBe('Composing');
+    expect(rt.publisher.types()).not.toContain('communication.meeting.recording_failed.v1');
+  });
+
+  it.each(['gone', 'failed', 'unknown'])('pasado el plazo y con el recorder en "%s", falla por CompositionTimeout', async (status) => {
+    const { rt, session } = await meetingWithSession(RecordingSessionState.Composing, { composingSinceUtc: new Date(Date.now() - 2 * HOUR_MS) });
+
+    const report = await runRecordingSweep(new Date(), sweepDeps(rt, captureReporting(status).capture));
+
+    expect(report.failed).toBe(1);
+    expect(session.toSnapshot().failureReason).toBe('CompositionTimeout');
+  });
+
+  it('una composición "en curso" de más de un día se da por perdida aunque el recorder diga que trabaja', async () => {
+    const { rt, session } = await meetingWithSession(RecordingSessionState.Composing, { composingSinceUtc: new Date(Date.now() - 25 * HOUR_MS) });
+
+    const report = await runRecordingSweep(new Date(), sweepDeps(rt, captureReporting('working').capture));
+
+    expect(report.failed).toBe(1);
+    expect(session.sessionState).toBe('Failed');
+  });
+
+  it('una composición dentro del plazo ni siquiera consulta al recorder', async () => {
+    const { rt } = await meetingWithSession(RecordingSessionState.Composing, { composingSinceUtc: new Date(Date.now() - 60_000) });
+    const { capture, asked } = captureReporting('gone');
+
+    const report = await runRecordingSweep(new Date(), sweepDeps(rt, capture));
+
+    expect(asked).toEqual([]);
+    expect(report.failed).toBe(0);
+  });
+
+  it('filas anteriores al arreglo (sin fecha de composición) siguen midiéndose desde que se detuvieron', async () => {
+    const { rt, session } = await meetingWithSession(RecordingSessionState.Composing, { composingSinceUtc: null, stoppedAtUtc: new Date(Date.now() - 2 * HOUR_MS) });
+
+    const report = await runRecordingSweep(new Date(), sweepDeps(rt, captureReporting('gone').capture));
+
+    expect(report.failed).toBe(1);
+    expect(session.sessionState).toBe('Failed');
+  });
+
+  it('el video que llega después de un fallo por plazo se aplica y la reunión apunta a él', async () => {
+    const { rt, meeting, session } = await meetingWithSession(RecordingSessionState.Failed, { failureReason: 'CompositionTimeout' });
+    const composedFileId = u();
+
+    await handleRecordingComposed(composedPayload(session, meeting.id, composedFileId), { tenantId: meeting.tenantId, correlationId: 'c' }, rt.deps);
+
+    expect(session.sessionState).toBe('Processing');
+    expect(session.toSnapshot().recordingFileId).toBe(composedFileId);
+    expect(meeting.toSnapshot().recordingFileId).toBe(composedFileId);
+  });
+
+  it('si falla la recomposición de una grabación lista, sigue lista y no se avisa de un fallo', async () => {
+    const fileId = u();
+    const { rt, session } = await meetingWithSession(RecordingSessionState.Ready, { recordingFileId: fileId, composedFileId: fileId, readyAtUtc: new Date() });
+    session.beginRecomposing();
+    await rt.recordingSessions.save(session);
+
+    await failRecording(session, 'ComposeError', rt.deps, 'c');
+
+    expect(session.sessionState).toBe('Ready');
+    expect(session.toSnapshot().recordingFileId).toBe(fileId);
+    expect(rt.publisher.types()).not.toContain('communication.meeting.recording_failed.v1');
+  });
+
+  const recorderBusy = () =>
+    Result.fail<void>({ code: 'Recording.CompositionInProgress', message: 'A composition is already queued or running.' });
+
+  it('pedir recompose con una composición ya en curso responde CompositionInProgress y no reinicia el plazo', async () => {
+    const since = new Date(Date.now() - 20 * 60_000);
+    const { rt, meeting, session } = await meetingWithSession(RecordingSessionState.Composing, { composingSinceUtc: since });
+
+    const result = await recomposeRecording(
+      { tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, correlationId: 'c' },
+      { ...rt.deps, capture: captureReporting('working', recorderBusy()).capture },
+    );
+
+    expect(result.isSuccess).toBe(false);
+    if (!result.isSuccess) expect(result.error.code).toBe('Recording.CompositionInProgress');
+    const stored = await rt.recordingSessions.findById(meeting.tenantId, session.id);
+    expect(stored?.toSnapshot().composingSinceUtc).toEqual(since);
+  });
+
+  // Composición atascada: aquí dice Composing pero el recorder perdió el trabajo. Soporte puede relanzarla.
+  it('una composición atascada se puede relanzar sin esperar a que venza el plazo', async () => {
+    const { rt, meeting, session } = await meetingWithSession(RecordingSessionState.Composing, {
+      composingSinceUtc: new Date(Date.now() - 20 * 60_000),
+    });
+    const now = new Date();
+
+    const result = await recomposeRecording(
+      { tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, correlationId: 'c', now },
+      rt.deps,
+    );
+
+    expect(result.isSuccess).toBe(true);
+    expect(session.sessionState).toBe('Composing');
+    expect(session.toSnapshot().composingSinceUtc).toEqual(now);
+  });
+
+  // El evento `composed` se perdió: el barrido lee el resultado del recorder y lo aplica.
+  it('si el recorder ya terminó y el evento no llegó, el barrido aplica su resultado', async () => {
+    const { rt, meeting, session } = await meetingWithSession(RecordingSessionState.Composing, {
+      composingSinceUtc: new Date(Date.now() - 2 * HOUR_MS),
+    });
+    const composedFileId = u();
+    const { capture } = captureReporting('done', Result.okVoid(), composedPayload(session, meeting.id, composedFileId));
+
+    const report = await runRecordingSweep(new Date(), sweepDeps(rt, capture));
+
+    expect(report.failed).toBe(0);
+    expect(report.recovered).toBe(1);
+    expect(session.sessionState).toBe('Processing');
+    expect(meeting.toSnapshot().recordingFileId).toBe(composedFileId);
+    expect(rt.publisher.types()).not.toContain('communication.meeting.recording_failed.v1');
+  });
+
+  it('el mismo compuesto entregado dos veces no cambia nada la segunda vez', async () => {
+    const { rt, meeting, session } = await meetingWithSession(RecordingSessionState.Failed, { failureReason: 'CompositionTimeout' });
+    const payload = composedPayload(session, meeting.id, u());
+    await handleRecordingComposed(payload, { tenantId: meeting.tenantId, correlationId: 'c' }, rt.deps);
+    const published = rt.publisher.types().length;
+
+    await handleRecordingComposed(payload, { tenantId: meeting.tenantId, correlationId: 'c' }, rt.deps);
+
+    expect(session.sessionState).toBe('Processing');
+    expect(rt.publisher.types().length).toBe(published);
+  });
+
+  // D-71: una reunión con dos grabaciones; la que falló es la primera.
+  it('se puede recomponer una grabación anterior de la misma reunión por su número', async () => {
+    const { rt, meeting, session: first } = await meetingWithSession(RecordingSessionState.Failed, { failureReason: 'CompositionTimeout', sequence: 1 });
+    const fileId = u();
+    const second = serverSession({
+      tenantId: meeting.tenantId,
+      scope: RecordingScope.Meeting,
+      scopeId: meeting.id,
+      requestedByUserId: first.requestedByUserId,
+      state: RecordingSessionState.Ready,
+      patch: { sequence: 2, recordingFileId: fileId, composedFileId: fileId, readyAtUtc: new Date() },
+    });
+    await rt.recordingSessions.save(second);
+    const input = { tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, correlationId: 'c' };
+
+    const result = await recomposeRecording({ ...input, sequence: 1 }, rt.deps);
+    const missing = await recomposeRecording({ ...input, sequence: 9 }, rt.deps);
+
+    expect(result.isSuccess).toBe(true);
+    expect(first.sessionState).toBe('Composing');
+    expect(second.sessionState).toBe('Ready');
+    expect(missing.isSuccess).toBe(false);
+    if (!missing.isSuccess) expect(missing.error.code).toBe('Recording.NotFound');
+  });
+
+  it('un resultado del recorder que no se puede aplicar no deja la sesión en bucle: falla por plazo', async () => {
+    const { rt, meeting, session } = await meetingWithSession(RecordingSessionState.Composing, {
+      composingSinceUtc: new Date(Date.now() - 2 * HOUR_MS),
+    });
+    const broken = { ...composedPayload(session, meeting.id, u()), durationSeconds: -1 };
+
+    const report = await runRecordingSweep(new Date(), sweepDeps(rt, captureReporting('done', Result.okVoid(), broken).capture));
+
+    expect(report.recovered).toBe(0);
+    expect(report.failed).toBe(1);
+    expect(session.sessionState).toBe('Failed');
+  });
+
+  it('diagnoseRecording junta el estado de la grabación con lo que dice el recorder', async () => {
+    const since = new Date('2026-11-23T05:45:21.000Z');
+    const { session } = await meetingWithSession(RecordingSessionState.Composing, { composingSinceUtc: since });
+
+    const diagnosis = await diagnoseRecording(session, { capture: captureReporting('working').capture });
+
+    expect(diagnosis.recorderStatus).toBe('working');
+    expect(diagnosis.recording).toMatchObject({ sessionId: session.id, state: 'Composing', composingSinceUtc: since.toISOString() });
+  });
+
+  it('si el recorder ya está componiendo esa sesión, el recompose la adopta en vez de fallar', async () => {
+    const { rt, meeting, session } = await meetingWithSession(RecordingSessionState.Failed, { failureReason: 'CompositionTimeout' });
+    const busy = recorderBusy();
+
+    const result = await recomposeRecording(
+      { tenantId: meeting.tenantId, scope: RecordingScope.Meeting, scopeId: meeting.id, correlationId: 'c' },
+      { ...rt.deps, capture: captureReporting('working', busy).capture },
+    );
+
+    expect(result.isSuccess).toBe(true);
+    expect(session.sessionState).toBe('Composing');
+    expect(session.toSnapshot().composingSinceUtc).not.toBeNull();
   });
 });

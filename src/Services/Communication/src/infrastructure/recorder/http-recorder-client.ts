@@ -3,6 +3,7 @@ import {
   RecorderRequestError,
   type RecorderClient,
   type RecorderSessionStart,
+  type RecorderSessionStatus,
   type RecorderTimeline,
   type RecorderTrackEndpoint,
   type RecorderTrackStart,
@@ -61,13 +62,36 @@ export class HttpRecorderClient implements RecorderClient {
     await this.request(tenantId, 'DELETE', `/v1/sessions/${sessionId}`);
   }
 
+  async getSession(tenantId: string, sessionId: string): Promise<RecorderSessionStatus | null> {
+    let body: RawSessionStatus | null;
+    try {
+      body = (await this.request(tenantId, 'GET', `/v1/sessions/${sessionId}`)) as RawSessionStatus | null;
+    } catch (err) {
+      if (err instanceof RecorderRequestError && err.code === 'Recording.SessionNotFound') return null;
+      throw err;
+    }
+    if (!body || typeof body.state !== 'string') throw new Error('Recorder returned an invalid session status.');
+    const text = (value: unknown) => (typeof value === 'string' ? value : null);
+    const failure = body.failure;
+    return {
+      state: body.state,
+      jobId: text(body.jobId),
+      failure: failure ? { reason: text(failure.reason) ?? 'Unknown', message: text(failure.message) ?? '', atUtc: text(failure.atUtc) ?? '' } : null,
+      composedAtUtc: text(body.composedAtUtc),
+      retainUntilUtc: text(body.retainUntilUtc),
+      updatedAtUtc: text(body.updatedAtUtc),
+      trackCount: typeof body.trackCount === 'number' ? body.trackCount : null,
+      result: body.result ?? null,
+    };
+  }
+
   async resolveHostAddress(): Promise<string> {
     const host = new URL(this.options.baseUrl).hostname;
     const { address } = await lookup(host, { family: 4 });
     return address;
   }
 
-  private async request(tenantId: string, method: 'POST' | 'DELETE', path: string, body?: unknown): Promise<unknown> {
+  private async request(tenantId: string, method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<unknown> {
     if (!this.configured) throw new RecorderRequestError('Recording.RecorderNotConfigured', 503, 'The recorder is not configured.');
     const token = await this.tokens.getToken(tenantId);
     const response = await fetch(`${this.options.baseUrl}${path}`, {
@@ -93,6 +117,18 @@ export class HttpRecorderClient implements RecorderClient {
     }
     return parsed;
   }
+}
+
+/** Respuesta cruda de `GET /v1/sessions/:id`: viene de otro proceso, nada se da por sentado. */
+interface RawSessionStatus {
+  readonly state?: unknown;
+  readonly jobId?: unknown;
+  readonly failure?: { readonly reason?: unknown; readonly message?: unknown; readonly atUtc?: unknown } | null;
+  readonly composedAtUtc?: unknown;
+  readonly retainUntilUtc?: unknown;
+  readonly updatedAtUtc?: unknown;
+  readonly trackCount?: unknown;
+  readonly result?: unknown;
 }
 
 function safeJson(text: string): unknown {

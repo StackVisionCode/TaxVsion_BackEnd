@@ -31,6 +31,15 @@ export interface ManifestTrack {
   durationMs?: number;
 }
 
+export interface ResultAudioTrack {
+  readonly trackId: string;
+  readonly userId: string;
+  readonly fileId: string;
+  readonly source: 'camera' | 'screen';
+  readonly startOffsetMs: number;
+  readonly durationMs: number;
+}
+
 export interface CompositionResult {
   readonly jobId: string;
   readonly composedFileId: string;
@@ -39,6 +48,8 @@ export interface CompositionResult {
   readonly durationSeconds: number;
   readonly composedAtUtc: string;
   readonly videoTrackCount: number;
+  /** Pistas de audio tal como se publicaron; ausente en resultados anteriores. */
+  readonly audioTracks?: readonly ResultAudioTrack[];
 }
 
 export interface SessionManifest {

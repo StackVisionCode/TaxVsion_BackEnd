@@ -58,6 +58,8 @@ export interface RecordingSessionSnapshot {
   readonly readyAtUtc: Date | null;
   readonly tracksPurgedAtUtc: Date | null;
   readonly purgedAtUtc: Date | null;
+  /** Inicio de la composición vigente (se renueva al recomponer); el plazo se mide desde aquí. */
+  readonly composingSinceUtc: Date | null;
   /** D-71: numero de la grabacion dentro del meeting/call. */
   readonly sequence: number;
 }
@@ -116,6 +118,7 @@ export class RecordingSession {
         readyAtUtc: null,
         tracksPurgedAtUtc: null,
         purgedAtUtc: null,
+        composingSinceUtc: null,
         sequence: input.sequence ?? 1,
       }),
     );
@@ -186,16 +189,19 @@ export class RecordingSession {
   }
 
   /** Server: Stopping -> Composing (el recorder acepto el job de composicion). */
-  beginComposing(): Result<void> {
+  beginComposing(now?: Date): Result<void> {
     if (this.state.state !== RecordingSessionState.Stopping) return Result.fail(invalid(this.state.state, 'begin composing'));
     if (this.state.captureMode !== RecordingCaptureMode.Server) {
       return Result.fail(makeError('RecordingSession.NotServerCapture', 'Only server-side recordings are composed.'));
     }
-    this.state = { ...this.state, state: RecordingSessionState.Composing };
+    this.state = { ...this.state, state: RecordingSessionState.Composing, composingSinceUtc: now ?? new Date() };
     return Result.okVoid();
   }
 
-  /** Server: Composing -> Processing con el compuesto ya subido (falta que CloudStorage lo marque Available). */
+  /**
+   * Server: Composing -> Processing con el compuesto ya subido (falta que CloudStorage lo marque Available).
+   * También desde un fallo de composición: el video que llega tarde rescata la grabación.
+   */
   composed(input: {
     composedFileId: string;
     composedSizeBytes: number;
@@ -204,7 +210,7 @@ export class RecordingSession {
     manifest: RecordingTracksManifest;
     now?: Date;
   }): Result<void> {
-    if (this.state.state !== RecordingSessionState.Composing) {
+    if (this.state.state !== RecordingSessionState.Composing && !this.hasRescuableFailure) {
       return Result.fail(invalid(this.state.state, 'attach the composed file'));
     }
     if (input.durationSeconds < 0 || input.composedSizeBytes < 0) {
@@ -226,18 +232,53 @@ export class RecordingSession {
     return Result.okVoid();
   }
 
-  /** Recompose (PlatformOnly): Ready -> Composing; el compuesto vigente sigue hasta que llegue el nuevo. */
-  beginRecomposing(): Result<void> {
-    const rescuable =
-      this.state.state === RecordingSessionState.Failed && RECOMPOSABLE_FAILURES.has(this.state.failureReason ?? '');
-    if ((this.state.state !== RecordingSessionState.Ready && !rescuable) || this.state.captureMode !== RecordingCaptureMode.Server) {
-      return Result.fail(invalid(this.state.state, 'recompose'));
+  /**
+   * Recompose (PlatformOnly): Ready, fallo de composición o composición atascada -> Composing. El
+   * compuesto vigente sigue hasta que llegue el nuevo y el plazo vuelve a contar desde `now`.
+   */
+  beginRecomposing(now?: Date): Result<void> {
+    const allowed = this.canRecompose();
+    if (!allowed.isSuccess) return allowed;
+    this.state = { ...this.state, state: RecordingSessionState.Composing, composingSinceUtc: now ?? new Date() };
+    return Result.okVoid();
+  }
+
+  /** Si se puede pedir un recompose, sin cambiar nada todavía (se confirma con el recorder antes). */
+  canRecompose(): Result<void> {
+    const from = this.state.state;
+    const allowed = from === RecordingSessionState.Ready || from === RecordingSessionState.Composing || this.isFailedByComposition;
+    if (!allowed || this.state.captureMode !== RecordingCaptureMode.Server) {
+      return Result.fail(invalid(from, 'recompose'));
     }
     if (this.state.purgedAtUtc !== null) {
       return Result.fail(makeError('Recording.TracksPurged', 'The recording was already purged.'));
     }
-    this.state = { ...this.state, state: RecordingSessionState.Composing };
     return Result.okVoid();
+  }
+
+  /**
+   * Falló la recomposición de una grabación que ya estaba lista: vuelve a Ready con su video anterior.
+   * Devuelve false si no había video que conservar (primera composición) y el fallo sigue su curso.
+   */
+  restoreAfterFailedRecomposition(): boolean {
+    const { state, readyAtUtc, recordingFileId, purgedAtUtc } = this.state;
+    if (state !== RecordingSessionState.Composing || !readyAtUtc || !recordingFileId || purgedAtUtc !== null) return false;
+    this.state = { ...this.state, state: RecordingSessionState.Ready };
+    return true;
+  }
+
+  /** Desde cuándo corre el plazo de la composición vigente (filas anteriores: desde que se detuvo). */
+  composingSince(): Date {
+    return this.state.composingSinceUtc ?? this.state.stoppedAtUtc ?? this.state.requestedAtUtc;
+  }
+
+  private get isFailedByComposition(): boolean {
+    return this.state.state === RecordingSessionState.Failed && RECOMPOSABLE_FAILURES.has(this.state.failureReason ?? '');
+  }
+
+  /** Fallo de composición de una grabación server-side que aún conserva sus pistas. */
+  private get hasRescuableFailure(): boolean {
+    return this.isFailedByComposition && this.state.captureMode === RecordingCaptureMode.Server && this.state.purgedAtUtc === null;
   }
 
   /** Client (fallback): Stopping -> Processing al adjuntar el archivo subido por el navegador. */

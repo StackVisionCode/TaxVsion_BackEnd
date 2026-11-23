@@ -130,6 +130,7 @@ export class ComposeWorker {
     await this.update(job.sessionId, (m) => {
       m.state = 'composing';
     });
+    log.info({ mode: job.mode }, 'composition started');
     const sessionDir = this.deps.store.sessionDir(job.sessionId);
     const ext = manifest.composition.format;
     const outputPath = path.join(sessionDir, `composed-${job.jobId}.${ext}`);
@@ -207,6 +208,7 @@ export class ComposeWorker {
           durationSeconds: Math.round(durationMs) / 1000,
           composedAtUtc: this.now().toISOString(),
           videoTrackCount: outcome.videoTrackCount,
+          audioTracks,
         };
         result = composedResult;
         await this.update(job.sessionId, (m) => {

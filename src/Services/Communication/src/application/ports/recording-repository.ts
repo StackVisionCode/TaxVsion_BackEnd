@@ -41,8 +41,8 @@ export interface RecordingSessionRepository {
   listRecordingWithLimit(): Promise<RecordingSession[]>;
   /** F7 (cross-tenant): sesiones esperando a CloudStorage, para el respaldo de disponibilidad. */
   listProcessing(): Promise<RecordingSession[]>;
-  /** F7 (cross-tenant): composiciones que no volvieron del recorder antes de `stoppedBeforeUtc`. */
-  listComposingStoppedBefore(stoppedBeforeUtc: Date): Promise<RecordingSession[]>;
+  /** F7 (cross-tenant): composiciones cuya vuelta vigente empezó antes de `beforeUtc` y aún no vuelven del recorder. */
+  listComposingSince(beforeUtc: Date): Promise<RecordingSession[]>;
   /** F7 (T-37, cross-tenant): compuestos con pistas de audio aun sin purgar compuestos antes de `composedBeforeUtc`. */
   listTracksToPurge(composedBeforeUtc: Date, take: number): Promise<RecordingSession[]>;
   /** F7 (T-37): grabaciones Ready de la oficina listas antes de `readyBeforeUtc`, aun sin purgar. */
