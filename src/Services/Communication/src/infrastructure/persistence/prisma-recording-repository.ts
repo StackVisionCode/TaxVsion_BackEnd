@@ -33,6 +33,7 @@ export class PrismaRecordingSessionRepository implements RecordingSessionReposit
       ReadyAtUtc: s.readyAtUtc,
       TracksPurgedAtUtc: s.tracksPurgedAtUtc,
       PurgedAtUtc: s.purgedAtUtc,
+      ComposingSinceUtc: s.composingSinceUtc,
     };
     // Dos pedidos a la vez con el mismo numero chocan en el @@unique (Scope, ScopeId, Sequence).
     await this.prisma.recordingSession
@@ -138,9 +139,13 @@ export class PrismaRecordingSessionRepository implements RecordingSessionReposit
     return rows.map(toDomainRecordingSession);
   }
 
-  async listComposingStoppedBefore(stoppedBeforeUtc: Date): Promise<RecordingSession[]> {
+  async listComposingSince(beforeUtc: Date): Promise<RecordingSession[]> {
+    // Filas anteriores a la columna: el plazo se mide desde que se detuvo la grabación.
     const rows = await this.prisma.recordingSession.findMany({
-      where: { State: 'Composing', StoppedAtUtc: { lt: stoppedBeforeUtc } },
+      where: {
+        State: 'Composing',
+        OR: [{ ComposingSinceUtc: { lt: beforeUtc } }, { ComposingSinceUtc: null, StoppedAtUtc: { lt: beforeUtc } }],
+      },
     });
     return rows.map(toDomainRecordingSession);
   }

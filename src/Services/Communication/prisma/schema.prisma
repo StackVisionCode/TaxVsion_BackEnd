@@ -1326,6 +1326,7 @@ model RecordingSession {
   TracksManifestJson String?   @db.NVarChar(Max)
   ComposedAtUtc      DateTime? @db.DateTime2
   ReadyAtUtc         DateTime? @db.DateTime2
+  ComposingSinceUtc  DateTime? @db.DateTime2
   // F7 (T-37): retención de pistas de audio y del compuesto.
   TracksPurgedAtUtc  DateTime? @db.DateTime2
   PurgedAtUtc        DateTime? @db.DateTime2

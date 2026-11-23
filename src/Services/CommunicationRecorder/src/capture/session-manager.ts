@@ -7,7 +7,7 @@ import { buildCompositionFailedEvent } from '../contracts/events.js';
 import type { ComposeJob } from '../queue/compose-queue.js';
 import type { EventBus } from '../rabbit/event-bus.js';
 import { retainUntil } from '../spool/janitor.js';
-import type { FailureReason, SessionManifest } from '../spool/manifest.js';
+import type { FailureReason, ResultAudioTrack, SessionManifest, SessionState } from '../spool/manifest.js';
 import type { KeyedMutex, SpoolStore } from '../spool/spool-store.js';
 import type { RecorderMetrics } from '../telemetry/metrics.js';
 import { withRetry } from '../upload/retry.js';
@@ -57,6 +57,55 @@ interface LiveSession {
 }
 
 const MAX_TIMER_MS = 2_147_000_000;
+
+/** Lo que el recorder cuenta de una sesión (GET /v1/sessions/:id). */
+export interface SessionStatus {
+  readonly sessionId: string;
+  readonly state: SessionState;
+  readonly jobId: string | null;
+  readonly failure: { reason: FailureReason; message: string; atUtc: string } | null;
+  readonly composedAtUtc: string | null;
+  readonly retainUntilUtc: string | null;
+  readonly updatedAtUtc: string;
+  readonly trackCount: number;
+  /** Resultado de la composición vigente ya publicada; null mientras no haya terminado. */
+  readonly result: SessionResult | null;
+}
+
+export interface SessionResult {
+  readonly composedFileId: string;
+  readonly composedSizeBytes: number;
+  readonly format: 'mp4' | 'webm';
+  readonly durationSeconds: number;
+  readonly videoTrackCount: number;
+  readonly audioTracks: readonly ResultAudioTrack[];
+}
+
+/** Solo cuenta el resultado del trabajo vigente y ya publicado: uno anterior no es el de este recompose. */
+function publishedResult(manifest: SessionManifest): SessionResult | null {
+  const r = manifest.result;
+  if (manifest.state !== 'composed' || !r || r.jobId !== manifest.jobId) return null;
+  const audioTracks =
+    r.audioTracks ??
+    manifest.tracks
+      .filter((t) => t.kind === 'audio' && t.fileId)
+      .map((t) => ({
+        trackId: t.trackId,
+        userId: t.userId,
+        fileId: t.fileId as string,
+        source: t.source,
+        startOffsetMs: t.startOffsetMs,
+        durationMs: t.durationMs ?? 0,
+      }));
+  return {
+    composedFileId: r.composedFileId,
+    composedSizeBytes: r.composedSizeBytes,
+    format: r.format,
+    durationSeconds: r.durationSeconds,
+    videoTrackCount: r.videoTrackCount,
+    audioTracks,
+  };
+}
 
 /**
  * Ciclo de vida de las sesiones de captura. No conoce reglas de negocio: Communication decide qué se
@@ -258,6 +307,23 @@ export class SessionManager {
       this.deps.logger.info({ sessionId, jobId: outcome.jobId, reason: req.reason }, 'recording session stopped');
     }
     return { jobId: outcome.jobId };
+  }
+
+  /** Estado de la sesión para diagnóstico: Communication lo consulta antes de dar una composición por perdida. */
+  async describeSession(sessionId: string): Promise<SessionStatus> {
+    const manifest = await this.deps.store.readManifest(sessionId);
+    if (!manifest) throw Errors.sessionNotFound();
+    return {
+      sessionId: manifest.sessionId,
+      state: manifest.state,
+      jobId: manifest.jobId ?? null,
+      failure: manifest.failure ?? null,
+      composedAtUtc: manifest.result?.composedAtUtc ?? null,
+      retainUntilUtc: manifest.retainUntilUtc ?? null,
+      updatedAtUtc: manifest.updatedAtUtc,
+      trackCount: manifest.tracks.length,
+      result: publishedResult(manifest),
+    };
   }
 
   async recompose(sessionId: string, req: RecomposeRequest): Promise<{ jobId: string }> {

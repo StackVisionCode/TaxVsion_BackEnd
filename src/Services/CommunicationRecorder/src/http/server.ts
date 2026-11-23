@@ -122,6 +122,11 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         return reply.status(202).send(await deps.sessions.stopSession(id, body));
       });
 
+      v1.get('/sessions/:id', async (req, reply) => {
+        const { id } = parse(sessionParamsSchema, req.params);
+        return reply.status(200).send(await deps.sessions.describeSession(id));
+      });
+
       v1.post('/sessions/:id/recompose', async (req, reply) => {
         const { id } = parse(sessionParamsSchema, req.params);
         const body = parse(recomposeSchema, req.body);

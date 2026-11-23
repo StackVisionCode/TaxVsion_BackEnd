@@ -37,6 +37,7 @@ Todas las rutas `/v1/*` exigen `Authorization: Bearer <JWT de servicio de Auth>`
 | `POST /v1/sessions/:id/stop` | `{stoppedAtUtc, reason, timeline}` | `202 {jobId}` (idempotente: mismo jobId); `404`; `409 Recording.SessionClosed` si la sesión ya falló/abortó |
 | `POST /v1/sessions/:id/recompose` | `{timeline, composition}` | `202 {jobId}`; `409 Recording.TracksPurged` (sin spool); `409 Recording.SessionActive`; `409 Recording.CompositionInProgress` |
 | `DELETE /v1/sessions/:id` | — | `204` (aborta y descarta; idempotente) |
+| `GET /v1/sessions/:id` | — | `200 {sessionId, state, jobId, failure, composedAtUtc, retainUntilUtc, updatedAtUtc, trackCount, result}`; `404 Recording.SessionNotFound`. `result` (`composedFileId`, tamaño, formato, duración, `audioTracks`) solo con la composición vigente ya publicada (`state = composed`); en cualquier otro caso `null` |
 
 Validación con zod; cuerpo inválido → `400 Recording.InvalidRequest`. `sessionId`/`trackId` solo `[A-Za-z0-9_-]{1,100}` (son nombres de carpeta/archivo). Códecs aceptados: `audio/opus`, `video/VP8`, `video/VP9` (los que WebM admite con `-c copy`). `ip` de la respuesta = `RECORDER_RTP_ANNOUNCED_IP` o `null` (Communication resuelve el host del recorder).
 
@@ -140,3 +141,4 @@ RECORDER_IT_FFMPEG=/ruta/ffmpeg RECORDER_IT_FFPROBE=/ruta/ffprobe RECORDER_IT_FO
 - **Trabajo atascado en `recorder:compose:processing`**: se recupera solo al reiniciar el contenedor.
 - **Ver qué pasó con una sesión**: `{spool}/{sessionId}/manifest.json` (estado, `failure`, `result`) y `{trackId}.log` (stderr del ffmpeg de captura).
 - **Recomponer** (otro layout/formato): Communication llama `POST /v1/sessions/:id/recompose` mientras el spool exista.
+- **Estado de una sesión por HTTP:** `GET /v1/sessions/:id`. Communication lo consulta antes de dar una composición por perdida y, si el evento `composed` no llegó, aplica el `result` que devuelve. El worker registra `composition started` al empezar cada trabajo.

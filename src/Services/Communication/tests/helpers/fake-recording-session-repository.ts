@@ -17,6 +17,7 @@ export const F7_SNAPSHOT_DEFAULTS: Pick<
   | 'readyAtUtc'
   | 'tracksPurgedAtUtc'
   | 'purgedAtUtc'
+  | 'composingSinceUtc'
   | 'sequence'
 > = {
   captureMode: RecordingCaptureMode.Client,
@@ -31,6 +32,7 @@ export const F7_SNAPSHOT_DEFAULTS: Pick<
   readyAtUtc: null,
   tracksPurgedAtUtc: null,
   purgedAtUtc: null,
+  composingSinceUtc: null,
   sequence: 1,
 };
 
@@ -119,10 +121,11 @@ export class InMemoryRecordingSessionRepository implements RecordingSessionRepos
     return this.all().filter((session) => session.toSnapshot().state === 'Processing');
   }
 
-  async listComposingStoppedBefore(stoppedBeforeUtc: Date): Promise<RecordingSession[]> {
+  async listComposingSince(beforeUtc: Date): Promise<RecordingSession[]> {
     return this.all().filter((session) => {
       const s = session.toSnapshot();
-      return s.state === 'Composing' && !!s.stoppedAtUtc && s.stoppedAtUtc.getTime() < stoppedBeforeUtc.getTime();
+      const since = s.composingSinceUtc ?? s.stoppedAtUtc;
+      return s.state === 'Composing' && !!since && since.getTime() < beforeUtc.getTime();
     });
   }
 

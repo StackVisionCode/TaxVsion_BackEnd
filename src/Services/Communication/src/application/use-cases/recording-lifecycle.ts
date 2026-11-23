@@ -303,6 +303,13 @@ export async function warnRecordingLimit(session: RecordingSession, deps: Record
 /** Failed + aviso + evento de integracion (Notification avisa al host). Idempotente con sesiones terminales. */
 export async function failRecording(session: RecordingSession, reason: string, deps: RecordingLifecycleDeps, correlationId: string): Promise<void> {
   const before = session.toSnapshot();
+  if (session.restoreAfterFailedRecomposition()) {
+    // Recomposición fallida de una grabación ya lista: el video anterior sigue vigente, no hay nada que avisar.
+    await deps.recordingSessions.save(session);
+    logger.warn({ sessionId: session.id, reason }, 'recomposition failed; the previous recording stays available');
+    emitRecordingState(deps, session, correlationId);
+    return;
+  }
   const failed = session.fail({ reason });
   if (!failed.isSuccess) return;
   await deps.recordingSessions.save(session);
@@ -474,7 +481,9 @@ export async function handleRecordingComposed(
     logger.warn({ sessionId: payload.sessionId }, 'recording.composed for an unknown session');
     return;
   }
-  if (session.sessionState === 'Processing' && session.toSnapshot().composedFileId === payload.composedFileId) return;
+  // Mismo compuesto otra vez (reentrega, o el barrido ya lo aplicó): nada que hacer.
+  if (session.toSnapshot().composedFileId === payload.composedFileId && session.sessionState !== 'Composing') return;
+  const lateFrom = session.sessionState === 'Composing' ? null : session.sessionState;
   const composed = session.composed({
     composedFileId: payload.composedFileId,
     composedSizeBytes: payload.composedSizeBytes,
@@ -486,6 +495,7 @@ export async function handleRecordingComposed(
     logger.warn({ err: composed.error, sessionId: payload.sessionId }, 'recording.composed could not be applied');
     return;
   }
+  if (lateFrom) logger.warn({ sessionId: payload.sessionId, from: lateFrom }, 'late composed file recovered the recording');
   await deps.recordingSessions.save(session);
   if (await isNewestWithFile(session, deps)) {
     if (payload.scope === RecordingScope.Meeting) {
@@ -601,21 +611,90 @@ export async function markRecordingFileRejected(
   await failRecording(session, input.reason, deps, input.correlationId ?? `recording:${session.id}`);
 }
 
-/** Recompose (PlatformOnly): vuelve a componer desde el spool del recorder con la politica vigente. */
+/** El recorder ya tiene una composición de esa sesión en cola o corriendo. */
+const COMPOSITION_IN_PROGRESS = 'Recording.CompositionInProgress';
+
+/**
+ * Recompose (PlatformOnly): vuelve a componer desde el spool del recorder con la politica vigente. Sirve
+ * también para una composición atascada. Repetirlo no encola dos trabajos: el recorder es quien sabe si
+ * ya hay uno, y en ese caso la sesión se queda (o se pone) en Composing esperando ese resultado.
+ */
 export async function recomposeRecording(
-  input: { tenantId: string; scope: RecordingScope; scopeId: string; correlationId: string },
+  input: { tenantId: string; scope: RecordingScope; scopeId: string; correlationId: string; sequence?: number | undefined; now?: Date },
   deps: RecordingLifecycleDeps,
 ): Promise<Result<void>> {
-  const session = await deps.recordingSessions.findLatestByScope(input.tenantId, input.scope, input.scopeId);
+  // D-71: sin número se toma la más reciente; con número, esa grabación de la reunión o llamada.
+  const session =
+    input.sequence === undefined
+      ? await deps.recordingSessions.findLatestByScope(input.tenantId, input.scope, input.scopeId)
+      : ((await deps.recordingSessions.listByScope(input.tenantId, input.scope, input.scopeId)).find((s) => s.sequence === input.sequence) ?? null);
   if (!session) return Result.fail(makeError('Recording.NotFound', 'Recording not found.'));
   if (!deps.capture) return Result.fail(makeError('Recording.RecorderUnavailable', 'The recording service is not available.'));
-  const begin = session.beginRecomposing();
-  if (!begin.isSuccess) return begin;
+  const allowed = session.canRecompose();
+  if (!allowed.isSuccess) return allowed;
   const requested = await deps.capture.recompose(session);
-  if (!requested.isSuccess) return requested;
+  if (!requested.isSuccess) {
+    // Ya en Composing y el recorder ocupado: no cambia nada, se informa tal cual.
+    if (requested.error.code !== COMPOSITION_IN_PROGRESS || session.sessionState === 'Composing') return requested;
+    logger.info({ sessionId: session.id }, 'recompose adopted the composition already running in the recorder');
+  }
+  const begin = session.beginRecomposing(input.now);
+  if (!begin.isSuccess) return begin;
   await deps.recordingSessions.save(session);
   emitRecordingState(deps, session, input.correlationId);
   return Result.okVoid();
+}
+
+export interface RecordingDiagnosis {
+  readonly recording: {
+    readonly sessionId: string;
+    readonly tenantId: string;
+    readonly sequence: number;
+    readonly state: string;
+    readonly captureMode: string;
+    readonly failureReason: string | null;
+    readonly stoppedAtUtc: string | null;
+    readonly composingSinceUtc: string | null;
+    readonly composedAtUtc: string | null;
+    readonly readyAtUtc: string | null;
+    readonly recordingFileId: string | null;
+    readonly durationSeconds: number | null;
+    readonly tracksPurgedAtUtc: string | null;
+    readonly purgedAtUtc: string | null;
+  };
+  /** Lo que el recorder dice de la sesión; `recorder` null = sin respuesta o sin la sesión. */
+  readonly recorderStatus: string;
+  readonly recorder: unknown;
+}
+
+/** Soporte (PlatformOnly): estado de la grabación aquí y en el recorder, para decidir si recomponer. */
+export async function diagnoseRecording(
+  session: RecordingSession,
+  deps: Pick<RecordingLifecycleDeps, 'capture'>,
+): Promise<RecordingDiagnosis> {
+  const s = session.toSnapshot();
+  const iso = (d: Date | null) => (d ? d.toISOString() : null);
+  const report = s.captureMode === RecordingCaptureMode.Server && deps.capture ? await deps.capture.compositionStatus(session) : null;
+  return {
+    recording: {
+      sessionId: s.id,
+      tenantId: s.tenantId,
+      sequence: s.sequence,
+      state: s.state,
+      captureMode: s.captureMode,
+      failureReason: s.failureReason,
+      stoppedAtUtc: iso(s.stoppedAtUtc),
+      composingSinceUtc: iso(s.composingSinceUtc),
+      composedAtUtc: iso(s.composedAtUtc),
+      readyAtUtc: iso(s.readyAtUtc),
+      recordingFileId: s.recordingFileId,
+      durationSeconds: s.durationSeconds,
+      tracksPurgedAtUtc: iso(s.tracksPurgedAtUtc),
+      purgedAtUtc: iso(s.purgedAtUtc),
+    },
+    recorderStatus: report?.status ?? 'unknown',
+    recorder: report?.recorder ?? null,
+  };
 }
 
 /** Dependencias opcionales que los use cases de grabacion reenvian (tests viejos no las pasan). */

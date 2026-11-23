@@ -12,9 +12,11 @@ import type { CallRepository } from '../ports/call-repository.js';
 import type { MeetingEventLogRepository } from '../ports/meeting-event-log-repository.js';
 import type { TenantTimeZoneStore } from '../ports/tenant-time-zone-store.js';
 import { recordingLocalDate } from './recording-local-date.js';
+import { RecordingComposedPayloadSchema, type RecordingComposedPayload } from '../../contracts/events/recording-events.js';
 import {
   RecorderRequestError,
   type RecorderClient,
+  type RecorderSessionStatus,
   type RecorderTimeline,
   type RecorderTimelineEvent,
   type RecorderTimelineParticipant,
@@ -27,6 +29,17 @@ export interface RecordingCaptureContext {
   readonly toleranceSeconds: number;
   readonly tracksRetentionDays: number;
   readonly composition: RecordingCompositionPolicy;
+}
+
+/**
+ * Qué dice el recorder de una composición: `working` = en cola o componiendo; `done` = terminó y publicó
+ * (`composed` trae el resultado si se pudo leer); `failed` = la dio por fallida; `gone` = ya no tiene la
+ * sesión; `unknown` = no respondió o es una versión sin la consulta.
+ */
+export interface CompositionReport {
+  readonly status: 'working' | 'done' | 'failed' | 'gone' | 'unknown';
+  readonly composed?: RecordingComposedPayload | undefined;
+  readonly recorder?: RecorderSessionStatus | undefined;
 }
 
 export interface RecordingCaptureDeps {
@@ -175,6 +188,30 @@ export class RecordingCaptureService {
       const code = err instanceof RecorderRequestError ? err.code : 'Recording.RecorderUnavailable';
       return Result.fail(makeError(code, err instanceof Error ? err.message : 'Recompose failed.'));
     }
+  }
+
+  /** Pregunta al recorder por la composición de la sesión. Nunca lanza: sin respuesta = `unknown`. */
+  async compositionStatus(session: RecordingSession): Promise<CompositionReport> {
+    const snap = session.toSnapshot();
+    if (!this.available) return { status: 'unknown' };
+    let recorder: RecorderSessionStatus | null;
+    try {
+      recorder = await this.deps.recorder.getSession(snap.tenantId, snap.id);
+    } catch (err) {
+      logger.warn({ err: (err as Error).message, sessionId: snap.id }, 'recorder session status unavailable');
+      return { status: 'unknown' };
+    }
+    if (!recorder || recorder.state === 'aborted') return { status: 'gone', ...(recorder ? { recorder } : {}) };
+    if (recorder.state === 'queued' || recorder.state === 'composing') return { status: 'working', recorder };
+    if (recorder.state === 'failed') return { status: 'failed', recorder };
+    if (recorder.state !== 'composed') return { status: 'unknown', recorder };
+    const parsed = RecordingComposedPayloadSchema.safeParse({
+      ...(typeof recorder.result === 'object' && recorder.result !== null ? recorder.result : {}),
+      sessionId: snap.id,
+      scope: snap.scope,
+      scopeId: snap.scopeId,
+    });
+    return { status: 'done', recorder, ...(parsed.success ? { composed: parsed.data } : {}) };
   }
 
   isCapturing(routerKey: string): boolean {

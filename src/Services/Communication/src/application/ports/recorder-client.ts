@@ -71,6 +71,19 @@ export class RecorderRequestError extends Error {
   }
 }
 
+/** Estado de una sesión según el recorder (`GET /v1/sessions/:id`). */
+export interface RecorderSessionStatus {
+  readonly state: string;
+  readonly jobId: string | null;
+  readonly failure: { readonly reason: string; readonly message: string; readonly atUtc: string } | null;
+  readonly composedAtUtc: string | null;
+  readonly retainUntilUtc: string | null;
+  readonly updatedAtUtc: string | null;
+  readonly trackCount: number | null;
+  /** Resultado de la composición vigente ya publicada; se valida antes de aplicarlo. */
+  readonly result: unknown;
+}
+
 export interface RecorderClient {
   /** false cuando no hay URL configurada (la captura server-side no esta disponible en este despliegue). */
   readonly configured: boolean;
@@ -84,6 +97,8 @@ export interface RecorderClient {
     input: { timeline: RecorderTimeline; composition: Omit<RecordingCompositionPolicy, 'captureSpatialLayer'> },
   ): Promise<void>;
   abortSession(tenantId: string, sessionId: string): Promise<void>;
+  /** null = el recorder ya no tiene esa sesión. Un recorder anterior sin esta ruta lanza `Recording.RouteNotFound`. */
+  getSession(tenantId: string, sessionId: string): Promise<RecorderSessionStatus | null>;
   /** Host del recorder resuelto a IP (para conectar el PlainTransport cuando el recorder no anuncia una). */
   resolveHostAddress(): Promise<string>;
 }

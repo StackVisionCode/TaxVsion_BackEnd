@@ -7,6 +7,7 @@ import type { SettingsRepository } from '../ports/settings-repository.js';
 import type { FileDeletionRequester, FileDeletionTarget } from '../ports/file-deletion-requester.js';
 import {
   failRecording,
+  handleRecordingComposed,
   markRecordingFileAvailable,
   markRecordingFileRejected,
   stopRecordingBySystem,
@@ -27,6 +28,8 @@ export interface RecordingSweepReport {
   readonly stoppedByLimit: number;
   readonly ready: number;
   readonly failed: number;
+  /** Composiciones terminadas cuyo evento no llegó: se aplicó el resultado leído del recorder. */
+  readonly recovered: number;
   /** MNT-01 (E-292): transcripts cuyo .txt CloudStorage confirmo / nunca registro. */
   readonly transcriptsConfirmed: number;
   readonly transcriptsReleased: number;
@@ -36,19 +39,23 @@ export interface RecordingSweepReport {
 const REJECTED_FILE_STATUSES = new Set(['Infected', 'Quarantined', 'ScanFailed', 'BlockedByPolicy', 'Rejected', 'Deleted']);
 /** Un archivo recien subido tarda en registrarse/escanearse: no se consulta antes de este margen. */
 const AVAILABILITY_CHECK_GRACE_MS = 60_000;
+/** Tope duro: ninguna composición "en curso" se espera más de esto, diga lo que diga el recorder. */
+const COMPOSITION_HARD_CAP_MS = 24 * 3_600_000;
 /** Transcripts sin confirmar revisados por vuelta (incluye los anteriores a E-292, una sola vez). */
 const TRANSCRIPT_CHECK_BATCH = 50;
 
 /**
  * F7: barrido de grabaciones (lock Redis afuera). (1) aviso y corte por limite (T-35); (2) respaldo de
  * disponibilidad cuando el evento de CloudStorage no llega (cuota o politica descartan en silencio);
- * (3) composiciones que el recorder nunca devolvio. Los plazos salen de la configuracion efectiva.
+ * (3) composiciones vencidas: antes de darlas por perdidas se le pregunta al recorder. Los plazos salen
+ * de la configuracion efectiva y se miden desde que empezo la composicion vigente.
  */
 export async function runRecordingSweep(now: Date, deps: RecordingSweepDeps): Promise<RecordingSweepReport> {
   let warned = 0;
   let stoppedByLimit = 0;
   let ready = 0;
   let failed = 0;
+  let recovered = 0;
 
   for (const session of await deps.recordingSessions.listRecordingWithLimit()) {
     const s = session.toSnapshot();
@@ -83,9 +90,13 @@ export async function runRecordingSweep(now: Date, deps: RecordingSweepDeps): Pr
     if (outcome === 'failed') failed += 1;
   }
 
-  for (const session of await deps.recordingSessions.listComposingStoppedBefore(new Date(now.getTime() - availabilityTimeoutMs))) {
-    await failRecording(session, 'CompositionTimeout', deps, `recording:${session.id}`);
-    failed += 1;
+  for (const session of await deps.recordingSessions.listComposingSince(new Date(now.getTime() - availabilityTimeoutMs))) {
+    const outcome = await settleOverdueComposition(session, now, deps).catch((err: unknown) => {
+      logger.warn({ err, sessionId: session.id }, 'overdue composition check failed');
+      return 'none' as const;
+    });
+    if (outcome === 'failed') failed += 1;
+    if (outcome === 'recovered') recovered += 1;
   }
 
   let transcriptsConfirmed = 0;
@@ -101,7 +112,36 @@ export async function runRecordingSweep(now: Date, deps: RecordingSweepDeps): Pr
     if (outcome === 'released') transcriptsReleased += 1;
   }
 
-  return { warned, stoppedByLimit, ready, failed, transcriptsConfirmed, transcriptsReleased };
+  return { warned, stoppedByLimit, ready, failed, recovered, transcriptsConfirmed, transcriptsReleased };
+}
+
+/**
+ * Composición que pasó el plazo. El reloj solo no basta para darla por perdida: un video largo o una
+ * cola ocupada tardan más. Se pregunta al recorder: si sigue trabajando se espera (hasta el tope duro);
+ * si ya terminó y el evento no llegó, se aplica su resultado; en cualquier otro caso falla por plazo.
+ */
+async function settleOverdueComposition(
+  session: RecordingSession,
+  now: Date,
+  deps: RecordingSweepDeps,
+): Promise<'failed' | 'recovered' | 'none'> {
+  const s = session.toSnapshot();
+  const correlationId = `recording:${s.id}`;
+  const report = (await deps.capture?.compositionStatus?.(session).catch(() => null)) ?? { status: 'unknown' as const };
+  if (report.status === 'done' && report.composed) {
+    logger.warn({ sessionId: s.id }, 'composed event never arrived; applying the result read from the recorder');
+    await handleRecordingComposed(report.composed, { tenantId: s.tenantId, correlationId }, deps);
+    // Si el resultado no se pudo aplicar, sigue Composing y cae al fallo por plazo (no se reintenta sin fin).
+    if (session.sessionState !== 'Composing') return 'recovered';
+  }
+  const elapsedMs = now.getTime() - session.composingSince().getTime();
+  if (report.status === 'working' && elapsedMs < COMPOSITION_HARD_CAP_MS) {
+    logger.debug({ sessionId: s.id, elapsedMinutes: Math.round(elapsedMs / 60_000) }, 'composition is overdue but the recorder is still working');
+    return 'none';
+  }
+  logger.warn({ sessionId: s.id, recorder: report.status, elapsedMinutes: Math.round(elapsedMs / 60_000) }, 'composition timed out');
+  await failRecording(session, 'CompositionTimeout', deps, correlationId);
+  return 'failed';
 }
 
 /**

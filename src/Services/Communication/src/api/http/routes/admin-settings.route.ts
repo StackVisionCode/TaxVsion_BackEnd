@@ -1,5 +1,5 @@
 import { RecordingScope } from '../../../domain/recording/recording-session-state.js';
-import { lifecycleFrom, recomposeRecording } from '../../../application/use-cases/recording-lifecycle.js';
+import { diagnoseRecording, lifecycleFrom, recomposeRecording } from '../../../application/use-cases/recording-lifecycle.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { CommunicationPermissions } from '../../../domain/shared/permissions.js';
@@ -168,6 +168,8 @@ function stripUndefined<T extends object>(body: T): Defined<T> {
 }
 
 const RecomposeParams = z.object({ scope: z.enum(['Meeting', 'Call']), id: z.string().uuid() });
+// D-71: una reunión puede tener varias grabaciones; sin número se toma la más reciente.
+const RecordingSequenceQuery = z.object({ sequence: z.coerce.number().int().positive().optional() });
 // Backfill de la biblioteca de archivos: dryRun salvo que se pida lo contrario.
 const RedeclareQuery = z.object({
   tenantId: z.string().uuid(),
@@ -195,6 +197,23 @@ export async function registerAdminSettingsRoutes(app: FastifyInstance, containe
     return reply.send(result);
   });
 
+  // Soporte: estado de la grabación aquí y en el recorder antes de decidir un recompose.
+  app.get('/communication/admin/recordings/:scope/:id', { preHandler: [app.authenticate] }, async (request, reply) => {
+    const principal = request.principal;
+    if (!principal) return reply.code(401).send({ code: 'Auth.Unauthenticated', message: 'Authentication required.' });
+    const denied = await requirePlatformPermission(principal, CommunicationPermissions.PlatformManage, container);
+    if (denied) return reply.code(denied.status).send(denied.body);
+    const params = RecomposeParams.parse(request.params);
+    const scope = params.scope === 'Call' ? RecordingScope.Call : RecordingScope.Meeting;
+    const latest = await container.recordingSessions.findLatestByScopeAnyTenant(scope, params.id);
+    if (!latest) return reply.code(404).send({ code: 'Recording.NotFound', message: 'Recording not found.' });
+    // Todas las grabaciones de la reunión o llamada, de la primera a la última.
+    const sessions = await container.recordingSessions.listByScope(latest.toSnapshot().tenantId, scope, params.id);
+    const recordings = [];
+    for (const session of sessions) recordings.push(await diagnoseRecording(session, { capture: container.capture }));
+    return reply.send({ scope: params.scope, scopeId: params.id, recordings });
+  });
+
   // F7 (contrato 9.6): recomponer una grabacion server-side desde las pistas del recorder (soporte).
   app.post('/communication/admin/recordings/:scope/:id/recompose', { preHandler: [app.authenticate] }, async (request, reply) => {
     const principal = request.principal;
@@ -202,12 +221,13 @@ export async function registerAdminSettingsRoutes(app: FastifyInstance, containe
     const denied = await requirePlatformPermission(principal, CommunicationPermissions.PlatformManage, container);
     if (denied) return reply.code(denied.status).send(denied.body);
     const params = RecomposeParams.parse(request.params);
+    const { sequence } = RecordingSequenceQuery.parse(request.query);
     const scope = params.scope === 'Call' ? RecordingScope.Call : RecordingScope.Meeting;
     const session = await container.recordingSessions.findLatestByScopeAnyTenant(scope, params.id);
     const lifecycle = lifecycleFrom({ ...container, emitter: container.emitter });
     if (!session || !lifecycle) return reply.code(404).send({ code: 'Recording.NotFound', message: 'Recording not found.' });
     const result = await recomposeRecording(
-      { tenantId: session.toSnapshot().tenantId, scope, scopeId: params.id, correlationId: request.id },
+      { tenantId: session.toSnapshot().tenantId, scope, scopeId: params.id, correlationId: request.id, sequence },
       lifecycle,
     );
     if (!result.isSuccess) {
