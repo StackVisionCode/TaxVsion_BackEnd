@@ -43,7 +43,8 @@ public static class GetPublicDirectedFormAccessHandler
                 context.Request.Title,
                 query.RequestHost,
                 MaskEmail(context.Participant.Email),
-                EntryNoticeSupport.ToResponse(entryNotice)
+                EntryNoticeSupport.ToResponse(entryNotice),
+                context.AlreadySubmitted
             )
         );
     }

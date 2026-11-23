@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Credentials.Commands;
@@ -21,7 +22,7 @@ public sealed class UpdateMyPhoneHandlerTests
         var result = await HandleAsync(user, " +1 809-555-0100 ", audit, unitOfWork);
 
         Assert.True(result.IsSuccess);
-        Assert.Equal("+1 809-555-0100", user.PhoneNumber);
+        Assert.Equal("+18095550100", user.PhoneNumber);
         Assert.False(user.PhoneVerified);
         Assert.Equal(AuthAuditAction.PhoneUpdated, Assert.Single(audit.Logs).Action);
         Assert.Equal(1, unitOfWork.Saves);
@@ -72,6 +73,56 @@ public sealed class UpdateMyPhoneHandlerTests
 
         Assert.Equal("User.NotFound", result.Error.Code);
     }
+
+    // El código por SMS va al mismo E.164 que se guardará al confirmarlo.
+    [Fact]
+    public async Task Phone_verification_uses_the_e164_number()
+    {
+        var user = NewUser();
+        var credentials = new InMemoryCredentialTokenRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await RequestVerificationAsync(user, "(809) 555-0100", credentials, bus);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("+18095550100", Assert.Single(credentials.PhoneVerifications).PhoneNumber);
+        var message = Assert.IsType<MfaChallengeRequestedIntegrationEvent>(Assert.Single(bus.Published));
+        Assert.Equal("+18095550100", message.Destination);
+    }
+
+    [Fact]
+    public async Task Phone_verification_rejects_an_invalid_number_without_sending_a_code()
+    {
+        var user = NewUser();
+        var credentials = new InMemoryCredentialTokenRepository();
+        var bus = new FakeMessageBus();
+
+        var result = await RequestVerificationAsync(user, "305-555-CALL", credentials, bus);
+
+        Assert.Equal("User.Phone", result.Error.Code);
+        Assert.Empty(credentials.PhoneVerifications);
+        Assert.Empty(bus.Published);
+    }
+
+    private static Task<BuildingBlocks.Results.Result> RequestVerificationAsync(
+        User user,
+        string phone,
+        InMemoryCredentialTokenRepository credentials,
+        FakeMessageBus bus
+    ) =>
+        RequestPhoneVerificationHandler.Handle(
+            new RequestPhoneVerificationCommand(user.Id, phone),
+            new SingleUserRepository(user),
+            credentials,
+            new PredictableTokenService(),
+            new PermissiveLoginThrottler(),
+            new RecordingAudit(),
+            new QuietRequest(),
+            new QuietCorrelation(),
+            new CountingUnitOfWork(),
+            bus,
+            CancellationToken.None
+        );
 
     private static Task<BuildingBlocks.Results.Result> HandleAsync(
         User user,

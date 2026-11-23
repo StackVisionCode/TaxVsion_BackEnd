@@ -774,11 +774,16 @@ internal sealed class InMemoryCredentialTokenRepository : ICredentialTokenReposi
         CancellationToken ct = default
     ) => throw new NotSupportedException();
 
-    public Task AddPhoneVerificationAsync(PhoneVerificationToken token, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+    public List<PhoneVerificationToken> PhoneVerifications { get; } = [];
+
+    public Task AddPhoneVerificationAsync(PhoneVerificationToken token, CancellationToken ct = default)
+    {
+        PhoneVerifications.Add(token);
+        return Task.CompletedTask;
+    }
 
     public Task<PhoneVerificationToken?> GetActivePhoneVerificationAsync(Guid userId, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+        Task.FromResult(PhoneVerifications.LastOrDefault(token => token.UserId == userId));
 }
 
 internal sealed class PrefixedPasswordHasher : IPasswordHasher

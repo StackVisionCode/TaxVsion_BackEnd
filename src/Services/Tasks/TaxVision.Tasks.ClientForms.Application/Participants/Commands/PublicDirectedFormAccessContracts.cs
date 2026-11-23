@@ -25,7 +25,8 @@ public sealed record PublicDirectedFormAccessResponse(
     string Title,
     string TenantBrandingKey,
     string MaskedEmail,
-    PublicEntryNoticeResponse EntryNotice
+    PublicEntryNoticeResponse EntryNotice,
+    bool AlreadySubmitted = false
 );
 
 public sealed record PublicFormSessionResponse(string SessionToken, DateTime ExpiresAtUtc);

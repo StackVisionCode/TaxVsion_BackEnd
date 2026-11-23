@@ -9,7 +9,11 @@ namespace TaxVision.Tasks.ClientForms.Application.Participants.Commands;
 
 internal static class PublicDirectedFormAccess
 {
-    internal sealed record Context(FormAccessGrant Grant, FormRequest Request, FormParticipant Participant);
+    internal sealed record Context(FormAccessGrant Grant, FormRequest Request, FormParticipant Participant)
+    {
+        /// <summary>Enviado y en revisión de la oficina: el enlace solo informa, no pide otro código.</summary>
+        public bool AlreadySubmitted => Request.Status == FormRequestStatus.Submitted;
+    }
 
     internal static async Task<Context?> LoadAsync(
         string accessToken,

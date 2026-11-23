@@ -199,9 +199,11 @@ public static class RequestPhoneVerificationHandler
         if (user is null || !user.IsActive)
             return Result.Failure(new Error("User.NotFound", "User does not exist."));
 
-        var phone = command.PhoneNumber?.Trim() ?? string.Empty;
-        if (phone.Length is < 7 or > 20 || !phone.All(c => char.IsDigit(c) || c is '+' or '-' or ' '))
-            return Result.Failure(new Error("User.Phone", "Phone number is invalid."));
+        // Mismo E.164 que el teléfono guardado: el código va a ese número y es el que se confirma.
+        var parsed = TaxVision.Auth.Domain.Common.PhoneNumber.Create(command.PhoneNumber);
+        if (parsed.IsFailure)
+            return Result.Failure(parsed.Error);
+        var phone = parsed.Value.Value;
 
         if (await throttler.IsOtpResendThrottledAsync(user.Id, ct))
             return Result.Failure(new Error("Auth.OtpThrottled", "Wait before requesting another code."));
