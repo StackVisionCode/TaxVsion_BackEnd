@@ -330,12 +330,35 @@ public sealed class TenantCloudFileCopyConfiguration : IEntityTypeConfiguration<
         builder.Property(x => x.Provider).HasMaxLength(32).IsRequired();
         builder.Property(x => x.RemoteFileId).HasMaxLength(256).IsRequired();
         builder.Property(x => x.ChecksumSha256).HasMaxLength(64).IsRequired();
+        builder.Property(x => x.RemotePath).HasMaxLength(TenantCloudFileCopy.RemotePathMaxLength);
         builder
             .HasIndex(x => new
             {
                 x.TenantId,
                 x.FileId,
                 x.Provider,
+            })
+            .IsUnique();
+    }
+}
+
+public sealed class TenantCloudFolderConfiguration : IEntityTypeConfiguration<TenantCloudFolder>
+{
+    public void Configure(EntityTypeBuilder<TenantCloudFolder> builder)
+    {
+        builder.ToTable("TenantCloudFolders");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.TenantId).IsRequired();
+        builder.Property(x => x.Provider).HasMaxLength(32).IsRequired();
+        builder.Property(x => x.Path).HasMaxLength(TenantCloudFolder.PathMaxLength).IsRequired();
+        builder.Property(x => x.RemoteFolderId).HasMaxLength(TenantCloudFolder.RemoteFolderIdMaxLength).IsRequired();
+        // Una sola fila por carpeta: dos subidas a la vez no la guardan dos veces.
+        builder
+            .HasIndex(x => new
+            {
+                x.TenantId,
+                x.Provider,
+                x.Path,
             })
             .IsUnique();
     }

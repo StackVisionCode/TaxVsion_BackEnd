@@ -24,7 +24,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
     )
     {
         var request = await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsSplitQuery()
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.Revisions)
@@ -44,7 +44,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
     )
     {
         var request = await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsSplitQuery()
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.Attachments)
@@ -66,7 +66,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
         CancellationToken ct = default
     ) =>
         context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AnyAsync(
                 item =>
                     item.TenantId == tenantId
@@ -85,7 +85,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
         CancellationToken ct = default
     ) =>
         context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AnyAsync(
                 item =>
                     item.TenantId == tenantId
@@ -103,7 +103,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
         CancellationToken ct = default
     ) =>
         context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .FirstOrDefaultAsync(
                 item =>
                     item.TenantId == tenantId
@@ -122,7 +122,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
         CancellationToken ct = default
     ) =>
         context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item =>
                 item.TenantId == tenantId
                 && item.CustomerId == customerId
@@ -140,7 +140,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
         CancellationToken ct = default
     ) =>
         await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsSplitQuery()
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.Attachments)
@@ -160,7 +160,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
         CancellationToken ct = default
     ) =>
         context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item =>
                 item.TenantId == tenantId
                 && item.IntakeLinkId == intakeLinkId
@@ -173,7 +173,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
 
     public Task<int> CountIntakeSubmissionsAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
         context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .CountAsync(
                 item =>
                     item.TenantId == tenantId
@@ -188,7 +188,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
         CancellationToken ct = default
     ) =>
         await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item =>
                 item.TenantId == tenantId
                 && item.CustomerId == customerId
@@ -209,7 +209,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
 
     private IQueryable<FormRequest> OpenByEffectiveResponsible(Guid tenantId, Guid userId) =>
         context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item =>
                 item.TenantId == tenantId
                 && item.Status != FormRequestStatus.Completed
@@ -228,7 +228,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
     )
     {
         var query = context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.CustomerId == customerId);
         if (onlyOpen)
@@ -243,7 +243,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
         CancellationToken ct = default
     ) =>
         await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsSplitQuery()
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.Attachments)
@@ -261,7 +261,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
         CancellationToken ct = default
     ) =>
         await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item =>
                 (item.Status == FormRequestStatus.Pending || item.Status == FormRequestStatus.Returned)
                 && item.DueAtUtc != null
@@ -274,14 +274,16 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
             .ToListAsync(ct);
 
     public Task<FormRequest?> GetForReminderAsync(Guid requestId, CancellationToken ct = default) =>
-        context.FormRequests.IgnoreQueryFilters().FirstOrDefaultAsync(item => item.Id == requestId, ct);
+        context
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .FirstOrDefaultAsync(item => item.Id == requestId, ct);
 
     // Cross-tenant: el evento de Documents (Completed/Failed) llega por el fanout sin tenant ambiental.
     // Trae las revisiones para que LinkPdf/MarkPdfFailed resuelvan la del PdfGenerationId. El llamador
     // valida el tenant contra la request encontrada.
     public Task<FormRequest?> GetByPdfGenerationIdAsync(Guid generationId, CancellationToken ct = default) =>
         context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.Revisions)
             .FirstOrDefaultAsync(
@@ -295,10 +297,14 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
 internal sealed class FormFileScanVerdictRepository(TasksDbContext context) : IFormFileScanVerdictRepository
 {
     public Task<FormFileScanVerdict?> GetAsync(Guid fileId, CancellationToken ct = default) =>
-        context.FormFileScanVerdicts.IgnoreQueryFilters().FirstOrDefaultAsync(item => item.Id == fileId, ct);
+        context
+            .FormFileScanVerdicts.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .FirstOrDefaultAsync(item => item.Id == fileId, ct);
 
     public Task<bool> ExistsAsync(Guid fileId, CancellationToken ct = default) =>
-        context.FormFileScanVerdicts.IgnoreQueryFilters().AnyAsync(item => item.Id == fileId, ct);
+        context
+            .FormFileScanVerdicts.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .AnyAsync(item => item.Id == fileId, ct);
 
     public void Add(FormFileScanVerdict verdict) => context.FormFileScanVerdicts.Add(verdict);
 }
@@ -312,7 +318,7 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
     )
     {
         var rows = context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == query.TenantId)
             .VisibleInInbox(context, query.TenantId, query.ActorUserId, query.CanViewAll);
@@ -353,7 +359,7 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
                 || (
                     item.ParticipantId.HasValue
                     && context
-                        .FormParticipants.IgnoreQueryFilters()
+                        .FormParticipants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                         .Any(participant =>
                             participant.TenantId == query.TenantId
                             && participant.Id == item.ParticipantId.Value
@@ -366,7 +372,7 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
                 || (
                     item.CustomerId.HasValue
                     && context
-                        .CustomerDirectoryEntries.IgnoreQueryFilters()
+                        .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                         .Any(customer =>
                             customer.TenantId == query.TenantId
                             && customer.CustomerId == item.CustomerId.Value
@@ -438,17 +444,17 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
             .Distinct()
             .ToArray();
         var customers = await context
-            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == query.TenantId && customerIds.Contains(item.CustomerId))
             .ToDictionaryAsync(item => item.CustomerId, item => item.DisplayName ?? "Customer", ct);
         var participants = await context
-            .FormParticipants.IgnoreQueryFilters()
+            .FormParticipants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == query.TenantId && participantIds.Contains(item.Id))
             .ToDictionaryAsync(item => item.Id, ct);
         var templates = await context
-            .FormTemplateVersions.IgnoreQueryFilters()
+            .FormTemplateVersions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == query.TenantId && versionIds.Contains(item.Id))
             .ToDictionaryAsync(item => item.Id, item => item.Title, ct);
@@ -456,7 +462,7 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
             ? existingIds.ToHashSet()
             : (
                 await context
-                    .CustomerAssignmentProjections.IgnoreQueryFilters()
+                    .CustomerAssignmentProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                     .AsNoTracking()
                     .Where(item =>
                         item.TenantId == query.TenantId
@@ -526,14 +532,14 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
     {
         var customers = request.CustomerId is { } customerId
             ? await context
-                .CustomerDirectoryEntries.IgnoreQueryFilters()
+                .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                 .AsNoTracking()
                 .Where(item => item.TenantId == tenantId && item.CustomerId == customerId)
                 .ToDictionaryAsync(item => item.CustomerId, item => item.DisplayName ?? "Customer", ct)
             : new Dictionary<Guid, string>();
         var participants = request.ParticipantId is { } participantId
             ? await context
-                .FormParticipants.IgnoreQueryFilters()
+                .FormParticipants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                 .AsNoTracking()
                 .Where(item => item.TenantId == tenantId && item.Id == participantId)
                 .ToDictionaryAsync(item => item.Id, ct)
@@ -577,7 +583,7 @@ internal sealed class FormRequestStaffReadRepository(TasksDbContext context) : I
         CancellationToken ct = default
     ) =>
         await context
-            .FormAuditEntries.IgnoreQueryFilters()
+            .FormAuditEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.FormRequestId == requestId)
             .OrderByDescending(item => item.OccurredAtUtc)
@@ -604,7 +610,7 @@ internal sealed class FormRequestVisibilityFilter(TasksDbContext context) : IFor
             ? Task.FromResult(true)
             : context
                 .Set<CustomerAssignmentProjection>()
-                .IgnoreQueryFilters()
+                .IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                 .AnyAsync(
                     item => item.TenantId == tenantId && item.CustomerId == customerId && item.UserId == actorUserId,
                     ct
@@ -631,7 +637,7 @@ internal sealed class FormRequestVisibilityFilter(TasksDbContext context) : IFor
             return Task.FromResult(false);
         return context
             .Set<CustomerAssignmentProjection>()
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AnyAsync(
                 item => item.TenantId == tenantId && item.CustomerId == customerId && item.UserId == actorUserId,
                 ct
@@ -647,7 +653,7 @@ internal sealed class ClientFormsCustomerReader(TasksDbContext context) : IClien
         CancellationToken ct = default
     ) =>
         await context
-            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.CustomerId == customerId)
             .Select(item => new ClientFormsCustomerRecord(
@@ -667,7 +673,7 @@ internal sealed class ClientFormsCustomerEmailDirectory(TasksDbContext context) 
         CancellationToken ct = default
     ) =>
         context
-            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item =>
                 item.TenantId == tenantId
@@ -688,7 +694,7 @@ internal sealed class ClientFormsTaskReader(TasksDbContext context) : IClientFor
         CancellationToken ct = default
     ) =>
         context
-            .Tasks.IgnoreQueryFilters()
+            .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .AnyAsync(
                 item => item.TenantId == tenantId && item.Id == taskId && item.Reference.CustomerId == customerId,

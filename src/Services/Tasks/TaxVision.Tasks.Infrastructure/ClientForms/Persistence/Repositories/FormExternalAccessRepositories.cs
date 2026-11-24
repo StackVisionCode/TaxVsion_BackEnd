@@ -9,7 +9,7 @@ internal sealed class FormParticipantRepository(TasksDbContext context) : IFormP
 {
     public Task<FormParticipant?> GetAsync(Guid tenantId, Guid participantId, CancellationToken ct = default) =>
         context
-            .FormParticipants.IgnoreQueryFilters()
+            .FormParticipants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Id == participantId, ct);
 
     public Task<FormParticipant?> GetUnlinkedByEmailAsync(
@@ -18,7 +18,7 @@ internal sealed class FormParticipantRepository(TasksDbContext context) : IFormP
         CancellationToken ct = default
     ) =>
         context
-            .FormParticipants.IgnoreQueryFilters()
+            .FormParticipants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .SingleOrDefaultAsync(
                 item =>
                     item.TenantId == tenantId && item.Email == email.Trim().ToLower() && item.LinkedCustomerId == null,
@@ -33,7 +33,7 @@ internal sealed class FormParticipantRepository(TasksDbContext context) : IFormP
     {
         var normalized = email.Trim().ToLowerInvariant();
         return await context
-            .FormParticipants.IgnoreQueryFilters()
+            .FormParticipants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.Email == normalized)
             .Select(item => item.Id)
@@ -74,15 +74,17 @@ internal sealed class FormIntakeLinkRepository(TasksDbContext context) : IFormIn
 
     public Task<FormIntakeLink?> GetAsync(Guid tenantId, Guid linkId, CancellationToken ct = default) =>
         context
-            .FormIntakeLinks.IgnoreQueryFilters()
+            .FormIntakeLinks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Id == linkId, ct);
 
     public Task<FormIntakeLink?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
-        context.FormIntakeLinks.IgnoreQueryFilters().SingleOrDefaultAsync(item => item.TokenHash == tokenHash, ct);
+        context
+            .FormIntakeLinks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .SingleOrDefaultAsync(item => item.TokenHash == tokenHash, ct);
 
     public async Task<IReadOnlyList<FormIntakeLink>> ListAsync(Guid tenantId, CancellationToken ct = default) =>
         await context
-            .FormIntakeLinks.IgnoreQueryFilters()
+            .FormIntakeLinks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == tenantId)
             .OrderByDescending(item => item.CreatedAtUtc)
@@ -102,7 +104,7 @@ internal sealed class FormIntakeLinkRepository(TasksDbContext context) : IFormIn
 
     private IQueryable<FormIntakeLink> NotRevokedByResponsible(Guid tenantId, Guid responsibleUserId) =>
         context
-            .FormIntakeLinks.IgnoreQueryFilters()
+            .FormIntakeLinks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item =>
                 item.TenantId == tenantId
                 && item.ResponsibleUserId == responsibleUserId
@@ -116,13 +118,15 @@ internal sealed class FormAccessGrantRepository(TasksDbContext context) : IFormA
 {
     public Task<FormAccessGrant?> GetByRequestAsync(Guid tenantId, Guid requestId, CancellationToken ct = default) =>
         context
-            .FormAccessGrants.IgnoreQueryFilters()
+            .FormAccessGrants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item => item.TenantId == tenantId && item.FormRequestId == requestId)
             .OrderByDescending(item => item.IssuedAtUtc)
             .FirstOrDefaultAsync(ct);
 
     public Task<FormAccessGrant?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
-        context.FormAccessGrants.IgnoreQueryFilters().SingleOrDefaultAsync(item => item.TokenHash == tokenHash, ct);
+        context
+            .FormAccessGrants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .SingleOrDefaultAsync(item => item.TokenHash == tokenHash, ct);
 
     public void Add(FormAccessGrant grant) => context.FormAccessGrants.Add(grant);
 }
@@ -131,7 +135,7 @@ internal sealed class FormAccessChallengeRepository(TasksDbContext context) : IF
 {
     public Task<FormAccessChallenge?> GetAsync(Guid tenantId, Guid challengeId, CancellationToken ct = default) =>
         context
-            .FormAccessChallenges.IgnoreQueryFilters()
+            .FormAccessChallenges.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Id == challengeId, ct);
 
     public Task<FormAccessChallenge?> GetLatestAsync(
@@ -142,7 +146,7 @@ internal sealed class FormAccessChallengeRepository(TasksDbContext context) : IF
         CancellationToken ct = default
     ) =>
         context
-            .FormAccessChallenges.IgnoreQueryFilters()
+            .FormAccessChallenges.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item =>
                 item.TenantId == tenantId
                 && item.GrantId == grantId
@@ -159,7 +163,7 @@ internal sealed class FormAccessChallengeRepository(TasksDbContext context) : IF
         CancellationToken ct = default
     ) =>
         context
-            .FormAccessChallenges.IgnoreQueryFilters()
+            .FormAccessChallenges.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .CountAsync(
                 item =>
                     item.TenantId == tenantId
@@ -170,7 +174,7 @@ internal sealed class FormAccessChallengeRepository(TasksDbContext context) : IF
 
     public Task<int> CountTenantIssuedAsync(Guid tenantId, DateTime sinceUtc, CancellationToken ct = default) =>
         context
-            .FormAccessChallenges.IgnoreQueryFilters()
+            .FormAccessChallenges.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .CountAsync(item => item.TenantId == tenantId && item.IssuedAtUtc >= sinceUtc, ct);
 
     public Task<bool> HasActiveBlockAsync(
@@ -182,7 +186,7 @@ internal sealed class FormAccessChallengeRepository(TasksDbContext context) : IF
         CancellationToken ct = default
     ) =>
         context
-            .FormAccessChallenges.IgnoreQueryFilters()
+            .FormAccessChallenges.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AnyAsync(
                 item =>
                     item.TenantId == tenantId
@@ -201,7 +205,7 @@ internal sealed class FormAccessSessionRepository(TasksDbContext context) : IFor
 {
     public Task<FormAccessSession?> GetByTokenHashAsync(string tokenHash, CancellationToken ct = default) =>
         context
-            .FormAccessSessions.IgnoreQueryFilters()
+            .FormAccessSessions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .SingleOrDefaultAsync(item => item.SessionTokenHash == tokenHash, ct);
 
     public async Task<IReadOnlyList<FormAccessSession>> ListNotRevokedByRequestAsync(
@@ -210,7 +214,7 @@ internal sealed class FormAccessSessionRepository(TasksDbContext context) : IFor
         CancellationToken ct = default
     ) =>
         await context
-            .FormAccessSessions.IgnoreQueryFilters()
+            .FormAccessSessions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item => item.TenantId == tenantId && item.FormRequestId == requestId && item.RevokedAtUtc == null)
             .ToArrayAsync(ct);
 

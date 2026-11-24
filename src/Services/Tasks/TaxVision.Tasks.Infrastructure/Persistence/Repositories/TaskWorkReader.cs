@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Work;
 using TaxVision.Tasks.Domain.ClientRequests;
 using TaxVision.Tasks.Domain.Tasks;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -14,12 +15,7 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 /// </summary>
 public sealed class TaskWorkReader(TasksDbContext context) : ITaskWorkReader
 {
-    private static readonly TaskItemStatus[] OpenStatuses =
-    [
-        TaskItemStatus.NotStarted,
-        TaskItemStatus.InProgress,
-        TaskItemStatus.WaitingOnClient,
-    ];
+    private static readonly TaskItemStatus[] OpenStatuses = TaskItemStatuses.Open;
 
     private sealed record CountRow(Guid UserId, int Open, int Overdue, int DueSoon, int Waiting);
 
@@ -110,7 +106,7 @@ public sealed class TaskWorkReader(TasksDbContext context) : ITaskWorkReader
             taskIds.Count == 0
                 ? []
                 : await context
-                    .Tasks.IgnoreQueryFilters()
+                    .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                     .Where(t => t.TenantId == tenantId && taskIds.Contains(t.Id))
                     .VisibleTo(context, tenantId, visibleTo)
                     .Select(t => new WorkTitle(WorkResourceTypes.Task, t.Id, t.Title.Value))
@@ -120,7 +116,7 @@ public sealed class TaskWorkReader(TasksDbContext context) : ITaskWorkReader
                 ? []
                 : await VisibleRequests(
                         context
-                            .ClientRequests.IgnoreQueryFilters()
+                            .ClientRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                             .Where(r => r.TenantId == tenantId && clientRequestIds.Contains(r.Id)),
                         tenantId,
                         visibleTo
@@ -246,14 +242,14 @@ public sealed class TaskWorkReader(TasksDbContext context) : ITaskWorkReader
 
     private IQueryable<TaskItem> OpenTasks(Guid tenantId, Guid? visibleTo) =>
         context
-            .Tasks.IgnoreQueryFilters()
+            .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(t => t.TenantId == tenantId && OpenStatuses.Contains(t.Status))
             .VisibleTo(context, tenantId, visibleTo);
 
     private IQueryable<ClientRequest> OpenRequests(Guid tenantId, Guid? visibleTo) =>
         VisibleRequests(
             context
-                .ClientRequests.IgnoreQueryFilters()
+                .ClientRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                 .Where(r =>
                     r.TenantId == tenantId
                     && (r.Status == ClientRequestStatus.Pending || r.Status == ClientRequestStatus.Submitted)
@@ -273,7 +269,7 @@ public sealed class TaskWorkReader(TasksDbContext context) : ITaskWorkReader
             return requests;
 
         var myClients = context
-            .CustomerAssignmentProjections.IgnoreQueryFilters()
+            .CustomerAssignmentProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(a => a.TenantId == tenantId && a.UserId == me);
         return requests.Where(r =>
             r.RequestedByUserId == me || r.FollowUpUserId == me || myClients.Any(a => a.CustomerId == r.CustomerId)

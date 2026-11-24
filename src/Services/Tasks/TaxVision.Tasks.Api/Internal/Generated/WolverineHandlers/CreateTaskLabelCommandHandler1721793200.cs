@@ -22,12 +22,12 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext tasksDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext.");
-            var taskLabelRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.TaskLabelRepository(tasksDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
+            var workflowStatusRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.WorkflowStatusRepository(tasksDbContext);
             // The actual message body
             var createTaskLabelCommand = (TaxVision.Tasks.Application.Labels.Commands.CreateTaskLabelCommand)context.Envelope.Message;
 
@@ -48,7 +48,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Labels.Commands.CreateTaskLabelHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Tasks.Application.Labels.Commands.CreateTaskLabelHandler.Handle(createTaskLabelCommand, taskLabelRepository, unitOfWork, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Tasks.Application.Labels.Commands.CreateTaskLabelHandler.Handle(createTaskLabelCommand, workflowStatusRepository, unitOfWork, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

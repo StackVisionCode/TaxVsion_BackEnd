@@ -60,6 +60,40 @@ public sealed class SeriesMaterializationJobTests
         Assert.Empty(await check.Tasks.IgnoreQueryFilters().ToListAsync());
     }
 
+    [Fact]
+    public async Task A_series_waiting_after_a_failed_attempt_is_left_for_later()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        await using (var seed = NewContext(databaseName))
+        {
+            var series = ResumeTaskSeriesHandlerTests.NewSeries();
+            series.ClaimForMaterialization(DateTime.UtcNow);
+            seed.TaskSeries.Add(series);
+            await seed.SaveChangesAsync();
+        }
+        await using var db = NewContext(databaseName);
+        var (outbox, _) = RecordingDbContextOutbox.Create(db);
+
+        await RunOnceAsync(db, outbox);
+
+        await using var check = NewContext(databaseName);
+        Assert.Empty(await check.Tasks.IgnoreQueryFilters().ToListAsync());
+    }
+
+    [Fact]
+    public async Task A_successful_attempt_clears_the_wait()
+    {
+        var databaseName = await SeedAsync();
+        await using var db = NewContext(databaseName);
+        var (outbox, _) = RecordingDbContextOutbox.Create(db);
+
+        await RunOnceAsync(db, outbox);
+
+        await using var check = NewContext(databaseName);
+        var series = Assert.Single(await check.TaskSeries.IgnoreQueryFilters().ToListAsync());
+        Assert.Equal((0, (DateTime?)null), (series.MaterializationAttempts, series.NextMaterializationAtUtc));
+    }
+
     internal static async Task RunOnceAsync(TasksDbContext db, IDbContextOutbox<TasksDbContext> outbox)
     {
         var services = new ServiceCollection()
@@ -70,7 +104,8 @@ public sealed class SeriesMaterializationJobTests
             .AddScoped<ITaskSeriesRepository>(sp => new TaskSeriesRepository(sp.GetRequiredService<TasksDbContext>()))
             .AddScoped<ITaskSeriesMaterializer>(sp => new TaskSeriesMaterializer(
                 new TaskRepository(sp.GetRequiredService<TasksDbContext>()),
-                sp.GetRequiredService<ITaskSeriesRepository>()
+                sp.GetRequiredService<ITaskSeriesRepository>(),
+                new TaskTemplateRepository(sp.GetRequiredService<TasksDbContext>())
             ))
             .BuildServiceProvider();
 

@@ -63,7 +63,7 @@ internal sealed class TaskRetentionJob(
         // un solo DELETE de ese tamaño bloquea la tabla mientras el producto la está usando.
         var deleted = await context
             .Set<TaskAttachment>()
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(a => a.Status == AttachmentStatus.Detached && a.DetachedAtUtc != null && a.DetachedAtUtc < cutoff)
             .Take(settings.BatchSize)
             .ExecuteDeleteAsync(ct);

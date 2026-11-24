@@ -8,8 +8,8 @@ namespace TaxVision.Tasks.Application.Tasks;
 
 /// <summary>
 /// Lo que se anuncia cuando nace una tarea, venga del alta manual, de una subtarea, de una plantilla o de una
-/// serie: <c>TaskCreated</c>, su recordatorio de vencimiento y <c>TaskAssigned</c> si es raíz. Por D-TSK-1, una
-/// plantilla avisa y una serie solo en su alta, no en cada ocurrencia que siembra después.
+/// serie: <c>TaskCreated</c>, su recordatorio de vencimiento y <c>TaskAssigned</c> si es raíz. Cada ocurrencia de una
+/// serie avisa a su responsable (D-28, en lugar de D-TSK-1).
 /// </summary>
 public static class TaskBirthAnnouncements
 {
@@ -23,7 +23,7 @@ public static class TaskBirthAnnouncements
             messages.Add(reminder);
 
         // Notification ya descarta la autoasignación (asignado == quien asigna).
-        if (task.ParentTaskId is null && !born.RecurringOccurrence && born.AssigneeUserId is { } assignee)
+        if (task.ParentTaskId is null && born.AssigneeUserId is { } assignee)
             messages.Add(
                 new TaskAssignedIntegrationEvent
                 {

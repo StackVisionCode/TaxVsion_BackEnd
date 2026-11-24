@@ -23,7 +23,7 @@ public sealed record MoveTaskToWaitingOnClientCommand(
     string? ExpectedItems,
     DateTime? ClientDueAtUtc,
     DateOnly? ClientDueOn = null
-);
+) : ITaskTransitionCommand;
 
 /// <summary>
 /// Exige un cliente en la tarea: sin <c>CustomerId</c> no hay a quién pedirle nada y el evento
@@ -45,13 +45,11 @@ public static class MoveTaskToWaitingOnClientHandler
         if (expectedItems.IsFailure)
             return Result.Failure<TaskResponse>(expectedItems.Error);
 
-        var found = await tasks.GetByIdAsync(command.TenantId, command.TaskId, ct);
+        var found = await TaskTransitionService.LoadMutableAsync(tasks, command, ct);
         if (found.IsFailure)
             return Result.Failure<TaskResponse>(found.Error);
 
         var task = found.Value;
-        if (!TaskAccessPolicy.CanMutate(task, command.ByUserId, command.HasManageAll))
-            return Result.Failure<TaskResponse>(TaskErrors.Forbidden);
         if (task.Reference.CustomerId is not { } customerId)
             return Result.Failure<TaskResponse>(TaskErrors.WaitingOnClient.CustomerRequired);
 
@@ -68,7 +66,8 @@ public static class MoveTaskToWaitingOnClientHandler
 
         await unitOfWork.SaveChangesAsync(ct);
         await bus.PublishAsync(BuildEvent(task, customerId, correlation.CorrelationId));
-        await RequestPreparerReminderAsync(task, clientDueAtUtc, bus, correlation);
+        var zone = await zones.ResolveAsync(command.TenantId, ct);
+        await RequestPreparerReminderAsync(task, clientDueAtUtc, zone.Id, bus, correlation);
 
         return Result.Success(TaskResponse.From(task));
     }
@@ -80,7 +79,7 @@ public static class MoveTaskToWaitingOnClientHandler
     /// asignado no hay a quién recordarle.
     /// </summary>
     // Fecha civil: vence al final de ese día en la oficina.
-    private static async Task<DateTime?> ClientDueAtUtcAsync(
+    internal static async Task<DateTime?> ClientDueAtUtcAsync(
         MoveTaskToWaitingOnClientCommand command,
         IOfficeTimeZone zones,
         CancellationToken ct
@@ -89,9 +88,10 @@ public static class MoveTaskToWaitingOnClientHandler
             ? LocalDay.EndUtc(civil, await zones.ResolveAsync(command.TenantId, ct))
             : command.ClientDueAtUtc;
 
-    private static async Task RequestPreparerReminderAsync(
+    internal static async Task RequestPreparerReminderAsync(
         TaskItem task,
         DateTime? clientDueAtUtc,
+        string officeTimeZoneId,
         IMessageBus bus,
         ICorrelationContext correlation
     )
@@ -100,11 +100,17 @@ public static class MoveTaskToWaitingOnClientHandler
             return;
 
         await bus.PublishAsync(
-            TaskReminderContracts.ClientResponseExpected(task, preparer, dueAtUtc, correlation.CorrelationId)
+            TaskReminderContracts.ClientResponseExpected(
+                task,
+                preparer,
+                dueAtUtc,
+                officeTimeZoneId,
+                correlation.CorrelationId
+            )
         );
     }
 
-    private static TaskWaitingOnClientIntegrationEvent BuildEvent(
+    internal static TaskWaitingOnClientIntegrationEvent BuildEvent(
         TaskItem task,
         Guid customerId,
         string correlationId

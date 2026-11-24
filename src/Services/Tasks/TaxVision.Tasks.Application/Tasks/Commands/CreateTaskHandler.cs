@@ -19,7 +19,9 @@ public sealed record CreateTaskCommand(
     string? DueTimeZoneId,
     bool DueIsStatutory,
     decimal? EstimatedHours,
-    DateOnly? DueOn = null
+    DateOnly? DueOn = null,
+    bool CanAssignOthers = true,
+    bool CanViewAllCustomers = true
 );
 
 /// <summary>
@@ -34,9 +36,14 @@ public static class CreateTaskHandler
         IUnitOfWork unitOfWork,
         ITaskMetrics metrics,
         IOfficeTimeZone zones,
+        ITaskCustomerAccess customers,
         CancellationToken ct
     )
     {
+        var allowed = await CheckAccessAsync(command, customers, ct);
+        if (allowed.IsFailure)
+            return Result.Failure<TaskResponse>(allowed.Error);
+
         var officeZone = command.DueOn is null ? null : await zones.ResolveAsync(command.TenantId, ct);
         var draft = BuildDraft(command, officeZone);
         if (draft.IsFailure)
@@ -81,4 +88,27 @@ public static class CreateTaskHandler
             command.DueOn,
             officeZone
         );
+
+    /// <summary>Darle la tarea a otro pide tasks.assign; ligarla a un cliente, poder verlo.</summary>
+    private static async Task<Result> CheckAccessAsync(
+        CreateTaskCommand command,
+        ITaskCustomerAccess customers,
+        CancellationToken ct
+    )
+    {
+        if (!command.CanAssignOthers && command.AssigneeUserId is { } other && other != command.ByUserId)
+            return Result.Failure(TaskErrors.Forbidden);
+        if (
+            command.CustomerId is { } customer
+            && !await customers.CanLinkAsync(
+                command.TenantId,
+                command.ByUserId,
+                command.CanViewAllCustomers,
+                customer,
+                ct
+            )
+        )
+            return Result.Failure(TaskErrors.Reference.CustomerNotVisible);
+        return Result.Success();
+    }
 }

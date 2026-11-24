@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
@@ -39,7 +40,7 @@ public static class DeleteTaskHandler
         if (!TaskAccessPolicy.CanMutate(found.Value, command.ByUserId, command.HasManageAll))
             return Result.Failure(TaskErrors.Forbidden);
 
-        var wasOpen = found.Value.Status is not (TaskItemStatus.Completed or TaskItemStatus.Cancelled);
+        var wasOpen = TaskItemStatuses.IsOpen(found.Value.Status);
         IReadOnlyList<TaskUnblockedIntegrationEvent> unblocked = wasOpen
             ? await unblocking.ApplyPredecessorClosedAsync(command.TenantId, command.TaskId, ct)
             : [];
@@ -47,15 +48,33 @@ public static class DeleteTaskHandler
         // Borrar la instancia abierta libera la serie y siembra la siguiente: para cortar la serie hay
         // que pausarla o terminarla, no borrar su ocurrencia.
         await seriesMaterializer.ApplyInstanceClosedAsync(found.Value, null, ct);
-        var closed = TaskReminderContracts.Closed(found.Value, "deleted", correlation.CorrelationId);
-
-        await hierarchy.DeleteWithDescendantsAsync(command.TenantId, command.TaskId, command.ByUserId, ct);
+        var branch = await hierarchy.DeleteWithDescendantsAsync(command.TenantId, command.TaskId, command.ByUserId, ct);
         await unitOfWork.SaveChangesAsync(ct);
 
         foreach (var notice in unblocked)
             await bus.PublishAsync(notice);
-        await bus.PublishAsync(closed);
+        foreach (var closed in RemindersToClose(command.TenantId, branch, correlation.CorrelationId))
+            await bus.PublishAsync(closed);
 
         return Result.Success();
     }
+
+    /// <summary>Los dos avisos de cada tarea de la rama: el del vencimiento y el de respuesta del cliente.</summary>
+    private static IEnumerable<ReminderTargetClosedIntegrationEvent> RemindersToClose(
+        Guid tenantId,
+        IReadOnlyList<Guid> branch,
+        string correlationId
+    ) =>
+        branch.SelectMany(id =>
+            new[]
+            {
+                TaskReminderContracts.Closed(tenantId, id, TaskReminderContracts.ClosureReasons.Deleted, correlationId),
+                TaskReminderContracts.ClientResponseClosed(
+                    tenantId,
+                    id,
+                    TaskReminderContracts.ClosureReasons.Deleted,
+                    correlationId
+                ),
+            }
+        );
 }

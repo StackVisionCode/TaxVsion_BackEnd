@@ -55,6 +55,7 @@ public sealed class CreateTaskHandlerTests
             new RecordingUnitOfWork(),
             new RecordingTaskMetrics(),
             new FixedOfficeZone("America/New_York"),
+            new EveryCustomer(),
             CancellationToken.None
         );
         await DomainEventReplay.DispatchIntoAsync(bus, tasks);
@@ -104,6 +105,7 @@ public sealed class CreateTaskHandlerTests
             new RecordingUnitOfWork(),
             new RecordingTaskMetrics(),
             new FixedOfficeZone("America/New_York"),
+            new EveryCustomer(),
             CancellationToken.None
         );
         await DomainEventReplay.DispatchIntoAsync(bus, tasks);

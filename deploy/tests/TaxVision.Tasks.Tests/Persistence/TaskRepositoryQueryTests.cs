@@ -213,7 +213,7 @@ public sealed class TaskRepositoryQueryTests
 
         await using var db = CreateContext();
         var filter = new TaskQueryFilter(AssigneeUserId: mine, OnlyOpen: true);
-        var items = await new TaskRepository(db).ListForBoardAsync(tenantId, filter, 50);
+        var items = (await new TaskRepository(db).SearchAsync(tenantId, filter, 1, 50, null)).Items;
 
         Assert.Equal([open.Id], items.Select(t => t.Id).ToArray());
     }

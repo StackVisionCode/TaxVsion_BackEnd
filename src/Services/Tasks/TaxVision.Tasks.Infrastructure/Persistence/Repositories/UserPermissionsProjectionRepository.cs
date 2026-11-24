@@ -2,6 +2,7 @@ using BuildingBlocks.Permissions;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Permissions.Abstractions;
 using TaxVision.Tasks.Domain.Permissions;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -18,7 +19,7 @@ public sealed class UserPermissionsProjectionRepository(TasksDbContext db)
         CancellationToken ct = default
     ) =>
         await db
-            .UserPermissionsProjections.IgnoreQueryFilters()
+            .UserPermissionsProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.UserId == userId, ct);
 
     public async Task AddAsync(UserPermissionsProjection projection, CancellationToken ct = default) =>
@@ -32,7 +33,7 @@ public sealed class UserPermissionsProjectionRepository(TasksDbContext db)
     {
         // RoleIds vive en JSON, así que el filtro por rol no es traducible a SQL: se filtra en memoria.
         var candidates = await db
-            .UserPermissionsProjections.IgnoreQueryFilters()
+            .UserPermissionsProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(p => p.TenantId == tenantId && p.IsActive)
             .ToListAsync(ct);
 
@@ -50,7 +51,7 @@ public sealed class UserPermissionsProjectionRepository(TasksDbContext db)
         // un scope sin TenantContext ambiente devuelve 0 filas y la autorización falla cerrada (403).
         var projection = await db
             .UserPermissionsProjections.AsNoTracking()
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.UserId == userId && p.IsActive, ct);
 
         return projection is null

@@ -239,6 +239,7 @@ public static class PermissionCatalog
     public const string TasksAssign = TasksPermissions.Assign;
     public const string TasksManageAll = TasksPermissions.ManageAll;
     public const string TasksTemplatesManage = TasksPermissions.TemplatesManage;
+    public const string TasksStatusesManage = TasksPermissions.StatusesManage;
     public const string TasksClientRequestsManage = TasksPermissions.ClientRequestsManage;
     public const string TasksPortalClientRequests = TasksPermissions.PortalClientRequests;
     public const string FormTemplatesRead = TasksPermissions.FormTemplatesRead;
@@ -2138,6 +2139,13 @@ public static class PermissionCatalog
             TasksTemplatesManage,
             "tasks",
             "Create and edit the firm's task templates",
+            false
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000233"),
+            TasksStatusesManage,
+            "tasks",
+            "Manage the office's task statuses",
             false
         ),
         new(

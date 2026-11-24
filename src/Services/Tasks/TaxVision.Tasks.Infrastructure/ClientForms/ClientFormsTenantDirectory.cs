@@ -10,7 +10,10 @@ internal sealed class ClientFormsTenantDirectory(TasksDbContext context) : IClie
 {
     public async Task<IReadOnlySet<Guid>> ListAvailableTenantIdsAsync(CancellationToken ct = default)
     {
-        var projections = await context.TenantPlanCodeProjections.IgnoreQueryFilters().AsNoTracking().ToArrayAsync(ct);
+        var projections = await context
+            .TenantPlanCodeProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .AsNoTracking()
+            .ToArrayAsync(ct);
         return projections
             .Where(item =>
                 item.EnabledModules.Contains(ClientFormsModule.RequiredModule, StringComparer.OrdinalIgnoreCase)

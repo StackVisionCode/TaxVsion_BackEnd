@@ -2009,8 +2009,8 @@ services:
       # P2 — Visibilidad por asignación (kit BuildingBlocks.CustomerVisibility): la reconciliación siembra la
       # proyección local desde Customer (token M2M PlatformTenant, ya configurado arriba con ServiceAuthClient).
       CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080
-      # Interruptor de la feature (OFF por defecto): "true" activa el filtro por asignación (tras sembrar).
-      Tasks__AssignmentVisibility__Enabled: ${TASKS_ASSIGNMENT_VISIBILITY_ENABLED:-false}
+      # Visibilidad por asignación, encendida por defecto (D-29); "false" la apaga.
+      Tasks__AssignmentVisibility__Enabled: ${TASKS_ASSIGNMENT_VISIBILITY_ENABLED:-true}
       Tasks__CloudStorage__BaseUrl: http://cloudstorage-api:8080
       # Turnstile protege los enlaces publicos de captacion. Sin ambas claves, el flujo queda cerrado.
       ClientForms__External__BotProtection__SiteKey: ${TASKS_CLIENT_FORMS_TURNSTILE_SITE_KEY:-}

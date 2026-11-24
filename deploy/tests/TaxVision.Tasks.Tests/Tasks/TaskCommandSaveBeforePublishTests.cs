@@ -20,6 +20,7 @@ using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 using TaxVision.Tasks.Tests.ClientRequests;
 using TaxVision.Tasks.Tests.Dependencies;
+using TaxVision.Tasks.Tests.Templates;
 using Wolverine;
 
 namespace TaxVision.Tasks.Tests.Tasks;
@@ -112,6 +113,8 @@ public sealed class TaskCommandSaveBeforePublishTests
             fixture.Bus.Published,
             message => Assert.Equal(fixture.Successor.Id, Assert.IsType<TaskUnblockedIntegrationEvent>(message).TaskId),
             message =>
+                Assert.Equal(fixture.Item.Id, Assert.IsType<ReminderTargetClosedIntegrationEvent>(message).TargetId),
+            message =>
                 Assert.Equal(fixture.Item.Id, Assert.IsType<ReminderTargetClosedIntegrationEvent>(message).TargetId)
         );
     }
@@ -158,7 +161,9 @@ public sealed class TaskCommandSaveBeforePublishTests
                 )
                 .AddSingleton<ITaskHierarchyService>(new NoOpHierarchy())
                 .AddSingleton<IClientRequestRepository>(new InMemoryClientRequestRepository(_request))
-                .AddSingleton<ITaskSeriesMaterializer>(new TaskSeriesMaterializer(tasks, series))
+                .AddSingleton<ITaskSeriesMaterializer>(
+                    new TaskSeriesMaterializer(tasks, series, new InMemoryTaskTemplateRepository())
+                )
                 .AddSingleton<ITaskUnblockingService>(sp =>
                     ActivatorUtilities.CreateInstance<TaskUnblockingService>(sp)
                 );
@@ -289,11 +294,11 @@ public sealed class TaskCommandSaveBeforePublishTests
         public Task ApplyChildReopenedAsync(Guid tenantId, Guid? parentTaskId, CancellationToken ct = default) =>
             Task.CompletedTask;
 
-        public Task DeleteWithDescendantsAsync(
+        public Task<IReadOnlyList<Guid>> DeleteWithDescendantsAsync(
             Guid tenantId,
             Guid taskId,
             Guid byUserId,
             CancellationToken ct = default
-        ) => Task.CompletedTask;
+        ) => Task.FromResult<IReadOnlyList<Guid>>([taskId]);
     }
 }

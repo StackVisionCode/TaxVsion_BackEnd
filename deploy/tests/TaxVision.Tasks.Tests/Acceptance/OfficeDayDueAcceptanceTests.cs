@@ -48,6 +48,7 @@ public sealed class OfficeDayDueAcceptanceTests
             new RecordingUnitOfWork(),
             new RecordingTaskMetrics(),
             new FixedOfficeZone("America/New_York"),
+            new EveryCustomer(),
             CancellationToken.None
         );
         await DomainEventReplay.DispatchIntoAsync(bus, tasks);

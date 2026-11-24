@@ -30,20 +30,6 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
-            var campaignDispatchSendRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignDispatchSendRepository>(serviceScope.ServiceProvider);
-            
-            /*
-            * The service registration for TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            */
-            var customerContactPolicyRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository>(serviceScope.ServiceProvider);
-            
-            /*
-            * The service registration for TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailProvider is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            */
-            var campaignEmailProvider = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailProvider>(serviceScope.ServiceProvider);
-            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
-            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             
             /*
             * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Common.SmsDispatch Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.SmsDispatch
@@ -99,6 +85,20 @@ namespace Internal.Generated.WolverineHandlers
             * The service registration for TaxVision.Notification.Application.Abstractions.ITenantHostResolver is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var notificationDispatcher = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Common.NotificationDispatcher>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var campaignDispatchSendRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignDispatchSendRepository>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var customerContactPolicyRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Directory.Abstractions.ICustomerContactPolicyRepository>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailProvider is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var campaignEmailProvider = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Email.Sending.Campaign.ICampaignEmailProvider>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
             var dispatchCampaignMessage = (TaxVision.Notification.Application.Common.DispatchCampaignMessage)context.Envelope.Message;
 

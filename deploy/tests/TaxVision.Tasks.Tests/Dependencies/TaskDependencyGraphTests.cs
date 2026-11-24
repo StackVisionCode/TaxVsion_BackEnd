@@ -62,6 +62,44 @@ public sealed class TaskDependencyGraphTests
         Assert.Equal(TaskErrors.Dependency.GraphTooLarge, result.Error);
     }
 
+    [Fact]
+    public void A_chain_deeper_than_the_query_is_reported_as_cut()
+    {
+        var (start, edges) = Chain(TaskDependencyGraph.MaxQueryLevel + 2);
+
+        Assert.True(TaskDependencyGraph.IsTruncated(start, edges));
+    }
+
+    [Fact]
+    public void A_chain_inside_the_query_limits_is_complete()
+    {
+        var (start, edges) = Chain(TaskDependencyGraph.MaxQueryLevel);
+
+        Assert.False(TaskDependencyGraph.IsTruncated(start, edges));
+    }
+
+    [Fact]
+    public void Reaching_the_row_limit_is_reported_as_cut()
+    {
+        var start = Guid.NewGuid();
+        var wide = new Dictionary<Guid, IReadOnlyList<Guid>>
+        {
+            [start] = [.. Enumerable.Range(0, TaskDependencyGraph.MaxQueryEdges).Select(_ => Guid.NewGuid())],
+        };
+
+        Assert.True(TaskDependencyGraph.IsTruncated(start, wide));
+    }
+
+    // Cadena start → n1 → … con `length` aristas.
+    private static (Guid Start, Dictionary<Guid, IReadOnlyList<Guid>> Edges) Chain(int length)
+    {
+        var ids = Enumerable.Range(0, length + 1).Select(_ => Guid.NewGuid()).ToArray();
+        var edges = new Dictionary<Guid, IReadOnlyList<Guid>>();
+        for (var i = 0; i < length; i++)
+            edges[ids[i]] = [ids[i + 1]];
+        return (ids[0], edges);
+    }
+
     private static Dictionary<Guid, IReadOnlyList<Guid>> Graph(params (Guid Task, Guid[] DependsOn)[] entries) =>
         entries.ToDictionary(e => e.Task, e => (IReadOnlyList<Guid>)e.DependsOn);
 }

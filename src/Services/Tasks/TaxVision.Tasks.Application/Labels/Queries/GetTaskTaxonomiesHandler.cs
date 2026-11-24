@@ -1,4 +1,4 @@
-using TaxVision.Tasks.Application.Labels.Abstractions;
+using TaxVision.Tasks.Application.Statuses.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Labels.Queries;
@@ -22,11 +22,11 @@ public static class GetTaskTaxonomiesHandler
 {
     public static async Task<TaskTaxonomiesResponse> Handle(
         GetTaskTaxonomiesQuery query,
-        ITaskLabelRepository labels,
+        IWorkflowStatusRepository labels,
         CancellationToken ct
     )
     {
-        var tenantLabels = await labels.ListAsync(query.TenantId, ct);
+        var tenantLabels = await labels.ListAsync(query.TenantId, false, ct);
 
         return new TaskTaxonomiesResponse(
             [.. Enum.GetNames<TaskItemStatus>()],

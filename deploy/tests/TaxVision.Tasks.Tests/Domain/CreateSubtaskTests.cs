@@ -96,6 +96,44 @@ public sealed class CreateSubtaskTests
             Now
         );
 
+    [Fact]
+    public void Each_subtask_adds_to_the_total_and_closing_it_does_not_take_it_away()
+    {
+        var parent = NewRoot();
+        var child = Subtask(parent).Value;
+
+        child.Complete(UserId, Now);
+        parent.RegisterSubtaskClosed();
+
+        Assert.Equal(1, parent.SubtaskCount);
+        Assert.Equal(0, parent.OpenSubtaskCount);
+    }
+
+    [Fact]
+    public void The_cap_counts_every_subtask_not_only_the_open_ones()
+    {
+        var parent = NewRoot();
+        for (var i = 0; i < TaskItem.MaxDirectChildren; i++)
+        {
+            Subtask(parent).Value.Complete(UserId, Now);
+            parent.RegisterSubtaskClosed();
+        }
+
+        var extra = TaskItem.CreateSubtask(
+            parent,
+            UserId,
+            TaskTitle.Create("One more").Value,
+            null,
+            TaskPriority.Normal,
+            null,
+            null,
+            null,
+            Now
+        );
+
+        Assert.Equal(TaskErrors.TooManyChildren(TaskItem.MaxDirectChildren), extra.Error);
+    }
+
     private static TaskItem NewRoot(TaskReference? reference = null) =>
         TaskItem
             .Create(

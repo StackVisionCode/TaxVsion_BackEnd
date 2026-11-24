@@ -21,21 +21,6 @@ public sealed class TasksControllerTests
     private static readonly Guid Tenant = Guid.NewGuid();
     private static readonly Guid Actor = Guid.NewGuid();
 
-    [Theory]
-    [InlineData(true, "true")]
-    [InlineData(false, null)]
-    public async Task Board_flags_a_cut_in_a_header_and_keeps_the_body(bool truncated, string? header)
-    {
-        var board = new TaskBoardResponse([], 500) { Truncated = truncated };
-        var (controller, invoked) = Controller([TasksPermissions.Read], _ => board);
-
-        var result = await controller.Board(null, null, null, default);
-
-        Assert.Same(board, Assert.IsType<OkObjectResult>(result).Value);
-        Assert.Equal(500, Assert.IsType<GetTaskBoardQuery>(Assert.Single(invoked)).Take);
-        Assert.Equal(header, controller.Response.Headers["X-Result-Truncated"].FirstOrDefault());
-    }
-
     [Fact]
     public async Task An_unknown_scope_is_a_bad_request()
     {

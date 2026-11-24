@@ -5,6 +5,7 @@ using TaxVision.Tasks.ClientForms.Domain.Requests;
 using TaxVision.Tasks.Domain.ClientRequests;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -13,16 +14,16 @@ internal sealed class CivilDueRezoneStore(TasksDbContext context) : ICivilDueRez
 {
     public async Task<IReadOnlyList<TaskItem>> OpenTasksWithCivilDuesAsync(
         Guid tenantId,
-        string previousTimeZoneId,
+        IReadOnlyCollection<string> timeZoneIds,
         CancellationToken ct
     ) =>
         await context
-            .Tasks.IgnoreQueryFilters()
+            .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(t =>
                 t.TenantId == tenantId
                 && t.Status != TaskItemStatus.Completed
                 && t.Status != TaskItemStatus.Cancelled
-                && ((t.Due != null && t.Due.TimeZoneId == previousTimeZoneId) || t.ClientDueOn != null)
+                && ((t.Due != null && timeZoneIds.Contains(t.Due.TimeZoneId)) || t.ClientDueOn != null)
             )
             .ToListAsync(ct);
 
@@ -31,7 +32,7 @@ internal sealed class CivilDueRezoneStore(TasksDbContext context) : ICivilDueRez
         CancellationToken ct
     ) =>
         await context
-            .ClientRequests.IgnoreQueryFilters()
+            .ClientRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(r =>
                 r.TenantId == tenantId
                 && r.DueOn != null
@@ -39,24 +40,25 @@ internal sealed class CivilDueRezoneStore(TasksDbContext context) : ICivilDueRez
             )
             .ToListAsync(ct);
 
-    public async Task<IReadOnlyList<TaskSeries>> ActiveSeriesInZoneAsync(
+    // Pausadas también: al reanudar tienen que vencer en la zona nueva.
+    public async Task<IReadOnlyList<TaskSeries>> SeriesToRezoneAsync(
         Guid tenantId,
-        string previousTimeZoneId,
+        IReadOnlyCollection<string> timeZoneIds,
         CancellationToken ct
     ) =>
         (
             await context
-                .TaskSeries.IgnoreQueryFilters()
-                .Where(s => s.TenantId == tenantId && s.Status == SeriesStatus.Active)
+                .TaskSeries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+                .Where(s => s.TenantId == tenantId && s.Status != SeriesStatus.Ended)
                 .ToListAsync(ct)
         )
-            // La zona vive dentro de la regla (objeto de valor): el filtro fino lo hace el dominio.
-            .Where(s => s.Rule.TimeZoneId == previousTimeZoneId)
+            // La zona vive dentro de la regla (objeto de valor): el filtro fino se hace en memoria.
+            .Where(s => timeZoneIds.Contains(s.Rule.TimeZoneId))
             .ToList();
 
     public async Task<IReadOnlyList<FormRequest>> OpenWithDueAsync(Guid tenantId, CancellationToken ct) =>
         await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(r =>
                 r.TenantId == tenantId
                 && r.DueOn != null

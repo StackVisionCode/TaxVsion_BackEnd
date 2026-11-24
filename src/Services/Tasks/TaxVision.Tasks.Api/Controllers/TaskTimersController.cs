@@ -22,7 +22,7 @@ namespace TaxVision.Tasks.Api.Controllers;
 [ApiController]
 [Route("tasks")]
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
-public sealed class TaskTimersController(IMessageBus bus) : ControllerBase
+public sealed class TaskTimersController(IMessageBus bus, IUserPermissionsSource permissions) : ControllerBase
 {
     /// <summary>Ventana por defecto del reporte cuando el llamador no manda rango.</summary>
     private const int DefaultReportDays = 30;
@@ -65,11 +65,12 @@ public sealed class TaskTimersController(IMessageBus bus) : ControllerBase
     [ProducesResponseType<IReadOnlyList<TaskTimerResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> ListForTask(Guid id, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<TaskTimerResponse>>>(
-            new ListTaskTimersQuery(tenantId, id),
+            new ListTaskTimersQuery(tenantId, id, userId, canViewAll),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -87,16 +88,17 @@ public sealed class TaskTimersController(IMessageBus bus) : ControllerBase
         CancellationToken ct
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var actorId))
             return Unauthorized();
 
         var to = toUtc ?? DateTime.UtcNow;
         var from = fromUtc ?? to.AddDays(-DefaultReportDays);
+        var canViewOthers = await permissions.HasPermissionAsync(User, UserManagementPermissions.UsersWorkView, ct);
 
-        var result = await bus.InvokeAsync<IReadOnlyList<TaskTimerReportRow>>(
-            new GetTaskTimerReportQuery(tenantId, from, to, userId),
+        var result = await bus.InvokeAsync<Result<IReadOnlyList<TaskTimerReportRow>>>(
+            new GetTaskTimerReportQuery(tenantId, from, to, userId, actorId, canViewOthers),
             ct
         );
-        return Ok(result);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

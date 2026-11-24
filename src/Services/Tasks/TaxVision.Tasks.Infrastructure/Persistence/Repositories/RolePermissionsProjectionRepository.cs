@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Permissions.Abstractions;
 using TaxVision.Tasks.Domain.Permissions;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -13,7 +14,7 @@ public sealed class RolePermissionsProjectionRepository(TasksDbContext db) : IRo
         CancellationToken ct = default
     ) =>
         await db
-            .RolePermissionsProjections.IgnoreQueryFilters()
+            .RolePermissionsProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .FirstOrDefaultAsync(p => p.TenantId == tenantId && p.Id == roleId, ct);
 
     public async Task AddAsync(RolePermissionsProjection projection, CancellationToken ct = default) =>
@@ -25,7 +26,7 @@ public sealed class RolePermissionsProjectionRepository(TasksDbContext db) : IRo
         CancellationToken ct = default
     ) =>
         await db
-            .RolePermissionsProjections.IgnoreQueryFilters()
+            .RolePermissionsProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(p => p.TenantId == tenantId && roleIds.Contains(p.Id))
             .ToListAsync(ct);
 }

@@ -2,7 +2,7 @@ using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Dependencies;
-using TaxVision.Tasks.Domain.Labels;
+using TaxVision.Tasks.Domain.Statuses;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 using TaxVision.Tasks.Infrastructure.Persistence;
@@ -85,7 +85,7 @@ public sealed class TaskTenantIsolationTests
         var repository = new TaskRepository(db);
         var mine = world.Mine;
 
-        var board = await repository.ListForBoardAsync(mine, new TaskQueryFilter(OnlyOpen: true), 500);
+        var board = (await repository.SearchAsync(mine, new TaskQueryFilter(OnlyOpen: true), 1, 500, null)).Items;
         var calendar = await repository.ListForCalendarAsync(
             mine,
             Now.AddDays(-30),
@@ -145,7 +145,7 @@ public sealed class TaskTenantIsolationTests
         var world = await SeedTwoTenantsAsync();
 
         await using var db = CreateContext();
-        var repository = new TaskLabelRepository(db);
+        var repository = new WorkflowStatusRepository(db);
         var mine = world.Mine;
 
         Assert.True((await repository.GetByIdAsync(mine, world.TheirLabel.Id)).IsFailure);
@@ -169,8 +169,8 @@ public sealed class TaskTenantIsolationTests
         TaskItem TheirTask,
         TaskItem TheirParent,
         TaskItem TheirChild,
-        TaskLabel MyLabel,
-        TaskLabel TheirLabel
+        WorkflowStatus MyLabel,
+        WorkflowStatus TheirLabel
     );
 
     /// <summary>
@@ -204,7 +204,7 @@ public sealed class TaskTenantIsolationTests
 
         await using var db = CreateContext();
         db.Tasks.AddRange(myTask, myParent, myChild, theirTask, theirParent, theirChild);
-        db.TaskLabels.AddRange(myLabel, theirLabel, NewLabel(theirs, OnlyTheirsCode));
+        db.WorkflowStatuses.AddRange(myLabel, theirLabel, NewLabel(theirs, OnlyTheirsCode));
         db.TaskDependencies.AddRange(
             TaskDependency.Create(mine, myChild.Id, myParent.Id, assignee, Now).Value,
             TaskDependency.Create(theirs, theirChild.Id, theirParent.Id, assignee, Now).Value
@@ -225,12 +225,13 @@ public sealed class TaskTenantIsolationTests
         );
     }
 
-    private static TaskLabel NewLabel(Guid tenantId, TaskLabelCode code) =>
-        TaskLabel
+    private static WorkflowStatus NewLabel(Guid tenantId, TaskLabelCode code) =>
+        WorkflowStatus
             .Create(
                 tenantId,
                 code,
-                "Esperando documentos",
+                // Un nombre por código: dentro de una oficina el nombre de un estado activo es único.
+                $"Esperando documentos ({code.Value})",
                 LabelColor.Create("#2E7D32").Value,
                 TaskItemStatus.NotStarted,
                 1

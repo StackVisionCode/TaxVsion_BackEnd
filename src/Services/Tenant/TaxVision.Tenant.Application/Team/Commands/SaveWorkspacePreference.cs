@@ -35,7 +35,7 @@ public static class SaveWorkspacePreferenceHandler
     {
         if (!WorkspacePreferenceKeys.IsKnown(command.Key))
             return Result.Failure<WorkspacePreferenceView>(WorkspacePreferenceErrors.UnknownKey);
-        var content = DashboardLayout.Parse(command.SchemaVersion, command.PayloadJson);
+        var content = WorkspacePreferenceContent.Parse(command.Key, command.SchemaVersion, command.PayloadJson);
         if (content.IsFailure)
             return Result.Failure<WorkspacePreferenceView>(content.Error);
 
@@ -60,7 +60,7 @@ public static class SaveWorkspacePreferenceHandler
 
     private static async Task<Result<(WorkspacePreference Row, bool Changed)>> ApplyAsync(
         SaveWorkspacePreferenceCommand command,
-        DashboardLayout content,
+        IWorkspacePreferenceContent content,
         IWorkspacePreferenceRepository preferences,
         DateTime nowUtc,
         CancellationToken ct

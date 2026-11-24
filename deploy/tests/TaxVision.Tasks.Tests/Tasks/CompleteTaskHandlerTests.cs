@@ -61,6 +61,100 @@ public sealed class CompleteTaskHandlerTests
         Assert.True(allowed.IsSuccess);
     }
 
+    [Fact]
+    public async Task Without_the_option_open_subtasks_still_block_completion()
+    {
+        var parent = NewTask();
+        var child = NewSubtask(parent, "Collect W-2");
+        var tree = new Tree(parent, child);
+
+        var result = await tree.CompleteAsync(parent, completeOpenSubtasks: false);
+
+        Assert.Equal("Task.HasOpenSubtasks", result.Error.Code);
+        Assert.Equal(TaskItemStatus.NotStarted, child.Status);
+    }
+
+    [Fact]
+    public async Task Complete_all_closes_every_open_subtask_and_then_the_task()
+    {
+        var parent = NewTask();
+        var child = NewSubtask(parent, "Collect W-2");
+        var grandchild = NewSubtask(child, "Scan W-2");
+        var dropped = NewSubtask(parent, "Old step");
+        dropped.Cancel("Not needed", Owner, Now);
+        parent.RegisterSubtaskClosed();
+        var tree = new Tree(parent, child, grandchild, dropped);
+
+        var result = await tree.CompleteAsync(parent, completeOpenSubtasks: true);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaskItemStatus.Completed, grandchild.Status);
+        Assert.Equal(TaskItemStatus.Completed, child.Status);
+        Assert.Equal(TaskItemStatus.Completed, parent.Status);
+        Assert.Equal(TaskItemStatus.Cancelled, dropped.Status);
+        Assert.Equal(0, parent.OpenSubtaskCount);
+    }
+
+    [Fact]
+    public async Task Complete_all_with_a_blocked_subtask_changes_nothing_and_names_it()
+    {
+        var parent = NewTask();
+        var free = NewSubtask(parent, "Collect W-2");
+        var waiting = NewSubtask(parent, "Client signature");
+        waiting.RegisterBlockerAdded();
+        var tree = new Tree(parent, free, waiting);
+
+        var result = await tree.CompleteAsync(parent, completeOpenSubtasks: true);
+
+        Assert.Equal("Task.Subtask.Blocked", result.Error.Code);
+        Assert.Contains("Client signature", result.Error.Message);
+        Assert.Equal(TaskItemStatus.NotStarted, free.Status);
+        Assert.Equal(TaskItemStatus.NotStarted, parent.Status);
+        Assert.Equal(2, parent.OpenSubtaskCount);
+    }
+
+    /// <summary>Servicios reales de jerarquía y desbloqueo: el contador de la madre baja de verdad.</summary>
+    private sealed class Tree(params TaskItem[] seed)
+    {
+        private readonly InMemoryTaskRepository _tasks = new(seed);
+        private readonly InMemoryTaskDependencyRepository _dependencies = new();
+
+        public Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> CompleteAsync(
+            TaskItem task,
+            bool completeOpenSubtasks
+        ) =>
+            CompleteTaskHandler.Handle(
+                new CompleteTaskCommand(TenantId, task.Id, Owner, false, completeOpenSubtasks),
+                _tasks,
+                new TaxVision.Tasks.Application.Dependencies.TaskUnblockingService(
+                    _tasks,
+                    _dependencies,
+                    new NoOpCorrelationContext()
+                ),
+                new TaxVision.Tasks.Application.Hierarchy.TaskHierarchyService(_tasks, _dependencies),
+                new RecordingSeriesMaterializer(),
+                new RecordingUnitOfWork(),
+                new FakeMessageBus(),
+                new RecordingTaskMetrics(),
+                CancellationToken.None
+            );
+    }
+
+    private static TaskItem NewSubtask(TaskItem parent, string title) =>
+        TaskItem
+            .CreateSubtask(
+                parent,
+                Owner,
+                TaskTitle.Create(title).Value,
+                null,
+                TaskPriority.Normal,
+                null,
+                null,
+                Owner,
+                Now
+            )
+            .Value;
+
     private sealed class Fixture(TaskItem task)
     {
         public InMemoryTaskRepository Tasks { get; } = new(task);
@@ -126,12 +220,12 @@ public sealed class CompleteTaskHandlerTests
         public Task ApplyChildReopenedAsync(Guid tenantId, Guid? parentTaskId, CancellationToken ct = default) =>
             Task.CompletedTask;
 
-        public Task DeleteWithDescendantsAsync(
+        public Task<IReadOnlyList<Guid>> DeleteWithDescendantsAsync(
             Guid tenantId,
             Guid taskId,
             Guid byUserId,
             CancellationToken ct = default
-        ) => Task.CompletedTask;
+        ) => Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
     private static TaskItem NewTask() =>

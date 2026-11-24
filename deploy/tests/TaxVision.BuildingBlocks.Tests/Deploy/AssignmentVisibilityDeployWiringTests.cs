@@ -45,9 +45,13 @@ public sealed class AssignmentVisibilityDeployWiringTests
     {
         var compose = ReadRepoFile("deploy/docker/docker-compose.yml");
 
-        // Rollout seguro: el default en el compose es siempre false (se enciende por secret en P2).
-        Assert.Contains("${" + varName + ":-false}", compose);
+        // Rollout seguro: apagado por defecto, salvo los que el dueño ya decidió encender (Tasks, D-29).
+        var expected = EnabledByDefault.Contains(varName) ? "true" : "false";
+        Assert.Contains("${" + varName + ":-" + expected + "}", compose);
     }
+
+    /// <summary>Visibilidad encendida por defecto por decisión del dueño; el secreto en "false" la apaga.</summary>
+    private static readonly HashSet<string> EnabledByDefault = ["TASKS_ASSIGNMENT_VISIBILITY_ENABLED"];
 
     [Theory]
     [MemberData(nameof(AssignmentVisibilityVars))]

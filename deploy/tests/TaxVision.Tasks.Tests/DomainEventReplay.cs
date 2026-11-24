@@ -65,12 +65,25 @@ internal static class DomainEventReplay
         return emitted;
     }
 
+    /// <summary>Como Wolverine: todos los handlers del evento, uno tras otro (p. ej. el aviso y el historial).</summary>
     private static async Task<IEnumerable<object>> HandleAsync(IDomainEvent domainEvent, ITaskRepository tasks)
     {
-        var method =
-            HandleMethods.SingleOrDefault(m => m.GetParameters()[0].ParameterType == domainEvent.GetType())
-            ?? throw new InvalidOperationException($"Sin handler de dominio para {domainEvent.GetType().Name}.");
+        var methods = HandleMethods.Where(m => m.GetParameters()[0].ParameterType == domainEvent.GetType()).ToList();
+        if (methods.Count == 0)
+            throw new InvalidOperationException($"Sin handler de dominio para {domainEvent.GetType().Name}.");
 
+        var emitted = new List<object>();
+        foreach (var method in methods)
+            emitted.AddRange(await InvokeAsync(method, domainEvent, tasks));
+        return emitted;
+    }
+
+    private static async Task<IEnumerable<object>> InvokeAsync(
+        MethodInfo method,
+        IDomainEvent domainEvent,
+        ITaskRepository tasks
+    )
+    {
         var args = method.GetParameters().Select(p => Resolve(p.ParameterType, domainEvent, tasks)).ToArray();
         var result = method.Invoke(null, args);
         if (result is Task task)
@@ -95,6 +108,9 @@ internal static class DomainEventReplay
             _ when type == typeof(ITaskRepository) => tasks,
             _ when type == typeof(ICorrelationContext) => new NoOpCorrelationContext(),
             _ when type == typeof(CancellationToken) => CancellationToken.None,
+            _ when type == typeof(TaxVision.Tasks.Application.Activity.Abstractions.ITaskActivityRepository) =>
+                new InMemoryTaskActivityRepository(),
+            _ when type == typeof(BuildingBlocks.Persistence.IUnitOfWork) => new RecordingUnitOfWork(),
             _ => throw new InvalidOperationException($"El replay no sabe resolver {type.Name}."),
         };
 }

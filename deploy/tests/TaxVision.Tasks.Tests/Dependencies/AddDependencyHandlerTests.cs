@@ -1,4 +1,5 @@
 using TaxVision.Tasks.Application.Dependencies.Commands;
+using TaxVision.Tasks.Domain.Dependencies;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 
@@ -221,6 +222,93 @@ public sealed class AddDependencyHandlerTests
         Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
         Assert.True(successor.IsBlocked);
     }
+
+    // ---------------------------------------------------------------------
+    // Jerarquía: una tarea no puede esperar a su madre (ni a su abuela), ni la madre a su hija.
+    // Con cualquiera de las dos, ninguna se podía cerrar.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_subtask_cannot_wait_on_the_task_it_belongs_to()
+    {
+        var parent = NewTask();
+        var child = NewSubtask(parent);
+        var fixture = new Fixture(parent, child);
+
+        var result = await fixture.AddAsync(child.Id, parent.Id);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Task.Dependency.WaitsOnOwnParent", result.Error.Code);
+        Assert.False(child.IsBlocked);
+    }
+
+    [Fact]
+    public async Task A_sub_subtask_cannot_wait_on_its_grandparent()
+    {
+        var root = NewTask();
+        var child = NewSubtask(root);
+        var grandchild = NewSubtask(child);
+        var fixture = new Fixture(root, child, grandchild);
+
+        var result = await fixture.AddAsync(grandchild.Id, root.Id);
+
+        Assert.Equal("Task.Dependency.WaitsOnOwnParent", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task A_completed_or_cancelled_task_cannot_start_waiting_on_another()
+    {
+        var done = NewTask();
+        done.Complete(Guid.NewGuid(), DateTime.UtcNow);
+        var blocker = NewTask();
+        var fixture = new Fixture(done, blocker);
+
+        var result = await fixture.AddAsync(done.Id, blocker.Id);
+
+        Assert.Equal(TaskErrors.Dependency.SuccessorClosed, result.Error);
+        Assert.False(done.IsBlocked);
+    }
+
+    [Fact]
+    public async Task A_task_cannot_wait_on_its_own_subtask()
+    {
+        var parent = NewTask();
+        var child = NewSubtask(parent);
+        var fixture = new Fixture(parent, child);
+
+        var result = await fixture.AddAsync(parent.Id, child.Id);
+
+        Assert.Equal(TaskErrors.Dependency.AncestorOfSelf, result.Error);
+    }
+
+    [Fact]
+    public async Task A_chain_too_long_to_check_is_rejected_instead_of_accepted_blindly()
+    {
+        var chain = Enumerable.Range(0, TaskDependencyGraph.MaxQueryLevel + 3).Select(_ => NewTask()).ToArray();
+        var newcomer = NewTask();
+        var fixture = new Fixture([.. chain, newcomer]);
+        for (var i = 0; i < chain.Length - 1; i++)
+            await fixture.AddAsync(chain[i].Id, chain[i + 1].Id);
+
+        var result = await fixture.AddAsync(newcomer.Id, chain[0].Id);
+
+        Assert.Equal(TaskErrors.Dependency.GraphTooLarge, result.Error);
+    }
+
+    private static TaskItem NewSubtask(TaskItem parent) =>
+        TaskItem
+            .CreateSubtask(
+                parent,
+                UserId,
+                TaskTitle.Create("Juntar los W-2").Value,
+                null,
+                TaskPriority.Normal,
+                null,
+                null,
+                UserId,
+                Now
+            )
+            .Value;
 
     private static TaskItem NewTask(Guid? tenantId = null) =>
         TaskItem

@@ -40,6 +40,7 @@ public sealed class CloudStorageDbContext(DbContextOptions<CloudStorageDbContext
     public DbSet<TenantStoragePolicy> StoragePolicies => Set<TenantStoragePolicy>();
     public DbSet<CloudProviderOAuthState> CloudProviderOAuthStates => Set<CloudProviderOAuthState>();
     public DbSet<TenantCloudFileCopy> CloudFileCopies => Set<TenantCloudFileCopy>();
+    public DbSet<TenantCloudFolder> CloudFolders => Set<TenantCloudFolder>();
     public DbSet<StorageAccessLog> AccessLogs => Set<StorageAccessLog>();
     public DbSet<Folder> Folders => Set<Folder>();
     public DbSet<ShareLink> ShareLinks => Set<ShareLink>();

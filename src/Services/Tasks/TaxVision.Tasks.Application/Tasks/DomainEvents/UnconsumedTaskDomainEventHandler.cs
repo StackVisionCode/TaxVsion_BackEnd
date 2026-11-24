@@ -10,20 +10,6 @@ namespace TaxVision.Tasks.Application.Tasks.DomainEvents;
 /// </summary>
 public static class UnconsumedTaskDomainEventHandler
 {
-    public static void Handle(TaskDeletedDomainEvent _) { }
-
-    public static void Handle(TaskStartedDomainEvent _) { }
-
-    public static void Handle(TaskMovedToNotStartedDomainEvent _) { }
-
-    public static void Handle(TaskUnassignedDomainEvent _) { }
-
-    public static void Handle(TaskDueChangedDomainEvent _) { }
-
-    public static void Handle(TaskPriorityChangedDomainEvent _) { }
-
-    public static void Handle(TaskMovedToWaitingOnClientDomainEvent _) { }
-
     public static void Handle(TaskUnblockedDomainEvent _) { }
 
     public static void Handle(TaskAttachmentRejectedDomainEvent _) { }

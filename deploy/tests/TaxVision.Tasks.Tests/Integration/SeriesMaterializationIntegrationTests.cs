@@ -83,7 +83,8 @@ public sealed class SeriesMaterializationIntegrationTests : IAsyncLifetime
             ))
             .AddScoped<ITaskSeriesMaterializer>(sp => new TaskSeriesMaterializer(
                 new TaskRepository(sp.GetRequiredService<TasksDbContext>()),
-                sp.GetRequiredService<ITaskSeriesRepository>()
+                sp.GetRequiredService<ITaskSeriesRepository>(),
+                new TaskTemplateRepository(sp.GetRequiredService<TasksDbContext>())
             ))
             .BuildServiceProvider();
 
@@ -96,9 +97,16 @@ public sealed class SeriesMaterializationIntegrationTests : IAsyncLifetime
     // El barrido real cruza tenants; acá solo ve el de la prueba para no tocar series ajenas.
     internal sealed class OwnTenantSeries(TasksDbContext context, Guid tenantId) : ITaskSeriesRepository
     {
+        public Task<(IReadOnlyList<TaskSeries> Items, int Total)> ListPageAsync(
+            SeriesListFilter filter,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         private readonly TaskSeriesRepository _inner = new(context);
 
         public void Add(TaskSeries series) => _inner.Add(series);
+
+        public void ExpectVersion(TaskSeries series, byte[] rowVersion) => _inner.ExpectVersion(series, rowVersion);
 
         public Task<Result<TaskSeries>> GetByIdAsync(Guid tenant, Guid seriesId, CancellationToken ct = default) =>
             _inner.GetByIdAsync(tenant, seriesId, ct);
@@ -111,6 +119,7 @@ public sealed class SeriesMaterializationIntegrationTests : IAsyncLifetime
 
         public async Task<IReadOnlyList<TaskSeries>> ListPendingMaterializationAsync(
             int take,
+            DateTime nowUtc,
             CancellationToken ct = default
         ) =>
             await context

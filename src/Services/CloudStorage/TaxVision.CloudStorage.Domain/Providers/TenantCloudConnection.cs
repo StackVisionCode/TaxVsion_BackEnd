@@ -140,10 +140,15 @@ public sealed class TenantCloudFileCopy : TenantEntity
 {
     private TenantCloudFileCopy() { }
 
+    public const int RemotePathMaxLength = 1024;
+
     public Guid FileId { get; private set; }
     public string Provider { get; private set; } = "google-drive";
     public string RemoteFileId { get; private set; } = string.Empty;
     public string ChecksumSha256 { get; private set; } = string.Empty;
+
+    /// <summary>Ruta real en el proveedor (con el sufijo que puso al renombrar). Null en copias viejas o si el proveedor no la da.</summary>
+    public string? RemotePath { get; private set; }
 
     public static TenantCloudFileCopy Create(Guid tenantId, Guid fileId, string remoteFileId, string checksum) =>
         Create(tenantId, fileId, "google-drive", remoteFileId, checksum);
@@ -153,7 +158,8 @@ public sealed class TenantCloudFileCopy : TenantEntity
         Guid fileId,
         string provider,
         string remoteFileId,
-        string checksum
+        string checksum,
+        string? remotePath = null
     )
     {
         var copy = new TenantCloudFileCopy
@@ -162,6 +168,7 @@ public sealed class TenantCloudFileCopy : TenantEntity
             Provider = provider,
             RemoteFileId = remoteFileId,
             ChecksumSha256 = checksum,
+            RemotePath = remotePath is { Length: > 0 and <= RemotePathMaxLength } ? remotePath : null,
         };
         copy.SetTenant(tenantId);
         return copy;

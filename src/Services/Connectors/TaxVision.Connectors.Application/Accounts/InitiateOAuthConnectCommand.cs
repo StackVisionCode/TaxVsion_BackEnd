@@ -17,7 +17,9 @@ public sealed record InitiateOAuthConnectCommand(
     // true = buzón de oficina (compartido, sin restricción de identidad); false = personal del usuario.
     bool AsOffice = false,
     // Viaja en el state para que el callback sepa que no hay proyección que validar.
-    bool InitiatorIsPlatformAdmin = false
+    bool InitiatorIsPlatformAdmin = false,
+    // true = el origen salió del header Origin y no del cuerpo: si no sirve se ignora en vez de rechazar.
+    bool ReturnOriginFromHeader = false
 );
 
 public sealed record InitiateOAuthConnectResult(string AuthorizationUrl);

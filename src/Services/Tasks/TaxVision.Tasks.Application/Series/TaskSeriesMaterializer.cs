@@ -1,24 +1,47 @@
 using BuildingBlocks.Results;
 using TaxVision.Tasks.Application.Series.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
+using TaxVision.Tasks.Application.Templates;
+using TaxVision.Tasks.Application.Templates.Abstractions;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 
 namespace TaxVision.Tasks.Application.Series;
 
-public sealed class TaskSeriesMaterializer(ITaskRepository tasks, ITaskSeriesRepository series)
-    : ITaskSeriesMaterializer
+public sealed class TaskSeriesMaterializer(
+    ITaskRepository tasks,
+    ITaskSeriesRepository series,
+    ITaskTemplateRepository templates
+) : ITaskSeriesMaterializer
 {
     public Task<Result<TaskItem>> MaterializeNextAsync(
         TaskSeries taskSeries,
         DateTime? lastDueUtc,
         DateTime? completedAtUtc,
         CancellationToken ct = default
-    ) => Task.FromResult(Materialize(taskSeries, lastDueUtc, completedAtUtc, recurringOccurrence: true));
+    ) => MaterializeAsync(taskSeries, lastDueUtc, completedAtUtc, recurringOccurrence: true, ct);
 
     public Task<Result<TaskItem>> MaterializeFirstAsync(TaskSeries taskSeries, CancellationToken ct = default) =>
-        Task.FromResult(Materialize(taskSeries, null, null, recurringOccurrence: false));
+        MaterializeAsync(taskSeries, null, null, recurringOccurrence: false, ct);
+
+    /// <summary>La ocurrencia y, si la serie salió de una plantilla, su vínculo y sus archivos de referencia.</summary>
+    private async Task<Result<TaskItem>> MaterializeAsync(
+        TaskSeries taskSeries,
+        DateTime? lastDueUtc,
+        DateTime? completedAtUtc,
+        bool recurringOccurrence,
+        CancellationToken ct
+    )
+    {
+        var created = Materialize(taskSeries, lastDueUtc, completedAtUtc, recurringOccurrence);
+        if (created.IsFailure || taskSeries.TemplateId is not { } templateId)
+            return created;
+        var template = await templates.GetByIdAsync(taskSeries.TenantId, templateId, ct);
+        if (template.IsSuccess)
+            TaskTemplateInstantiator.LinkOccurrence(template.Value, created.Value, taskSeries.EffectiveOwnerUserId);
+        return created;
+    }
 
     /// <summary>
     /// Todo lo que hace vive en memoria: la serie y la tarea ya están rastreadas por el contexto y las
@@ -36,7 +59,7 @@ public sealed class TaskSeriesMaterializer(ITaskRepository tasks, ITaskSeriesRep
         {
             // La regla se agotó: la serie termina en silencio, no es un error del usuario.
             if (planned.Error == TaskErrors.Series.NoFurtherOccurrence)
-                taskSeries.End();
+                taskSeries.EndOnItsOwn();
 
             return Result.Failure<TaskItem>(planned.Error);
         }
@@ -54,7 +77,7 @@ public sealed class TaskSeriesMaterializer(ITaskRepository tasks, ITaskSeriesRep
             blueprint.Title,
             blueprint.Description,
             blueprint.Priority,
-            blueprint.Reference,
+            taskSeries.ReferenceFor(occurrence.DueAtUtc),
             due.Value,
             blueprint.Estimated,
             blueprint.AssigneeUserId,
@@ -97,4 +120,10 @@ public sealed class TaskSeriesMaterializer(ITaskRepository tasks, ITaskSeriesRep
         var next = await MaterializeNextAsync(taskSeries, task.Due?.DueAtUtc, completedAtUtc, ct);
         return next.IsSuccess ? next.Value : null;
     }
+
+    public Task<Result> CanReopenAsync(TaskItem task, CancellationToken ct = default) =>
+        SeriesOccurrenceReopening.CheckAsync([task], series, ct);
+
+    public Task RegisterReopenedAsync(TaskItem task, CancellationToken ct = default) =>
+        SeriesOccurrenceReopening.RegisterAsync(task, series, ct);
 }

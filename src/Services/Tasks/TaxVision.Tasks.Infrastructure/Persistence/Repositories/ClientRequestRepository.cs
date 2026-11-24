@@ -2,6 +2,7 @@ using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.ClientRequests.Abstractions;
 using TaxVision.Tasks.Domain.ClientRequests;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -16,7 +17,7 @@ internal sealed class ClientRequestRepository(TasksDbContext context) : IClientR
     public async Task<Result<ClientRequest>> GetByIdAsync(Guid tenantId, Guid requestId, CancellationToken ct = default)
     {
         var request = await context
-            .ClientRequests.IgnoreQueryFilters()
+            .ClientRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(r => r.Documents)
             .FirstOrDefaultAsync(r => r.TenantId == tenantId && r.Id == requestId, ct);
 
@@ -30,7 +31,7 @@ internal sealed class ClientRequestRepository(TasksDbContext context) : IClientR
         CancellationToken ct = default
     ) =>
         await context
-            .ClientRequests.IgnoreQueryFilters()
+            .ClientRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(r => r.Documents)
             .Where(r => r.TenantId == tenantId && r.CustomerId == customerId)
             .Where(r =>
@@ -46,7 +47,7 @@ internal sealed class ClientRequestRepository(TasksDbContext context) : IClientR
         CancellationToken ct = default
     ) =>
         await context
-            .ClientRequests.IgnoreQueryFilters()
+            .ClientRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(r => r.Documents)
             .Where(r => r.TenantId == tenantId && r.TaskId == taskId)
             .OrderBy(r => r.CreatedAtUtc)
@@ -55,7 +56,7 @@ internal sealed class ClientRequestRepository(TasksDbContext context) : IClientR
     // Cross-tenant: el evento de escaneo trae el archivo; quien llama compara su tenant con el dueño real.
     public async Task<ClientRequest?> GetByDocumentFileIdAsync(Guid fileId, CancellationToken ct = default) =>
         await context
-            .ClientRequests.IgnoreQueryFilters()
+            .ClientRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(r => r.Documents)
             .FirstOrDefaultAsync(r => r.Documents.Any(d => d.FileId == fileId), ct);
 
@@ -70,7 +71,7 @@ internal sealed class ClientRequestRepository(TasksDbContext context) : IClientR
 
     private IQueryable<ClientRequest> OpenForStaffRecipient(Guid tenantId, Guid userId) =>
         context
-            .ClientRequests.IgnoreQueryFilters()
+            .ClientRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(r =>
                 r.TenantId == tenantId
                 && (r.Status == ClientRequestStatus.Pending || r.Status == ClientRequestStatus.Submitted)

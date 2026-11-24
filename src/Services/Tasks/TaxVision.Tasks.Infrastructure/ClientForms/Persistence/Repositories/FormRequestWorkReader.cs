@@ -66,7 +66,7 @@ internal sealed class FormRequestWorkReader(TasksDbContext context) : IFormReque
         CancellationToken ct
     ) =>
         await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item => item.TenantId == tenantId && requestIds.Contains(item.Id))
             .VisibleInInbox(context, tenantId, actorUserId, canViewAll)
             .Select(item => new WorkTitle(WorkResourceTypes.FormRequest, item.Id, item.Title))
@@ -162,7 +162,7 @@ internal sealed class FormRequestWorkReader(TasksDbContext context) : IFormReque
 
     private IQueryable<FormRequest> Open(Guid tenantId, Guid actorUserId, bool canViewAll) =>
         context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item =>
                 item.TenantId == tenantId
                 && item.Status != FormRequestStatus.Completed

@@ -5,6 +5,7 @@ using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 using TaxVision.Tasks.Tests.Dependencies;
+using TaxVision.Tasks.Tests.Templates;
 
 namespace TaxVision.Tasks.Tests.Series;
 
@@ -27,7 +28,7 @@ public sealed class ResumeTaskSeriesHandlerTests
         var result = await ResumeTaskSeriesHandler.Handle(
             new ResumeTaskSeriesCommand(TenantId, paused.Id, Manager, HasManageAll: true),
             series,
-            new TaskSeriesMaterializer(tasks, series),
+            new TaskSeriesMaterializer(tasks, series, new InMemoryTaskTemplateRepository()),
             new RecordingUnitOfWork(),
             CancellationToken.None
         );

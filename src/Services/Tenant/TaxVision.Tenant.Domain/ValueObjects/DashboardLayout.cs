@@ -10,7 +10,7 @@ namespace TaxVision.Tenant.Domain.ValueObjects;
 /// Layout del dashboard del CRM: arreglo ordenado de widgets. Valida la forma, no que el widget exista (el servidor no
 /// conoce el catálogo). Se guarda en JSON canónico: id, size y hidden; el esquema 2 añade <c>scope</c> opcional.
 /// </summary>
-public sealed class DashboardLayout
+public sealed class DashboardLayout : IWorkspacePreferenceContent
 {
     /// <summary>Esquema que se informa cuando no hay nada guardado: un CRM anterior lo sigue leyendo.</summary>
     public const int SupportedSchemaVersion = 1;

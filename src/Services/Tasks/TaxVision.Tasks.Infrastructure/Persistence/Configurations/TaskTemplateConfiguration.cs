@@ -15,6 +15,7 @@ public sealed class TaskTemplateConfiguration : IEntityTypeConfiguration<TaskTem
         builder.Property(t => t.TenantId).IsRequired();
         builder.Property(t => t.CreatedByUserId).IsRequired();
         builder.Property(t => t.Name).HasMaxLength(200).IsRequired();
+        builder.Property(t => t.StandardKey).HasMaxLength(TaskTemplate.StandardKeyMaxLength);
         builder.Property(t => t.Description).HasMaxLength(2000);
         builder.Property(t => t.IsActive).IsRequired();
         builder.Property(t => t.CreatedAtUtc).IsRequired();
@@ -34,6 +35,13 @@ public sealed class TaskTemplateConfiguration : IEntityTypeConfiguration<TaskTem
         );
 
         builder.HasIndex(t => new { t.TenantId, t.IsActive }).HasDatabaseName("IX_TaskTemplates_TenantId_IsActive");
+
+        // Una copia de cada estándar por oficina.
+        builder
+            .HasIndex(t => new { t.TenantId, t.StandardKey })
+            .IsUnique()
+            .HasFilter("[StandardKey] IS NOT NULL")
+            .HasDatabaseName("UX_TaskTemplates_TenantId_StandardKey");
 
         builder.HasMany(t => t.Steps).WithOne().HasForeignKey(s => s.TaskTemplateId).OnDelete(DeleteBehavior.Cascade);
 

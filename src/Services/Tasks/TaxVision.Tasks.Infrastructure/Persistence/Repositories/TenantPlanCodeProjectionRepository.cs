@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.RateLimiting.Abstractions;
 using TaxVision.Tasks.Domain.RateLimiting;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -9,7 +10,9 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 public sealed class TenantPlanCodeProjectionRepository(TasksDbContext db) : ITenantPlanCodeProjectionRepository
 {
     public async Task<TenantPlanCodeProjection?> GetAsync(Guid tenantId, CancellationToken ct = default) =>
-        await db.TenantPlanCodeProjections.IgnoreQueryFilters().FirstOrDefaultAsync(p => p.TenantId == tenantId, ct);
+        await db
+            .TenantPlanCodeProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .FirstOrDefaultAsync(p => p.TenantId == tenantId, ct);
 
     public async Task AddAsync(TenantPlanCodeProjection projection, CancellationToken ct = default) =>
         await db.TenantPlanCodeProjections.AddAsync(projection, ct);

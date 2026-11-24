@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Queries;
 
@@ -6,7 +7,7 @@ namespace TaxVision.Tasks.Tests;
 
 /// <summary>
 /// Visibilidad por asignación (P2): el handler del tablero solo restringe al actor cuando el flag está
-/// encendido Y el actor NO ve todo (customers.view_all). En cualquier otro caso pasa null al repositorio
+/// encendido Y el actor NO ve todo (customers.view_all). En cualquier otro caso pasa null al lector
 /// (= sin restricción), preservando el comportamiento previo hasta sembrar la proyección.
 /// </summary>
 public sealed class TaskVisibilityFilterTests
@@ -28,17 +29,52 @@ public sealed class TaskVisibilityFilterTests
         bool shouldRestrict
     )
     {
-        var repo = new InMemoryTaskRepository();
-        var query = new GetTaskBoardQuery(
+        var reader = new CapturingBoardReader();
+        var query = new GetTaskBoardColumnsQuery(
             Tenant,
-            new TaskQueryFilter(),
-            Take: 200,
-            ActorUserId: Actor,
-            CanViewAll: canViewAll
+            new TaskQueryFilter(RootOnly: true),
+            null,
+            20,
+            TaskBoardSort.Due,
+            Actor,
+            canViewAll
         );
 
-        await GetTaskBoardHandler.Handle(query, repo, Options(enabled), CancellationToken.None);
+        await GetTaskBoardColumnsHandler.Handle(
+            query,
+            reader,
+            new InMemoryWorkflowStatusRepository(),
+            new FixedOfficeZone("America/New_York"),
+            Options(enabled),
+            CancellationToken.None
+        );
 
-        Assert.Equal(shouldRestrict ? Actor : (Guid?)null, repo.LastBoardAssignee);
+        Assert.Equal(shouldRestrict ? Actor : (Guid?)null, reader.LastAssignee);
+    }
+
+    private sealed class CapturingBoardReader : ITaskBoardReader
+    {
+        public Guid? LastAssignee { get; private set; }
+
+        public Task<IReadOnlyList<TaskBoardTally>> CountAsync(
+            Guid tenantId,
+            TaskQueryFilter filter,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        )
+        {
+            LastAssignee = assignedToUserId;
+            return Task.FromResult<IReadOnlyList<TaskBoardTally>>([]);
+        }
+
+        public Task<IReadOnlyList<TaskCardResponse>> ListCardsAsync(
+            Guid tenantId,
+            TaskQueryFilter filter,
+            TaskBoardSort sort,
+            int skip,
+            int take,
+            Guid? assignedToUserId,
+            CancellationToken ct = default
+        ) => Task.FromResult<IReadOnlyList<TaskCardResponse>>([]);
     }
 }

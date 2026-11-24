@@ -17,27 +17,57 @@ namespace Internal.Generated.WolverineHandlers
 
 
 
-        public override System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
+        public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            using var serviceScope = _serviceScopeFactory.CreateScope();
+            await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            var taskActivityRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Activity.Abstractions.ITaskActivityRepository>(serviceScope.ServiceProvider);
+            // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
+            var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             // The actual message body
             var taskStartedDomainEvent = (TaxVision.Tasks.Domain.Tasks.Events.TaskStartedDomainEvent)context.Envelope.Message;
 
-            BuildingBlocks.Web.Hosting.DomainEventCorrelationMiddleware.Before(context.Envelope, correlationContext);
-            BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
-            System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Tasks.Application.Tasks.DomainEvents.UnconsumedTaskDomainEventHandler");
-            System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Tasks.DomainEvents.UnconsumedTaskDomainEventHandler");
+            if (unitOfWork is not TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext tasksDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext.");
             
-            // The actual message execution
-            TaxVision.Tasks.Application.Tasks.DomainEvents.UnconsumedTaskDomainEventHandler.Handle(taskStartedDomainEvent);
+            // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
+            var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(tasksDbContext, context, domainEventScraperIEnumerable);
+            await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
+            // Start the actual database transaction if one does not already exist
+            if (tasksDbContext.Database.CurrentTransaction == null)
+            {
+                await tasksDbContext.Database.BeginTransactionAsync(cancellation).ConfigureAwait(false);
+            }
 
-            return System.Threading.Tasks.Task.CompletedTask;
+            try
+            {
+                BuildingBlocks.Web.Hosting.DomainEventCorrelationMiddleware.Before(context.Envelope, correlationContext);
+                BuildingBlocks.Web.Tenancy.LocalCommandTenantMiddleware.Before(context.Envelope, tenantContext, context);
+                System.Diagnostics.Activity.Current?.SetTag("message.handler", "TaxVision.Tasks.Application.Activity.TaskActivityHandler");
+                System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Activity.TaskActivityHandler");
+                
+                // The actual message execution
+                await TaxVision.Tasks.Application.Activity.TaskActivityHandler.Handle(taskStartedDomainEvent, taskActivityRepository, unitOfWork, cancellation).ConfigureAwait(false);
+
+                
+                // Added by EF Core Transaction Middleware
+                var result_of_SaveChangesAsync = await tasksDbContext.SaveChangesAsync(cancellation).ConfigureAwait(false);
+
+                // Commit the EF Core transaction and flush outgoing messages before writing the response (GH-2917)
+                await efCoreEnvelopeTransaction.CommitAsync(cancellation).ConfigureAwait(false);
+            }
+
+            catch (System.Exception)
+            {
+                await efCoreEnvelopeTransaction.RollbackAsync().ConfigureAwait(false);
+                throw;
+            }
+
         }
 
     }

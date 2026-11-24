@@ -66,7 +66,7 @@ internal sealed class FormInsightsReadRepository(TasksDbContext context) : IForm
     internal IQueryable<FormRequest> Visible(FormInsightsScope scope)
     {
         var rows = context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == scope.TenantId && item.Origin == FormRequestOrigin.Directed)
             .VisibleInInbox(context, scope.TenantId, scope.ActorUserId, scope.CanViewAll);
@@ -80,7 +80,7 @@ internal sealed class FormInsightsReadRepository(TasksDbContext context) : IForm
         var from = window.FromUtc;
         return InBothPeriods(scope, window)
             .GroupJoin(
-                context.FormSubmissions.IgnoreQueryFilters(),
+                context.FormSubmissions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly),
                 item => item.Id,
                 submission => submission.FormRequestId,
                 (item, submissions) => new { item, submissions }
@@ -211,7 +211,7 @@ internal sealed class FormInsightsReadRepository(TasksDbContext context) : IForm
     {
         var used = Visible(scope).Select(item => item.FormTemplateId);
         return context
-            .FormTemplates.IgnoreQueryFilters()
+            .FormTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(template => template.TenantId == scope.TenantId && used.Contains(template.Id))
             .OrderByDescending(template => template.CreatedAtUtc)
@@ -243,7 +243,7 @@ internal sealed class FormInsightsReadRepository(TasksDbContext context) : IForm
 
     internal IQueryable<TemplateName> TemplateNames(Guid tenantId, Guid[] ids) =>
         context
-            .FormTemplates.IgnoreQueryFilters()
+            .FormTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(template => template.TenantId == tenantId && ids.Contains(template.Id))
             .Select(template => new TemplateName { Id = template.Id, Name = template.Name });

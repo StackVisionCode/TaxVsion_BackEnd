@@ -319,6 +319,36 @@ public static class NotificationCatalog
             NotificationAction.Open
         ),
         Entry(
+            NotificationKinds.TasksTaskUnblocked,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "task",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksTaskDueChanged,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "task",
+            NotificationAction.Open
+        ),
+        Entry(
+            NotificationKinds.TasksSeriesEnded,
+            NotificationCatalogCategory.Work,
+            NotificationPriority.Normal,
+            NotificationRecipientPolicy.ExplicitUser,
+            InApp,
+            false,
+            "task_series",
+            NotificationAction.Open
+        ),
+        Entry(
             NotificationKinds.TasksTaskOverdue,
             NotificationCatalogCategory.Work,
             NotificationPriority.High,

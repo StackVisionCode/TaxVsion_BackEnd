@@ -26,6 +26,10 @@ public class AccountManagementHandlersTests
             new InitiateOAuthConnectCommand(tenantId, ProviderCode.Gmail, userId),
             new FakeOAuthProviderClientFactory(providerClient),
             stateStore,
+            Microsoft.Extensions.Options.Options.Create(
+                new TaxVision.Connectors.Application.Common.ConnectorsPortalOptions()
+            ),
+            new TestPlatform("localhost"),
             CancellationToken.None
         );
 

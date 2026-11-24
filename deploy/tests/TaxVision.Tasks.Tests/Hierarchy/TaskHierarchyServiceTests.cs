@@ -23,6 +23,33 @@ public sealed class TaskHierarchyServiceTests
     }
 
     [Fact]
+    public async Task Deleting_a_closed_subtask_keeps_the_open_count_of_its_siblings()
+    {
+        var parent = NewRoot();
+        var done = NewSubtask(parent);
+        NewSubtask(parent);
+        done.Complete(UserId, Now);
+        parent.RegisterSubtaskClosed();
+        var (service, _) = Build(parent, done);
+
+        await service.DeleteWithDescendantsAsync(TenantId, done.Id, UserId, CancellationToken.None);
+
+        Assert.Equal(1, parent.OpenSubtaskCount);
+    }
+
+    [Fact]
+    public async Task Deleting_a_subtask_lowers_the_parent_total()
+    {
+        var parent = NewRoot();
+        var child = NewSubtask(parent);
+        var (service, _) = Build(parent, child);
+
+        await service.DeleteWithDescendantsAsync(TenantId, child.Id, UserId, CancellationToken.None);
+
+        Assert.Equal(0, parent.SubtaskCount);
+    }
+
+    [Fact]
     public async Task Reopening_a_child_raises_it_again()
     {
         var parent = NewRoot();
@@ -47,21 +74,17 @@ public sealed class TaskHierarchyServiceTests
     }
 
     [Fact]
-    public async Task Deleting_a_parent_takes_the_whole_subtree()
+    public async Task Deleting_a_parent_takes_the_whole_subtree_to_the_trash()
     {
         var root = NewRoot();
         var child = NewSubtask(root);
         var grandchild = NewSubtask(child);
-        var (service, repository) = Build(root, child, grandchild);
+        var (service, _) = Build(root, child, grandchild);
 
-        await service.DeleteWithDescendantsAsync(TenantId, root.Id, UserId, CancellationToken.None);
+        var branch = await service.DeleteWithDescendantsAsync(TenantId, root.Id, UserId, CancellationToken.None);
 
-        var survivors = await repository.ListByIdsAsync(
-            TenantId,
-            [root.Id, child.Id, grandchild.Id],
-            CancellationToken.None
-        );
-        Assert.Empty(survivors);
+        Assert.Equal(3, branch.Count);
+        Assert.All(new[] { root, child, grandchild }, t => Assert.Equal((true, root.Id), (t.IsInTrash, t.TrashRootId)));
     }
 
     [Fact]
@@ -79,10 +102,32 @@ public sealed class TaskHierarchyServiceTests
         Assert.Equal(1, root.OpenSubtaskCount);
     }
 
+    // Sin FK a Tasks: las aristas de una tarea borrada quedaban huérfanas y seguían saliendo en el grafo.
+    [Fact]
+    public async Task Deleting_a_task_removes_the_dependencies_of_its_whole_subtree()
+    {
+        var root = NewRoot();
+        var child = NewSubtask(root);
+        var other = NewRoot();
+        var unrelated = NewRoot();
+        var dependencies = new InMemoryTaskDependencyRepository();
+        dependencies.Seed(TenantId, root.Id, other.Id);
+        dependencies.Seed(TenantId, other.Id, child.Id);
+        dependencies.Seed(TenantId, unrelated.Id, other.Id);
+        var repository = new InMemoryTaskRepository([root, child, other, unrelated]);
+        var service = new TaskHierarchyService(repository, dependencies);
+
+        await service.DeleteWithDescendantsAsync(TenantId, root.Id, UserId, CancellationToken.None);
+
+        Assert.Null(await dependencies.GetAsync(TenantId, root.Id, other.Id));
+        Assert.Null(await dependencies.GetAsync(TenantId, other.Id, child.Id));
+        Assert.NotNull(await dependencies.GetAsync(TenantId, unrelated.Id, other.Id));
+    }
+
     private static (TaskHierarchyService Service, InMemoryTaskRepository Repository) Build(params TaskItem[] tasks)
     {
         var repository = new InMemoryTaskRepository(tasks);
-        return (new TaskHierarchyService(repository), repository);
+        return (new TaskHierarchyService(repository, new InMemoryTaskDependencyRepository()), repository);
     }
 
     private static TaskItem NewRoot() =>

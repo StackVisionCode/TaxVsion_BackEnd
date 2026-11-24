@@ -30,4 +30,5 @@ public enum NotificationResourceType
     FinancialImportBatch,
     Wallet,
     WalletSettings,
+    TaskSeries,
 }

@@ -13,4 +13,7 @@ public enum ReminderCategory
     Calendar = 2,
     Task = 3,
     Note = 4,
+
+    /// <summary>"El cliente no respondió" de una tarea: separado del vencimiento para moverse y cerrarse aparte.</summary>
+    TaskClientResponse = 5,
 }

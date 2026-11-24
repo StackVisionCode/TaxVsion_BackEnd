@@ -1,6 +1,7 @@
 using BuildingBlocks.CustomerVisibility;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Domain.Tasks;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -23,9 +24,9 @@ internal static class TaskReadVisibility
 
         var myClients = context
             .Set<CustomerAssignmentProjection>()
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(a => a.TenantId == tenantId && a.UserId == me);
-        var tasks = context.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId);
+        var tasks = context.Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly).Where(t => t.TenantId == tenantId);
 
         // Madre y abuela por LEFT JOIN a su clave y "cliente mío" por LEFT JOIN a la proyección (única por cliente y
         // usuario): ninguna fila se duplica y SQL Server lo resuelve en una pasada, sin EXISTS anidados por fila.

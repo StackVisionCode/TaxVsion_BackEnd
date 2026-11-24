@@ -66,9 +66,11 @@ internal sealed class ProspectReadRepository(TasksDbContext context) : IProspect
     // Consulta componible: ABAC, búsqueda y estado derivado.
     internal IQueryable<ProspectRow> Query(Guid tenantId, Guid actorUserId, bool canViewAll, string? search)
     {
-        var requests = context.FormRequests.IgnoreQueryFilters().Where(item => item.TenantId == tenantId);
+        var requests = context
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .Where(item => item.TenantId == tenantId);
         var runs = context
-            .FormActionRuns.IgnoreQueryFilters()
+            .FormActionRuns.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(run =>
                 run.TenantId == tenantId
                 && run.ActionType == FormActionNames.CreateCustomer
@@ -76,7 +78,7 @@ internal sealed class ProspectReadRepository(TasksDbContext context) : IProspect
                 && run.RetriedAtUtc == null
             );
         var participants = context
-            .FormParticipants.IgnoreQueryFilters()
+            .FormParticipants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == tenantId);
         if (!canViewAll)
@@ -90,7 +92,7 @@ internal sealed class ProspectReadRepository(TasksDbContext context) : IProspect
                 || (
                     participant.LinkedCustomerId != null
                     && context
-                        .CustomerAssignmentProjections.IgnoreQueryFilters()
+                        .CustomerAssignmentProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                         .Any(assignment =>
                             assignment.TenantId == tenantId
                             && assignment.CustomerId == participant.LinkedCustomerId
@@ -174,7 +176,7 @@ internal sealed class ProspectReadRepository(TasksDbContext context) : IProspect
     {
         var participantIds = rows.Select(item => item.Participant.Id).ToArray();
         var requests = await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .AsSplitQuery()
             .Include(item => item.ActionRuns)
@@ -186,7 +188,7 @@ internal sealed class ProspectReadRepository(TasksDbContext context) : IProspect
             .ToArrayAsync(ct);
         var versionIds = requests.Select(item => item.FormTemplateVersionId).Distinct().ToArray();
         var templates = await context
-            .FormTemplateVersions.IgnoreQueryFilters()
+            .FormTemplateVersions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == tenantId && versionIds.Contains(item.Id))
             .ToDictionaryAsync(item => item.Id, item => item.Title, ct);
@@ -220,7 +222,7 @@ internal sealed class ProspectReadRepository(TasksDbContext context) : IProspect
             return ids.ToHashSet();
         return (
             await context
-                .CustomerAssignmentProjections.IgnoreQueryFilters()
+                .CustomerAssignmentProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                 .AsNoTracking()
                 .Where(item => item.TenantId == tenantId && item.UserId == actorUserId && ids.Contains(item.CustomerId))
                 .Select(item => item.CustomerId)

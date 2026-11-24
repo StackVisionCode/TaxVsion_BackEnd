@@ -14,7 +14,7 @@ internal sealed class FormLibraryRepository(TasksDbContext context) : IFormLibra
     {
         var platformId = PlatformTenant.Id;
         var templates = await context
-            .FormTemplates.IgnoreQueryFilters()
+            .FormTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == platformId && item.IsLibraryListed && item.LatestVersionNumber > 0)
             .Select(item => new
@@ -44,7 +44,7 @@ internal sealed class FormLibraryRepository(TasksDbContext context) : IFormLibra
         var platformId = PlatformTenant.Id;
         var key = libraryKey.Trim().ToLowerInvariant();
         var template = await context
-            .FormTemplates.IgnoreQueryFilters()
+            .FormTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .FirstOrDefaultAsync(
                 item =>
@@ -58,7 +58,7 @@ internal sealed class FormLibraryRepository(TasksDbContext context) : IFormLibra
             return null;
 
         var version = await context
-            .FormTemplateVersions.IgnoreQueryFilters()
+            .FormTemplateVersions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .FirstOrDefaultAsync(
                 item =>

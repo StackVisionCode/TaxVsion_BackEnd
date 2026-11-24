@@ -108,11 +108,12 @@ public sealed class TaskAttachmentsController(IMessageBus bus, IUserPermissionsS
         CancellationToken ct = default
     )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<IReadOnlyList<TaskAttachmentResponse>>>(
-            new ListTaskAttachmentsQuery(tenantId, taskId, includeDescendants),
+            new ListTaskAttachmentsQuery(tenantId, taskId, includeDescendants, userId, canViewAll),
             ct
         );
 

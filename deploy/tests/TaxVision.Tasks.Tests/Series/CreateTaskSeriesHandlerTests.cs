@@ -6,6 +6,7 @@ using TaxVision.Tasks.Application.Series.Commands;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Tests.Dependencies;
+using TaxVision.Tasks.Tests.Templates;
 
 namespace TaxVision.Tasks.Tests.Series;
 
@@ -43,9 +44,10 @@ public sealed class CreateTaskSeriesHandlerTests
                 null
             ),
             series,
-            new TaskSeriesMaterializer(tasks, series),
+            new TaskSeriesMaterializer(tasks, series, new InMemoryTaskTemplateRepository()),
             new RecordingUnitOfWork(),
             new FixedOfficeZone("America/New_York"),
+            new EveryCustomer(),
             CancellationToken.None
         );
         await DomainEventReplay.DispatchIntoAsync(bus, tasks);
@@ -85,9 +87,10 @@ public sealed class CreateTaskSeriesHandlerTests
                 AnchorOn: new DateOnly(2027, 1, 15)
             ),
             series,
-            new TaskSeriesMaterializer(tasks, series),
+            new TaskSeriesMaterializer(tasks, series, new InMemoryTaskTemplateRepository()),
             new RecordingUnitOfWork(),
             new FixedOfficeZone("America/New_York"),
+            new EveryCustomer(),
             CancellationToken.None
         );
 

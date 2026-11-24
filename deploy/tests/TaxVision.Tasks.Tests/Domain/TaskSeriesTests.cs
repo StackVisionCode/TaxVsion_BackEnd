@@ -83,8 +83,8 @@ public sealed class TaskSeriesTests
     }
 
     /// <summary>
-    /// Ocho meses sin tocar la serie: se materializa una sola futura y las de atrás quedan contadas,
-    /// no creadas.
+    /// Ocho meses sin tocar una serie sin plazo legal: se materializa una sola futura y las de atrás quedan
+    /// contadas, no creadas.
     /// </summary>
     [Fact]
     public void A_long_backlog_skips_the_past_occurrences_and_counts_them()
@@ -131,6 +131,24 @@ public sealed class TaskSeriesTests
         var series = NewSeries(Quarterly, RecurrenceMode.FixedSchedule, endsAtUtc: Anchor.AddMonths(2));
 
         var next = series.PlanNextOccurrence(Anchor, null, Anchor.AddDays(1));
+
+        Assert.Equal(TaskErrors.Series.NoFurtherOccurrence, next.Error);
+    }
+
+    // Al cerrar la ocurrencia se planifica la siguiente desde su vencimiento. Si desde ahí la regla ya
+    // no tiene fechas, la serie termina; antes la excepción impedía cerrar la tarea.
+    [Fact]
+    public void A_rule_without_dates_from_the_last_due_ends_the_series_instead_of_failing()
+    {
+        var anchor = new DateTime(2028, 2, 29, 17, 0, 0, DateTimeKind.Utc);
+        var series = NewSeries(
+            "FREQ=YEARLY;INTERVAL=4;BYMONTH=2;BYMONTHDAY=29",
+            RecurrenceMode.FixedSchedule,
+            anchor: anchor
+        );
+        var movedDue = new DateTime(2029, 3, 1, 17, 0, 0, DateTimeKind.Utc);
+
+        var next = series.PlanNextOccurrence(movedDue, null, movedDue.AddDays(-1));
 
         Assert.Equal(TaskErrors.Series.NoFurtherOccurrence, next.Error);
     }
@@ -185,7 +203,8 @@ public sealed class TaskSeriesTests
         RecurrenceMode mode,
         DateTime? endsAtUtc = null,
         int? maxOccurrences = null,
-        DateTime? anchor = null
+        DateTime? anchor = null,
+        bool statutory = false
     ) =>
         TaskSeries
             .Create(
@@ -199,7 +218,7 @@ public sealed class TaskSeriesTests
                     Priority = TaskPriority.Normal,
                     Reference = TaskReference.None,
                     AssigneeUserId = Ana,
-                    IsStatutory = true,
+                    IsStatutory = statutory,
                 },
                 anchor ?? Anchor,
                 endsAtUtc,

@@ -143,11 +143,11 @@ public sealed class TaskCommandEventCountTests
     }
 
     [Fact]
-    public async Task SeriesNextOccurrence_DoesNotEmitTaskAssigned()
+    public async Task SeriesNextOccurrence_AnnouncesItsAssignee()
     {
         var fixture = new Fixture();
         var series = new InMemoryTaskSeriesRepository();
-        var materializer = new TaskSeriesMaterializer(fixture.Tasks, series);
+        var materializer = new TaskSeriesMaterializer(fixture.Tasks, series, new InMemoryTaskTemplateRepository());
         await fixture.RunAsync(
             typeof(CreateTaskSeriesHandler),
             new CreateTaskSeriesCommand(
@@ -181,12 +181,15 @@ public sealed class TaskCommandEventCountTests
             materializer
         );
 
-        // D-TSK-1: la materialización automática pide recordatorio, pero no vuelve a avisar la asignación.
+        // D-28: cada ocurrencia nueva pide su recordatorio y avisa a su responsable.
         var emitted = await fixture.EmittedAsync();
         var next = Assert.Single(fixture.Tasks.Stored, task => task.Id != first.Id);
         Assert.Equal(2, next.OccurrenceNumber);
         Assert.Single(emitted.OfType<ReminderRequestedIntegrationEvent>(), e => e.TargetId == next.Id);
-        Assert.DoesNotContain(emitted.OfType<TaskAssignedIntegrationEvent>(), e => e.TaskId == next.Id);
+        Assert.Single(
+            emitted.OfType<TaskAssignedIntegrationEvent>(),
+            e => e.TaskId == next.Id && e.AssigneeUserId == Preparer
+        );
     }
 
     [Fact]
@@ -291,7 +294,7 @@ public sealed class TaskCommandEventCountTests
                 Tasks,
                 Bus,
                 series,
-                new TaskSeriesMaterializer(Tasks, series),
+                new TaskSeriesMaterializer(Tasks, series, new InMemoryTaskTemplateRepository()),
                 new TaskTemplateInstantiator(Tasks, new InMemoryTaskDependencyRepository()),
                 new RecordingUnitOfWork(),
                 new NoOpCorrelationContext(),
@@ -299,6 +302,7 @@ public sealed class TaskCommandEventCountTests
                 new NoOpCascades(),
                 new NoUsers(),
                 new FixedOfficeZone("Etc/UTC"),
+                new EveryCustomer(),
             };
             var method = handler.GetMethod("Handle", BindingFlags.Public | BindingFlags.Static)!;
             var args = method
@@ -334,12 +338,12 @@ public sealed class TaskCommandEventCountTests
         public Task ApplyChildReopenedAsync(Guid tenantId, Guid? parentTaskId, CancellationToken ct = default) =>
             Task.CompletedTask;
 
-        public Task DeleteWithDescendantsAsync(
+        public Task<IReadOnlyList<Guid>> DeleteWithDescendantsAsync(
             Guid tenantId,
             Guid taskId,
             Guid byUserId,
             CancellationToken ct = default
-        ) => Task.CompletedTask;
+        ) => Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 
     private sealed class NoUsers : IUserPermissionsProjectionRepository

@@ -33,7 +33,7 @@ public sealed record WorkspacePreferenceView(
         return new WorkspacePreferenceView(
             key,
             source,
-            effective?.SchemaVersion ?? DashboardLayout.SupportedSchemaVersion,
+            effective?.SchemaVersion ?? WorkspacePreferenceContent.DefaultSchemaOf(key),
             own?.Version ?? 0,
             own?.UpdatedAtUtc,
             PayloadOf(effective),

@@ -36,6 +36,9 @@ public static class NotificationKinds
 
     public const string TasksTaskAssigned = "tasks.task_assigned";
     public const string TasksTaskOverdue = "tasks.task_overdue";
+    public const string TasksTaskUnblocked = "tasks.task_unblocked";
+    public const string TasksSeriesEnded = "tasks.series_ended";
+    public const string TasksTaskDueChanged = "tasks.task_due_changed";
     public const string TasksAttachmentRejected = "tasks.attachment_rejected";
     public const string TasksClientRequestCreated = "tasks.client_request_created";
     public const string TasksClientRequestFulfilled = "tasks.client_request_fulfilled";

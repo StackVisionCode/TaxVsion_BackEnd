@@ -15,6 +15,7 @@ public sealed record TaskCreatedIntegrationEvent : IntegrationEvent
     public Guid? CustomerId { get; init; }
     public int? TaxYear { get; init; }
     public DateTime? DueAtUtc { get; init; }
+
     /// <summary>Fecha civil del vencimiento y su zona: con el corte de fin del día, el prefijo UTC ya no es la fecha.</summary>
     public DateOnly? DueOn { get; init; }
     public string? DueTimeZoneId { get; init; }
@@ -33,6 +34,7 @@ public sealed record TaskAssignedIntegrationEvent : IntegrationEvent
     public required Guid AssigneeUserId { get; init; }
     public Guid? PreviousAssigneeUserId { get; init; }
     public DateTime? DueAtUtc { get; init; }
+
     /// <summary>Fecha civil del vencimiento y su zona: con el corte de fin del día, el prefijo UTC ya no es la fecha.</summary>
     public DateOnly? DueOn { get; init; }
     public string? DueTimeZoneId { get; init; }
@@ -87,6 +89,11 @@ public sealed record TaskDueChangedIntegrationEvent : IntegrationEvent
 
     /// <summary>Quién cambió el vencimiento (aditivo, Work Profile).</summary>
     public Guid? ChangedByUserId { get; init; }
+
+    /// <summary>Título y responsable de la tarea (aditivos): el aviso al responsable no tiene que leer Tasks.</summary>
+    public string? Title { get; init; }
+
+    public Guid? AssigneeUserId { get; init; }
 }
 
 /// <summary>
@@ -107,6 +114,18 @@ public sealed record TaskWaitingOnClientIntegrationEvent : IntegrationEvent
 
     /// <summary>Fecha civil pedida al cliente (en la zona de la oficina).</summary>
     public DateOnly? ClientDueOn { get; init; }
+}
+
+/// <summary>
+/// <c>task.series_ended.v1</c> — una tarea recurrente terminó sola (límite, fecha de fin o regla agotada). Lo recibe
+/// quien la gestiona.
+/// </summary>
+[MessageIdentity("tasks.series_ended.v1")]
+public sealed record TaskSeriesEndedIntegrationEvent : IntegrationEvent
+{
+    public required Guid SeriesId { get; init; }
+    public required string Title { get; init; }
+    public required Guid OwnerUserId { get; init; }
 }
 
 /// <summary>
@@ -247,6 +266,7 @@ public sealed record TaskOverdueIntegrationEvent : IntegrationEvent
     public required string Title { get; init; }
     public required DateTime DueAtUtc { get; init; }
     public required bool IsStatutory { get; init; }
+
     /// <summary>Fecha civil del vencimiento y su zona: con el corte de fin del día, el prefijo UTC ya no es la fecha.</summary>
     public DateOnly? DueOn { get; init; }
     public string? DueTimeZoneId { get; init; }

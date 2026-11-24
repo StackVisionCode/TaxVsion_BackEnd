@@ -19,7 +19,24 @@ public interface ITaskRepository
 
     void Remove(TaskItem task);
 
+    /// <summary>Las tareas de una serie, la ocurrencia más reciente primero.</summary>
+    Task<IReadOnlyList<TaskItem>> ListBySeriesAsync(
+        Guid tenantId,
+        Guid seriesId,
+        int take,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Al guardar, la tarea tiene que seguir en la versión que vio el usuario.</summary>
+    void ExpectVersion(TaskItem task, byte[] rowVersion);
+
     Task<Result<TaskItem>> GetByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
+
+    /// <summary>La tarea aunque esté en la papelera.</summary>
+    Task<Result<TaskItem>> GetIncludingTrashAsync(Guid tenantId, Guid taskId, CancellationToken ct = default);
+
+    /// <summary>Lo que se fue a la papelera junto con <paramref name="trashRootId"/>, ella incluida.</summary>
+    Task<IReadOnlyList<TaskItem>> ListTrashBranchAsync(Guid tenantId, Guid trashRootId, CancellationToken ct = default);
 
     /// <summary>
     /// Como <see cref="GetByIdAsync"/> pero con visibilidad por asignación (P2) para el read del detalle:
@@ -67,18 +84,6 @@ public interface ITaskRepository
         TaskQueryFilter filter,
         int page,
         int size,
-        Guid? assignedToUserId = null,
-        CancellationToken ct = default
-    );
-
-    /// <summary>
-    /// Las abiertas para el tablero. Sin paginar y con tope: un Kanban se pinta entero o no sirve, y
-    /// el tope evita que un tenant con miles de tareas tumbe la pantalla.
-    /// </summary>
-    Task<IReadOnlyList<TaskItem>> ListForBoardAsync(
-        Guid tenantId,
-        TaskQueryFilter filter,
-        int take,
         Guid? assignedToUserId = null,
         CancellationToken ct = default
     );
@@ -163,6 +168,14 @@ public interface ITaskRepository
     Task<IReadOnlyList<Guid>> ListChildIdsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> parentTaskIds,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Solo lectura, con la misma visibilidad por asignación que <see cref="GetByIdForReadAsync"/>.</summary>
+    Task<IReadOnlyList<TaskItem>> ListByIdsForReadAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> taskIds,
+        Guid? assignedToUserId,
         CancellationToken ct = default
     );
 

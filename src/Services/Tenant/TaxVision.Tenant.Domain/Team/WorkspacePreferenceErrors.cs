@@ -16,6 +16,11 @@ public static class WorkspacePreferenceErrors
         "The layout must be an array of widgets with id, size and hidden."
     );
 
+    public static readonly Error InvalidBoardPreferences = new(
+        "Team.Preference.InvalidBoardPreferences",
+        "Board preferences need a grouping (status or stage), up to 100 status codes per list and a sort (Due or Priority)."
+    );
+
     public static readonly Error TooManyItems = new(
         "Team.Preference.TooManyItems",
         "The layout has more widgets than allowed."

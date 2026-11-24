@@ -23,6 +23,10 @@ public sealed class TaskTimerConfiguration : IEntityTypeConfiguration<TaskTimer>
         builder.Property(t => t.StartedAtUtc).IsRequired();
         builder.Property(t => t.StoppedAtUtc);
         builder.Property(t => t.IsBillable).IsRequired();
+        builder.Property(t => t.IsManual).IsRequired();
+        builder.Property(t => t.Note).HasMaxLength(TaskTimer.NoteMaxLength);
+        builder.Property(t => t.UpdatedAtUtc);
+        builder.Property(t => t.UpdatedByUserId);
 
         // Derivadas de las dos marcas de tiempo.
         builder.Ignore(t => t.IsRunning);
@@ -30,5 +34,15 @@ public sealed class TaskTimerConfiguration : IEntityTypeConfiguration<TaskTimer>
 
         // El reporte de horas filtra por persona y rango.
         builder.HasIndex(t => new { t.UserId, t.StartedAtUtc }).HasDatabaseName("IX_TaskTimers_UserId_StartedAtUtc");
+
+        // El de la clave foránea se declara: el único filtrado no sirve para cargar todos los tramos de una tarea.
+        builder.HasIndex(t => t.TaskId).HasDatabaseName("IX_TaskTimers_TaskId");
+
+        // Un temporizador en marcha por persona y tarea: la regla del dominio, también en la base.
+        builder
+            .HasIndex(t => new { t.TaskId, t.UserId })
+            .IsUnique()
+            .HasFilter("[StoppedAtUtc] IS NULL")
+            .HasDatabaseName("UX_TaskTimers_Running");
     }
 }

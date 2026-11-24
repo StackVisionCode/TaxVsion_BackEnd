@@ -88,7 +88,7 @@ internal sealed class FormAnswerIndexReadRepository(TasksDbContext context) : IF
     private IQueryable<FormAnswerIndexEntry> Visible(Guid tenantId, Guid templateId, Guid actorUserId, bool canViewAll)
     {
         var rows = context
-            .FormAnswerIndexEntries.IgnoreQueryFilters()
+            .FormAnswerIndexEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(entry => entry.TenantId == tenantId && entry.FormTemplateId == templateId);
         if (canViewAll)
@@ -97,7 +97,7 @@ internal sealed class FormAnswerIndexReadRepository(TasksDbContext context) : IF
             (
                 entry.CustomerId.HasValue
                 && context
-                    .CustomerAssignmentProjections.IgnoreQueryFilters()
+                    .CustomerAssignmentProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                     .Any(assignment =>
                         assignment.TenantId == tenantId
                         && assignment.CustomerId == entry.CustomerId.Value
@@ -107,7 +107,7 @@ internal sealed class FormAnswerIndexReadRepository(TasksDbContext context) : IF
             || (
                 entry.ParticipantId.HasValue
                 && context
-                    .FormRequests.IgnoreQueryFilters()
+                    .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                     .Any(request =>
                         request.TenantId == tenantId
                         && request.Id == entry.FormRequestId
@@ -154,17 +154,17 @@ internal sealed class FormAnswerIndexReadRepository(TasksDbContext context) : IF
             .Distinct()
             .ToArray();
         var titles = await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(request => request.TenantId == tenantId && requestIds.Contains(request.Id))
             .ToDictionaryAsync(request => request.Id, request => request.Title, ct);
         var customers = await context
-            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(entry => entry.TenantId == tenantId && customerIds.Contains(entry.CustomerId))
             .ToDictionaryAsync(entry => entry.CustomerId, entry => entry.DisplayName ?? "Customer", ct);
         var participants = await context
-            .FormParticipants.IgnoreQueryFilters()
+            .FormParticipants.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(participant => participant.TenantId == tenantId && participantIds.Contains(participant.Id))
             .ToDictionaryAsync(

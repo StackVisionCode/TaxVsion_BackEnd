@@ -10,6 +10,7 @@ using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 using TaxVision.Tasks.Tests.Dependencies;
+using TaxVision.Tasks.Tests.Templates;
 using Xunit;
 
 namespace TaxVision.Tasks.Tests.Tasks;
@@ -231,7 +232,11 @@ public sealed class TasksUserOffboardedConsumerTests
         var series = SeriesFor(Guid.NewGuid(), createdBy: creator);
 
         Assert.True(series.TransferOwnership(successor).IsSuccess);
-        var materializer = new TaskSeriesMaterializer(new InMemoryTaskRepository(), new InMemorySeries(series));
+        var materializer = new TaskSeriesMaterializer(
+            new InMemoryTaskRepository(),
+            new InMemorySeries(series),
+            new InMemoryTaskTemplateRepository()
+        );
         var created = await materializer.MaterializeNextAsync(series, null, null);
 
         Assert.True(created.IsSuccess);
@@ -242,9 +247,16 @@ public sealed class TasksUserOffboardedConsumerTests
 
     private sealed class InMemorySeries(params TaskSeries[] seed) : ITaskSeriesRepository
     {
+        public Task<(IReadOnlyList<TaskSeries> Items, int Total)> ListPageAsync(
+            SeriesListFilter filter,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
         private readonly List<TaskSeries> _all = [.. seed];
 
         public void Add(TaskSeries series) => _all.Add(series);
+
+        public void ExpectVersion(TaskSeries series, byte[] rowVersion) { }
 
         public Task<Result<TaskSeries>> GetByIdAsync(Guid tenantId, Guid seriesId, CancellationToken ct = default) =>
             Task.FromResult(
@@ -264,6 +276,7 @@ public sealed class TasksUserOffboardedConsumerTests
 
         public Task<IReadOnlyList<TaskSeries>> ListPendingMaterializationAsync(
             int take,
+            DateTime nowUtc,
             CancellationToken ct = default
         ) => Task.FromResult<IReadOnlyList<TaskSeries>>([]);
     }

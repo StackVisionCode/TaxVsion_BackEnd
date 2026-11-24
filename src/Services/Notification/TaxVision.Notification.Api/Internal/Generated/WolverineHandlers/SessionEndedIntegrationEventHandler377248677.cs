@@ -27,8 +27,8 @@ namespace Internal.Generated.WolverineHandlers
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext notificationDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext.");
             var pushDeviceTokenRepository = new TaxVision.Notification.Infrastructure.Persistence.Repositories.PushDeviceTokenRepository(notificationDbContext);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var sessionEndedIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.SessionEndedIntegrationEvent)context.Envelope.Message;
 

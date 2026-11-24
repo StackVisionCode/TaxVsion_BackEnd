@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +25,7 @@ public sealed class DropboxFileMirror(
     IHttpClientFactory clients,
     IOptions<CloudStorageOptions> storageOptions,
     IOptions<DropboxOptions> dropboxOptions,
+    IPlatformSettings platform,
     ILogger<DropboxFileMirror> logger
 ) : IStoragePolicyProviderAdapter
 {
@@ -116,7 +118,17 @@ public sealed class DropboxFileMirror(
             await db.SaveChangesAsync(ct);
         }
 
-        var remoteName = CreateRemoteName(file.OriginalName, file.Id);
+        // Ya copiado: se sobrescribe su misma ruta. Nuevo: {marca}/{categoría}/{año}, sin pisar otro con el mismo nombre.
+        var target = existing?.RemotePath is { Length: > 0 } knownPath
+            ? new DropboxTarget(knownPath, "overwrite", Autorename: false)
+            : new DropboxTarget(
+                "/"
+                    + CloudMirrorPath
+                        .For(platform.Current.BrandName, file.FolderType, file.TaxYear, file.OriginalName)
+                        .FullPath,
+                "add",
+                Autorename: true
+            );
         var tempPath = Path.Combine(Path.GetTempPath(), $"taxvision-dropbox-{Guid.NewGuid():N}.tmp");
         try
         {
@@ -130,11 +142,18 @@ public sealed class DropboxFileMirror(
             );
             await storage.DownloadAsync(storageOptions.Value.MainBucket, file.ObjectKey, stream, ct);
             stream.Position = 0;
-            var remoteId = await UploadAsync(token.AccessToken, remoteName, file.SizeBytes, stream, ct);
+            var uploaded = await UploadAsync(token.AccessToken, target, file.SizeBytes, stream, ct);
             if (existing is not null)
                 db.CloudFileCopies.Remove(existing);
             db.CloudFileCopies.Add(
-                TenantCloudFileCopy.Create(message.TenantId, file.Id, ProviderId, remoteId, message.ChecksumSha256)
+                TenantCloudFileCopy.Create(
+                    message.TenantId,
+                    file.Id,
+                    ProviderId,
+                    uploaded.Id!,
+                    message.ChecksumSha256,
+                    uploaded.PathDisplay
+                )
             );
             await db.SaveChangesAsync(ct);
         }
@@ -152,22 +171,24 @@ public sealed class DropboxFileMirror(
         }
     }
 
-    private async Task<string> UploadAsync(
+    /// <summary>Ruta dentro de la carpeta de la app y cómo escribir: "add" (renombra si existe) u "overwrite".</summary>
+    private sealed record DropboxTarget(string Path, string Mode, bool Autorename)
+    {
+        public DropboxCommitArg Commit() => new(Path, Mode, Autorename, true, false);
+    }
+
+    // La carpeta de la app es la raíz de Dropbox para esta app; las carpetas intermedias las crea Dropbox.
+    private async Task<DropboxFileMetadata> UploadAsync(
         string accessToken,
-        string name,
+        DropboxTarget target,
         long size,
         Stream content,
         CancellationToken ct
     )
     {
-        var path = "/" + name; // Dropbox App Folder apps are rooted at their isolated app folder.
         if (size <= SingleRequestLimit)
         {
-            using var request = CreateContentRequest(
-                "upload",
-                accessToken,
-                new DropboxCommitArg(path, "overwrite", false, true, false)
-            );
+            using var request = CreateContentRequest("upload", accessToken, target.Commit());
             request.Content = new StreamContent(content);
             request.Content.Headers.ContentLength = size;
             using var response = await clients
@@ -175,7 +196,9 @@ public sealed class DropboxFileMirror(
                 .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             await EnsureSuccessAsync(response, "uploading a file to Dropbox", ct);
             var metadata = await response.Content.ReadFromJsonAsync<DropboxFileMetadata>(cancellationToken: ct);
-            return metadata?.Id ?? throw new InvalidOperationException("Dropbox did not return the uploaded file ID.");
+            return metadata is { Id.Length: > 0 }
+                ? metadata
+                : throw new InvalidOperationException("Dropbox did not return the uploaded file ID.");
         }
 
         var first = await ReadChunkAsync(content, ChunkSize, ct);
@@ -212,10 +235,7 @@ public sealed class DropboxFileMirror(
         using var finish = CreateContentRequest(
             "upload_session/finish",
             accessToken,
-            new UploadSessionFinishArg(
-                new UploadSessionCursor(session.SessionId, offset),
-                new DropboxCommitArg(path, "overwrite", false, true, false)
-            )
+            new UploadSessionFinishArg(new UploadSessionCursor(session.SessionId, offset), target.Commit())
         );
         finish.Content = new ByteArrayContent(finalChunk);
         finish.Content.Headers.ContentLength = finalChunk.Length;
@@ -224,7 +244,9 @@ public sealed class DropboxFileMirror(
             .SendAsync(finish, HttpCompletionOption.ResponseHeadersRead, ct);
         await EnsureSuccessAsync(finished, "finishing the Dropbox upload", ct);
         var result = await finished.Content.ReadFromJsonAsync<DropboxFileMetadata>(cancellationToken: ct);
-        return result?.Id ?? throw new InvalidOperationException("Dropbox did not return the uploaded file ID.");
+        return result is { Id.Length: > 0 }
+            ? result
+            : throw new InvalidOperationException("Dropbox did not return the uploaded file ID.");
     }
 
     private static HttpRequestMessage CreateContentRequest<TArg>(string route, string accessToken, TArg arg)
@@ -274,28 +296,15 @@ public sealed class DropboxFileMirror(
         );
     }
 
-    private static string CreateRemoteName(string originalName, Guid fileId)
-    {
-        var invalid = new HashSet<char>("\\/:*?\"<>|".ToCharArray());
-        var cleaned = new string(
-            originalName
-                .Select(character => char.IsControl(character) || invalid.Contains(character) ? '_' : character)
-                .ToArray()
-        )
-            .Trim()
-            .Trim('.');
-        if (string.IsNullOrWhiteSpace(cleaned))
-            cleaned = "file";
-        var prefix = fileId.ToString("N") + "_";
-        return prefix + cleaned[..Math.Min(cleaned.Length, 240 - prefix.Length)];
-    }
-
     private sealed record AccessTokenResponse(
         [property: JsonPropertyName("access_token")] string AccessToken,
         [property: JsonPropertyName("refresh_token")] string? RefreshToken
     );
 
-    private sealed record DropboxFileMetadata([property: JsonPropertyName("id")] string? Id);
+    private sealed record DropboxFileMetadata(
+        [property: JsonPropertyName("id")] string? Id,
+        [property: JsonPropertyName("path_display")] string? PathDisplay
+    );
 
     private sealed record UploadSessionStartResponse([property: JsonPropertyName("session_id")] string? SessionId);
 

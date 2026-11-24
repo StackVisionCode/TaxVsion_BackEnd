@@ -18,7 +18,8 @@ public sealed record TaskCalendarEntry(
     Guid? CustomerId,
     bool IsBlocked,
     // Fecha civil: el instante (fin del día de la oficina) cae al día siguiente en UTC.
-    DateOnly? DueOn = null
+    DateOnly? DueOn = null,
+    string? WorkflowStatusCode = null
 )
 {
     /// <summary>Sólo entran las que tienen vencimiento: sin fecha no hay dónde pintarla.</summary>
@@ -34,6 +35,7 @@ public sealed record TaskCalendarEntry(
             task.AssigneeUserId,
             task.Reference.CustomerId,
             task.IsBlocked,
-            task.Due.DueOn
+            task.Due.DueOn,
+            task.WorkflowStatusCode
         );
 }

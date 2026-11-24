@@ -11,8 +11,8 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
             var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
+            var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
             // The actual message body
             var campaignDispatchRequestedIntegrationEvent = (BuildingBlocks.Messaging.CampaignsIntegrationEvents.CampaignDispatchRequestedIntegrationEvent)context.Envelope.Message;
 

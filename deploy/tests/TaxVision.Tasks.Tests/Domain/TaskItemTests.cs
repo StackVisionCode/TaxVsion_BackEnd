@@ -1,3 +1,4 @@
+using TaxVision.Tasks.Domain.Statuses;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.Tasks.Events;
 using TaxVision.Tasks.Domain.ValueObjects;
@@ -187,7 +188,8 @@ public sealed class TaskItemTests
         Assert.True(task.Start(UserId, Now).IsSuccess);
 
         Assert.Equal(TaskItemStatus.InProgress, task.Status);
-        Assert.Equal("falta 1099-INT", task.ExpectedItems!.Value);
+        // B-19: al volver a trabajar, lo pedido al cliente deja de mostrarse (el historial conserva cada espera).
+        Assert.Null(task.ExpectedItems);
     }
 
     [Fact]
@@ -610,6 +612,179 @@ public sealed class TaskItemTests
         );
 
         Assert.Equal(new DateOnly(2026, 11, 15), task.ClientDueCivilDate);
+    }
+
+    [Fact]
+    public void Start_on_a_task_already_in_progress_is_a_no_op_even_if_it_got_blocked()
+    {
+        var task = NewTask();
+        task.Start(UserId, Now);
+        task.RegisterBlockerAdded();
+
+        var result = task.Start(UserId, Now.AddHours(1));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaskItemStatus.InProgress, task.Status);
+    }
+
+    [Fact]
+    public void Cancel_keeps_who_when_and_why()
+    {
+        var task = NewTask();
+
+        task.Cancel("  Client moved to another firm  ", UserId, Now);
+
+        Assert.Equal(Now, task.CancelledAtUtc);
+        Assert.Equal(UserId, task.CancelledByUserId);
+        Assert.Equal("Client moved to another firm", task.CancellationReason);
+    }
+
+    [Fact]
+    public void Reopen_forgets_the_cancellation()
+    {
+        var task = NewTask();
+        task.Cancel("Duplicate", UserId, Now);
+
+        task.Reopen(UserId, Now);
+
+        Assert.Null(task.CancelledAtUtc);
+        Assert.Null(task.CancelledByUserId);
+        Assert.Null(task.CancellationReason);
+    }
+
+    [Fact]
+    public void Cancel_rejects_a_reason_longer_than_the_column()
+    {
+        var task = NewTask();
+
+        var result = task.Cancel(new string('x', TaskErrors.CancellationReasonMaxLength + 1), UserId, Now);
+
+        Assert.Equal(TaskErrors.CancellationReasonTooLong, result.Error);
+        Assert.Equal(TaskItemStatus.NotStarted, task.Status);
+    }
+
+    private static readonly WorkflowStatusRef UnderReview = new(
+        Guid.NewGuid(),
+        "under_review",
+        TaskItemStatus.InProgress
+    );
+    private static readonly WorkflowStatusRef ReadyToFile = new(
+        Guid.NewGuid(),
+        "ready_to_file",
+        TaskItemStatus.InProgress
+    );
+
+    [Fact]
+    public void Moving_to_a_status_of_the_same_stage_only_changes_the_status()
+    {
+        var task = NewTask();
+        task.Start(UserId, Now);
+
+        var moved = task.MoveTo(UnderReview, TaskMoveRequest.None, UserId, Now);
+        task.MoveTo(ReadyToFile, TaskMoveRequest.None, UserId, Now);
+
+        Assert.True(moved.IsSuccess);
+        Assert.Equal(TaskItemStatus.InProgress, task.Status);
+        Assert.Equal(ReadyToFile.Id, task.WorkflowStatusId);
+        Assert.Equal("ready_to_file", task.WorkflowStatusCode);
+    }
+
+    [Fact]
+    public void Moving_into_another_stage_applies_its_rule_and_keeps_the_status()
+    {
+        var task = NewTask();
+
+        var moved = task.MoveTo(UnderReview, TaskMoveRequest.None, UserId, Now);
+
+        Assert.True(moved.IsSuccess);
+        Assert.True(moved.Value.Started);
+        Assert.Equal(TaskItemStatus.InProgress, task.Status);
+        Assert.Equal(UnderReview.Id, task.WorkflowStatusId);
+    }
+
+    [Fact]
+    public void Moving_to_completed_with_open_subtasks_changes_nothing()
+    {
+        var task = NewTask();
+        task.MoveTo(UnderReview, TaskMoveRequest.None, UserId, Now);
+        task.RegisterSubtaskOpened();
+
+        var moved = task.MoveTo(
+            WorkflowStatusRef.DefaultOf(TaskItemStatus.Completed),
+            TaskMoveRequest.None,
+            UserId,
+            Now
+        );
+
+        Assert.Equal("Task.HasOpenSubtasks", moved.Error.Code);
+        Assert.Equal(TaskItemStatus.InProgress, task.Status);
+        Assert.Equal(UnderReview.Id, task.WorkflowStatusId);
+    }
+
+    [Fact]
+    public void Moving_a_blocked_task_into_progress_is_rejected()
+    {
+        var task = NewTask();
+        task.RegisterBlockerAdded();
+
+        var moved = task.MoveTo(UnderReview, TaskMoveRequest.None, UserId, Now);
+
+        Assert.Equal("Task.BlockedByDependencies", moved.Error.Code);
+        Assert.Equal(TaskItemStatus.NotStarted, task.Status);
+        Assert.Null(task.WorkflowStatusId);
+    }
+
+    [Fact]
+    public void A_closed_task_moved_to_an_open_status_is_reopened_first()
+    {
+        var task = NewTask();
+        task.Complete(UserId, Now);
+
+        var moved = task.MoveTo(UnderReview, TaskMoveRequest.None, UserId, Now);
+
+        Assert.True(moved.Value.Reopened);
+        Assert.Equal(TaskItemStatus.InProgress, task.Status);
+    }
+
+    [Fact]
+    public void Cancelling_through_a_move_needs_the_reason()
+    {
+        var task = NewTask();
+        var cancelled = WorkflowStatusRef.DefaultOf(TaskItemStatus.Cancelled);
+
+        var without = task.MoveTo(cancelled, TaskMoveRequest.None, UserId, Now);
+        var with = task.MoveTo(cancelled, new TaskMoveRequest(null, null, null, "Client left"), UserId, Now);
+
+        Assert.Equal(TaskErrors.CancellationReasonRequired, without.Error);
+        Assert.True(with.Value.Closed);
+        Assert.Equal("Client left", task.CancellationReason);
+    }
+
+    [Fact]
+    public void The_old_verbs_leave_the_default_status_of_the_new_stage()
+    {
+        var task = NewTask();
+        task.MoveTo(UnderReview, TaskMoveRequest.None, UserId, Now);
+
+        task.Complete(UserId, Now);
+
+        Assert.Equal(TaskItemStatus.Completed, task.Status);
+        Assert.Null(task.WorkflowStatusId);
+        Assert.Null(task.WorkflowStatusCode);
+    }
+
+    [Fact]
+    public void Moving_records_where_the_task_came_from_and_where_it_went()
+    {
+        var task = NewTask();
+        task.MoveTo(UnderReview, TaskMoveRequest.None, UserId, Now);
+
+        var changed = task.DomainEvents.OfType<TaskWorkflowStatusChangedDomainEvent>().Single();
+
+        Assert.Equal(TaskItemStatus.NotStarted, changed.FromCategory);
+        Assert.Equal(TaskItemStatus.InProgress, changed.ToCategory);
+        Assert.Null(changed.FromStatusId);
+        Assert.Equal(UnderReview.Id, changed.ToStatusId);
     }
 
     private static DueDate Due(DateTime dueAtUtc, bool isStatutory) =>

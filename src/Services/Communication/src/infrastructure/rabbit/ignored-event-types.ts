@@ -279,6 +279,7 @@ export const INTENTIONALLY_IGNORED_EVENT_TYPES: ReadonlySet<string> = new Set([
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskOverdueIntegrationEvent',
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskReopenedIntegrationEvent',
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskUnblockedIntegrationEvent',
+  'tasks.series_ended.v1',
   'BuildingBlocks.Messaging.TasksIntegrationEvents.TaskWaitingOnClientIntegrationEvent',
   // Tenant — Estado y perfil de la oficina: Auth, Notification y proyecciones .NET. Communication resuelve el host
   // por Auth (caché corta) y el acceso por entitlements_changed; la zona la proyecta de TenantCreated/TenantUpdated.

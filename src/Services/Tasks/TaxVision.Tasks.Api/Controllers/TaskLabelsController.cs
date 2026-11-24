@@ -91,10 +91,10 @@ public sealed class TaskLabelsController(IMessageBus bus) : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<Result>(new DeleteTaskLabelCommand(tenantId, id), ct);
+        var result = await bus.InvokeAsync<Result>(new DeleteTaskLabelCommand(tenantId, id, userId), ct);
         return result.IsSuccess ? NoContent() : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 }

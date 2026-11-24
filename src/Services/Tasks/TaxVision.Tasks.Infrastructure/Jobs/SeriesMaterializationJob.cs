@@ -1,5 +1,8 @@
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Jobs;
+using BuildingBlocks.Persistence;
+using BuildingBlocks.Results;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -56,14 +59,7 @@ public sealed class SeriesMaterializationJob(IServiceProvider serviceProvider, I
 
     private async Task RunOnceAsync(CancellationToken ct)
     {
-        IReadOnlyList<(Guid TenantId, Guid SeriesId)> pending;
-        using (var scope = serviceProvider.CreateScope())
-        {
-            var repository = scope.ServiceProvider.GetRequiredService<ITaskSeriesRepository>();
-            pending = (await repository.ListPendingMaterializationAsync(BatchSize, ct))
-                .Select(s => (s.TenantId, s.Id))
-                .ToList();
-        }
+        var pending = await ClaimPendingAsync(ct);
 
         if (pending.Count == 0)
             return;
@@ -89,6 +85,53 @@ public sealed class SeriesMaterializationJob(IServiceProvider serviceProvider, I
             summary.Conflicts,
             summary.Failed
         );
+    }
+
+    /// <summary>
+    /// Reclama cada pendiente en su propia transacción: cuenta el intento y fija cuándo se reintenta si falla. Un choque
+    /// en una serie (otra réplica la reclamó) solo la deja fuera a ella.
+    /// </summary>
+    private async Task<IReadOnlyList<(Guid TenantId, Guid SeriesId)>> ClaimPendingAsync(CancellationToken ct)
+    {
+        IReadOnlyList<(Guid TenantId, Guid SeriesId)> pending;
+        var now = DateTime.UtcNow;
+        using (var scope = serviceProvider.CreateScope())
+        {
+            var repository = scope.ServiceProvider.GetRequiredService<ITaskSeriesRepository>();
+            pending =
+            [
+                .. (await repository.ListPendingMaterializationAsync(BatchSize, now, ct)).Select(s =>
+                    (s.TenantId, s.Id)
+                ),
+            ];
+        }
+
+        var claimed = new List<(Guid TenantId, Guid SeriesId)>();
+        foreach (var item in pending)
+            if (await ClaimAsync(item.TenantId, item.SeriesId, now, ct))
+                claimed.Add(item);
+        return claimed;
+    }
+
+    private async Task<bool> ClaimAsync(Guid tenantId, Guid seriesId, DateTime now, CancellationToken ct)
+    {
+        using var scope = serviceProvider.CreateScope();
+        var found = await scope
+            .ServiceProvider.GetRequiredService<ITaskSeriesRepository>()
+            .GetByIdAsync(tenantId, seriesId, ct);
+        if (found.IsFailure)
+            return false;
+        found.Value.ClaimForMaterialization(now);
+        try
+        {
+            await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
+            return true;
+        }
+        catch (Exception ex) when (ex is DbUpdateConcurrencyException or ConflictException)
+        {
+            logger.LogInformation("Series {SeriesId} skipped: another instance claimed it.", seriesId);
+            return false;
+        }
     }
 
     /// <summary>

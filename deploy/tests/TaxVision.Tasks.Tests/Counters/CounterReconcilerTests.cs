@@ -57,6 +57,26 @@ public sealed class CounterReconcilerTests
     }
 
     [Fact]
+    public async Task A_stale_subtask_total_is_corrected()
+    {
+        var task = NewTask();
+        var dependencies = new InMemoryTaskDependencyRepository();
+        dependencies.Mismatches.Add(
+            new CounterMismatch(TenantId, task.Id, 0, 0, 0, 0, StoredSubtaskTotal: 0, ActualSubtaskTotal: 4)
+        );
+        var reconciler = new CounterReconciler(
+            new InMemoryTaskRepository(task),
+            dependencies,
+            new RecordingUnitOfWork(),
+            NullLogger<CounterReconciler>.Instance
+        );
+
+        await reconciler.ReconcileAsync(100, CancellationToken.None);
+
+        Assert.Equal(4, task.SubtaskCount);
+    }
+
+    [Fact]
     public async Task Nothing_out_of_sync_means_no_save()
     {
         var unitOfWork = new RecordingUnitOfWork();

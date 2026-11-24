@@ -11,7 +11,10 @@ public sealed record TaskTimerResponse(
     DateTime? StoppedAtUtc,
     bool IsBillable,
     bool IsRunning,
-    decimal Hours
+    decimal Hours,
+    bool IsManual = false,
+    string? Note = null,
+    DateTime? UpdatedAtUtc = null
 )
 {
     public static TaskTimerResponse From(TaskTimer timer) =>
@@ -23,6 +26,9 @@ public sealed record TaskTimerResponse(
             timer.StoppedAtUtc,
             timer.IsBillable,
             timer.IsRunning,
-            timer.Hours
+            timer.Hours,
+            timer.IsManual,
+            timer.Note,
+            timer.UpdatedAtUtc
         );
 }

@@ -45,6 +45,17 @@ public sealed class TaskTemplate : BaseEntity, ITenantOwned
 
     public bool IsRecurring => Recurrence is not null;
 
+    /// <summary>
+    /// Clave de la plantilla estándar de la que nació (<c>1040</c>, <c>1040-es</c>, <c>941</c>). Identifica la estándar
+    /// aunque la oficina la renombre; null en las propias de la oficina.
+    /// </summary>
+    public string? StandardKey { get; private set; }
+
+    public const int StandardKeyMaxLength = 32;
+
+    /// <summary>La marca como copia de una estándar. Una vez marcada no cambia de clave.</summary>
+    public void AdoptStandardKey(string key) => StandardKey ??= key;
+
     [UserReference(UserReferenceKind.Provenance)]
     public Guid CreatedByUserId { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }

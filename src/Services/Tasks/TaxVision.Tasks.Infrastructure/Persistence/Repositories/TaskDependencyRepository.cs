@@ -3,18 +3,14 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
 using TaxVision.Tasks.Domain.Dependencies;
 using TaxVision.Tasks.Domain.Tasks;
+using TaxVision.Tasks.Infrastructure.Persistence;
 using TaxVision.Tasks.Infrastructure.Persistence.ReadModels;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
 public sealed class TaskDependencyRepository(TasksDbContext context) : ITaskDependencyRepository
 {
-    private static readonly TaskItemStatus[] OpenStatuses =
-    [
-        TaskItemStatus.NotStarted,
-        TaskItemStatus.InProgress,
-        TaskItemStatus.WaitingOnClient,
-    ];
+    private static readonly TaskItemStatus[] OpenStatuses = TaskItemStatuses.Open;
 
     public void Add(TaskDependency dependency) => context.TaskDependencies.Add(dependency);
 
@@ -27,11 +23,21 @@ public sealed class TaskDependencyRepository(TasksDbContext context) : ITaskDepe
         CancellationToken ct = default
     ) =>
         context
-            .TaskDependencies.IgnoreQueryFilters()
+            .TaskDependencies.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .FirstOrDefaultAsync(
                 d => d.TenantId == tenantId && d.TaskId == taskId && d.DependsOnTaskId == dependsOnTaskId,
                 ct
             );
+
+    public async Task<IReadOnlyList<TaskDependency>> ListTouchingAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> taskIds,
+        CancellationToken ct = default
+    ) =>
+        await context
+            .TaskDependencies.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .Where(d => d.TenantId == tenantId && (taskIds.Contains(d.TaskId) || taskIds.Contains(d.DependsOnTaskId)))
+            .ToListAsync(ct);
 
     public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> LoadUpstreamGraphAsync(
         Guid tenantId,
@@ -42,7 +48,7 @@ public sealed class TaskDependencyRepository(TasksDbContext context) : ITaskDepe
         // CTE recursivo: no hay forma en LINQ y la alternativa es un N+1 por nivel. Va por
         // FromSqlRaw, no por ADO crudo, para entrar en la transacción del handler. Sin componer
         // nada encima: el OPTION tiene que quedar al final del statement.
-        const string sql = """
+        var sql = $$"""
             WITH Graph AS (
                 SELECT TaskId, DependsOnTaskId, 0 AS Lvl
                 FROM   TaskDependencies WHERE TenantId = @tenantId AND TaskId = @startTaskId
@@ -50,9 +56,9 @@ public sealed class TaskDependencyRepository(TasksDbContext context) : ITaskDepe
                 SELECT d.TaskId, d.DependsOnTaskId, g.Lvl + 1
                 FROM   TaskDependencies d
                 JOIN   Graph g ON d.TaskId = g.DependsOnTaskId
-                WHERE  d.TenantId = @tenantId AND g.Lvl < 20
+                WHERE  d.TenantId = @tenantId AND g.Lvl < {{TaskDependencyGraph.MaxQueryLevel}}
             )
-            SELECT TOP (500) TaskId, DependsOnTaskId FROM Graph OPTION (MAXRECURSION 100)
+            SELECT TOP ({{TaskDependencyGraph.MaxQueryEdges}}) TaskId, DependsOnTaskId FROM Graph OPTION (MAXRECURSION 100)
             """;
 
         var rows = await context
@@ -80,10 +86,10 @@ public sealed class TaskDependencyRepository(TasksDbContext context) : ITaskDepe
 
     public Task<int> CountOpenBlockersAsync(Guid tenantId, Guid taskId, CancellationToken ct = default) =>
         context
-            .TaskDependencies.IgnoreQueryFilters()
+            .TaskDependencies.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(d => d.TenantId == tenantId && d.TaskId == taskId)
             .Join(
-                context.Tasks.IgnoreQueryFilters().Where(t => t.TenantId == tenantId),
+                context.Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly).Where(t => t.TenantId == tenantId),
                 d => d.DependsOnTaskId,
                 t => t.Id,
                 (d, t) => t.Status
@@ -96,7 +102,7 @@ public sealed class TaskDependencyRepository(TasksDbContext context) : ITaskDepe
         CancellationToken ct = default
     ) =>
         await context
-            .TaskDependencies.IgnoreQueryFilters()
+            .TaskDependencies.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(d => d.TenantId == tenantId && d.DependsOnTaskId == dependsOnTaskId)
             .Select(d => d.TaskId)
             .ToListAsync(ct);
@@ -107,29 +113,37 @@ public sealed class TaskDependencyRepository(TasksDbContext context) : ITaskDepe
         CancellationToken ct = default
     ) =>
         await context
-            .Tasks.IgnoreQueryFilters()
+            .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Select(t => new
             {
                 t.TenantId,
                 TaskId = t.Id,
                 StoredBlockers = t.OpenBlockerCount,
                 ActualBlockers = context
-                    .TaskDependencies.IgnoreQueryFilters()
+                    .TaskDependencies.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                     .Count(d =>
                         d.TenantId == t.TenantId
                         && d.TaskId == t.Id
                         && context
-                            .Tasks.IgnoreQueryFilters()
+                            .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                             .Any(p =>
                                 p.Id == d.DependsOnTaskId && p.TenantId == d.TenantId && OpenStatuses.Contains(p.Status)
                             )
                     ),
                 StoredSubtasks = t.OpenSubtaskCount,
                 ActualSubtasks = context
-                    .Tasks.IgnoreQueryFilters()
+                    .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                     .Count(c => c.TenantId == t.TenantId && c.ParentTaskId == t.Id && OpenStatuses.Contains(c.Status)),
+                StoredSubtaskTotal = t.SubtaskCount,
+                ActualSubtaskTotal = context
+                    .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+                    .Count(c => c.TenantId == t.TenantId && c.ParentTaskId == t.Id),
             })
-            .Where(x => x.StoredBlockers != x.ActualBlockers || x.StoredSubtasks != x.ActualSubtasks)
+            .Where(x =>
+                x.StoredBlockers != x.ActualBlockers
+                || x.StoredSubtasks != x.ActualSubtasks
+                || x.StoredSubtaskTotal != x.ActualSubtaskTotal
+            )
             .Take(take)
             .Select(x => new CounterMismatch(
                 x.TenantId,
@@ -137,7 +151,9 @@ public sealed class TaskDependencyRepository(TasksDbContext context) : ITaskDepe
                 x.StoredBlockers,
                 x.ActualBlockers,
                 x.StoredSubtasks,
-                x.ActualSubtasks
+                x.ActualSubtasks,
+                x.StoredSubtaskTotal,
+                x.ActualSubtaskTotal
             ))
             .ToListAsync(ct);
 }

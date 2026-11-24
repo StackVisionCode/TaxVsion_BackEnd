@@ -18,7 +18,7 @@ internal sealed class FormTemplateVersionRepository(TasksDbContext context) : IF
     )
     {
         var version = await context
-            .FormTemplateVersions.IgnoreQueryFilters()
+            .FormTemplateVersions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .FirstOrDefaultAsync(
                 item =>
@@ -38,7 +38,7 @@ internal sealed class FormTemplateVersionRepository(TasksDbContext context) : IF
         CancellationToken ct = default
     ) =>
         await context
-            .FormTemplateVersions.IgnoreQueryFilters()
+            .FormTemplateVersions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item => item.TenantId == tenantId && item.FormTemplateId == templateId)
             .OrderByDescending(item => item.VersionNumber)
@@ -51,7 +51,7 @@ internal sealed class FormTemplateVersionRepository(TasksDbContext context) : IF
     )
     {
         var version = await context
-            .FormTemplateVersions.IgnoreQueryFilters()
+            .FormTemplateVersions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == versionId, ct);
         return version is null

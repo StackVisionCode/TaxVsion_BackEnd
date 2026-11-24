@@ -27,15 +27,16 @@ public static class TaskDueReminder
         TaskItem task,
         Guid? assignee,
         int lifecycle,
-        string correlationId
+        string correlationId,
+        string? cycleTag = null
     )
     {
         if (task.Due is null || assignee is not { } userId || task.AssigneeUserId != userId)
             return null;
-        if (task.Status is TaskItemStatus.Completed or TaskItemStatus.Cancelled)
+        if (TaskItemStatuses.IsClosed(task.Status))
             return null;
 
-        return TaskReminderContracts.Requested(task, userId, LeadFor(task.Due), correlationId, lifecycle);
+        return TaskReminderContracts.Requested(task, userId, LeadFor(task.Due), correlationId, lifecycle, cycleTag);
     }
 
     /// <summary>Minutos entre el aviso y el vencimiento: 9:00 locales para fin del día, una hora para las demás.</summary>

@@ -19,6 +19,7 @@ public static class InitiateAdminConsentHandler
             ProviderCode.Graph,
             cmd.InitiatedByUserId,
             initiatorEmail: null,
+            returnOrigin: cmd.ReturnOrigin,
             ct: ct
         );
         return new InitiateAdminConsentResult(adminConsentClient.BuildAdminConsentUrl(state));

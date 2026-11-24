@@ -83,9 +83,9 @@ public sealed class OffboardingQueriesTranslationTests
         var forms = (TaxVision.Tasks.ClientForms.Application.Requests.TimeZones.IFormRequestRezoneStore)tasks;
         var tenant = Guid.NewGuid();
 
-        Assert.Empty(await tasks.OpenTasksWithCivilDuesAsync(tenant, "America/New_York", CancellationToken.None));
+        Assert.Empty(await tasks.OpenTasksWithCivilDuesAsync(tenant, ["America/New_York"], CancellationToken.None));
         Assert.Empty(await tasks.OpenClientRequestsWithDueAsync(tenant, CancellationToken.None));
-        Assert.Empty(await tasks.ActiveSeriesInZoneAsync(tenant, "America/New_York", CancellationToken.None));
+        Assert.Empty(await tasks.SeriesToRezoneAsync(tenant, ["America/New_York"], CancellationToken.None));
         Assert.Empty(await forms.OpenWithDueAsync(tenant, CancellationToken.None));
     }
 

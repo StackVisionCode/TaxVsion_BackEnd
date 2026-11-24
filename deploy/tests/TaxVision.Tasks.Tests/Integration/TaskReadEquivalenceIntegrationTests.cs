@@ -177,7 +177,7 @@ public sealed class TaskReadEquivalenceIntegrationTests : IAsyncLifetime
 
             var search = await repository.SearchAsync(_tenantId, new TaskQueryFilter(), 1, 1000, viewer);
             var open = await repository.SearchAsync(_tenantId, new TaskQueryFilter(OnlyOpen: true), 1, 1000, viewer);
-            var board = await repository.ListForBoardAsync(_tenantId, new TaskQueryFilter(), 1000, viewer);
+            var board = (await repository.SearchAsync(_tenantId, new TaskQueryFilter(), 1, 1000, viewer)).Items;
             var byClient = await repository.ListByCustomerAsync(_tenantId, _myClientA, null, 1, 1000, viewer);
             var titles = await new TaskWorkReader(db).TitlesAsync(
                 _tenantId,

@@ -20,7 +20,12 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            
+            /*
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.CustomerVisibility.ICustomerAssignmentProjectionStore Lifetime: Scoped ImplementationFactory: BuildingBlocks.CustomerVisibility.CustomerVisibilityServiceCollectionExtensions+<>c__0"1.<AddCustomerVisibilityProjection>b__0_0
+            * The service registration for BuildingBlocks.CustomerVisibility.ICustomerAssignmentProjectionStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var taskCustomerAccess = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Tasks.Abstractions.ITaskCustomerAccess>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
@@ -31,6 +36,7 @@ namespace Internal.Generated.WolverineHandlers
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var createTaskSeriesCommand = (TaxVision.Tasks.Application.Series.Commands.CreateTaskSeriesCommand)context.Envelope.Message;
 
@@ -52,7 +58,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Series.Commands.CreateTaskSeriesHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Tasks.Application.Series.Commands.CreateTaskSeriesHandler.Handle(createTaskSeriesCommand, taskSeriesRepository, taskSeriesMaterializer, unitOfWork, officeTimeZone, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Tasks.Application.Series.Commands.CreateTaskSeriesHandler.Handle(createTaskSeriesCommand, taskSeriesRepository, taskSeriesMaterializer, unitOfWork, officeTimeZone, taskCustomerAccess, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message
