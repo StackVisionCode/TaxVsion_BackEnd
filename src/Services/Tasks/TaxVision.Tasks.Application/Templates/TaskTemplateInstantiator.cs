@@ -54,6 +54,25 @@ public sealed class TaskTemplateInstantiator(ITaskRepository tasks, ITaskDepende
     }
 
     /// <summary>
+    /// Una ocurrencia de una serie abierta desde la plantilla: el vínculo y los archivos del primer paso (la plantilla
+    /// recurrente tiene uno). Un archivo que ya no se puede adjuntar no impide crear la tarea.
+    /// </summary>
+    public static void LinkOccurrence(TaskTemplate template, TaskItem task, Guid byUserId)
+    {
+        task.AttachToTemplate(template.Id);
+        var firstOrder = template.Steps.Count == 0 ? 1 : template.Steps.Min(s => s.Order);
+        foreach (var reference in template.AttachmentsFor(firstOrder))
+            task.AttachTemplateFile(
+                reference.FileId,
+                reference.DisplayName,
+                reference.ContentType,
+                reference.SizeBytes,
+                byUserId,
+                DateTime.UtcNow
+            );
+    }
+
+    /// <summary>
     /// Los archivos de referencia del guion viajan a la instancia con el mismo <c>fileId</c>: el
     /// checklist en PDF se guarda una vez en CloudStorage por muchas veces que se aplique.
     /// </summary>

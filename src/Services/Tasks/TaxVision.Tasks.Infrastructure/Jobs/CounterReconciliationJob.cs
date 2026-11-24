@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Tasks.Application.Counters.Abstractions;
+using TaxVision.Tasks.Application.Statuses.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 
 namespace TaxVision.Tasks.Infrastructure.Jobs;
@@ -80,6 +81,16 @@ public sealed class CounterReconciliationJob(IServiceProvider serviceProvider, I
             scope.ServiceProvider.GetRequiredService<ITaskMetrics>().RecordReconciliationCorrections(fixedCount);
             if (fixedCount > 0)
                 logger.LogInformation("CounterReconciliationJob corrected {Count} task counter(s).", fixedCount);
+
+            // Una tarea que se cruzó con el archivado de su estado vuelve al por defecto de su etapa.
+            var released = await scope
+                .ServiceProvider.GetRequiredService<IWorkflowStatusRepository>()
+                .ReleaseOpenTasksFromArchivedAsync(BatchSize, ct);
+            if (released > 0)
+                logger.LogInformation(
+                    "CounterReconciliationJob moved {Count} open task(s) out of archived statuses.",
+                    released
+                );
         }
     }
 }

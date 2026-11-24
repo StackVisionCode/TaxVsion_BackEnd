@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using TaxVision.Tasks.Application.Activity.Abstractions;
 using TaxVision.Tasks.Application.Attachments.Abstractions;
 using TaxVision.Tasks.Application.Backfill;
 using TaxVision.Tasks.Application.Backfill.Abstractions;
@@ -23,12 +24,12 @@ using TaxVision.Tasks.Application.Dependencies;
 using TaxVision.Tasks.Application.Dependencies.Abstractions;
 using TaxVision.Tasks.Application.Hierarchy;
 using TaxVision.Tasks.Application.Hierarchy.Abstractions;
-using TaxVision.Tasks.Application.Labels.Abstractions;
 using TaxVision.Tasks.Application.Permissions.Abstractions;
 using TaxVision.Tasks.Application.Projections.Abstractions;
 using TaxVision.Tasks.Application.RateLimiting.Abstractions;
 using TaxVision.Tasks.Application.Series;
 using TaxVision.Tasks.Application.Series.Abstractions;
+using TaxVision.Tasks.Application.Statuses.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Application.Templates;
 using TaxVision.Tasks.Application.Templates.Abstractions;
@@ -72,9 +73,12 @@ public static class DependencyInjection
         services
             .AddOptions<TasksVisibilityOptions>()
             .Bind(configuration.GetSection(TasksVisibilityOptions.SectionName));
+        services.AddScoped<ITaskCustomerAccess, TaskCustomerAccess>();
         services.AddScoped<ITaskDependencyRepository, TaskDependencyRepository>();
-        services.AddScoped<ITaskLabelRepository, TaskLabelRepository>();
+        services.AddScoped<IWorkflowStatusRepository, WorkflowStatusRepository>();
         services.AddScoped<ITaskSeriesRepository, TaskSeriesRepository>();
+        services.AddScoped<ITaskActivityRepository, TaskActivityRepository>();
+        services.AddScoped<ITaskTrashReader, TaskTrashReader>();
         services.AddScoped<CivilDueRezoneStore>();
         services.AddScoped<TaxVision.Tasks.Application.Tasks.TimeZones.ICivilDueRezoneStore>(sp =>
             sp.GetRequiredService<CivilDueRezoneStore>()
@@ -86,6 +90,7 @@ public static class DependencyInjection
         services.AddScoped<IClientRequestRepository, ClientRequestRepository>();
         services.AddScoped<Application.Work.ITaskWorkReader, TaskWorkReader>();
         services.AddScoped<Application.Tasks.Abstractions.ITaskSummaryReader, TaskSummaryReader>();
+        services.AddScoped<Application.Tasks.Abstractions.ITaskBoardReader, TaskBoardReader>();
         services.AddScoped<Application.Files.ITaskFileVisibilityReader, TaskFileVisibilityReader>();
         services.AddScoped<Application.Files.IFileSourceRedeclarer, Files.FileSourceRedeclarer>();
         services.AddOptions<ClientReminderOptions>().Bind(configuration.GetSection(ClientReminderOptions.SectionName));
@@ -99,6 +104,7 @@ public static class DependencyInjection
         services.AddScoped<ICounterReconciler, CounterReconciler>();
         services.AddHostedService<CounterReconciliationJob>();
         services.AddHostedService<SeriesMaterializationJob>();
+        services.AddHostedService<TaskTrashPurgeJob>();
 
         AddPermissionsProjections(services);
         AddRateLimitTierQuotas(services, configuration);

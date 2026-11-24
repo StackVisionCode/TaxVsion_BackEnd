@@ -1,7 +1,7 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using TaxVision.Tasks.Application.Labels.Abstractions;
-using TaxVision.Tasks.Domain.Labels;
+using TaxVision.Tasks.Application.Statuses.Abstractions;
+using TaxVision.Tasks.Domain.Statuses;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 
@@ -20,7 +20,7 @@ public static class CreateTaskLabelHandler
 {
     public static async Task<Result<TaskLabelResponse>> Handle(
         CreateTaskLabelCommand command,
-        ITaskLabelRepository labels,
+        IWorkflowStatusRepository labels,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -36,7 +36,7 @@ public static class CreateTaskLabelHandler
         if (await labels.CodeExistsAsync(command.TenantId, code.Value, null, ct))
             return Result.Failure<TaskLabelResponse>(TaskErrors.Label.CodeTaken);
 
-        var created = TaskLabel.Create(
+        var created = WorkflowStatus.Create(
             command.TenantId,
             code.Value,
             command.DisplayName,

@@ -20,11 +20,11 @@ internal sealed class FormCatalogUsageReader(TasksDbContext context) : IFormCata
         // El JSON canónico no lleva espacios, así que la clave aparece siempre con esta forma exacta.
         var pattern = $"%\"targetKey\":\"{EscapeLike(targetKey)}\"%";
         var versionIds = context
-            .FormTemplateVersions.IgnoreQueryFilters()
+            .FormTemplateVersions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(version => EF.Functions.Like(version.MappingSetJson, pattern, LikeEscape))
             .Select(version => version.Id);
         var openRequests = await context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .CountAsync(
                 request =>
                     (
@@ -35,7 +35,7 @@ internal sealed class FormCatalogUsageReader(TasksDbContext context) : IFormCata
                 ct
             );
         var activeLinks = await context
-            .FormIntakeLinks.IgnoreQueryFilters()
+            .FormIntakeLinks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .CountAsync(
                 link =>
                     link.Status != FormIntakeLinkStatus.Revoked

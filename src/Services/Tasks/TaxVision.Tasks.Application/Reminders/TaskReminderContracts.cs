@@ -13,12 +13,16 @@ public static class TaskReminderContracts
     /// <summary>Lo que Reminder usa para deduplicar reintentos del bus.</summary>
     public const string Category = "Task";
 
+    /// <summary>Categoría del aviso "el cliente no respondió": se mueve y se cierra aparte del vencimiento.</summary>
+    public const string ClientResponseCategory = "TaskClientResponse";
+
     /// <summary>
     /// Reminder ignora una clave existente en cualquier estado (REM-1), así que cada reapertura usa
     /// la suya. El ciclo 0 conserva el formato original para no cambiar las claves vivas.
     /// </summary>
-    public static string RequestKey(Guid taskId, Guid userId, int lifecycle) =>
-        lifecycle == 0 ? $"task-created:{taskId:N}:{userId:N}" : $"task-created:{taskId:N}:{userId:N}:r{lifecycle}";
+    public static string RequestKey(Guid taskId, Guid userId, int lifecycle, string? cycleTag = null) =>
+        (lifecycle == 0 ? $"task-created:{taskId:N}:{userId:N}" : $"task-created:{taskId:N}:{userId:N}:r{lifecycle}")
+        + (cycleTag is null ? "" : $":{cycleTag}");
 
     /// <param name="lifecycle">Ciclo de vida de la clave. Sin valor, el vigente de la tarea.</param>
     public static ReminderRequestedIntegrationEvent Requested(
@@ -26,7 +30,8 @@ public static class TaskReminderContracts
         Guid userId,
         int leadMinutes,
         string correlationId,
-        int? lifecycle = null
+        int? lifecycle = null,
+        string? cycleTag = null
     ) =>
         new()
         {
@@ -40,7 +45,7 @@ public static class TaskReminderContracts
             TimeZoneId = task.Due!.TimeZoneId,
             AnchorAtUtc = task.Due.DueAtUtc,
             LeadMinutes = leadMinutes,
-            RequestKey = RequestKey(task.Id, userId, lifecycle ?? task.ReopenCount),
+            RequestKey = RequestKey(task.Id, userId, lifecycle ?? task.ReopenCount, cycleTag),
         };
 
     public static ReminderTargetMovedIntegrationEvent Moved(TaskItem task, string correlationId) =>
@@ -62,7 +67,17 @@ public static class TaskReminderContracts
     {
         public const string Completed = "completed";
         public const string Cancelled = "cancelled";
+        public const string Deleted = "deleted";
+        public const string LeftWaiting = "left_waiting_on_client";
     }
+
+    /// <summary>La espera terminó: se cierra su aviso, no el del vencimiento.</summary>
+    public static ReminderTargetClosedIntegrationEvent ClientResponseClosed(
+        Guid tenantId,
+        Guid taskId,
+        string reason,
+        string correlationId
+    ) => Closed(tenantId, taskId, reason, correlationId) with { Category = ClientResponseCategory };
 
     public static ReminderTargetClosedIntegrationEvent Closed(TaskItem task, string reason, string correlationId) =>
         Closed(task.TenantId, task.Id, reason, correlationId);
@@ -91,6 +106,7 @@ public static class TaskReminderContracts
         TaskItem task,
         Guid preparerUserId,
         DateTime clientDueAtUtc,
+        string officeTimeZoneId,
         string correlationId
     ) =>
         new()
@@ -98,13 +114,14 @@ public static class TaskReminderContracts
             TenantId = task.TenantId,
             CorrelationId = correlationId,
             UserId = preparerUserId,
-            Category = Category,
+            Category = ClientResponseCategory,
             TargetId = task.Id,
-            Title = $"Sin respuesta del cliente: {task.Title.Value}",
+            Title = $"No reply from the client: {task.Title.Value}",
             Body = task.ExpectedItems?.Value,
-            TimeZoneId = task.Due?.TimeZoneId ?? "UTC",
+            TimeZoneId = task.Due?.TimeZoneId ?? officeTimeZoneId,
             AnchorAtUtc = clientDueAtUtc,
             LeadMinutes = 0,
-            RequestKey = $"task-client-response:{task.Id:N}:{preparerUserId:N}",
+            // Una clave por espera: la segunda no choca con el recordatorio ya disparado de la primera.
+            RequestKey = $"task-client-response:{task.Id:N}:{preparerUserId:N}:{task.ClientRequestedAtUtc?.Ticks ?? 0}",
         };
 }

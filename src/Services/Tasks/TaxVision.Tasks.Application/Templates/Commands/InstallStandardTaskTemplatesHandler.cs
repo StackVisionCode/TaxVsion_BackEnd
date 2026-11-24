@@ -9,14 +9,22 @@ namespace TaxVision.Tasks.Application.Templates.Commands;
 
 public sealed record InstallStandardTaskTemplatesCommand(Guid TenantId, Guid ByUserId);
 
+/// <summary>Una estándar que la oficina tiene en una versión anterior: se actualiza solo si el administrador lo confirma.</summary>
+public sealed record OutdatedStandardTemplate(Guid TemplateId, string Name, string StandardKey);
+
+public sealed record StandardTemplatesInstallResponse(
+    IReadOnlyList<TaskTemplateResponse> Installed,
+    IReadOnlyList<OutdatedStandardTemplate> Outdated
+);
+
 /// <summary>
-/// Copia el catálogo estándar al tenant, saltándose las que ya tiene por nombre. Es idempotente
-/// porque la firma va a llamarlo dos veces —al abrir la cuenta y cuando alguien busque el 941 que
-/// no ve— y duplicar el guion dejaría al preparador eligiendo entre dos 1040 idénticos.
+/// Copia el catálogo estándar al tenant, saltándose las que ya tiene. Las reconoce por clave (o, si nacieron antes de la
+/// clave, por un nombre conocido, y entonces la reciben): renombrarlas o cambiar el idioma del catálogo no duplica nada.
+/// Las que difieren de la versión vigente se listan como desactualizadas; nunca se reescriben solas (D-23).
 /// </summary>
 public static class InstallStandardTaskTemplatesHandler
 {
-    public static async Task<Result<IReadOnlyList<TaskTemplateResponse>>> Handle(
+    public static async Task<Result<StandardTemplatesInstallResponse>> Handle(
         InstallStandardTaskTemplatesCommand command,
         ITaskTemplateRepository templates,
         IUnitOfWork unitOfWork,
@@ -27,53 +35,40 @@ public static class InstallStandardTaskTemplatesHandler
         // Las fechas del catálogo se cuentan en la zona de la oficina (P24).
         var officeZoneId = (await zones.ResolveAsync(command.TenantId, ct)).Id;
         var existing = await templates.ListAsync(command.TenantId, onlyActive: false, ct);
-        var names = existing.Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var outdated = Adopt(existing);
 
         var installed = new List<TaskTemplate>();
-
-        foreach (var standard in StandardTaxTemplates.All.Where(s => !names.Contains(s.Name)))
+        foreach (var standard in StandardTaxTemplates.All.Where(s => !existing.Any(t => t.StandardKey == s.Key)))
         {
-            var built = Build(command, standard, officeZoneId);
+            var built = StandardTemplateBuilder.Build(command.TenantId, command.ByUserId, standard, officeZoneId);
             if (built.IsFailure)
-                return Result.Failure<IReadOnlyList<TaskTemplateResponse>>(built.Error);
+                return Result.Failure<StandardTemplatesInstallResponse>(built.Error);
 
             templates.Add(built.Value);
             installed.Add(built.Value);
         }
 
-        if (installed.Count > 0)
-            await unitOfWork.SaveChangesAsync(ct);
-
-        return Result.Success<IReadOnlyList<TaskTemplateResponse>>([.. installed.Select(TaskTemplateResponse.From)]);
+        await unitOfWork.SaveChangesAsync(ct);
+        return Result.Success(
+            new StandardTemplatesInstallResponse([.. installed.Select(TaskTemplateResponse.From)], outdated)
+        );
     }
 
-    private static Result<TaskTemplate> Build(
-        InstallStandardTaskTemplatesCommand command,
-        StandardTaxTemplate standard,
-        string officeZoneId
-    )
+    /// <summary>Da la clave a las copias que no la tenían y devuelve las que no están en la versión vigente.</summary>
+    private static List<OutdatedStandardTemplate> Adopt(IReadOnlyList<TaskTemplate> existing)
     {
-        var created = TaskTemplate.Create(
-            command.TenantId,
-            command.ByUserId,
-            standard.Name,
-            standard.Description,
-            DateTime.UtcNow
-        );
-        if (created.IsFailure)
-            return created;
-
-        var recurrence = TaskTemplateStepFactory.ApplyRecurrence(
-            created.Value,
-            standard.RecurrenceRule,
-            officeZoneId,
-            standard.RecurrenceMode
-        );
-        if (recurrence.IsFailure)
-            return Result.Failure<TaskTemplate>(recurrence.Error);
-
-        var steps = TaskTemplateStepFactory.ApplyTo(created.Value, standard.Steps);
-
-        return steps.IsFailure ? Result.Failure<TaskTemplate>(steps.Error) : created;
+        var outdated = new List<OutdatedStandardTemplate>();
+        foreach (var template in existing)
+        {
+            if (StandardTaxTemplates.Of(template) is not { } standard)
+                continue;
+            // Si la oficina tuviera dos copias de la misma estándar, la clave es de la primera.
+            if (template.StandardKey is null && existing.Any(t => t.StandardKey == standard.Key))
+                continue;
+            template.AdoptStandardKey(standard.Key);
+            if (!StandardTaxTemplates.IsCurrent(template, standard))
+                outdated.Add(new OutdatedStandardTemplate(template.Id, template.Name, standard.Key));
+        }
+        return outdated;
     }
 }

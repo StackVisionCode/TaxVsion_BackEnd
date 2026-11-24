@@ -79,6 +79,31 @@ public sealed class ApplyTaskTemplateHandlerTests
         Assert.Equal("America/Chicago", last.Due.TimeZoneId);
     }
 
+    [Fact]
+    public async Task Every_occurrence_of_a_recurring_template_keeps_the_template_and_its_reference_files()
+    {
+        var template = Template(recurring: true);
+        var fileId = Guid.NewGuid();
+        template.ReplaceAttachments(
+            [TaskTemplateAttachment.Create(fileId, "Checklist.pdf", "application/pdf", 1024, null)],
+            DateTime.UtcNow
+        );
+        var fixture = new Fixture(template);
+
+        var result = await fixture.ApplyAsync(Preparer);
+        var first = fixture.Tasks.Stored.Single(t => t.Id == result.Value.FirstTaskId);
+        var series = Assert.Single(fixture.Series.Stored);
+        series.RegisterInstanceClosed(first.Id);
+        var next = await fixture.Materializer.MaterializeNextAsync(series, first.Due!.DueAtUtc, null);
+
+        Assert.Equal(template.Id, series.TemplateId);
+        foreach (var task in new[] { first, next.Value })
+        {
+            Assert.Equal(template.Id, task.TemplateId);
+            Assert.Equal(fileId, Assert.Single(task.Attachments).FileId);
+        }
+    }
+
     private static TaskTemplate Template(bool recurring)
     {
         var standard = StandardTaxTemplates.All.First(t => (t.RecurrenceRule is not null) == recurring);
@@ -98,11 +123,13 @@ public sealed class ApplyTaskTemplateHandlerTests
     {
         public InMemoryTaskRepository Tasks { get; } = new();
         public FakeMessageBus Bus { get; } = new();
+        public InMemoryTaskSeriesRepository Series { get; } = new();
+        public InMemoryTaskTemplateRepository Templates { get; } = new(template);
+        public TaskSeriesMaterializer Materializer => new(Tasks, Series, Templates);
 
         // Los anuncios salen del handler del evento de alta de cada tarea (el replay los deja en el bus).
         public async Task<Result<TemplateApplicationResponse>> ApplyAsync(Guid? assignee, DateOnly? dueOn = null)
         {
-            var series = new InMemoryTaskSeriesRepository();
             var result = await ApplyTaskTemplateHandler.Handle(
                 new ApplyTaskTemplateCommand(
                     TenantId,
@@ -116,10 +143,10 @@ public sealed class ApplyTaskTemplateHandlerTests
                     false,
                     dueOn
                 ),
-                new InMemoryTaskTemplateRepository(template),
+                Templates,
                 new TaskTemplateInstantiator(Tasks, new InMemoryTaskDependencyRepository()),
-                series,
-                new TaskSeriesMaterializer(Tasks, series),
+                Series,
+                Materializer,
                 new RecordingUnitOfWork(),
                 new FixedOfficeZone("America/Chicago"),
                 CancellationToken.None

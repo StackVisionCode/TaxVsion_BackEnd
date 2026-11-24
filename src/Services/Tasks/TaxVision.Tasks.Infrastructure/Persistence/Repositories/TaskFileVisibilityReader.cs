@@ -3,6 +3,7 @@ using BuildingBlocks.Contracts.Work;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Files;
 using TaxVision.Tasks.Domain.Tasks;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -21,12 +22,12 @@ public sealed class TaskFileVisibilityReader(TasksDbContext context) : ITaskFile
 
         // Cuenta cualquier origen (subido, enlazado o de plantilla): es lo que el drawer muestra.
         var visibleTasks = context
-            .Tasks.IgnoreQueryFilters()
+            .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(t => t.TenantId == tenantId)
             .VisibleTo(context, tenantId, visibleTo);
         var rows = await context
             .Set<TaskAttachment>()
-            .IgnoreQueryFilters()
+            .IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(a => a.TenantId == tenantId && fileIds.Contains(a.FileId) && a.Status == AttachmentStatus.Available)
             .Join(
                 visibleTasks,

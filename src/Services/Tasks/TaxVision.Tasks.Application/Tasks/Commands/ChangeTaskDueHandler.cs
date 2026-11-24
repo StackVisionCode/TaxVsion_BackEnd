@@ -78,7 +78,7 @@ public static class ChangeTaskDueHandler
         return TaskDraft.BuildDue(command.DueAtUtc, command.TimeZoneId, command.IsStatutory, command.DueOn, officeZone);
     }
 
-    private static TaskDueChangedIntegrationEvent BuildEvent(
+    internal static TaskDueChangedIntegrationEvent BuildEvent(
         TaskItem task,
         DateTime? previousDueAtUtc,
         Guid changedByUserId,
@@ -94,5 +94,7 @@ public static class ChangeTaskDueHandler
             TimeZoneId = task.Due?.TimeZoneId,
             NewDueOn = task.Due?.DueOn,
             ChangedByUserId = changedByUserId,
+            Title = task.Title.Value,
+            AssigneeUserId = task.AssigneeUserId,
         };
 }

@@ -25,7 +25,8 @@ public sealed record CreateSubtaskCommand(
     string? DueTimeZoneId,
     bool DueIsStatutory,
     decimal? EstimatedHours,
-    DateOnly? DueOn = null
+    DateOnly? DueOn = null,
+    bool CanAssignOthers = true
 );
 
 public static class CreateSubtaskHandler
@@ -43,6 +44,8 @@ public static class CreateSubtaskHandler
             return Result.Failure<TaskResponse>(parent.Error);
 
         if (!TaskAccessPolicy.CanMutate(parent.Value, command.ByUserId, command.HasManageAll))
+            return Result.Failure<TaskResponse>(TaskErrors.Forbidden);
+        if (!command.CanAssignOthers && command.AssigneeUserId is { } other && other != command.ByUserId)
             return Result.Failure<TaskResponse>(TaskErrors.Forbidden);
 
         var officeZone = command.DueOn is null ? null : await zones.ResolveAsync(command.TenantId, ct);

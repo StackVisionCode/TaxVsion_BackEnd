@@ -146,7 +146,7 @@ internal sealed class FormAuditLog(
         var details = $"{{\"revisionNumber\":{revisionNumber}}}";
         var cutoff = nowUtc.AddMinutes(-30);
         var exists = await context
-            .FormAuditEntries.IgnoreQueryFilters()
+            .FormAuditEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .AnyAsync(
                 item =>

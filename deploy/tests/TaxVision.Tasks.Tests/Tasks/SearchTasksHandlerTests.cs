@@ -124,6 +124,7 @@ public sealed class SearchTasksHandlerTests
                 TaskSummaryScenario.Window.Work.NowUtc
             ),
             new TaskRepository(db),
+            new WorkflowStatusRepository(db),
             new FixedOfficeZone("America/New_York"),
             Options.Create(new TasksVisibilityOptions { Enabled = true }),
             default

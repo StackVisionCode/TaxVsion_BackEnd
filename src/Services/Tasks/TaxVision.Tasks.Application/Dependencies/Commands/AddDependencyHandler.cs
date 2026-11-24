@@ -54,15 +54,27 @@ public static class AddDependencyHandler
             return check;
         }
 
-        dependencies.Add(dependencyResult.Value);
-
-        // Sumar por una predecesora ya cerrada dejaría a la sucesora trabada para siempre.
-        if (!IsClosed(predecessor))
-            successor.RegisterBlockerAdded();
+        Link(command, dependencyResult.Value, successor, predecessor, dependencies);
 
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return Result.Success();
+    }
+
+    private static void Link(
+        AddDependencyCommand command,
+        TaskDependency edge,
+        TaskItem successor,
+        TaskItem predecessor,
+        ITaskDependencyRepository dependencies
+    )
+    {
+        dependencies.Add(edge);
+        successor.RecordDependencyChange(predecessor.Id, added: true, command.ByUserId, DateTime.UtcNow);
+
+        // Sumar por una predecesora ya cerrada dejaría a la sucesora trabada para siempre.
+        if (!IsClosed(predecessor))
+            successor.RegisterBlockerAdded();
     }
 
     /// <summary>
@@ -83,6 +95,10 @@ public static class AddDependencyHandler
 
         if (!TaskAccessPolicy.CanMutate(successor.Value, command.ByUserId, command.HasManageAll))
             return Result.Failure<(TaskItem, TaskItem)>(TaskErrors.Forbidden);
+
+        // D-26: una tarea cerrada no empieza a esperar a otra.
+        if (IsClosed(successor.Value))
+            return Result.Failure<(TaskItem, TaskItem)>(TaskErrors.Dependency.SuccessorClosed);
 
         return Result.Success((successor.Value, predecessor.Value));
     }
@@ -109,15 +125,21 @@ public static class AddDependencyHandler
             return Result.Failure(TaskErrors.Dependency.Duplicate);
 
         var ancestors = await tasks.GetAncestorIdsAsync(command.TenantId, command.DependsOnTaskId, ct);
-        foreach (var ancestorId in ancestors)
-        {
-            if (ancestorId == command.TaskId)
-                return Result.Failure(TaskErrors.Dependency.AncestorOfSelf);
-        }
+        if (ancestors.Contains(command.TaskId))
+            return Result.Failure(TaskErrors.Dependency.AncestorOfSelf);
+
+        var ownAncestors = await tasks.GetAncestorIdsAsync(command.TenantId, command.TaskId, ct);
+        if (ownAncestors.Contains(command.DependsOnTaskId))
+            return Result.Failure(TaskErrors.Dependency.WaitsOnOwnParent);
 
         var edges = await dependencies.LoadUpstreamGraphAsync(command.TenantId, command.DependsOnTaskId, ct);
-        return TaskDependencyGraph.EnsureNoCycle(command.TaskId, command.DependsOnTaskId, edges);
+        var noCycle = TaskDependencyGraph.EnsureNoCycle(command.TaskId, command.DependsOnTaskId, edges);
+
+        // Sin ciclo en lo cargado no basta si la consulta se recortó: el ciclo podría estar más allá.
+        return noCycle.IsSuccess && TaskDependencyGraph.IsTruncated(command.DependsOnTaskId, edges)
+            ? Result.Failure(TaskErrors.Dependency.GraphTooLarge)
+            : noCycle;
     }
 
-    private static bool IsClosed(TaskItem task) => task.Status is TaskItemStatus.Completed or TaskItemStatus.Cancelled;
+    private static bool IsClosed(TaskItem task) => TaskItemStatuses.IsClosed(task.Status);
 }

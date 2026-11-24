@@ -23,7 +23,6 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -34,6 +33,7 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories.FormParticipantRepository is not public, so requires service location
             */
             var formParticipantRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.ClientForms.Application.Participants.Abstractions.IFormParticipantRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var formAttachmentRejectedIntegrationEvent = (BuildingBlocks.Messaging.ClientFormsIntegrationEvents.FormAttachmentRejectedIntegrationEvent)context.Envelope.Message;
 

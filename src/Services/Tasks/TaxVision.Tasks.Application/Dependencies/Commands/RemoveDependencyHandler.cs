@@ -47,15 +47,26 @@ public static class RemoveDependencyHandler
             return Result.Failure(TaskErrors.Forbidden);
 
         dependencies.Remove(dependency);
-
-        // Si la predecesora ya estaba cerrada nunca sumó, así que tampoco resta.
-        if (successorResult.IsSuccess && predecessorResult.IsSuccess && !IsClosed(predecessorResult.Value))
-            successorResult.Value.RegisterBlockerResolved(DateTime.UtcNow);
+        if (successorResult.IsSuccess)
+            Unlink(command, successorResult.Value, predecessorResult);
 
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return Result.Success();
     }
 
-    private static bool IsClosed(TaskItem task) => task.Status is TaskItemStatus.Completed or TaskItemStatus.Cancelled;
+    private static bool IsClosed(TaskItem task) => TaskItemStatuses.IsClosed(task.Status);
+
+    private static void Unlink(
+        RemoveDependencyCommand command,
+        TaskItem successor,
+        BuildingBlocks.Results.Result<TaskItem> predecessor
+    )
+    {
+        successor.RecordDependencyChange(command.DependsOnTaskId, added: false, command.ByUserId, DateTime.UtcNow);
+
+        // Si la predecesora ya estaba cerrada nunca sumó, así que tampoco resta.
+        if (predecessor.IsSuccess && !IsClosed(predecessor.Value))
+            successor.RegisterBlockerResolved(DateTime.UtcNow);
+    }
 }

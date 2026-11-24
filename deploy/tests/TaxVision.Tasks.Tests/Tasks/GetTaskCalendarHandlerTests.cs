@@ -46,6 +46,7 @@ public sealed class GetTaskCalendarHandlerTests
             Query(From, From.AddDays(-1)),
             new InMemoryTaskRepository(),
             NoVisibility(),
+            new FixedOfficeZone("America/New_York"),
             default
         );
 
@@ -60,6 +61,7 @@ public sealed class GetTaskCalendarHandlerTests
             Query(From, From.AddDays(63)),
             new InMemoryTaskRepository(),
             NoVisibility(),
+            new FixedOfficeZone("America/New_York"),
             default
         );
 
@@ -76,6 +78,7 @@ public sealed class GetTaskCalendarHandlerTests
             Query(From, From.AddDays(30), take: 2),
             repository,
             NoVisibility(),
+            new FixedOfficeZone("America/New_York"),
             default
         );
 
@@ -95,11 +98,44 @@ public sealed class GetTaskCalendarHandlerTests
             Query(From, From.AddDays(30), filter),
             repository,
             NoVisibility(),
+            new FixedOfficeZone("America/New_York"),
             default
         );
 
         Assert.True(result.IsSuccess);
         Assert.False(result.Value.Truncated);
         Assert.Equal(filter, repository.LastCalendarFilter);
+    }
+
+    [Fact]
+    public async Task The_due_filter_of_the_page_reaches_the_repository_as_a_civil_cut()
+    {
+        var repository = new InMemoryTaskRepository();
+
+        var result = await GetTaskCalendarHandler.Handle(
+            Query(From, From.AddDays(30)) with
+            {
+                Due = TaskDueBucket.Overdue,
+                NowUtc = From.AddDays(10),
+            },
+            repository,
+            NoVisibility(),
+            new FixedOfficeZone("America/New_York"),
+            default
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaskDueBucket.Overdue, repository.LastCalendarFilter!.Due!.Bucket);
+    }
+
+    [Fact]
+    public async Task Each_entry_carries_its_office_status()
+    {
+        var task = Due(From.AddDays(3));
+        typeof(TaskItem).GetProperty(nameof(TaskItem.WorkflowStatusCode))!.SetValue(task, "under_review");
+
+        var entry = TaxVision.Tasks.Application.Tasks.TaskCalendarEntry.From(task);
+
+        Assert.Equal("under_review", entry.WorkflowStatusCode);
     }
 }

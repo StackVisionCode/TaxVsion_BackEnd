@@ -11,6 +11,13 @@ public interface ITaskDependencyRepository
 
     Task<TaskDependency?> GetAsync(Guid tenantId, Guid taskId, Guid dependsOnTaskId, CancellationToken ct = default);
 
+    /// <summary>Las aristas en las que alguna de estas tareas espera o bloquea (para borrarlas con ellas).</summary>
+    Task<IReadOnlyList<TaskDependency>> ListTouchingAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> taskIds,
+        CancellationToken ct = default
+    );
+
     /// <summary>
     /// Componente conexo aguas arriba de <paramref name="startTaskId"/>, en una sola consulta
     /// recursiva. Devuelve sucesora → predecesoras, que es lo que consume el domain service.
@@ -49,5 +56,7 @@ public sealed record CounterMismatch(
     int StoredBlockers,
     int ActualBlockers,
     int StoredSubtasks,
-    int ActualSubtasks
+    int ActualSubtasks,
+    int StoredSubtaskTotal = 0,
+    int ActualSubtaskTotal = 0
 );

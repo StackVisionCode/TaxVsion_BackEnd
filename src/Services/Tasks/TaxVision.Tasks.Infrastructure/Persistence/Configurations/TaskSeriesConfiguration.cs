@@ -11,6 +11,7 @@ public sealed class TaskSeriesConfiguration : IEntityTypeConfiguration<TaskSerie
     {
         builder.ToTable("TaskSeries");
         builder.HasKey(s => s.Id);
+        builder.Ignore(s => s.DomainEvents);
 
         builder.Property(s => s.TenantId).IsRequired();
         builder.Property(s => s.CreatedByUserId).IsRequired();
@@ -18,6 +19,12 @@ public sealed class TaskSeriesConfiguration : IEntityTypeConfiguration<TaskSerie
         builder.Property(s => s.Mode).HasConversion<int>().IsRequired();
         builder.Property(s => s.Status).HasConversion<int>().IsRequired();
         builder.Property(s => s.AnchorUtc).IsRequired();
+        builder.Property(s => s.LastPlannedDueUtc);
+        builder.Property(s => s.PendingFirstDueUtc);
+        builder.Property(s => s.MaterializationAttempts).IsRequired();
+        builder.Property(s => s.NextMaterializationAtUtc);
+        builder.Property(s => s.TaxYearDueYear);
+        builder.Property(s => s.TemplateId);
         builder.Property(s => s.OpenInstanceId);
         builder.Property(s => s.GeneratedCount).IsRequired();
         builder.Property(s => s.SkippedOccurrences).IsRequired();

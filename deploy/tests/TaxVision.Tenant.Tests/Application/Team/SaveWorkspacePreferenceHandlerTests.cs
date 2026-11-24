@@ -138,6 +138,31 @@ public sealed class SaveWorkspacePreferenceHandlerTests
         Assert.Equal(1, view.OfficeDefault!.Version);
     }
 
+    [Fact]
+    public async Task The_task_board_preferences_are_saved_under_their_own_key()
+    {
+        var result = await SaveWorkspacePreferenceHandler.Handle(
+            new SaveWorkspacePreferenceCommand(
+                _tenantId,
+                _userId,
+                _userId,
+                WorkspacePreferenceKeys.CrmTasksBoard,
+                1,
+                0,
+                """{ "groupBy": "stage", "hiddenStatusCodes": ["review"], "collapsedStatusCodes": [], "hideEmpty": true, "sort": "Due" }"""
+            ),
+            _harness,
+            _harness,
+            _harness.Clock,
+            NullLogger<WorkspacePreference>.Instance,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("stage", result.Value.Payload!.Value.GetProperty("groupBy").GetString());
+        Assert.Equal(WorkspacePreferenceKeys.CrmTasksBoard, Assert.Single(_harness.Rows).PreferenceKey);
+    }
+
     private Task<Result<WorkspacePreferenceView>> SaveAsync(Guid? owner, long expectedVersion, string json) =>
         SaveWorkspacePreferenceHandler.Handle(
             new SaveWorkspacePreferenceCommand(_tenantId, owner, _userId, Key, 1, expectedVersion, json),

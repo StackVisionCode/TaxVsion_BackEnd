@@ -8,7 +8,7 @@ internal sealed class FormResponsibleUserValidator(TasksDbContext context) : IFo
 {
     public Task<bool> IsActiveAsync(Guid tenantId, Guid userId, CancellationToken ct = default) =>
         context
-            .UserPermissionsProjections.IgnoreQueryFilters()
+            .UserPermissionsProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AnyAsync(item => item.TenantId == tenantId && item.UserId == userId && item.IsActive, ct);
 
     public async Task<bool> HasPermissionsAsync(
@@ -19,7 +19,7 @@ internal sealed class FormResponsibleUserValidator(TasksDbContext context) : IFo
     )
     {
         var projection = await context
-            .UserPermissionsProjections.IgnoreQueryFilters()
+            .UserPermissionsProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.UserId == userId && item.IsActive, ct);
         if (projection is null)

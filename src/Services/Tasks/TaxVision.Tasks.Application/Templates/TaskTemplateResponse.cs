@@ -37,7 +37,8 @@ public sealed record TaskTemplateResponse(
     DateTime CreatedAtUtc,
     DateTime? UpdatedAtUtc,
     IReadOnlyList<TaskTemplateStepResponse> Steps,
-    IReadOnlyList<TaskTemplateAttachmentResponse> Attachments
+    IReadOnlyList<TaskTemplateAttachmentResponse> Attachments,
+    string? StandardKey = null
 )
 {
     public static TaskTemplateResponse From(TaskTemplate template) =>
@@ -74,7 +75,8 @@ public sealed record TaskTemplateResponse(
                     a.SizeBytes,
                     a.StepOrder
                 )),
-            ]
+            ],
+            template.StandardKey
         );
 }
 

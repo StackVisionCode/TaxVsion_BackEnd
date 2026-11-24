@@ -45,6 +45,57 @@ public sealed class TaskAssignedConsumerDeliveryTests
     }
 }
 
+public sealed class TaskUnblockedConsumerDeliveryTests
+{
+    [Fact]
+    public async Task The_assignee_hears_that_the_task_can_start()
+    {
+        var recorder = DeliveryCase.Recorder();
+
+        await TaskUnblockedConsumer.Handle(
+            Unblocked(DeliveryCase.StaffUserId),
+            recorder.Dispatcher,
+            recorder.Correlation,
+            CancellationToken.None
+        );
+
+        DeliveryCase.Same(
+            [
+                "inapp kind=tasks.task_unblocked to=staff cat=Work priority=Normal title=Task ready to start: File the 1040 body=Everything it was waiting on is done. rt=task rid=resource ctx= params=taskTitle=File the 1040 action=open src=evt srcType=tasks.task_unblocked.v1 group= actor=/ at=2026-11-20T15:00:00.0000000Z",
+                "log InApp kind=tasks.task_unblocked tpl=tasks.task_unblocked to=user:staff status=Sent event=evt subject=Task ready to start: File the 1040",
+            ],
+            recorder.Lines()
+        );
+    }
+
+    [Fact]
+    public async Task Without_an_assignee_nobody_is_notified()
+    {
+        var recorder = DeliveryCase.Recorder();
+
+        await TaskUnblockedConsumer.Handle(
+            Unblocked(null),
+            recorder.Dispatcher,
+            recorder.Correlation,
+            CancellationToken.None
+        );
+
+        Assert.Empty(recorder.Lines());
+    }
+
+    private static TaskUnblockedIntegrationEvent Unblocked(Guid? assignee) =>
+        new()
+        {
+            EventId = DeliveryCase.EventId,
+            TenantId = DeliveryCase.TenantId,
+            OccurredOn = DeliveryCase.OccurredOn,
+            CorrelationId = "corr",
+            TaskId = DeliveryCase.ResourceId,
+            Title = "File the 1040",
+            AssigneeUserId = assignee,
+        };
+}
+
 public sealed class TaskOverdueConsumerDeliveryTests
 {
     [Fact]
@@ -303,4 +354,92 @@ public sealed class ClientRequestDocumentRejectedConsumerDeliveryTests
             recorder.Lines()
         );
     }
+}
+
+public sealed class TaskSeriesEndedConsumerDeliveryTests
+{
+    [Fact]
+    public async Task The_owner_hears_that_the_recurring_task_ended()
+    {
+        var recorder = DeliveryCase.Recorder();
+
+        await TaskSeriesEndedConsumer.Handle(
+            new TaskSeriesEndedIntegrationEvent
+            {
+                EventId = DeliveryCase.EventId,
+                TenantId = DeliveryCase.TenantId,
+                OccurredOn = DeliveryCase.OccurredOn,
+                CorrelationId = "corr",
+                SeriesId = DeliveryCase.ResourceId,
+                Title = "Payroll (941)",
+                OwnerUserId = DeliveryCase.StaffUserId,
+            },
+            recorder.Dispatcher,
+            recorder.Correlation,
+            CancellationToken.None
+        );
+
+        Assert.Contains(
+            recorder.Lines(),
+            line =>
+                line.StartsWith("inapp kind=tasks.series_ended to=staff", StringComparison.Ordinal)
+                && line.Contains("title=Recurring task ended: Payroll (941)", StringComparison.Ordinal)
+        );
+    }
+}
+
+/// <summary>Otro movió el vencimiento de mi tarea: me entero; si lo moví yo, no.</summary>
+public sealed class TaskDueChangedConsumerDeliveryTests
+{
+    [Fact]
+    public async Task The_assignee_hears_when_someone_else_moves_the_due_date()
+    {
+        var recorder = DeliveryCase.Recorder();
+
+        await TaskDueChangedConsumer.Handle(
+            DueChanged(changedBy: Guid.NewGuid()),
+            recorder.Dispatcher,
+            recorder.Correlation,
+            CancellationToken.None
+        );
+
+        DeliveryCase.Same(
+            [
+                "inapp kind=tasks.task_due_changed to=staff cat=Work priority=Normal title=Due date changed: File the 1040 body=New due date: Apr 15, 2027. rt=task rid=resource ctx= params=taskTitle=File the 1040 action=open src=evt srcType=tasks.task_due_changed.v1 group= actor=/ at=2026-11-20T15:00:00.0000000Z",
+                "log InApp kind=tasks.task_due_changed tpl=tasks.task_due_changed to=user:staff status=Sent event=evt subject=Due date changed: File the 1040",
+            ],
+            recorder.Lines()
+        );
+    }
+
+    [Fact]
+    public async Task Moving_my_own_due_date_tells_me_nothing()
+    {
+        var recorder = DeliveryCase.Recorder();
+
+        await TaskDueChangedConsumer.Handle(
+            DueChanged(changedBy: DeliveryCase.StaffUserId),
+            recorder.Dispatcher,
+            recorder.Correlation,
+            CancellationToken.None
+        );
+
+        Assert.Empty(recorder.Lines());
+    }
+
+    private static TaskDueChangedIntegrationEvent DueChanged(Guid changedBy) =>
+        new()
+        {
+            EventId = DeliveryCase.EventId,
+            TenantId = DeliveryCase.TenantId,
+            OccurredOn = DeliveryCase.OccurredOn,
+            CorrelationId = "corr",
+            TaskId = DeliveryCase.ResourceId,
+            Title = "File the 1040",
+            AssigneeUserId = DeliveryCase.StaffUserId,
+            NewDueOn = new DateOnly(2027, 4, 15),
+            NewDueAtUtc = new DateTime(2027, 4, 16, 3, 59, 59, DateTimeKind.Utc),
+            TimeZoneId = "America/New_York",
+            ChangedByUserId = changedBy,
+        };
 }

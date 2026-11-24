@@ -1,6 +1,6 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using TaxVision.Tasks.Application.Labels.Abstractions;
+using TaxVision.Tasks.Application.Statuses.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 
@@ -20,7 +20,7 @@ public static class UpdateTaskLabelHandler
 {
     public static async Task<Result<TaskLabelResponse>> Handle(
         UpdateTaskLabelCommand command,
-        ITaskLabelRepository labels,
+        IWorkflowStatusRepository labels,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -32,6 +32,13 @@ public static class UpdateTaskLabelHandler
         var found = await labels.GetByIdAsync(command.TenantId, command.LabelId, ct);
         if (found.IsFailure)
             return Result.Failure<TaskLabelResponse>(found.Error);
+
+        // Un estado que ya tuvo tareas no cambia de etapa: cambiaría el significado de esas tareas.
+        if (
+            command.MapsToStatus != found.Value.Category
+            && await labels.IsUsedAsync(command.TenantId, found.Value.Id, ct)
+        )
+            return Result.Failure<TaskLabelResponse>(TaskErrors.Status.CategoryLocked);
 
         var renamed = found.Value.Rename(command.DisplayName, color.Value, command.MapsToStatus, command.SortOrder);
         if (renamed.IsFailure)

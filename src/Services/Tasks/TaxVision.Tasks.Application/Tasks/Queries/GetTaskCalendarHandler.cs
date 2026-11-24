@@ -1,6 +1,8 @@
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Options;
+using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
+using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Tasks.Queries;
 
@@ -11,7 +13,9 @@ public sealed record GetTaskCalendarQuery(
     TaskQueryFilter Filter,
     int Take,
     Guid ActorUserId,
-    bool CanViewAll
+    bool CanViewAll,
+    TaskDueBucket? Due = null,
+    DateTime? NowUtc = null
 );
 
 /// <summary>Las tareas del rango y si se cortaron en <c>Take</c>.</summary>
@@ -35,24 +39,39 @@ public static class GetTaskCalendarHandler
         GetTaskCalendarQuery query,
         ITaskRepository tasks,
         IOptions<TasksVisibilityOptions> visibility,
+        IOfficeTimeZone zones,
         CancellationToken ct
     )
     {
         if (query.ToUtc <= query.FromUtc || query.ToUtc - query.FromUtc > MaxRange)
             return Result.Failure<TaskCalendarResult>(RangeInvalid);
 
+        var items = await LoadAsync(query, tasks, visibility, zones, ct);
+        var entries = items.Take(query.Take).Select(TaskCalendarEntry.From).ToList();
+        return Result.Success(new TaskCalendarResult(entries, items.Count > query.Take));
+    }
+
+    /// <summary>Uno de más que el tope, para saber si se cortó sin contar aparte.</summary>
+    private static async Task<IReadOnlyList<TaskItem>> LoadAsync(
+        GetTaskCalendarQuery query,
+        ITaskRepository tasks,
+        IOptions<TasksVisibilityOptions> visibility,
+        IOfficeTimeZone zones,
+        CancellationToken ct
+    )
+    {
+        // El mismo corte de vencimiento que el tablero, con el día civil de la oficina.
+        var now = query.NowUtc ?? DateTime.UtcNow;
+        var filter = await TaskDueFilters.ApplyAsync(query.TenantId, query.Filter, query.Due, now, zones, ct);
         var assignedTo = visibility.Value.Enabled && !query.CanViewAll ? query.ActorUserId : (Guid?)null;
-        // Uno de más para saber si había más que el tope sin contar aparte.
-        var items = await tasks.ListForCalendarAsync(
+        return await tasks.ListForCalendarAsync(
             query.TenantId,
             query.FromUtc,
             query.ToUtc,
-            query.Filter,
+            filter,
             query.Take + 1,
             assignedTo,
             ct
         );
-        var entries = items.Take(query.Take).Select(TaskCalendarEntry.From).ToList();
-        return Result.Success(new TaskCalendarResult(entries, items.Count > query.Take));
     }
 }

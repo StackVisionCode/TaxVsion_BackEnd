@@ -40,7 +40,7 @@ internal sealed class LibrarySeeder(
                 .CatalogVersion;
 
             var existing = await context
-                .FormTemplates.IgnoreQueryFilters()
+                .FormTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                 .Where(template => template.TenantId == PlatformTenant.Id && template.LibraryKey != null)
                 .ToListAsync(stoppingToken);
             var known = new HashSet<string>(existing.Select(template => template.LibraryKey!), StringComparer.Ordinal);

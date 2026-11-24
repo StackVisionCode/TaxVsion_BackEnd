@@ -26,7 +26,7 @@ namespace Internal.Generated.WolverineHandlers
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext tasksDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext.");
-            var taskLabelRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.TaskLabelRepository(tasksDbContext);
+            var workflowStatusRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.WorkflowStatusRepository(tasksDbContext);
             var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var deleteTaskLabelCommand = (TaxVision.Tasks.Application.Labels.Commands.DeleteTaskLabelCommand)context.Envelope.Message;
@@ -48,7 +48,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Labels.Commands.DeleteTaskLabelHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Tasks.Application.Labels.Commands.DeleteTaskLabelHandler.Handle(deleteTaskLabelCommand, taskLabelRepository, unitOfWork, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Tasks.Application.Labels.Commands.DeleteTaskLabelHandler.Handle(deleteTaskLabelCommand, workflowStatusRepository, unitOfWork, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

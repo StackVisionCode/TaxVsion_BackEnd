@@ -7,6 +7,7 @@ using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using TaxVision.Tasks.Api.Requests;
 using TaxVision.Tasks.Api.Responses;
 using TaxVision.Tasks.Application.Dependencies.Commands;
@@ -31,7 +32,6 @@ namespace TaxVision.Tasks.Api.Controllers;
 public sealed class TasksController(IMessageBus bus, IUserPermissionsSource permissions) : ControllerBase
 {
     private const int DefaultSize = 20;
-    private const int BoardTake = 500;
     private const int CalendarTake = 500;
 
     [HttpPost]
@@ -57,7 +57,9 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
                 request.DueTimeZoneId,
                 request.DueIsStatutory,
                 request.EstimatedHours,
-                request.DueOn
+                request.DueOn,
+                await CanAssignAsync(ct),
+                await CanViewAllCustomersAsync(ct)
             ),
             ct
         );
@@ -90,7 +92,8 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
                 request.DueTimeZoneId,
                 request.DueIsStatutory,
                 request.EstimatedHours,
-                request.DueOn
+                request.DueOn,
+                await CanAssignAsync(ct)
             ),
             ct
         );
@@ -249,6 +252,11 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         [FromQuery] int page,
         [FromQuery] int size,
         [FromQuery] TaskDueBucket? due,
+        [FromQuery] string? statusCode,
+        [FromQuery] TaskPriority? priority,
+        [FromQuery] bool rootOnly,
+        [FromQuery] bool withMySubtasks,
+        [FromQuery] bool openOnly,
         CancellationToken ct
     )
     {
@@ -256,39 +264,32 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
             return Unauthorized();
 
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
-        var filter = new TaskQueryFilter(q, status, assigneeUserId, customerId, taxYear);
+        var filter = new TaskQueryFilter(
+            q,
+            status,
+            assigneeUserId,
+            customerId,
+            taxYear,
+            openOnly,
+            Priority: priority,
+            RootOnly: rootOnly,
+            AlsoSubtasksOf: withMySubtasks ? userId : null
+        );
         var (pageNumber, pageSize) = (NormalizePage(page), NormalizeSize(size));
         var result = await bus.InvokeAsync<PagedResult<TaskResponse>>(
-            new SearchTasksQuery(tenantId, filter, pageNumber, pageSize, userId, canViewAll, due, DateTime.UtcNow),
+            new SearchTasksQuery(
+                tenantId,
+                filter,
+                pageNumber,
+                pageSize,
+                userId,
+                canViewAll,
+                due,
+                DateTime.UtcNow,
+                statusCode
+            ),
             ct
         );
-        return Ok(result);
-    }
-
-    /// <summary>Tablero y calendario salen de la misma tabla; sólo cambia la forma de salida.</summary>
-    [HttpGet("board")]
-    [HasPermission(TasksPermissions.Read)]
-    [RateLimit("task.h.search")]
-    [ProducesResponseType<TaskBoardResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Board(
-        [FromQuery] Guid? assigneeUserId,
-        [FromQuery] Guid? customerId,
-        [FromQuery] int? taxYear,
-        CancellationToken ct
-    )
-    {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
-            return Unauthorized();
-
-        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
-        var filter = new TaskQueryFilter(null, null, assigneeUserId, customerId, taxYear, OnlyOpen: true);
-        var result = await bus.InvokeAsync<TaskBoardResponse>(
-            new GetTaskBoardQuery(tenantId, filter, BoardTake, userId, canViewAll),
-            ct
-        );
-        // R4: el cuerpo no cambia; el corte va en la misma cabecera que el calendario.
-        if (result.Truncated)
-            Response.Headers["X-Result-Truncated"] = "true";
         return Ok(result);
     }
 
@@ -348,6 +349,11 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
         [FromQuery] Guid? customerId,
         [FromQuery] int? taxYear,
         [FromQuery] bool openOnly,
+        [FromQuery] string? q,
+        [FromQuery] TaskItemStatus? status,
+        [FromQuery] TaskPriority? priority,
+        [FromQuery] bool rootOnly,
+        [FromQuery] TaskDueBucket? due,
         CancellationToken ct
     )
     {
@@ -355,9 +361,19 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
             return Unauthorized();
 
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
-        var filter = new TaskQueryFilter(null, null, assigneeUserId, customerId, taxYear, openOnly);
+        // Los mismos filtros que el tablero; el estado concreto de la oficina queda para la búsqueda.
+        var filter = new TaskQueryFilter(
+            q,
+            status,
+            assigneeUserId,
+            customerId,
+            taxYear,
+            openOnly,
+            Priority: priority,
+            RootOnly: rootOnly
+        );
         var result = await bus.InvokeAsync<Result<TaskCalendarResult>>(
-            new GetTaskCalendarQuery(tenantId, fromUtc, toUtc, filter, CalendarTake, userId, canViewAll),
+            new GetTaskCalendarQuery(tenantId, fromUtc, toUtc, filter, CalendarTake, userId, canViewAll, due),
             ct
         );
         if (result.IsFailure)
@@ -386,6 +402,41 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
                 await HasManageAllAsync(ct),
                 request.Title,
                 request.Description
+            ),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Todo el panel de edición en una transacción; 409 si la tarea cambió desde que se abrió.</summary>
+    [HttpPatch("{id:guid}")]
+    [HasPermission(TasksPermissions.Write)]
+    [RateLimit("task.g.update")]
+    [ProducesResponseType<TaskResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Patch(Guid id, UpdateTaskRequest request, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var result = await bus.InvokeAsync<Result<TaskResponse>>(
+            new UpdateTaskCommand(
+                tenantId,
+                id,
+                userId,
+                await HasManageAllAsync(ct),
+                await permissions.HasPermissionAsync(User, TasksPermissions.Assign, ct),
+                request.Title,
+                request.Description,
+                request.Priority,
+                request.DueOn,
+                request.IsStatutory,
+                request.StatutoryChangeReason,
+                request.AssigneeUserId,
+                request.EstimatedMinutes,
+                request.CustomerId,
+                request.TaxYear,
+                request.RowVersion,
+                await CanViewAllCustomersAsync(ct)
             ),
             ct
         );
@@ -471,13 +522,45 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     [HasPermission(TasksPermissions.Write)]
     [RateLimit("task.g.update")]
     [ProducesResponseType<TaskResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Complete(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Complete(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CompleteTaskRequest? request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var openSubtasks = request?.CompleteOpenSubtasks ?? false;
+        var result = await bus.InvokeAsync<Result<TaskResponse>>(
+            new CompleteTaskCommand(tenantId, id, userId, await HasManageAllAsync(ct), openSubtasks),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>El movimiento único: lleva la tarea a un estado de la oficina en una sola operación.</summary>
+    [HttpPost("{id:guid}/status")]
+    [HasPermission(TasksPermissions.Write)]
+    [RateLimit("task.g.update")]
+    [ProducesResponseType<TaskResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> MoveToStatus(Guid id, MoveTaskToStatusRequest request, CancellationToken ct)
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<TaskResponse>>(
-            new CompleteTaskCommand(tenantId, id, userId, await HasManageAllAsync(ct)),
+            new MoveTaskToStatusCommand(
+                tenantId,
+                id,
+                userId,
+                await HasManageAllAsync(ct),
+                request.Status,
+                request.WaitingOnClient?.ExpectedItems,
+                request.WaitingOnClient?.ClientDueOn,
+                request.CancelReason,
+                request.CompleteOpenSubtasks
+            ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -487,13 +570,18 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     [HasPermission(TasksPermissions.Write)]
     [RateLimit("task.g.update")]
     [ProducesResponseType<TaskResponse>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> Reopen(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Reopen(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ReopenTaskRequest? request,
+        CancellationToken ct
+    )
     {
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
+        var reopenParent = request?.ReopenParent ?? false;
         var result = await bus.InvokeAsync<Result<TaskResponse>>(
-            new ReopenTaskCommand(tenantId, id, userId, await HasManageAllAsync(ct)),
+            new ReopenTaskCommand(tenantId, id, userId, await HasManageAllAsync(ct), reopenParent),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -530,6 +618,24 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
 
         var result = await bus.InvokeAsync<Result<TaskResponse>>(
             new AssignTaskCommand(tenantId, id, request.AssigneeUserId, userId, await HasManageAllAsync(ct)),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Tomar para uno mismo una tarea sin asignar de la bandeja común: basta con escribir tareas.</summary>
+    [HttpPost("{id:guid}/take")]
+    [HasPermission(TasksPermissions.Write)]
+    [RateLimit("task.g.update")]
+    [ProducesResponseType<TaskResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Take(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<TaskResponse>>(
+            new TakeTaskCommand(tenantId, id, userId, canViewAll),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
@@ -629,19 +735,43 @@ public sealed class TasksController(IMessageBus bus, IUserPermissionsSource perm
     [ProducesResponseType<TaskDependencyGraphResponse>(StatusCodes.Status200OK)]
     public async Task<IActionResult> Graph(Guid id, CancellationToken ct)
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out _))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Unauthorized();
 
-        var result = await bus.InvokeAsync<TaskDependencyGraphResponse>(
-            new GetTaskDependencyGraphQuery(tenantId, id),
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<TaskDependencyGraphResponse>>(
+            new GetTaskDependencyGraphQuery(tenantId, id, userId, canViewAll),
             ct
         );
-        return Ok(result);
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    [HttpGet("{id:guid}/relations")]
+    [HasPermission(TasksPermissions.Read)]
+    [RateLimit("task.h.graph")]
+    [ProducesResponseType<TaskRelationsResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> Relations(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<TaskRelationsResponse>>(
+            new GetTaskRelationsQuery(tenantId, id, userId, canViewAll),
+            ct
+        );
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
     /// <summary>Override de supervisión: mover la tarea de otro. Se resuelve por proyección, no por el JWT.</summary>
     private Task<bool> HasManageAllAsync(CancellationToken ct) =>
         permissions.HasPermissionAsync(User, TasksPermissions.ManageAll, ct);
+
+    private Task<bool> CanViewAllCustomersAsync(CancellationToken ct) =>
+        permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+
+    private Task<bool> CanAssignAsync(CancellationToken ct) =>
+        permissions.HasPermissionAsync(User, TasksPermissions.Assign, ct);
 
     private static int NormalizePage(int page) => page < 1 ? 1 : page;
 

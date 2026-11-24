@@ -36,7 +36,16 @@ public sealed record TaskResponse(
     DateTime? ClientRequestedAtUtc,
     DateOnly? DueOn = null,
     DateOnly? ClientDueOn = null,
-    Guid? CompletedByUserId = null
+    Guid? CompletedByUserId = null,
+    DateTime? CancelledAtUtc = null,
+    Guid? CancelledByUserId = null,
+    string? CancellationReason = null,
+    int SubtaskCount = 0,
+    string? WorkflowStatusCode = null,
+    Guid? SeriesId = null,
+    int? OccurrenceNumber = null,
+    string? RowVersion = null,
+    string? ParentTitle = null
 )
 {
     public static TaskResponse From(TaskItem task) =>
@@ -69,7 +78,18 @@ public sealed record TaskResponse(
             task.ClientRequestedAtUtc,
             task.Due?.DueOn,
             task.ClientDueCivilDate,
-            task.CompletedByUserId
+            task.CompletedByUserId,
+            task.CancelledAtUtc,
+            task.CancelledByUserId,
+            task.CancellationReason,
+            task.SubtaskCount,
+            task.WorkflowStatusCode,
+            task.SeriesId,
+            task.OccurrenceNumber,
+            // La versión que se manda de vuelta al editar (D-18).
+            task.RowVersion.Length > 0
+                ? Convert.ToBase64String(task.RowVersion)
+                : null
         );
 
     public static PagedResult<TaskResponse> FromPage(PagedResult<TaskItem> page) =>

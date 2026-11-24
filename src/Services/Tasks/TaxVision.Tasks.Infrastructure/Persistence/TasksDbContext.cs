@@ -17,14 +17,15 @@ using TaxVision.Tasks.ClientForms.Domain.Retention;
 using TaxVision.Tasks.ClientForms.Domain.Settings;
 using TaxVision.Tasks.ClientForms.Domain.Templates;
 using TaxVision.Tasks.ClientForms.Domain.Versions;
+using TaxVision.Tasks.Domain.Activity;
 using TaxVision.Tasks.Domain.Backfill;
 using TaxVision.Tasks.Domain.ClientRequests;
 using TaxVision.Tasks.Domain.Dependencies;
-using TaxVision.Tasks.Domain.Labels;
 using TaxVision.Tasks.Domain.Permissions;
 using TaxVision.Tasks.Domain.Projections;
 using TaxVision.Tasks.Domain.RateLimiting;
 using TaxVision.Tasks.Domain.Series;
+using TaxVision.Tasks.Domain.Statuses;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.Templates;
 using TaxVision.Tasks.Infrastructure.ClientForms.Persistence;
@@ -43,10 +44,12 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
     public DbSet<TaskDependency> TaskDependencies => Set<TaskDependency>();
 
     // Catálogo de presentación por tenant. El motor nunca lo lee: lee TaskItemStatus.
-    public DbSet<TaskLabel> TaskLabels => Set<TaskLabel>();
+    public DbSet<WorkflowStatus> WorkflowStatuses => Set<WorkflowStatus>();
 
     // La regla, no las tareas: cada serie tiene a lo sumo una instancia abierta en Tasks.
     public DbSet<TaskSeries> TaskSeries => Set<TaskSeries>();
+
+    public DbSet<TaskActivity> TaskActivities => Set<TaskActivity>();
 
     public DbSet<TaskTemplate> TaskTemplates => Set<TaskTemplate>();
 
@@ -180,8 +183,11 @@ public sealed class TasksDbContext(DbContextOptions<TasksDbContext> options, ITe
             var tenantProperty = Expression.Property(parameter, nameof(ITenantOwned.TenantId));
 
             var filter = Expression.Lambda(Expression.Equal(tenantProperty, effectiveTenantIdAccess), parameter);
-            modelBuilder.Entity(entityType.ClrType).HasQueryFilter(filter);
+            modelBuilder.Entity(entityType.ClrType).HasQueryFilter(TaskQueryFilters.Tenant, filter);
         }
+
+        // D-25: lo que está en la papelera no existe para el resto del servicio.
+        modelBuilder.Entity<TaskItem>().HasQueryFilter(TaskQueryFilters.Trash, t => t.DeletedAtUtc == null);
     }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)

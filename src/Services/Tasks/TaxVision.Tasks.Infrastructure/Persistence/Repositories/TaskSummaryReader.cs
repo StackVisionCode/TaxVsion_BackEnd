@@ -4,6 +4,7 @@ using TaxVision.Tasks.Application.Tasks;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -14,12 +15,7 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 /// </summary>
 public sealed class TaskSummaryReader(TasksDbContext context) : ITaskSummaryReader
 {
-    private static readonly TaskItemStatus[] OpenStatuses =
-    [
-        TaskItemStatus.NotStarted,
-        TaskItemStatus.InProgress,
-        TaskItemStatus.WaitingOnClient,
-    ];
+    private static readonly TaskItemStatus[] OpenStatuses = TaskItemStatuses.Open;
 
     // Filing deadlines: legales vencidas o dentro del horizonte. La usan el widget y la lista ?due=statutory.
     private static readonly Expression<Func<SummaryRow, bool>> FilingDeadline = r => r.IsStatutory && r.WithinDeadlines;
@@ -109,7 +105,10 @@ public sealed class TaskSummaryReader(TasksDbContext context) : ITaskSummaryRead
     // Tenant explícito e IgnoreQueryFilters (scope de Wolverine sin tenant ambiental), filtros del tablero y recorte.
     private IQueryable<TaskItem> Scoped(TaskSummaryFilter filter)
     {
-        var query = context.Tasks.IgnoreQueryFilters().AsNoTracking().Where(t => t.TenantId == filter.TenantId);
+        var query = context
+            .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .AsNoTracking()
+            .Where(t => t.TenantId == filter.TenantId);
         if (filter.AssigneeUserId is { } assignee)
             query = query.Where(t => t.AssigneeUserId == assignee);
         if (filter.CustomerId is { } customer)

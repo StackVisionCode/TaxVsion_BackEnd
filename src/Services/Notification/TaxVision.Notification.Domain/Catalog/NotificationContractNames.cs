@@ -42,6 +42,7 @@ public static class NotificationContractNames
         [NotificationResourceType.FinancialImportBatch] = "financial_import_batch",
         [NotificationResourceType.Wallet] = "wallet",
         [NotificationResourceType.WalletSettings] = "wallet_settings",
+        [NotificationResourceType.TaskSeries] = "task_series",
     }.ToFrozenDictionary();
 
     public static string For(NotificationResourceType resourceType) => ResourceTypes[resourceType];

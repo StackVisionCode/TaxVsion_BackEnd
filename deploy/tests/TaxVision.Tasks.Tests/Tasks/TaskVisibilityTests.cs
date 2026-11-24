@@ -27,7 +27,9 @@ public sealed class TaskVisibilityTests
     {
         await using var db = await SeedAsync();
 
-        var titles = (await new TaskRepository(db).ListForBoardAsync(TenantId, new TaskQueryFilter(), 50, Employee))
+        var titles = (
+            (await new TaskRepository(db).SearchAsync(TenantId, new TaskQueryFilter(), 1, 50, Employee)).Items
+        )
             .Select(t => t.Title.Value)
             .Order()
             .ToList();
@@ -56,7 +58,7 @@ public sealed class TaskVisibilityTests
     {
         await using var db = await SeedAsync();
 
-        var all = await new TaskRepository(db).ListForBoardAsync(TenantId, new TaskQueryFilter(), 50, null);
+        var all = (await new TaskRepository(db).SearchAsync(TenantId, new TaskQueryFilter(), 1, 50, null)).Items;
 
         Assert.Equal(6, all.Count);
     }
@@ -84,7 +86,9 @@ public sealed class TaskVisibilityTests
         );
         await db.SaveChangesAsync();
 
-        var titles = (await new TaskRepository(db).ListForBoardAsync(TenantId, new TaskQueryFilter(), 50, Employee))
+        var titles = (
+            (await new TaskRepository(db).SearchAsync(TenantId, new TaskQueryFilter(), 1, 50, Employee)).Items
+        )
             .Select(t => t.Title.Value)
             .Order()
             .ToList();

@@ -1,4 +1,4 @@
-using TaxVision.Tasks.Domain.Labels;
+using TaxVision.Tasks.Domain.Statuses;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 
@@ -60,14 +60,14 @@ public sealed class TaskLabelTests
         Assert.Equal("waiting_docs", label.Code.Value);
         Assert.Equal("Esperando documentos", label.DisplayName);
         Assert.Equal("#B71C1C", label.Color.Value);
-        Assert.Equal(TaskItemStatus.WaitingOnClient, label.MapsToStatus);
+        Assert.Equal(TaskItemStatus.WaitingOnClient, label.Category);
         Assert.Equal(3, label.SortOrder);
     }
 
     [Fact]
     public void A_label_without_display_name_is_rejected()
     {
-        var created = TaskLabel.Create(
+        var created = WorkflowStatus.Create(
             TenantId,
             TaskLabelCode.Create("waiting_docs").Value,
             "   ",
@@ -79,8 +79,38 @@ public sealed class TaskLabelTests
         Assert.Equal(TaskErrors.Label.DisplayNameEmpty, created.Error);
     }
 
-    private static TaskLabel NewLabel() =>
-        TaskLabel
+    // El JSON admite números para el enum: un 99 no puede crear un label que apunte a un estado inexistente.
+    [Fact]
+    public void A_label_that_maps_to_an_unknown_status_is_rejected()
+    {
+        var created = WorkflowStatus.Create(
+            TenantId,
+            TaskLabelCode.Create("waiting_docs").Value,
+            "Pendiente",
+            LabelColor.Create("#2E7D32").Value,
+            (TaskItemStatus)99,
+            0
+        );
+
+        Assert.True(created.IsFailure);
+        Assert.Equal("Task.Label.StatusInvalid", created.Error.Code);
+    }
+
+    [Fact]
+    public void Renaming_to_an_unknown_status_is_rejected_and_keeps_the_label_unchanged()
+    {
+        var label = NewLabel();
+
+        var renamed = label.Rename("Otro", LabelColor.Create("#B71C1C").Value, (TaskItemStatus)99, 3);
+
+        Assert.True(renamed.IsFailure);
+        Assert.Equal("Task.Label.StatusInvalid", renamed.Error.Code);
+        Assert.Equal(TaskItemStatus.NotStarted, label.Category);
+        Assert.Equal("Pendiente", label.DisplayName);
+    }
+
+    private static WorkflowStatus NewLabel() =>
+        WorkflowStatus
             .Create(
                 TenantId,
                 TaskLabelCode.Create("waiting_docs").Value,

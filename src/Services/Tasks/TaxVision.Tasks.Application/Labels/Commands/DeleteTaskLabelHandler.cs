@@ -1,20 +1,21 @@
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
-using TaxVision.Tasks.Application.Labels.Abstractions;
+using TaxVision.Tasks.Application.Statuses.Abstractions;
+using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Labels.Commands;
 
 /// <summary>
-/// Borrado real, no archivado: ninguna tarea guarda el id del label — el motor lee
-/// <c>TaskItemStatus</c>, así que quitarlo no deja referencias colgando.
+/// Borrado real solo si ninguna tarea lo tuvo nunca; si lo tuvo, se archiva (las cerradas lo conservan). Con
+/// tareas abiertas en ese estado, hay que archivarlo eligiendo destino.
 /// </summary>
-public sealed record DeleteTaskLabelCommand(Guid TenantId, Guid LabelId);
+public sealed record DeleteTaskLabelCommand(Guid TenantId, Guid LabelId, Guid ByUserId);
 
 public static class DeleteTaskLabelHandler
 {
     public static async Task<Result> Handle(
         DeleteTaskLabelCommand command,
-        ITaskLabelRepository labels,
+        IWorkflowStatusRepository labels,
         IUnitOfWork unitOfWork,
         CancellationToken ct
     )
@@ -23,7 +24,19 @@ public static class DeleteTaskLabelHandler
         if (found.IsFailure)
             return Result.Failure(found.Error);
 
-        labels.Remove(found.Value);
+        var status = found.Value;
+        var open = await labels.CountOpenTasksAsync(command.TenantId, status.Id, ct);
+        if (open > 0)
+            return Result.Failure(TaskErrors.Status.InUse(open));
+
+        if (await labels.IsUsedAsync(command.TenantId, status.Id, ct))
+        {
+            var archived = status.Archive(command.ByUserId, DateTime.UtcNow);
+            if (archived.IsFailure)
+                return archived;
+        }
+        else
+            labels.Remove(status);
         await unitOfWork.SaveChangesAsync(ct);
 
         return Result.Success();

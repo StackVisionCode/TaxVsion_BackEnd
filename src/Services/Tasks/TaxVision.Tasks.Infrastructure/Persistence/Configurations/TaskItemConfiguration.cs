@@ -1,5 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using TaxVision.Tasks.Domain.Statuses;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
 
@@ -23,15 +24,38 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.Property(t => t.CreatedByUserId).IsRequired();
         builder.Property(t => t.AssigneeUserId);
         builder.Property(t => t.Status).HasConversion<int>().IsRequired();
+        builder.Property(t => t.WorkflowStatusId);
+        builder.Property(t => t.WorkflowStatusCode).HasMaxLength(TaskLabelCode.MaxLength);
+        // Sin cascada: un estado se archiva, no se borra con tareas.
+        builder
+            .HasOne<WorkflowStatus>()
+            .WithMany()
+            .HasForeignKey(t => t.WorkflowStatusId)
+            .OnDelete(DeleteBehavior.NoAction);
+        builder
+            .HasIndex(t => new { t.TenantId, t.WorkflowStatusId })
+            .HasFilter("[WorkflowStatusId] IS NOT NULL")
+            .HasDatabaseName("IX_Tasks_TenantId_WorkflowStatusId");
         builder.Property(t => t.Priority).HasConversion<int>().IsRequired();
         builder.Property(t => t.CreatedAtUtc).IsRequired();
         builder.Property(t => t.StartedAtUtc);
         builder.Property(t => t.CompletedAtUtc);
         builder.Property(t => t.CompletedByUserId);
+        builder.Property(t => t.CancelledAtUtc);
+        builder.Property(t => t.CancelledByUserId);
+        builder.Property(t => t.CancellationReason).HasMaxLength(TaskErrors.CancellationReasonMaxLength);
 
         builder.Property(t => t.ParentTaskId);
+        // La madre no se borra antes que sus hijas: la purga borra la rama entera en una transacción.
+        builder
+            .HasOne<TaskItem>()
+            .WithMany()
+            .HasForeignKey(t => t.ParentTaskId)
+            .HasConstraintName("FK_Tasks_Tasks_ParentTaskId")
+            .OnDelete(DeleteBehavior.NoAction);
         builder.Property(t => t.Depth).IsRequired();
         builder.Property(t => t.OpenSubtaskCount).IsRequired();
+        builder.Property(t => t.SubtaskCount).IsRequired();
         builder.Property(t => t.OpenBlockerCount).IsRequired();
         builder.Property(t => t.ReopenCount).IsRequired();
         builder.Property(t => t.SeriesId);
@@ -114,8 +138,8 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
 
     /// <summary>
     /// Las cuatro columnas de la petición al cliente. <c>ClientRequestedByUserId</c> se persiste
-    /// porque <c>task.client_responded.v1</c> lo publica un consumer de CloudStorage semanas después,
-    /// cuando el llamado a <c>MoveToWaitingOnClient</c> ya no existe en ningún lado.
+    /// porque la respuesta del cliente llega semanas después (lo que sube por CloudStorage) y se atribuye a ese
+    /// pedido, cuando el llamado a <c>MoveToWaitingOnClient</c> ya no existe en ningún lado.
     /// </summary>
     private static void ConfigureClientRequest(EntityTypeBuilder<TaskItem> builder)
     {
@@ -137,6 +161,23 @@ public sealed class TaskItemConfiguration : IEntityTypeConfiguration<TaskItem>
         builder.HasIndex(t => new { t.TenantId, t.ParentTaskId }).HasDatabaseName("IX_Tasks_TenantId_ParentTaskId");
 
         builder.HasIndex(t => new { t.TenantId, t.SeriesId }).HasDatabaseName("IX_Tasks_TenantId_SeriesId");
+
+        // Papelera (D-25): la rama se encuentra por su raíz y la purga por la fecha.
+        builder
+            .HasIndex(t => new { t.TenantId, t.TrashRootId })
+            .HasFilter("[TrashRootId] IS NOT NULL")
+            .HasDatabaseName("IX_Tasks_TenantId_TrashRootId");
+        builder
+            .HasIndex(t => t.DeletedAtUtc)
+            .HasFilter("[DeletedAtUtc] IS NOT NULL")
+            .HasDatabaseName("IX_Tasks_DeletedAtUtc");
+
+        // Una ocurrencia por número en cada serie: antes solo la RowVersion de la serie lo impedía (C16).
+        builder
+            .HasIndex(t => new { t.SeriesId, t.OccurrenceNumber })
+            .IsUnique()
+            .HasFilter("[SeriesId] IS NOT NULL")
+            .HasDatabaseName("UX_Tasks_SeriesId_OccurrenceNumber");
 
         // Sólo (TenantId, TemplateId): CustomerId vive dentro del owned Reference y HasIndex no cruza
         // entity types. Basta — una plantilla rinde decenas de filas, y sobre ellas se filtra el

@@ -967,6 +967,10 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<string>("RemotePath")
+                        .HasMaxLength(1024)
+                        .HasColumnType("nvarchar(1024)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -976,6 +980,38 @@ namespace TaxVision.CloudStorage.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("TenantCloudFileCopies", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.CloudStorage.Domain.Providers.TenantCloudFolder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("nvarchar(512)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("RemoteFolderId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Provider", "Path")
+                        .IsUnique();
+
+                    b.ToTable("TenantCloudFolders", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.CloudStorage.Domain.Providers.TenantStoragePolicy", b =>

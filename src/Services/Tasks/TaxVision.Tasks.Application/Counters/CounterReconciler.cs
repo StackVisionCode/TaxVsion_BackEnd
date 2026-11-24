@@ -40,7 +40,7 @@ public sealed class CounterReconciler(
                     mismatch.ActualSubtasks
                 );
 
-                task.ReconcileCounters(mismatch.ActualBlockers, mismatch.ActualSubtasks);
+                task.ReconcileCounters(mismatch.ActualBlockers, mismatch.ActualSubtasks, mismatch.ActualSubtaskTotal);
                 fixedCount++;
             }
         }

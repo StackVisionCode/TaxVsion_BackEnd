@@ -730,7 +730,7 @@ public sealed class TasksArchitectureTests
         var callers = ServiceSourceFiles()
             .Where(file => File.ReadAllText(file).Contains("StartTimer("))
             .Select(Path.GetFileName)
-            .Where(name => name != "TaskItem.cs" && name != "StartTaskTimerHandler.cs")
+            .Where(name => name is not ("TaskItem.cs" or "TaskItem.Timers.cs" or "StartTaskTimerHandler.cs"))
             .ToList();
 
         Assert.True(callers.Count == 0, "StartTimer sólo lo dispara su propio handler: " + string.Join(", ", callers));

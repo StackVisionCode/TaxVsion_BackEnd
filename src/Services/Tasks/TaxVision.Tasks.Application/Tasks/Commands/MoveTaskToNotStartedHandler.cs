@@ -5,7 +5,8 @@ using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Tasks.Commands;
 
-public sealed record MoveTaskToNotStartedCommand(Guid TenantId, Guid TaskId, Guid ByUserId, bool HasManageAll);
+public sealed record MoveTaskToNotStartedCommand(Guid TenantId, Guid TaskId, Guid ByUserId, bool HasManageAll)
+    : ITaskTransitionCommand;
 
 /// <summary>Devuelve la tarea a Not Started desde el tablero; una tarea cerrada se reabre antes con Reopen.</summary>
 public static class MoveTaskToNotStartedHandler
@@ -17,12 +18,9 @@ public static class MoveTaskToNotStartedHandler
         CancellationToken ct
     )
     {
-        var found = await tasks.GetByIdAsync(command.TenantId, command.TaskId, ct);
+        var found = await TaskTransitionService.LoadMutableAsync(tasks, command, ct);
         if (found.IsFailure)
             return Result.Failure<TaskResponse>(found.Error);
-
-        if (!TaskAccessPolicy.CanMutate(found.Value, command.ByUserId, command.HasManageAll))
-            return Result.Failure<TaskResponse>(TaskErrors.Forbidden);
 
         var moved = found.Value.MoveToNotStarted(command.ByUserId, DateTime.UtcNow);
         if (moved.IsFailure)

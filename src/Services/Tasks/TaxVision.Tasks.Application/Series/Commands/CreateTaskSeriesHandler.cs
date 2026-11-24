@@ -5,6 +5,7 @@ using BuildingBlocks.TimeZones;
 using TaxVision.Tasks.Application.Common.Abstractions;
 using TaxVision.Tasks.Application.Series.Abstractions;
 using TaxVision.Tasks.Application.Tasks;
+using TaxVision.Tasks.Application.Tasks.Abstractions;
 using TaxVision.Tasks.Domain.Series;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.ValueObjects;
@@ -29,7 +30,8 @@ public sealed record CreateTaskSeriesCommand(
     DateTime AnchorUtc,
     DateTime? EndsAtUtc,
     int? MaxOccurrences,
-    DateOnly? AnchorOn = null
+    DateOnly? AnchorOn = null,
+    bool CanViewAllCustomers = true
 );
 
 /// <summary>
@@ -45,11 +47,12 @@ public static class CreateTaskSeriesHandler
         ITaskSeriesMaterializer materializer,
         IUnitOfWork unitOfWork,
         IOfficeTimeZone zones,
+        ITaskCustomerAccess customers,
         CancellationToken ct
     )
     {
         command = await WithCivilAnchorAsync(command, zones, ct);
-        var draft = BuildDraft(command);
+        var draft = await BuildDraftAsync(command, customers, ct);
         if (draft.IsFailure)
             return Result.Failure<TaskSeriesResponse>(draft.Error);
 
@@ -82,6 +85,19 @@ public static class CreateTaskSeriesHandler
 
     /// <summary>La serie no tiene vencimiento propio: cada ocurrencia lo calcula la regla.</summary>
     /// <summary>Con fecha civil (P4/P24): vence al final de ese día y la regla cuenta en la zona de la oficina.</summary>
+    /// <summary>El molde, si quien crea la serie puede ver su cliente.</summary>
+    private static async Task<Result<TaskDraft>> BuildDraftAsync(
+        CreateTaskSeriesCommand command,
+        ITaskCustomerAccess customers,
+        CancellationToken ct
+    )
+    {
+        var c = command;
+        if (!await customers.AllowsAsync(c.TenantId, c.ByUserId, c.CanViewAllCustomers, c.CustomerId, ct))
+            return Result.Failure<TaskDraft>(TaskErrors.Reference.CustomerNotVisible);
+        return BuildDraft(command);
+    }
+
     private static async Task<CreateTaskSeriesCommand> WithCivilAnchorAsync(
         CreateTaskSeriesCommand command,
         IOfficeTimeZone zones,

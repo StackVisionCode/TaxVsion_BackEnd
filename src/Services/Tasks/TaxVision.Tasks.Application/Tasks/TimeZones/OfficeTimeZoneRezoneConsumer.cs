@@ -12,13 +12,15 @@ public interface ICivilDueRezoneStore
 {
     Task<IReadOnlyList<TaskItem>> OpenTasksWithCivilDuesAsync(
         Guid tenantId,
-        string previousTimeZoneId,
+        IReadOnlyCollection<string> timeZoneIds,
         CancellationToken ct
     );
     Task<IReadOnlyList<ClientRequest>> OpenClientRequestsWithDueAsync(Guid tenantId, CancellationToken ct);
-    Task<IReadOnlyList<TaskSeries>> ActiveSeriesInZoneAsync(
+
+    /// <summary>Las series vivas (activas o pausadas) cuya regla está en alguna de las zonas.</summary>
+    Task<IReadOnlyList<TaskSeries>> SeriesToRezoneAsync(
         Guid tenantId,
-        string previousTimeZoneId,
+        IReadOnlyCollection<string> timeZoneIds,
         CancellationToken ct
     );
 }
@@ -38,15 +40,25 @@ public static class OfficeTimeZoneRezoneConsumer
     )
     {
         var newZone = ResolvedTimeZone.Resolve(evt.NewTimeZoneId);
+        var zones = ZonesToMove(evt);
         var changed = 0;
-        foreach (var task in await store.OpenTasksWithCivilDuesAsync(evt.ChangedTenantId, evt.PreviousTimeZoneId, ct))
-            changed += task.RezoneCivilDues(evt.PreviousTimeZoneId, newZone) ? 1 : 0;
+        foreach (var task in await store.OpenTasksWithCivilDuesAsync(evt.ChangedTenantId, zones, ct))
+            changed += zones.Count(zone => task.RezoneCivilDues(zone, newZone));
         foreach (var request in await store.OpenClientRequestsWithDueAsync(evt.ChangedTenantId, ct))
             changed += request.RezoneCivilDue(evt.PreviousTimeZoneId, newZone) ? 1 : 0;
-        foreach (var series in await store.ActiveSeriesInZoneAsync(evt.ChangedTenantId, evt.PreviousTimeZoneId, ct))
-            changed += series.RezoneCivilDue(evt.PreviousTimeZoneId, newZone) ? 1 : 0;
+        foreach (var series in await store.SeriesToRezoneAsync(evt.ChangedTenantId, zones, ct))
+            changed += zones.Count(zone => series.RezoneCivilDue(zone, newZone));
 
         if (changed > 0)
             await unitOfWork.SaveChangesAsync(ct);
     }
+
+    /// <summary>
+    /// La zona anterior y, si la oficina no está en UTC, el respaldo UTC: lo guardado ahí se creó cuando la zona de la
+    /// oficina aún no había llegado.
+    /// </summary>
+    private static IReadOnlyCollection<string> ZonesToMove(TenantTimeZoneChangedIntegrationEvent evt) =>
+        evt.NewTimeZoneId == IanaTimeZone.UtcId || evt.PreviousTimeZoneId == IanaTimeZone.UtcId
+            ? [evt.PreviousTimeZoneId]
+            : [evt.PreviousTimeZoneId, IanaTimeZone.UtcId];
 }

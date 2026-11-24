@@ -56,7 +56,7 @@ public sealed class TaskVisibilityIntegrationTests : IAsyncLifetime
         var repository = new TaskRepository(db);
         string[] expected = ["Created by me for a colleague", "Mine", "My client task", "Office pool"];
 
-        var board = await repository.ListForBoardAsync(_tenantId, new TaskQueryFilter(), 50, _employee);
+        var board = (await repository.SearchAsync(_tenantId, new TaskQueryFilter(), 1, 50, _employee)).Items;
         var search = await repository.SearchAsync(_tenantId, new TaskQueryFilter(), 1, 50, _employee);
         var detail = await repository.GetByIdForReadAsync(_tenantId, _colleaguePrivateId, _employee);
 
@@ -72,7 +72,7 @@ public sealed class TaskVisibilityIntegrationTests : IAsyncLifetime
         var repository = new TaskRepository(db);
 
         Assert.True((await repository.GetByIdForReadAsync(_tenantId, _colleaguePrivateId, _colleague)).IsSuccess);
-        Assert.Equal(6, (await repository.ListForBoardAsync(_tenantId, new TaskQueryFilter(), 50, null)).Count);
+        Assert.Equal(6, ((await repository.SearchAsync(_tenantId, new TaskQueryFilter(), 1, 50, null)).Items).Count);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public sealed class TaskVisibilityIntegrationTests : IAsyncLifetime
         await using var db = NoAmbientTenant();
         var repository = new TaskRepository(db);
 
-        var visible = (await repository.ListForBoardAsync(_tenantId, new TaskQueryFilter(), 100, _employee))
+        var visible = ((await repository.SearchAsync(_tenantId, new TaskQueryFilter(), 1, 100, _employee)).Items)
             .Select(t => t.Title.Value)
             .ToHashSet();
         var children = await repository.ListSubtasksAsync(_tenantId, colleaguePrivate.Id, 1, 50, _employee);

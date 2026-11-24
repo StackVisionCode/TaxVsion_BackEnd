@@ -56,12 +56,10 @@ public sealed class AccountsController(IMessageBus bus, IUserPermissionsSource p
             return Forbid();
         User.TryGetEmail(out var initiatorEmail);
 
-        // A dónde devolver el navegador tras el consentimiento: el origen que mandó el frontend, o el
-        // header Origin como respaldo (el callback lo valida contra el dominio permitido antes de usarlo).
-        var returnOrigin =
-            !string.IsNullOrWhiteSpace(body.ReturnUrl) ? body.ReturnUrl
-            : Request.Headers.Origin.ToString() is { Length: > 0 } origin ? origin
-            : null;
+        // A dónde devolver el navegador: el origen que mandó el frontend, o el header Origin de respaldo.
+        // El handler lo valida; uno inválido en el cuerpo se rechaza y en el header se ignora.
+        var fromHeader = string.IsNullOrWhiteSpace(body.ReturnUrl);
+        var returnOrigin = fromHeader ? NullIfEmpty(Request.Headers.Origin.ToString()) : body.ReturnUrl;
 
         var result = await bus.InvokeAsync<Result<InitiateOAuthConnectResult>>(
             new InitiateOAuthConnectCommand(
@@ -71,12 +69,15 @@ public sealed class AccountsController(IMessageBus bus, IUserPermissionsSource p
                 initiatorEmail,
                 returnOrigin,
                 body.AsOffice,
-                User.IsPlatformAdmin()
+                User.IsPlatformAdmin(),
+                fromHeader
             ),
             ct
         );
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
+
+    private static string? NullIfEmpty(string value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     /// <summary>
     /// Conecta una cuenta manual IMAP+SMTP (D3 Compose §8) — a diferencia de <see cref="Initiate"/>, acá no
@@ -275,7 +276,7 @@ public sealed class AccountsController(IMessageBus bus, IUserPermissionsSource p
             return Forbid();
 
         var result = await bus.InvokeAsync<InitiateAdminConsentResult>(
-            new InitiateAdminConsentCommand(tenantId, userId),
+            new InitiateAdminConsentCommand(tenantId, userId, NullIfEmpty(Request.Headers.Origin.ToString())),
             ct
         );
         return Ok(result);

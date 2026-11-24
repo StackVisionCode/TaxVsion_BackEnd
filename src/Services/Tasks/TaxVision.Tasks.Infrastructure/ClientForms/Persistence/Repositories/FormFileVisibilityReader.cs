@@ -23,7 +23,7 @@ public sealed class FormFileVisibilityReader(TasksDbContext context) : IFormFile
             return [];
 
         var visible = context
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(r => r.TenantId == tenantId)
             .VisibleInInbox(context, tenantId, actorUserId, canViewAll);
         var attachments = await AttachmentsAsync(tenantId, fileIds, visible, ct);
@@ -46,7 +46,7 @@ public sealed class FormFileVisibilityReader(TasksDbContext context) : IFormFile
         CancellationToken ct
     ) =>
         await context
-            .FormAttachments.IgnoreQueryFilters()
+            .FormAttachments.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(a =>
                 a.TenantId == tenantId && fileIds.Contains(a.FileId) && a.Status == FormAttachmentStatus.Available
             )

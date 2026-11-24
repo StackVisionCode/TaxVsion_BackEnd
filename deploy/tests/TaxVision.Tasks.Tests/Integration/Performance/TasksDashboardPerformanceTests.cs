@@ -130,6 +130,7 @@ public sealed class TasksDashboardPerformanceTests : IAsyncLifetime
                                 Now
                             ),
                             new TaskRepository(db),
+                            new WorkflowStatusRepository(db),
                             new FixedZone(),
                             Visibility,
                             default

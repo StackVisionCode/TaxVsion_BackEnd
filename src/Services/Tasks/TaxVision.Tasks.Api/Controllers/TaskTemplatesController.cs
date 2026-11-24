@@ -50,7 +50,10 @@ public sealed class TaskTemplatesController(IMessageBus bus) : ControllerBase
             : CreatedAtAction(nameof(GetById), new { templateId = result.Value.Id }, result.Value);
     }
 
-    /// <summary>Copia el catálogo fiscal estándar al tenant. Idempotente: salta las que ya existen.</summary>
+    /// <summary>
+    /// Copia el catálogo fiscal estándar al tenant. Idempotente: salta las que ya tiene (por clave) y lista las que están
+    /// en una versión anterior para que el administrador decida actualizarlas.
+    /// </summary>
     [HttpPost("install-standard")]
     [HasPermission(TasksPermissions.TemplatesManage)]
     [RateLimit("task.h.templates_write")]
@@ -59,8 +62,25 @@ public sealed class TaskTemplatesController(IMessageBus bus) : ControllerBase
         if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
             return Forbid();
 
-        var result = await bus.InvokeAsync<Result<IReadOnlyList<TaskTemplateResponse>>>(
+        var result = await bus.InvokeAsync<Result<StandardTemplatesInstallResponse>>(
             new InstallStandardTaskTemplatesCommand(tenantId, userId),
+            ct
+        );
+
+        return result.IsFailure ? StatusCode(result.Error.ToHttpStatusCode(), result.Error) : Ok(result.Value);
+    }
+
+    /// <summary>Pone una estándar instalada en su versión vigente (confirmado por el administrador).</summary>
+    [HttpPost("{templateId:guid}/update-standard")]
+    [HasPermission(TasksPermissions.TemplatesManage)]
+    [RateLimit("task.h.templates_write")]
+    public async Task<IActionResult> UpdateStandard(Guid templateId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Forbid();
+
+        var result = await bus.InvokeAsync<Result<TaskTemplateResponse>>(
+            new UpdateStandardTaskTemplateCommand(tenantId, templateId, userId),
             ct
         );
 

@@ -139,6 +139,10 @@ public sealed class CompleteTaskRetryIntegrationTests : IAsyncLifetime
                 services.AddScoped<ITaskDependencyRepository, TaskDependencyRepository>();
                 services.AddScoped<ITaskSeriesRepository, TaskSeriesRepository>();
                 services.AddScoped<ITaskSeriesMaterializer, TaskSeriesMaterializer>();
+                services.AddScoped<
+                    TaxVision.Tasks.Application.Templates.Abstractions.ITaskTemplateRepository,
+                    TaxVision.Tasks.Infrastructure.Persistence.Repositories.TaskTemplateRepository
+                >();
                 services.AddScoped<ITaskHierarchyService, TaskHierarchyService>();
                 services.AddScoped<ITaskUnblockingService, TaskUnblockingService>();
                 options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, TasksDbContext>();

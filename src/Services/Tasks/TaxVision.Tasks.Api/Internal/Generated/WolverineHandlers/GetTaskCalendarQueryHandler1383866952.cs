@@ -2,7 +2,6 @@
 #pragma warning disable
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using System.Collections.Generic;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -12,30 +11,34 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly Microsoft.Extensions.Options.IOptions<TaxVision.Tasks.Application.Tasks.Abstractions.TasksVisibilityOptions> _optionsOfTasksVisibilityOptions;
-        private readonly System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper> _domainEventScraperIEnumerable;
 
-        public GetTaskCalendarQueryHandler1383866952(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Options.IOptions<TaxVision.Tasks.Application.Tasks.Abstractions.TasksVisibilityOptions> optionsOfTasksVisibilityOptions, System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper> domainEventScraperIEnumerable)
+        public GetTaskCalendarQueryHandler1383866952(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, Microsoft.Extensions.Options.IOptions<TaxVision.Tasks.Application.Tasks.Abstractions.TasksVisibilityOptions> optionsOfTasksVisibilityOptions)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _optionsOfTasksVisibilityOptions = optionsOfTasksVisibilityOptions;
-            _domainEventScraperIEnumerable = domainEventScraperIEnumerable;
         }
 
 
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var tasksDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext>(serviceScope.ServiceProvider);
-            var taskRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.TaskRepository(tasksDbContext);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
+            */
+            var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Common.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
+            var taskRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Tasks.Abstractions.ITaskRepository>(serviceScope.ServiceProvider);
             // The actual message body
             var getTaskCalendarQuery = (TaxVision.Tasks.Application.Tasks.Queries.GetTaskCalendarQuery)context.Envelope.Message;
 
             
             // Enroll the DbContext & IMessagingContext in the outgoing Wolverine outbox transaction
-            var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(tasksDbContext, context, _domainEventScraperIEnumerable);
+            var efCoreEnvelopeTransaction = new Wolverine.EntityFrameworkCore.Internals.EfCoreEnvelopeTransaction(tasksDbContext, context, domainEventScraperIEnumerable);
             await context.EnlistInOutboxAsync(efCoreEnvelopeTransaction).ConfigureAwait(false);
             // Start the actual database transaction if one does not already exist
             if (tasksDbContext.Database.CurrentTransaction == null)
@@ -50,7 +53,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Tasks.Queries.GetTaskCalendarHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Tasks.Application.Tasks.Queries.GetTaskCalendarHandler.Handle(getTaskCalendarQuery, taskRepository, _optionsOfTasksVisibilityOptions, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Tasks.Application.Tasks.Queries.GetTaskCalendarHandler.Handle(getTaskCalendarQuery, taskRepository, _optionsOfTasksVisibilityOptions, officeTimeZone, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

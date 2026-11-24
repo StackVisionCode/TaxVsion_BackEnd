@@ -22,13 +22,13 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
+            var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext notificationDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Notification.Infrastructure.Persistence.NotificationDbContext.");
             var emailLayoutRepository = new TaxVision.Notification.Infrastructure.Persistence.Repositories.EmailLayoutRepository(notificationDbContext);
-            var handlerBus = new TaxVision.Notification.Infrastructure.Messaging.HandlerBus(context);
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var setDefaultEmailLayoutCommand = (TaxVision.Notification.Application.Email.Layouts.Commands.SetDefaultEmailLayoutCommand)context.Envelope.Message;
 

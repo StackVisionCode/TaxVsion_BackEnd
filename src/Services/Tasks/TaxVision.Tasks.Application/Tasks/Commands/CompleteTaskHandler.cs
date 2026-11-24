@@ -12,7 +12,13 @@ using Wolverine;
 
 namespace TaxVision.Tasks.Application.Tasks.Commands;
 
-public sealed record CompleteTaskCommand(Guid TenantId, Guid TaskId, Guid ByUserId, bool HasManageAll);
+public sealed record CompleteTaskCommand(
+    Guid TenantId,
+    Guid TaskId,
+    Guid ByUserId,
+    bool HasManageAll,
+    bool CompleteOpenSubtasks = false
+) : ITaskTransitionCommand;
 
 /// <summary>
 /// Cerrar una tarea mueve dos contadores ajenos: el de bloqueadores de sus sucesoras y el de
@@ -33,26 +39,18 @@ public static class CompleteTaskHandler
         CancellationToken ct
     )
     {
-        var found = await tasks.GetByIdAsync(command.TenantId, command.TaskId, ct);
+        var found = await TaskTransitionService.LoadMutableAsync(tasks, command, ct);
         if (found.IsFailure)
             return Result.Failure<TaskResponse>(found.Error);
 
         var task = found.Value;
-        if (!TaskAccessPolicy.CanMutate(task, command.ByUserId, command.HasManageAll))
-            return Result.Failure<TaskResponse>(TaskErrors.Forbidden);
-
-        var wasOpen = task.Status is not (TaskItemStatus.Completed or TaskItemStatus.Cancelled);
-        var completed = task.Complete(command.ByUserId, DateTime.UtcNow);
-        if (completed.IsFailure)
-            return Result.Failure<TaskResponse>(completed.Error);
-
-        IReadOnlyList<TaskUnblockedIntegrationEvent> unblocked = wasOpen
-            ? await CascadeAsync(command, task, unblocking, hierarchy, seriesMaterializer, ct)
-            : [];
+        var closed = await CloseAsync(command, task, tasks, unblocking, hierarchy, seriesMaterializer, ct);
+        if (closed.IsFailure)
+            return Result.Failure<TaskResponse>(closed.Error);
 
         await unitOfWork.SaveChangesAsync(ct);
 
-        foreach (var notice in unblocked)
+        foreach (var notice in closed.Value)
             await bus.PublishAsync(notice);
 
         metrics.RecordCompleted(task.Reference.CustomerId is not null);
@@ -61,23 +59,47 @@ public static class CompleteTaskHandler
     }
 
     /// <summary>
-    /// Lo que arrastra cerrar una tarea: desbloquea sucesoras, baja el contador del padre, materializa
-    /// la siguiente ocurrencia de la serie. Los avisos los devuelve TaskCompletedDomainEventHandler. Sólo la
-    /// primera vez.
+    /// Las subtareas primero (si se pidió) y después la tarea. Las cascadas solo corren si estaba abierta:
+    /// completar dos veces es <c>Success</c> y no debe descontar otra vez.
     /// </summary>
-    private static async Task<IReadOnlyList<TaskUnblockedIntegrationEvent>> CascadeAsync(
+    private static async Task<Result<IReadOnlyList<TaskUnblockedIntegrationEvent>>> CloseAsync(
         CompleteTaskCommand command,
         TaskItem task,
+        ITaskRepository tasks,
         ITaskUnblockingService unblocking,
         ITaskHierarchyService hierarchy,
         ITaskSeriesMaterializer seriesMaterializer,
         CancellationToken ct
     )
     {
-        var unblocked = await unblocking.ApplyPredecessorClosedAsync(command.TenantId, task.Id, ct);
-        await hierarchy.ApplyChildClosedAsync(command.TenantId, task.ParentTaskId, ct);
+        var wasOpen = TaskItemStatuses.IsOpen(task.Status);
+        var nowUtc = DateTime.UtcNow;
+        var notices = new List<TaskUnblockedIntegrationEvent>();
+        if (wasOpen && command.CompleteOpenSubtasks)
+        {
+            var subtasks = await TaskTransitionService.CompleteOpenSubtasksAsync(
+                tasks,
+                task,
+                command.ByUserId,
+                nowUtc,
+                unblocking,
+                hierarchy,
+                seriesMaterializer,
+                ct
+            );
+            if (subtasks.IsFailure)
+                return Result.Failure<IReadOnlyList<TaskUnblockedIntegrationEvent>>(subtasks.Error);
+            notices.AddRange(subtasks.Value);
+        }
 
-        await seriesMaterializer.ApplyInstanceClosedAsync(task, task.CompletedAtUtc, ct);
-        return unblocked;
+        var completed = task.Complete(command.ByUserId, nowUtc);
+        if (completed.IsFailure)
+            return Result.Failure<IReadOnlyList<TaskUnblockedIntegrationEvent>>(completed.Error);
+
+        if (wasOpen)
+            notices.AddRange(
+                await TaskTransitionService.ApplyClosedAsync(task, unblocking, hierarchy, seriesMaterializer, ct)
+            );
+        return Result.Success<IReadOnlyList<TaskUnblockedIntegrationEvent>>(notices);
     }
 }

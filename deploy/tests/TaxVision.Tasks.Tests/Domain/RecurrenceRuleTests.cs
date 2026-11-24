@@ -49,15 +49,33 @@ public sealed class RecurrenceRuleTests
         Assert.Equal(new DateTime(2026, 7, 15, 12, 0, 0, DateTimeKind.Utc), next.Value);
     }
 
-    /// <summary>Con COUNT agotado la regla no tiene más fechas: es un fin, no un error de datos.</summary>
-    [Fact]
-    public void An_exhausted_rule_reports_no_further_occurrence()
+    // La serie re-siembra la regla en cada paso, así que COUNT nunca se agotaba y un UNTIL ilegible se
+    // ignoraba. El fin se pide aparte (fecha de fin o número de tareas).
+    [Theory]
+    [InlineData("FREQ=DAILY;COUNT=1")]
+    [InlineData("FREQ=MONTHLY;BYMONTHDAY=15;COUNT=12")]
+    [InlineData("FREQ=MONTHLY;BYMONTHDAY=15;UNTIL=20271231T235959Z")]
+    [InlineData("FREQ=MONTHLY;BYMONTHDAY=15;UNTIL=nope")]
+    public void A_rule_that_carries_its_own_end_is_rejected(string value)
     {
-        var rule = RecurrenceRule.Create("FREQ=DAILY;COUNT=1", "America/New_York").Value;
+        var rule = RecurrenceRule.Create(value, "America/New_York");
 
-        var next = rule.NextAfter(Seed);
+        Assert.True(rule.IsFailure);
+        Assert.Equal("Task.Series.RuleEndNotSupported", rule.Error.Code);
+    }
 
-        Assert.Equal(TaskErrors.Series.NoFurtherOccurrence, next.Error);
+    // Una tarea por hora o por minuto no es una obligación de oficina, y el cálculo de fechas saltadas
+    // recorría cientos de miles de pasos dentro de la petición.
+    [Theory]
+    [InlineData("FREQ=HOURLY")]
+    [InlineData("FREQ=MINUTELY;INTERVAL=30")]
+    [InlineData("FREQ=SECONDLY")]
+    public void A_rule_more_frequent_than_daily_is_rejected(string value)
+    {
+        var rule = RecurrenceRule.Create(value, "America/New_York");
+
+        Assert.True(rule.IsFailure);
+        Assert.Equal("Task.Series.RuleFrequencyTooShort", rule.Error.Code);
     }
 
     [Fact]
@@ -68,5 +86,39 @@ public sealed class RecurrenceRuleTests
         var next = rule.NextAfter(new DateTime(2026, 4, 15, 12, 0, 0, DateTimeKind.Local));
 
         Assert.Equal(TaskErrors.Series.SeedNotUtc, next.Error);
+    }
+
+    // Combinaciones que no existen en ningún año: aceptarlas dejaba una tarea que no se podía cerrar.
+    [Theory]
+    [InlineData("FREQ=YEARLY;BYMONTH=4;BYMONTHDAY=31")]
+    [InlineData("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30")]
+    [InlineData("FREQ=MONTHLY;BYDAY=6MO")]
+    public void A_rule_that_never_produces_a_date_is_rejected(string value)
+    {
+        var rule = RecurrenceRule.Create(value, "America/New_York");
+
+        Assert.True(rule.IsFailure);
+        Assert.Equal("Task.Series.RuleNeverOccurs", rule.Error.Code);
+    }
+
+    // Se saltan meses (RFC 5545), pero sí producen fechas: siguen siendo válidas.
+    [Theory]
+    [InlineData("FREQ=MONTHLY;BYMONTHDAY=31")]
+    [InlineData("FREQ=YEARLY;BYMONTH=1,4,7,10;BYMONTHDAY=31")]
+    [InlineData("FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29")]
+    public void A_rule_that_skips_some_months_is_still_accepted(string value)
+    {
+        Assert.True(RecurrenceRule.Create(value, "America/New_York").IsSuccess);
+    }
+
+    // Cada 4 años el 29 de febrero: desde 2001 nunca cae en bisiesto. Debe terminar, no lanzar.
+    [Fact]
+    public void A_rule_with_no_more_dates_from_this_seed_reports_no_further_occurrence()
+    {
+        var rule = RecurrenceRule.Create("FREQ=YEARLY;INTERVAL=4;BYMONTH=2;BYMONTHDAY=29", "America/New_York").Value;
+
+        var next = rule.NextAfter(new DateTime(2001, 3, 1, 5, 0, 0, DateTimeKind.Utc));
+
+        Assert.Equal(TaskErrors.Series.NoFurtherOccurrence, next.Error);
     }
 }

@@ -22,11 +22,11 @@ namespace Internal.Generated.WolverineHandlers
 
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
-            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var tasksDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext>(serviceScope.ServiceProvider);
-            var taskLabelRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.TaskLabelRepository(tasksDbContext);
+            var workflowStatusRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.WorkflowStatusRepository(tasksDbContext);
+            var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var getTaskTaxonomiesQuery = (TaxVision.Tasks.Application.Labels.Queries.GetTaskTaxonomiesQuery)context.Envelope.Message;
 
@@ -47,7 +47,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Labels.Queries.GetTaskTaxonomiesHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Tasks.Application.Labels.Queries.GetTaskTaxonomiesHandler.Handle(getTaskTaxonomiesQuery, taskLabelRepository, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Tasks.Application.Labels.Queries.GetTaskTaxonomiesHandler.Handle(getTaskTaxonomiesQuery, workflowStatusRepository, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

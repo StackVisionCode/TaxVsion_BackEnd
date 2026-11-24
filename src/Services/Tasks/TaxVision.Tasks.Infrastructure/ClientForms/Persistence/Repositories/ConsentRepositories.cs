@@ -9,13 +9,13 @@ internal sealed class ConsentNoticeRepository(TasksDbContext context) : IConsent
 {
     public Task<ConsentNotice?> GetAsync(Guid tenantId, Guid noticeId, CancellationToken ct = default) =>
         context
-            .ConsentNotices.IgnoreQueryFilters()
+            .ConsentNotices.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(item => item.Versions)
             .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Id == noticeId, ct);
 
     public Task<ConsentNotice?> GetByKeyAsync(Guid tenantId, string key, CancellationToken ct = default) =>
         context
-            .ConsentNotices.IgnoreQueryFilters()
+            .ConsentNotices.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(item => item.Versions)
             .SingleOrDefaultAsync(item => item.TenantId == tenantId && item.Key == key.Trim().ToLower(), ct);
 
@@ -26,7 +26,7 @@ internal sealed class ConsentNoticeRepository(TasksDbContext context) : IConsent
         CancellationToken ct = default
     ) =>
         context
-            .ConsentNoticeVersions.IgnoreQueryFilters()
+            .ConsentNoticeVersions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .SingleOrDefaultAsync(
                 item =>
@@ -38,7 +38,7 @@ internal sealed class ConsentNoticeRepository(TasksDbContext context) : IConsent
 
     public async Task<IReadOnlyList<ConsentNotice>> ListAsync(Guid tenantId, CancellationToken ct = default) =>
         await context
-            .ConsentNotices.IgnoreQueryFilters()
+            .ConsentNotices.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Include(item => item.Versions)
             .Where(item => item.TenantId == tenantId)
@@ -52,7 +52,7 @@ internal sealed class FormConsentRecordRepository(TasksDbContext context) : IFor
 {
     public Task<FormConsentRecord?> GetAsync(FormConsentRecordKey key, CancellationToken ct = default) =>
         context
-            .FormConsentRecords.IgnoreQueryFilters()
+            .FormConsentRecords.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .SingleOrDefaultAsync(
                 item =>
                     item.TenantId == key.TenantId
@@ -73,7 +73,7 @@ internal sealed class FormConsentRecordRepository(TasksDbContext context) : IFor
         CancellationToken ct = default
     ) =>
         await context
-            .FormConsentRecords.IgnoreQueryFilters()
+            .FormConsentRecords.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item => item.TenantId == tenantId && item.FormRequestId == requestId)
             .OrderBy(item => item.RecordedAtUtc)
             .ToArrayAsync(ct);

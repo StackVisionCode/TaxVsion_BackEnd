@@ -66,6 +66,10 @@ public sealed class OAuthCallbackController(
         string? errorDescription = null
     )
     {
+        // El state se consume primero: hasta un error vuelve al subdominio (o al puerto local) donde se inició.
+        var connectState = string.IsNullOrWhiteSpace(state) ? null : await stateStore.ConsumeAsync(state, ct);
+        var redirectBase = ReturnBaseOf(connectState);
+
         if (!string.IsNullOrWhiteSpace(error))
         {
             // AADSTS90094/consent_required: la política del tenant de Microsoft bloqueó el
@@ -77,26 +81,14 @@ public sealed class OAuthCallbackController(
                 error,
                 errorDescription
             );
-            return Redirect(BuildRedirect("connectors_error", error));
+            return Redirect(BuildRedirect("connectors_error", error, redirectBase));
         }
 
         if (string.IsNullOrWhiteSpace(state) || string.IsNullOrWhiteSpace(code))
-            return Redirect(BuildRedirect("connectors_error", "invalid_request"));
+            return Redirect(BuildRedirect("connectors_error", "invalid_request", redirectBase));
 
-        var connectState = await stateStore.ConsumeAsync(state, ct);
-        if (connectState is null)
-            return Redirect(BuildRedirect("connectors_error", "invalid_state"));
-
-        if (connectState.ProviderCode != providerCode)
-            return Redirect(BuildRedirect("connectors_error", "invalid_state"));
-
-        // El navegador vuelve al subdominio del tenant donde el usuario inició (y sigue logueado), no
-        // a un BaseUrl fijo — validado contra el dominio permitido para no ser un open redirect.
-        var redirectBase = OAuthReturnRedirectPolicy.Resolve(
-            connectState.ReturnOrigin,
-            portalOptions.Value.BaseUrl,
-            platform.Current.BaseDomain
-        );
+        if (connectState is null || connectState.ProviderCode != providerCode)
+            return Redirect(BuildRedirect("connectors_error", "invalid_state", redirectBase));
 
         Result<CompleteOAuthConnectResult> result;
         try
@@ -158,22 +150,32 @@ public sealed class OAuthCallbackController(
         CancellationToken ct
     )
     {
+        var connectState = string.IsNullOrWhiteSpace(state) ? null : await stateStore.ConsumeAsync(state, ct);
+        var redirectBase = ReturnBaseOf(connectState);
+
         if (!string.IsNullOrWhiteSpace(error))
-            return Redirect(BuildRedirect("connectors_error", error));
+            return Redirect(BuildRedirect("connectors_error", error, redirectBase));
 
         if (string.IsNullOrWhiteSpace(state))
-            return Redirect(BuildRedirect("connectors_error", "invalid_request"));
+            return Redirect(BuildRedirect("connectors_error", "invalid_request", redirectBase));
 
-        var connectState = await stateStore.ConsumeAsync(state, ct);
         if (connectState is null)
-            return Redirect(BuildRedirect("connectors_error", "invalid_state"));
+            return Redirect(BuildRedirect("connectors_error", "invalid_state", redirectBase));
 
         var granted = string.Equals(adminConsent, "True", StringComparison.OrdinalIgnoreCase);
-        return Redirect(BuildRedirect("connectors_admin_consent", granted ? "true" : "false"));
+        return Redirect(BuildRedirect("connectors_admin_consent", granted ? "true" : "false", redirectBase));
     }
 
-    private string BuildRedirect(string key, string value, string? baseUrl = null) =>
-        $"{(baseUrl ?? portalOptions.Value.BaseUrl).TrimEnd('/')}?{key}={Uri.EscapeDataString(value)}";
+    // Subdominio de la oficina (o localhost con su puerto en local) validado; sin state válido, el BaseUrl.
+    private string ReturnBaseOf(OAuthConnectState? connectState) =>
+        OAuthReturnRedirectPolicy.Resolve(
+            connectState?.ReturnOrigin,
+            portalOptions.Value.BaseUrl,
+            platform.Current.BaseDomain
+        );
+
+    private static string BuildRedirect(string key, string value, string baseUrl) =>
+        $"{baseUrl.TrimEnd('/')}?{key}={Uri.EscapeDataString(value)}";
 
     /// <summary>Traduce el código de error del dominio a un slug estable que el frontend mapea a un mensaje en inglés.</summary>
     private static string MapErrorCode(string code) =>

@@ -33,6 +33,42 @@ public sealed class ReopenTaskHandlerTests
         Assert.Equal(TaskItemStatus.NotStarted, task.Status);
     }
 
+    /// <summary>S5: la serie ya creó la siguiente; reabrir esta dejaría dos abiertas.</summary>
+    [Fact]
+    public async Task An_occurrence_already_replaced_by_the_next_one_cannot_be_reopened()
+    {
+        var series = TaxVision
+            .Tasks.Domain.Series.TaskSeries.Create(
+                TenantId,
+                Manager,
+                RecurrenceRule.Create("FREQ=MONTHLY;BYMONTHDAY=15", "America/New_York").Value,
+                TaxVision.Tasks.Domain.Series.RecurrenceMode.FixedSchedule,
+                new TaxVision.Tasks.Domain.Series.TaskItemBlueprint
+                {
+                    Title = TaskTitle.Create("Payroll").Value,
+                    Priority = TaskPriority.Normal,
+                    Reference = TaskReference.None,
+                    AssigneeUserId = Manager,
+                    IsStatutory = false,
+                },
+                Now.AddDays(10),
+                null,
+                null,
+                Now
+            )
+            .Value;
+        var first = ClosedTask(Manager);
+        first.AttachToSeries(series.Id, 1);
+        series.RegisterMaterialized(first.Id, series.PlanNextOccurrence(null, null, Now).Value);
+        series.RegisterInstanceClosed(first.Id);
+        series.RegisterMaterialized(Guid.NewGuid(), series.PlanNextOccurrence(null, null, Now).Value);
+
+        var result = await ReopenAsync(first, new Users(), series: new InMemoryTaskSeriesRepository(series));
+
+        Assert.Equal(TaskErrors.Series.OccurrenceSuperseded, result.Error);
+        Assert.Equal(TaskItemStatus.Completed, first.Status);
+    }
+
     [Fact]
     public async Task An_active_assignee_keeps_the_reopened_task()
     {
@@ -88,17 +124,159 @@ public sealed class ReopenTaskHandlerTests
         Assert.EndsWith(":r2", keys[1]);
     }
 
+    [Fact]
+    public async Task Reopening_a_subtask_of_a_closed_task_asks_first_and_changes_nothing()
+    {
+        var (parent, child) = CompletedParentWithSubtask();
+        var tree = new Tree(parent, child);
+
+        var result = await tree.ReopenAsync(child, reopenParent: false);
+
+        Assert.Equal("Task.Subtask.ParentClosed", result.Error.Code);
+        Assert.Equal(TaskItemStatus.Completed, child.Status);
+        Assert.Equal(TaskItemStatus.Completed, parent.Status);
+    }
+
+    [Fact]
+    public async Task With_consent_the_closed_task_reopens_with_its_subtask()
+    {
+        var (parent, child) = CompletedParentWithSubtask();
+        var tree = new Tree(parent, child);
+
+        var result = await tree.ReopenAsync(child, reopenParent: true);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaskItemStatus.NotStarted, child.Status);
+        Assert.Equal(TaskItemStatus.NotStarted, parent.Status);
+        Assert.Equal(1, parent.OpenSubtaskCount);
+    }
+
+    [Fact]
+    public async Task A_subtask_of_an_open_task_reopens_without_asking()
+    {
+        var parent = OpenTask();
+        var child = NewSubtask(parent);
+        child.Complete(Manager, Now);
+        parent.RegisterSubtaskClosed();
+        var tree = new Tree(parent, child);
+
+        var result = await tree.ReopenAsync(child, reopenParent: false);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, parent.OpenSubtaskCount);
+    }
+
+    [Fact]
+    public async Task Reopening_someone_elses_closed_task_needs_permission_on_it()
+    {
+        var preparer = Guid.NewGuid();
+        var parent = OpenTask();
+        var child = TaskItem
+            .CreateSubtask(
+                parent,
+                Manager,
+                TaskTitle.Create("Collect W-2").Value,
+                null,
+                TaskPriority.Normal,
+                null,
+                null,
+                preparer,
+                Now
+            )
+            .Value;
+        child.Complete(preparer, Now);
+        parent.RegisterSubtaskClosed();
+        parent.Complete(Manager, Now);
+        var tree = new Tree(parent, child);
+
+        var result = await tree.ReopenAsync(child, reopenParent: true, byUserId: preparer, hasManageAll: false);
+
+        Assert.Equal(TaskErrors.Forbidden, result.Error);
+        Assert.Equal(TaskItemStatus.Completed, child.Status);
+    }
+
+    /// <summary>Servicios reales de jerarquía y desbloqueo: los contadores cambian de verdad.</summary>
+    private sealed class Tree(params TaskItem[] seed)
+    {
+        private readonly InMemoryTaskRepository _tasks = new(seed);
+        private readonly InMemoryTaskDependencyRepository _dependencies = new();
+
+        public Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> ReopenAsync(
+            TaskItem task,
+            bool reopenParent,
+            Guid? byUserId = null,
+            bool hasManageAll = true
+        ) =>
+            ReopenTaskHandler.Handle(
+                new ReopenTaskCommand(TenantId, task.Id, byUserId ?? Manager, hasManageAll, reopenParent),
+                _tasks,
+                new InMemoryTaskSeriesRepository(),
+                new TaxVision.Tasks.Application.Dependencies.TaskUnblockingService(
+                    _tasks,
+                    _dependencies,
+                    new NoOpCorrelationContext()
+                ),
+                new TaxVision.Tasks.Application.Hierarchy.TaskHierarchyService(_tasks, _dependencies),
+                new Users(),
+                new RecordingUnitOfWork(),
+                CancellationToken.None
+            );
+    }
+
+    private static (TaskItem Parent, TaskItem Child) CompletedParentWithSubtask()
+    {
+        var parent = OpenTask();
+        var child = NewSubtask(parent);
+        child.Complete(Manager, Now);
+        parent.RegisterSubtaskClosed();
+        parent.Complete(Manager, Now);
+        return (parent, child);
+    }
+
+    private static TaskItem OpenTask() =>
+        TaskItem
+            .Create(
+                TenantId,
+                Manager,
+                TaskTitle.Create("Prepare 1040").Value,
+                null,
+                TaskPriority.Normal,
+                TaskReference.None,
+                null,
+                null,
+                Manager,
+                Now
+            )
+            .Value;
+
+    private static TaskItem NewSubtask(TaskItem parent) =>
+        TaskItem
+            .CreateSubtask(
+                parent,
+                Manager,
+                TaskTitle.Create("Collect W-2").Value,
+                null,
+                TaskPriority.Normal,
+                null,
+                null,
+                Manager,
+                Now
+            )
+            .Value;
+
     // TaskReopened y el recordatorio salen del handler del evento de dominio (el replay los deja en el bus).
     private static async Task<BuildingBlocks.Results.Result<TaxVision.Tasks.Application.Tasks.TaskResponse>> ReopenAsync(
         TaskItem task,
         IUserPermissionsProjectionRepository users,
-        FakeMessageBus? bus = null
+        FakeMessageBus? bus = null,
+        InMemoryTaskSeriesRepository? series = null
     )
     {
         var tasks = new InMemoryTaskRepository(task);
         var result = await ReopenTaskHandler.Handle(
             new ReopenTaskCommand(TenantId, task.Id, Manager, HasManageAll: true),
             tasks,
+            series ?? new InMemoryTaskSeriesRepository(),
             new NoOpUnblocking(),
             new NoOpHierarchy(),
             users,
@@ -167,11 +345,11 @@ public sealed class ReopenTaskHandlerTests
         public Task ApplyChildReopenedAsync(Guid tenantId, Guid? parentTaskId, CancellationToken ct = default) =>
             Task.CompletedTask;
 
-        public Task DeleteWithDescendantsAsync(
+        public Task<IReadOnlyList<Guid>> DeleteWithDescendantsAsync(
             Guid tenantId,
             Guid taskId,
             Guid byUserId,
             CancellationToken ct = default
-        ) => Task.CompletedTask;
+        ) => Task.FromResult<IReadOnlyList<Guid>>([]);
     }
 }

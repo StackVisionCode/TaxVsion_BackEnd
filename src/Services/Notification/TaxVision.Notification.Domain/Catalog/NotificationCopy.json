@@ -113,6 +113,18 @@
       "en": { "title": "Task assigned to you", "body": "Open the task to review the details." },
       "es": { "title": "Tarea asignada", "body": "Abre la tarea para revisar los detalles." }
     },
+    "tasks.task_unblocked": {
+      "en": { "title": "Task ready to start", "body": "Everything it was waiting on is done." },
+      "es": { "title": "Tarea lista para empezar", "body": "Ya terminó todo lo que esperaba." }
+    },
+    "tasks.task_due_changed": {
+      "en": { "title": "Due date changed", "body": "Someone changed the due date of a task assigned to you." },
+      "es": { "title": "Cambió el vencimiento", "body": "Alguien cambió el vencimiento de una tarea asignada a ti." }
+    },
+    "tasks.series_ended": {
+      "en": { "title": "Recurring task ended", "body": "No more tasks will be created for it." },
+      "es": { "title": "Tarea recurrente terminada", "body": "Ya no se crearán más tareas para ella." }
+    },
     "tasks.task_overdue": {
       "en": { "title": "Task overdue", "body": "A task assigned to you is overdue." },
       "es": { "title": "Tarea vencida", "body": "Una tarea asignada está vencida." }

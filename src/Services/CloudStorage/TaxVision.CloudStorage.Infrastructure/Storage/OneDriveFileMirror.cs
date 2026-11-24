@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +23,7 @@ public sealed class OneDriveFileMirror(
     IHttpClientFactory clients,
     IOptions<CloudStorageOptions> storageOptions,
     IOptions<OneDriveOptions> driveOptions,
+    IPlatformSettings platform,
     ILogger<OneDriveFileMirror> logger
 ) : IStoragePolicyProviderAdapter
 {
@@ -111,7 +113,7 @@ public sealed class OneDriveFileMirror(
             await db.SaveChangesAsync(ct);
         }
 
-        var remoteName = CreateRemoteName(file.OriginalName, file.Id);
+        var path = CloudMirrorPath.For(platform.Current.BrandName, file.FolderType, file.TaxYear, file.OriginalName);
         var tempPath = Path.Combine(Path.GetTempPath(), $"taxvision-onedrive-{Guid.NewGuid():N}.tmp");
         try
         {
@@ -128,7 +130,14 @@ public sealed class OneDriveFileMirror(
             {
                 await storage.DownloadAsync(storageOptions.Value.MainBucket, file.ObjectKey, stream, ct);
                 stream.Position = 0;
-                var remoteId = await UploadAsync(token.AccessToken, remoteName, file.SizeBytes, stream, ct);
+                var remoteId = await UploadAsync(
+                    token.AccessToken,
+                    existing?.RemoteFileId,
+                    path,
+                    file.SizeBytes,
+                    stream,
+                    ct
+                );
                 if (existing is not null)
                     db.CloudFileCopies.Remove(existing);
                 db.CloudFileCopies.Add(
@@ -151,32 +160,82 @@ public sealed class OneDriveFileMirror(
         }
     }
 
+    /// <summary>
+    /// Ya copiado: se reemplaza el contenido de su mismo elemento (por id). Nuevo, o si el usuario lo borró:
+    /// {marca}/{categoría}/{año} dentro de la carpeta de la app, renombrando si ya hay uno con ese nombre.
+    /// </summary>
     private async Task<string> UploadAsync(
         string accessToken,
-        string name,
+        string? existingItemId,
+        CloudMirrorPath path,
         long size,
         Stream content,
         CancellationToken ct
     )
     {
-        // Use the stable special-folder alias. App-root item IDs commonly contain '!';
-        // escaping that ID inside the colon path can be rejected by Graph on OneDrive Personal.
-        var target = $"{GraphEndpoint}/me/drive/special/approot:/{Uri.EscapeDataString(name)}";
+        if (!string.IsNullOrWhiteSpace(existingItemId))
+        {
+            var item = $"{GraphEndpoint}/me/drive/items/{Uri.EscapeDataString(existingItemId)}";
+            var replaced = await TryUploadAsync(
+                accessToken,
+                $"{item}/content",
+                $"{item}/createUploadSession",
+                renameOnConflict: false,
+                size,
+                content,
+                ct
+            );
+            if (replaced is not null)
+                return replaced;
+        }
+
+        // Alias estable de la carpeta de la app: los ids de approot traen '!' y Graph los rechaza escapados en la ruta.
+        var segments = string.Join('/', path.Folders.Append(path.FileName).Select(Uri.EscapeDataString));
+        var target = $"{GraphEndpoint}/me/drive/special/approot:/{segments}:";
+        return await TryUploadAsync(
+                accessToken,
+                $"{target}/content?@microsoft.graph.conflictBehavior=rename",
+                $"{target}/createUploadSession",
+                renameOnConflict: true,
+                size,
+                content,
+                ct
+            ) ?? throw new InvalidOperationException("Microsoft Graph could not find the OneDrive app folder.");
+    }
+
+    /// <summary>Sube por PUT (vacío) o por sesión. Null si el destino no existe (404), antes de enviar el contenido.</summary>
+    private async Task<string?> TryUploadAsync(
+        string accessToken,
+        string simpleUrl,
+        string sessionUrl,
+        bool renameOnConflict,
+        long size,
+        Stream content,
+        CancellationToken ct
+    )
+    {
         if (size == 0)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Put, $"{target}:/content");
+            using var request = new HttpRequestMessage(HttpMethod.Put, simpleUrl);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             request.Content = new ByteArrayContent(Array.Empty<byte>());
             using var response = await clients.CreateClient("onedrive-graph").SendAsync(request, ct);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
             await EnsureGraphSuccessAsync(response, "uploading an empty file", ct);
             var item = await response.Content.ReadFromJsonAsync<DriveItemResponse>(cancellationToken: ct);
             return item?.Id
                 ?? throw new InvalidOperationException("Microsoft Graph did not return the uploaded OneDrive file ID.");
         }
 
-        using var create = new HttpRequestMessage(HttpMethod.Post, $"{target}:/createUploadSession");
+        using var create = new HttpRequestMessage(HttpMethod.Post, sessionUrl);
         create.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        create.Content = JsonContent.Create(
+            new UploadSessionRequest(new UploadSessionItem(renameOnConflict ? "rename" : "replace"))
+        );
         using var created = await clients.CreateClient("onedrive-graph").SendAsync(create, ct);
+        if (created.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
         await EnsureGraphSuccessAsync(created, "creating an upload session", ct);
         var session = await created.Content.ReadFromJsonAsync<UploadSessionResponse>(cancellationToken: ct);
         if (
@@ -258,21 +317,14 @@ public sealed class OneDriveFileMirror(
         );
     }
 
-    private static string CreateRemoteName(string originalName, Guid fileId)
-    {
-        var invalid = new HashSet<char>("\\/:*?\"<>|#%".ToCharArray());
-        var cleaned = new string(
-            originalName
-                .Select(character => char.IsControl(character) || invalid.Contains(character) ? '_' : character)
-                .ToArray()
-        )
-            .Trim()
-            .Trim('.');
-        if (string.IsNullOrWhiteSpace(cleaned))
-            cleaned = "file";
-        var prefix = fileId.ToString("N") + "_";
-        return prefix + cleaned[..Math.Min(cleaned.Length, 255 - prefix.Length)];
-    }
+    private sealed record UploadSessionRequest(
+        [property: System.Text.Json.Serialization.JsonPropertyName("item")] UploadSessionItem Item
+    );
+
+    private sealed record UploadSessionItem(
+        [property: System.Text.Json.Serialization.JsonPropertyName("@microsoft.graph.conflictBehavior")]
+            string ConflictBehavior
+    );
 
     private sealed record UploadSessionResponse(
         [property: System.Text.Json.Serialization.JsonPropertyName("uploadUrl")] string UploadUrl

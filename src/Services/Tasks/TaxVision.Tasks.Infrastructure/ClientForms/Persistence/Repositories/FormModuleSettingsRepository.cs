@@ -9,12 +9,12 @@ internal sealed class FormModuleSettingsRepository(TasksDbContext context) : IFo
 {
     public Task<FormModuleSettings?> GetAsync(Guid tenantId, CancellationToken ct = default) =>
         context
-            .FormModuleSettings.IgnoreQueryFilters()
+            .FormModuleSettings.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .SingleOrDefaultAsync(settings => settings.TenantId == tenantId, ct);
 
     public async Task<IReadOnlyList<FormModuleSettings>> ListAsync(CancellationToken ct = default) =>
         await context
-            .FormModuleSettings.IgnoreQueryFilters()
+            .FormModuleSettings.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .OrderBy(settings => settings.TenantId)
             .ToArrayAsync(ct);

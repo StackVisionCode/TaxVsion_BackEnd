@@ -16,7 +16,7 @@ internal sealed class FormTemplateRepository(TasksDbContext context) : IFormTemp
     public async Task<Result<FormTemplate>> GetByIdAsync(Guid tenantId, Guid templateId, CancellationToken ct = default)
     {
         var template = await context
-            .FormTemplates.IgnoreQueryFilters()
+            .FormTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(item => item.Reviews)
             .FirstOrDefaultAsync(item => item.TenantId == tenantId && item.Id == templateId, ct);
         return template is null ? Result.Failure<FormTemplate>(FormTemplateErrors.NotFound) : Result.Success(template);
@@ -32,7 +32,10 @@ internal sealed class FormTemplateRepository(TasksDbContext context) : IFormTemp
         CancellationToken ct = default
     )
     {
-        var query = context.FormTemplates.IgnoreQueryFilters().AsNoTracking().Where(item => item.TenantId == tenantId);
+        var query = context
+            .FormTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+            .AsNoTracking()
+            .Where(item => item.TenantId == tenantId);
         if (status.HasValue)
             query = query.Where(item => item.Status == status.Value);
         if (purpose.HasValue)
@@ -58,7 +61,7 @@ internal sealed class FormTemplateRepository(TasksDbContext context) : IFormTemp
     )
     {
         var templates = context
-            .FormTemplates.IgnoreQueryFilters()
+            .FormTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(item =>
                 item.TenantId == tenantId && item.Status == FormTemplateStatus.Active && item.LatestVersionId != null
@@ -71,7 +74,7 @@ internal sealed class FormTemplateRepository(TasksDbContext context) : IFormTemp
         // Se ordena antes de proyectar: EF no traduce EF.Property sobre el record ya construido.
         return await templates
             .Join(
-                context.FormTemplateVersions.IgnoreQueryFilters().AsNoTracking(),
+                context.FormTemplateVersions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly).AsNoTracking(),
                 template => template.LatestVersionId,
                 version => (Guid?)version.Id,
                 (template, version) => new { Template = template, version.Title }

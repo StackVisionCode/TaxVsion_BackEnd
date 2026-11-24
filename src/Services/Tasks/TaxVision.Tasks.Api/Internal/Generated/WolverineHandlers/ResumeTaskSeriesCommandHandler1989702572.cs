@@ -26,9 +26,10 @@ namespace Internal.Generated.WolverineHandlers
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
             if (unitOfWork is not TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext tasksDbContext) throw new System.Exception($"DbContext abstraction - unitOfWork must be implemented by TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext.");
+            var taskTemplateRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.TaskTemplateRepository(tasksDbContext);
             var taskRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.TaskRepository(tasksDbContext);
             var taskSeriesRepository = new TaxVision.Tasks.Infrastructure.Persistence.Repositories.TaskSeriesRepository(tasksDbContext);
-            var taskSeriesMaterializer = new TaxVision.Tasks.Application.Series.TaskSeriesMaterializer(taskRepository, taskSeriesRepository);
+            var taskSeriesMaterializer = new TaxVision.Tasks.Application.Series.TaskSeriesMaterializer(taskRepository, taskSeriesRepository, taskTemplateRepository);
             var tenantContext = new BuildingBlocks.Web.Tenancy.TenantContext();
             // The actual message body
             var resumeTaskSeriesCommand = (TaxVision.Tasks.Application.Series.Commands.ResumeTaskSeriesCommand)context.Envelope.Message;

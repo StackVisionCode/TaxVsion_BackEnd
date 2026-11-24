@@ -33,4 +33,10 @@ public interface ITaskSeriesMaterializer
     /// agotó— para que quien la llamó le pida su recordatorio, igual que a una tarea creada a mano.
     /// </summary>
     Task<TaskItem?> ApplyInstanceClosedAsync(TaskItem task, DateTime? completedAtUtc, CancellationToken ct = default);
+
+    /// <summary>Si la tarea es una ocurrencia que la serie ya reemplazó, no se puede reabrir.</summary>
+    Task<Result> CanReopenAsync(TaskItem task, CancellationToken ct = default);
+
+    /// <summary>Tras reabrir: la última ocurrencia vuelve a ser la abierta de su serie.</summary>
+    Task RegisterReopenedAsync(TaskItem task, CancellationToken ct = default);
 }

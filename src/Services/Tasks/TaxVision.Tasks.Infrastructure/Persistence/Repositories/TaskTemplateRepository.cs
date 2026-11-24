@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Templates.Abstractions;
 using TaxVision.Tasks.Domain.Tasks;
 using TaxVision.Tasks.Domain.Templates;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -13,7 +14,7 @@ public sealed class TaskTemplateRepository(TasksDbContext context) : ITaskTempla
     public async Task<Result<TaskTemplate>> GetByIdAsync(Guid tenantId, Guid templateId, CancellationToken ct = default)
     {
         var template = await context
-            .TaskTemplates.IgnoreQueryFilters()
+            .TaskTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(t => t.Steps)
             .Include(t => t.Attachments)
             .FirstOrDefaultAsync(t => t.TenantId == tenantId && t.Id == templateId, ct);
@@ -28,7 +29,7 @@ public sealed class TaskTemplateRepository(TasksDbContext context) : ITaskTempla
     )
     {
         var query = context
-            .TaskTemplates.IgnoreQueryFilters()
+            .TaskTemplates.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Include(t => t.Steps)
             .Include(t => t.Attachments)
             .Where(t => t.TenantId == tenantId);
@@ -50,7 +51,7 @@ public sealed class TaskTemplateRepository(TasksDbContext context) : ITaskTempla
         CancellationToken ct = default
     ) =>
         await context
-            .Tasks.IgnoreQueryFilters()
+            .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(t => t.TenantId == tenantId && t.TemplateId == templateId)
             .AnyAsync(t => t.Reference.CustomerId == customerId && t.Reference.TaxYear == taxYear, ct);
 }

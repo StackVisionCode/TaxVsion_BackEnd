@@ -1,4 +1,4 @@
-using TaxVision.Tasks.Domain.Labels;
+using TaxVision.Tasks.Domain.Statuses;
 using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Labels;
@@ -12,6 +12,6 @@ public sealed record TaskLabelResponse(
     int SortOrder
 )
 {
-    public static TaskLabelResponse From(TaskLabel label) =>
-        new(label.Id, label.Code.Value, label.DisplayName, label.Color.Value, label.MapsToStatus, label.SortOrder);
+    public static TaskLabelResponse From(WorkflowStatus label) =>
+        new(label.Id, label.Code.Value, label.DisplayName, label.Color.Value, label.Category, label.SortOrder);
 }

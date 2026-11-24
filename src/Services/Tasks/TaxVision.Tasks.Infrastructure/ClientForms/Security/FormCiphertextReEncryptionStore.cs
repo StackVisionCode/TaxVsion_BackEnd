@@ -33,29 +33,32 @@ public sealed class FormCiphertextReEncryptionStore(
         var totals = new Dictionary<short, long>();
 
         await AccumulateAsync(
-            db.FormSubmissions.IgnoreQueryFilters()
+            db.FormSubmissions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                 .Where(submission => submission.DraftAnswers != null)
                 .GroupBy(submission => submission.DraftAnswers!.KeyVersion),
             totals,
             ct
         );
         await AccumulateAsync(
-            db.FormSubmissionRevisions.IgnoreQueryFilters().GroupBy(revision => revision.Answers.KeyVersion),
+            db.FormSubmissionRevisions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+                .GroupBy(revision => revision.Answers.KeyVersion),
             totals,
             ct
         );
         await AccumulateAsync(
-            db.FormSensitiveAnswers.IgnoreQueryFilters().GroupBy(answer => answer.Protected.KeyVersion),
+            db.FormSensitiveAnswers.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+                .GroupBy(answer => answer.Protected.KeyVersion),
             totals,
             ct
         );
         await AccumulateAsync(
-            db.FormAccessChallenges.IgnoreQueryFilters().GroupBy(challenge => challenge.EmailKeyVersion),
+            db.FormAccessChallenges.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+                .GroupBy(challenge => challenge.EmailKeyVersion),
             totals,
             ct
         );
         await AccumulateAsync(
-            db.FormIntakeLinks.IgnoreQueryFilters().GroupBy(link => link.TokenKeyVersion),
+            db.FormIntakeLinks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly).GroupBy(link => link.TokenKeyVersion),
             totals,
             ct
         );
@@ -79,7 +82,7 @@ public sealed class FormCiphertextReEncryptionStore(
                 await ReEncryptTableAsync(
                     () =>
                         db
-                            .FormSubmissions.IgnoreQueryFilters()
+                            .FormSubmissions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                             .Where(s => s.DraftAnswers != null && s.DraftAnswers.KeyVersion != current)
                             .OrderBy(s => s.Id)
                             .Take(batchSize),
@@ -92,7 +95,7 @@ public sealed class FormCiphertextReEncryptionStore(
                 await ReEncryptTableAsync(
                     () =>
                         db
-                            .FormSubmissionRevisions.IgnoreQueryFilters()
+                            .FormSubmissionRevisions.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                             .Where(r => r.Answers.KeyVersion != current)
                             .OrderBy(r => r.Id)
                             .Take(batchSize),
@@ -105,7 +108,7 @@ public sealed class FormCiphertextReEncryptionStore(
                 await ReEncryptTableAsync(
                     () =>
                         db
-                            .FormSensitiveAnswers.IgnoreQueryFilters()
+                            .FormSensitiveAnswers.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                             .Where(a => a.Protected.KeyVersion != current)
                             .OrderBy(a => a.Id)
                             .Take(batchSize),
@@ -118,7 +121,7 @@ public sealed class FormCiphertextReEncryptionStore(
                 await ReEncryptTableAsync(
                     () =>
                         db
-                            .FormAccessChallenges.IgnoreQueryFilters()
+                            .FormAccessChallenges.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                             .Where(c => c.EmailKeyVersion != current)
                             .OrderBy(c => c.Id)
                             .Take(batchSize),
@@ -139,7 +142,7 @@ public sealed class FormCiphertextReEncryptionStore(
                 await ReEncryptTableAsync(
                     () =>
                         db
-                            .FormIntakeLinks.IgnoreQueryFilters()
+                            .FormIntakeLinks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                             .Where(l => l.TokenKeyVersion != current)
                             .OrderBy(l => l.Id)
                             .Take(batchSize),

@@ -19,12 +19,12 @@ public sealed class ClientFormsBacklogReader(TasksDbContext db)
         var oneDayAgo = nowUtc.AddDays(-1);
         var threeDaysAgo = nowUtc.AddDays(-3);
         var awaiting = db
-            .FormRequests.IgnoreQueryFilters()
+            .FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(request => request.Status == FormRequestStatus.Submitted);
         return new ClientFormsBacklog(
             await db
-                .FormAttachments.IgnoreQueryFilters()
+                .FormAttachments.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                 .AsNoTracking()
                 .LongCountAsync(
                     attachment =>
@@ -41,7 +41,7 @@ public sealed class ClientFormsBacklogReader(TasksDbContext db)
                 ct
             ),
             await db
-                .FormActionRuns.IgnoreQueryFilters()
+                .FormActionRuns.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                 .AsNoTracking()
                 .LongCountAsync(
                     run => run.Status == FormActionRunStatus.Requested && run.RequestedAtUtc < staleCutoff,

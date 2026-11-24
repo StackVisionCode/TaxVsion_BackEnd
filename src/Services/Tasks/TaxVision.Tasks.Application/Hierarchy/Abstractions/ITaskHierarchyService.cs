@@ -7,6 +7,11 @@ public interface ITaskHierarchyService
 
     Task ApplyChildReopenedAsync(Guid tenantId, Guid? parentTaskId, CancellationToken ct = default);
 
-    /// <summary>Borra la tarea y todo lo que cuelga de ella, nivel por nivel.</summary>
-    Task DeleteWithDescendantsAsync(Guid tenantId, Guid taskId, Guid byUserId, CancellationToken ct = default);
+    /// <summary>Manda a la papelera la tarea y todo lo que cuelga de ella; devuelve los ids de la rama.</summary>
+    Task<IReadOnlyList<Guid>> DeleteWithDescendantsAsync(
+        Guid tenantId,
+        Guid taskId,
+        Guid byUserId,
+        CancellationToken ct = default
+    );
 }

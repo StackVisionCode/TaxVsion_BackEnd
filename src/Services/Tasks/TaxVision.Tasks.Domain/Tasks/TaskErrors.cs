@@ -21,6 +21,11 @@ public static class TaskErrors
         "You can only act on your own tasks unless you can manage the whole firm's."
     );
 
+    public static readonly Error AlreadyAssigned = new(
+        "Task.AlreadyAssigned",
+        "Someone already has this task. Ask them or a manager to reassign it."
+    );
+
     public static readonly Error TitleEmpty = new("Task.TitleEmpty", "Task title is required.");
 
     public static readonly Error TitleTooLong = new(
@@ -53,6 +58,14 @@ public static class TaskErrors
     public static readonly Error CancellationReasonRequired = new(
         "Task.CancellationReasonRequired",
         "A cancellation reason is required."
+    );
+
+    /// <summary>Tope del motivo de cancelación: la columna <c>CancellationReason</c>.</summary>
+    public const int CancellationReasonMaxLength = 500;
+
+    public static readonly Error CancellationReasonTooLong = new(
+        "Task.CancellationReasonTooLong",
+        $"The reason cannot exceed {CancellationReasonMaxLength} characters."
     );
 
     /// <summary>409 y retriable: el contador baja de forma eventual, así que el reintento puede pasar.</summary>
@@ -99,6 +112,67 @@ public static class TaskErrors
     /// <summary>Tope del texto libre que justifica mover un vencimiento estatutario.</summary>
     public const int StatutoryChangeReasonMaxLength = 500;
 
+    /// <summary>Estados de la oficina.</summary>
+    public static class Status
+    {
+        public static readonly Error NotFound = new(
+            "Task.Status.NotFound",
+            "That status doesn't exist in this office."
+        );
+
+        public static readonly Error Archived = new(
+            "Task.Status.Archived",
+            "That status is archived. Choose an active status."
+        );
+
+        public static readonly Error NameTaken = new(
+            "Task.Status.NameTaken",
+            "Another status in this office already has that name."
+        );
+
+        public static Error InUse(int openTasks) =>
+            new(
+                "Task.Status.InUse",
+                openTasks == 1
+                    ? "1 open task uses this status. Choose where to move it."
+                    : $"{openTasks} open tasks use this status. Choose where to move them."
+            );
+
+        public static readonly Error CategoryLocked = new(
+            "Task.Status.CategoryLocked",
+            "New statuses go in Not started, In progress or Waiting on client, and a status in use keeps its stage."
+        );
+
+        public static readonly Error LimitReached = new(
+            "Task.Status.LimitReached",
+            $"An office can have at most {Statuses.WorkflowStatus.MaxActivePerTenant} active statuses."
+        );
+
+        public static readonly Error DescriptionTooLong = new(
+            "Task.Status.DescriptionTooLong",
+            $"The description cannot exceed {Statuses.WorkflowStatus.DescriptionMaxLength} characters."
+        );
+
+        public static readonly Error SystemStatus = new(
+            "Task.Status.SystemStatus",
+            "System statuses can't be archived. Rename them instead."
+        );
+    }
+
+    public static class Subtask
+    {
+        public static Error Blocked(string title) =>
+            new(
+                "Task.Subtask.Blocked",
+                $"The subtask \"{title}\" is waiting on another task, so nothing was completed."
+            );
+
+        public static readonly Error ParentClosed = new(
+            "Task.Subtask.ParentClosed",
+            "The task this subtask belongs to is closed. Reopen it too to continue."
+        );
+    }
+
     public static class Dependency
     {
         public static readonly Error IdentifiersRequired = new(
@@ -127,6 +201,17 @@ public static class TaskErrors
             "A task cannot depend on one of its own descendants."
         );
 
+        // El caso inverso traba igual: la madre no cierra con la hija abierta y la hija espera a la madre.
+        public static readonly Error SuccessorClosed = new(
+            "Task.Dependency.SuccessorClosed",
+            "A completed or cancelled task can't start waiting on another task. Reopen it first."
+        );
+
+        public static readonly Error WaitsOnOwnParent = new(
+            "Task.Dependency.WaitsOnOwnParent",
+            "A subtask can't wait on the task it belongs to."
+        );
+
         public static readonly Error GraphTooLarge = new(
             "Task.Dependency.GraphTooLarge",
             $"The dependency graph exceeds the {Dependencies.TaskDependencyGraph.MaxTraversalNodes}-node traversal limit."
@@ -149,6 +234,40 @@ public static class TaskErrors
         public static readonly Error NotOwner = new(
             "Task.Timer.NotOwner",
             "Only the user who started a timer can stop it."
+        );
+    }
+
+    /// <summary>Tiempo anotado a mano y su corrección.</summary>
+    public static class Time
+    {
+        public static readonly Error DurationInvalid = new(
+            "Task.Time.DurationInvalid",
+            "Enter how long you worked: more than 0 and no more than 24 hours."
+        );
+
+        public static readonly Error DateInFuture = new(
+            "Task.Time.DateInFuture",
+            "You can't log time for a future date."
+        );
+
+        public static readonly Error EntryRunning = new(
+            "Task.Time.EntryRunning",
+            "Stop the timer before changing this entry."
+        );
+
+        public static readonly Error NotOwner = new(
+            "Task.Time.NotOwner",
+            "Only the person who logged this time can change it."
+        );
+
+        public static readonly Error TaskCancelled = new(
+            "Task.Time.TaskCancelled",
+            "This task is cancelled. Its time can't be changed."
+        );
+
+        public static readonly Error NoteTooLong = new(
+            "Task.Time.NoteTooLong",
+            $"The note cannot exceed {TaskTimer.NoteMaxLength} characters."
         );
     }
 
@@ -180,12 +299,17 @@ public static class TaskErrors
 
         public static readonly Error DisplayNameTooLong = new(
             "Task.Label.DisplayNameTooLong",
-            $"The label display name cannot exceed {Labels.TaskLabel.DisplayNameMaxLength} characters."
+            $"The label display name cannot exceed {Statuses.WorkflowStatus.DisplayNameMaxLength} characters."
         );
 
         public static readonly Error ColorInvalid = new(
             "Task.Label.ColorInvalid",
             "The label color must be a hex value such as #2E7D32."
+        );
+
+        public static readonly Error StatusInvalid = new(
+            "Task.Label.StatusInvalid",
+            "The label must map to one of the task statuses."
         );
     }
 
@@ -199,6 +323,21 @@ public static class TaskErrors
         public static readonly Error TaxYearOutOfRange = new(
             "Task.Reference.TaxYearOutOfRange",
             $"The tax year must be between {ValueObjects.TaskReference.MinTaxYear} and {ValueObjects.TaskReference.MaxTaxYear}."
+        );
+
+        public static readonly Error CustomerNotVisible = new(
+            "Task.Reference.CustomerNotVisible",
+            "You can only link tasks to clients you work with."
+        );
+
+        public static readonly Error FollowsParent = new(
+            "Task.Reference.FollowsParent",
+            "A subtask uses the client and tax year of the task it belongs to. Change them there."
+        );
+
+        public static readonly Error CustomerLockedWhileWaiting = new(
+            "Task.Reference.CustomerLockedWhileWaiting",
+            "This task is waiting on its client. Move it out of Waiting on client before changing the client."
         );
     }
 
@@ -232,8 +371,39 @@ public static class TaskErrors
         );
     }
 
+    /// <summary>Mismo código que el choque de versión al guardar: el CRM lo trata igual.</summary>
+    public static readonly Error StaleVersion = new(
+        "Persistence.ConcurrencyConflict",
+        "This task changed while you were editing it. Reload it and try again."
+    );
+
+    public static class Trash
+    {
+        public static readonly Error NotInTrash = new(
+            "Task.Trash.NotInTrash",
+            "Only a task moved to the trash can be restored. Restore the task it was deleted with."
+        );
+
+        public static readonly Error ParentInTrash = new(
+            "Task.Trash.ParentInTrash",
+            "The task this one belongs to is in the trash. Restore it first."
+        );
+    }
+
     public static class Series
     {
+        public static readonly Error NotPaused = new("Task.Series.NotPaused", "Only a paused series can be resumed.");
+
+        public static readonly Error OptionInvalid = new(
+            "Task.Series.OptionInvalid",
+            "Choose a valid schedule mode and priority."
+        );
+
+        public static readonly Error OccurrenceSuperseded = new(
+            "Task.Series.OccurrenceSuperseded",
+            "This task was replaced by the next one in its series."
+        );
+
         public static readonly Error NotFound = new("Task.Series.NotFound", "Task series was not found.");
 
         public static readonly Error RuleEmpty = new("Task.Series.RuleEmpty", "The recurrence rule is required.");
@@ -246,6 +416,27 @@ public static class TaskErrors
         public static readonly Error RuleInvalid = new(
             "Task.Series.RuleInvalid",
             "The recurrence rule must be a valid RFC 5545 RRULE, such as FREQ=MONTHLY;INTERVAL=3."
+        );
+
+        /// <summary>Mismo código que <see cref="RuleInvalid"/>, con el motivo concreto.</summary>
+        public static Error RuleUnreadable(string reason) =>
+            string.IsNullOrWhiteSpace(reason)
+                ? RuleInvalid
+                : new(RuleInvalid.Code, $"The recurrence rule can't be read: {reason}");
+
+        public static readonly Error RuleNeverOccurs = new(
+            "Task.Series.RuleNeverOccurs",
+            "This schedule never produces a date (for example, April 31). Use the last day of the month instead."
+        );
+
+        public static readonly Error RuleFrequencyTooShort = new(
+            "Task.Series.RuleFrequencyTooShort",
+            "A recurring task can repeat at most once a day."
+        );
+
+        public static readonly Error RuleEndNotSupported = new(
+            "Task.Series.RuleEndNotSupported",
+            "Set when the series ends with its end date or number of tasks, not with COUNT or UNTIL in the rule."
         );
 
         public static readonly Error TimeZoneInvalid = new(
@@ -285,6 +476,16 @@ public static class TaskErrors
         public static readonly Error MaxOccurrencesInvalid = new(
             "Task.Series.MaxOccurrencesInvalid",
             "The occurrence limit must be greater than zero."
+        );
+
+        public static readonly Error StartsBeforeCurrent = new(
+            "Task.Series.StartsBeforeCurrent",
+            "The new schedule must start after the current task is due."
+        );
+
+        public static readonly Error EndsBeforeNext = new(
+            "Task.Series.EndsBeforeNext",
+            "The series can't end before its current task is due."
         );
 
         public static readonly Error EndsBeforeAnchor = new(
@@ -331,6 +532,11 @@ public static class TaskErrors
     public static class Template
     {
         public static readonly Error NotFound = new("Task.Template.NotFound", "Task template was not found.");
+
+        public static readonly Error NotStandard = new(
+            "Task.Template.NotStandard",
+            "This template was not installed from the standard set."
+        );
 
         public static readonly Error NameRequired = new("Task.Template.NameRequired", "The template name is required.");
 

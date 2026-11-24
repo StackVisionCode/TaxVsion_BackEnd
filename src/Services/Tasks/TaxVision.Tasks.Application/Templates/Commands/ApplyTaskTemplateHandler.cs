@@ -129,12 +129,11 @@ public static class ApplyTaskTemplateHandler
         if (series.IsFailure)
             return Result.Failure<Applied>(series.Error);
 
+        series.Value.OriginateFrom(template.Id);
         seriesRepository.Add(series.Value);
         var first = await materializer.MaterializeFirstAsync(series.Value, ct);
         if (first.IsFailure)
             return Result.Failure<Applied>(first.Error);
-
-        first.Value.AttachToTemplate(template.Id);
 
         return Result.Success(SeriesApplied(template.Id, first.Value, series.Value.Id));
     }

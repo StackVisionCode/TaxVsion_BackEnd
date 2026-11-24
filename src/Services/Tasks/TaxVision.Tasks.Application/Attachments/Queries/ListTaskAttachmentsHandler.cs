@@ -1,5 +1,7 @@
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Tasks.Application.Tasks.Abstractions;
+using TaxVision.Tasks.Application.Tasks.Queries;
 using TaxVision.Tasks.Domain.Tasks;
 
 namespace TaxVision.Tasks.Application.Attachments.Queries;
@@ -8,16 +10,28 @@ namespace TaxVision.Tasks.Application.Attachments.Queries;
 /// El padre no hereda los adjuntos del hijo: los muestra si se piden. Guardar copias arriba sería
 /// duplicar la verdad.
 /// </param>
-public sealed record ListTaskAttachmentsQuery(Guid TenantId, Guid TaskId, bool IncludeDescendants);
+public sealed record ListTaskAttachmentsQuery(
+    Guid TenantId,
+    Guid TaskId,
+    bool IncludeDescendants,
+    Guid ActorUserId,
+    bool CanViewAll
+);
 
 public static class ListTaskAttachmentsHandler
 {
     public static async Task<Result<IReadOnlyList<TaskAttachmentResponse>>> Handle(
         ListTaskAttachmentsQuery query,
         ITaskRepository tasks,
+        IOptions<TasksVisibilityOptions> visibility,
         CancellationToken ct
     )
     {
+        var viewer = TaskReadGate.ViewerOf(visibility, query.ActorUserId, query.CanViewAll);
+        var visible = await TaskReadGate.EnsureVisibleAsync(tasks, query.TenantId, query.TaskId, viewer, ct);
+        if (visible.IsFailure)
+            return Result.Failure<IReadOnlyList<TaskAttachmentResponse>>(visible.Error);
+
         var found = await tasks.GetByIdWithAttachmentsAsync(query.TenantId, query.TaskId, ct);
         if (found.IsFailure)
             return Result.Failure<IReadOnlyList<TaskAttachmentResponse>>(found.Error);

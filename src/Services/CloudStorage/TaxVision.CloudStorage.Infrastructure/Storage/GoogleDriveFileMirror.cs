@@ -1,7 +1,9 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +24,7 @@ public sealed class GoogleDriveFileMirror(
     IHttpClientFactory clients,
     IOptions<CloudStorageOptions> storageOptions,
     IOptions<GoogleDriveOptions> driveOptions,
+    IPlatformSettings platform,
     ILogger<GoogleDriveFileMirror> logger
 ) : IStoragePolicyProviderAdapter
 {
@@ -130,14 +133,19 @@ public sealed class GoogleDriveFileMirror(
             {
                 await storage.DownloadAsync(storageOptions.Value.MainBucket, file.ObjectKey, stream, ct);
                 stream.Position = 0;
-                var remoteId = await UploadResumableAsync(
+                var path = CloudMirrorPath.For(
+                    platform.Current.BrandName,
+                    file.FolderType,
+                    file.TaxYear,
+                    file.OriginalName
+                );
+                var upload = new DriveUpload(
                     token.AccessToken,
-                    file.OriginalName,
                     file.DetectedContentType ?? file.DeclaredContentType,
                     file.SizeBytes,
-                    stream,
-                    ct
+                    stream
                 );
+                var remoteId = await UploadAsync(message.TenantId, existing?.RemoteFileId, path, upload, ct);
                 if (existing is not null)
                     db.CloudFileCopies.Remove(existing);
                 db.CloudFileCopies.Add(
@@ -160,47 +168,101 @@ public sealed class GoogleDriveFileMirror(
         }
     }
 
-    private async Task<string> UploadResumableAsync(
-        string accessToken,
-        string name,
-        string contentType,
-        long size,
-        Stream content,
+    private sealed record DriveUpload(string AccessToken, string ContentType, long Size, Stream Content);
+
+    /// <summary>
+    /// Un archivo que ya tiene copia se actualiza en su sitio; uno nuevo entra en {marca}/{categoría}/{año}. Si una
+    /// carpeta guardada ya no existe en Drive (404), se olvidan y se vuelven a resolver una vez.
+    /// </summary>
+    private async Task<string> UploadAsync(
+        Guid tenantId,
+        string? existingRemoteId,
+        CloudMirrorPath path,
+        DriveUpload upload,
         CancellationToken ct
     )
     {
         var client = clients.CreateClient("google-drive-api");
-        using var initiate = new HttpRequestMessage(
-            HttpMethod.Post,
-            "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id"
-        );
-        initiate.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        initiate.Headers.Add("X-Upload-Content-Type", contentType);
+        if (!string.IsNullOrWhiteSpace(existingRemoteId))
+        {
+            var updated = await TryUploadAsync(
+                client,
+                HttpMethod.Patch,
+                $"https://www.googleapis.com/upload/drive/v3/files/{Uri.EscapeDataString(existingRemoteId)}?uploadType=resumable&fields=id",
+                new DriveFileUpdate(),
+                upload,
+                ct
+            );
+            if (updated is not null)
+                return updated;
+        }
+
+        var folders = new GoogleDriveFolders(db, client, upload.AccessToken);
+        for (var attempt = 0; ; attempt++)
+        {
+            var parentId = await folders.ResolveAsync(tenantId, path.Folders, ct);
+            var created = await TryUploadAsync(
+                client,
+                HttpMethod.Post,
+                "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id",
+                new DriveFileMetadata(path.FileName, [parentId]),
+                upload,
+                ct
+            );
+            if (created is not null)
+                return created;
+            if (attempt > 0)
+                throw new InvalidOperationException("The Google Drive folder for this copy could not be found.");
+            await folders.ForgetAsync(tenantId, ct);
+        }
+    }
+
+    /// <summary>Sesión reanudable de Drive. Null si el destino no existe (404), antes de enviar el contenido.</summary>
+    private static async Task<string?> TryUploadAsync<TMetadata>(
+        HttpClient client,
+        HttpMethod method,
+        string url,
+        TMetadata metadata,
+        DriveUpload upload,
+        CancellationToken ct
+    )
+    {
+        using var initiate = new HttpRequestMessage(method, url);
+        initiate.Headers.Authorization = new AuthenticationHeaderValue("Bearer", upload.AccessToken);
+        initiate.Headers.Add("X-Upload-Content-Type", upload.ContentType);
         initiate.Headers.Add(
             "X-Upload-Content-Length",
-            size.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            upload.Size.ToString(System.Globalization.CultureInfo.InvariantCulture)
         );
-        initiate.Content = JsonContent.Create(new DriveFileMetadata(name));
+        initiate.Content = JsonContent.Create(metadata);
         using var response = await client.SendAsync(initiate, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
         response.EnsureSuccessStatusCode();
         var uploadUri =
             response.Headers.Location
             ?? throw new InvalidOperationException("Google Drive did not return an upload URL.");
 
-        using var upload = new HttpRequestMessage(HttpMethod.Put, uploadUri)
+        using var put = new HttpRequestMessage(HttpMethod.Put, uploadUri)
         {
-            Content = new StreamContent(content, 128 * 1024),
+            Content = new StreamContent(upload.Content, 128 * 1024),
         };
-        upload.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
-        upload.Content.Headers.ContentLength = size;
-        using var uploaded = await client.SendAsync(upload, HttpCompletionOption.ResponseHeadersRead, ct);
+        put.Content.Headers.ContentType = new MediaTypeHeaderValue(upload.ContentType);
+        put.Content.Headers.ContentLength = upload.Size;
+        using var uploaded = await client.SendAsync(put, HttpCompletionOption.ResponseHeadersRead, ct);
         uploaded.EnsureSuccessStatusCode();
         var result = await uploaded.Content.ReadFromJsonAsync<DriveFileResponse>(cancellationToken: ct);
         return result?.Id
             ?? throw new InvalidOperationException("Google Drive upload response did not contain a file ID.");
     }
 
-    private sealed record DriveFileMetadata([property: JsonPropertyName("name")] string Name);
+    private sealed record DriveFileMetadata(
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("parents")] string[] Parents
+    );
+
+    // Actualizar solo el contenido: nombre y carpeta se quedan como estén en Drive.
+    private sealed record DriveFileUpdate;
 
     private sealed record DriveFileResponse([property: JsonPropertyName("id")] string Id);
 

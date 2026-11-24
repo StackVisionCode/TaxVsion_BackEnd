@@ -1696,6 +1696,40 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("TaxVision.Tasks.Domain.Activity.TaskActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("DataJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId", "OccurredAtUtc")
+                        .HasDatabaseName("IX_TaskActivities_TaskId_OccurredAtUtc");
+
+                    b.ToTable("TaskActivities", (string)null);
+                });
+
             modelBuilder.Entity("TaxVision.Tasks.Domain.Backfill.TenantBackfillState", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -1856,51 +1890,16 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DependsOnTaskId");
+
+                    b.HasIndex("TaskId");
+
                     b.HasIndex("TenantId", "DependsOnTaskId");
 
                     b.HasIndex("TenantId", "TaskId", "DependsOnTaskId")
                         .IsUnique();
 
                     b.ToTable("TaskDependencies", (string)null);
-                });
-
-            modelBuilder.Entity("TaxVision.Tasks.Domain.Labels.TaskLabel", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
-
-                    b.Property<string>("Color")
-                        .IsRequired()
-                        .HasMaxLength(7)
-                        .HasColumnType("nvarchar(7)");
-
-                    b.Property<string>("DisplayName")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("nvarchar(60)");
-
-                    b.Property<int>("MapsToStatus")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TenantId", "Code")
-                        .IsUnique()
-                        .HasDatabaseName("UX_TaskLabels_TenantId_Code");
-
-                    b.ToTable("TaskLabels", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Tasks.Domain.Permissions.RolePermissionsProjection", b =>
@@ -2076,17 +2075,29 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<int>("GeneratedCount")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("LastPlannedDueUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MaterializationAttempts")
+                        .HasColumnType("int");
+
                     b.Property<int?>("MaxOccurrences")
                         .HasColumnType("int");
 
                     b.Property<int>("Mode")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("NextMaterializationAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<Guid?>("OpenInstanceId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("OwnerUserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("PendingFirstDueUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -2100,6 +2111,12 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
+                    b.Property<int?>("TaxYearDueYear")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("TemplateId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2109,6 +2126,86 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("IX_TaskSeries_TenantId_Status");
 
                     b.ToTable("TaskSeries", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.Domain.Statuses.WorkflowStatus", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ArchivedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(7)
+                        .HasColumnType("nvarchar(7)");
+
+                    b.Property<DateTime?>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Category")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TaskWorkflowStatuses_TenantId_Category_Default")
+                        .HasFilter("[IsDefault] = 1 AND [IsArchived] = 0");
+
+                    b.HasIndex("TenantId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TaskWorkflowStatuses_TenantId_Code");
+
+                    b.HasIndex("TenantId", "DisplayName")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TaskWorkflowStatuses_TenantId_DisplayName_Active")
+                        .HasFilter("[IsArchived] = 0");
+
+                    b.ToTable("TaskWorkflowStatuses", (string)null);
                 });
 
             modelBuilder.Entity("TaxVision.Tasks.Domain.Tasks.TaskAttachment", b =>
@@ -2181,6 +2278,16 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("AssigneeUserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("CancelledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CancelledByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("ClientDueAtUtc")
                         .HasColumnType("datetime2");
 
@@ -2203,6 +2310,12 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedByUserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("Depth")
@@ -2256,13 +2369,39 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("int");
 
+                    b.Property<int>("SubtaskCount")
+                        .HasColumnType("int");
+
                     b.Property<Guid?>("TemplateId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("TrashRootId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("WorkflowStatusCode")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid?>("WorkflowStatusId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("DeletedAtUtc")
+                        .HasDatabaseName("IX_Tasks_DeletedAtUtc")
+                        .HasFilter("[DeletedAtUtc] IS NOT NULL");
+
+                    b.HasIndex("ParentTaskId");
+
+                    b.HasIndex("WorkflowStatusId");
+
+                    b.HasIndex("SeriesId", "OccurrenceNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Tasks_SeriesId_OccurrenceNumber")
+                        .HasFilter("[SeriesId] IS NOT NULL");
 
                     b.HasIndex("TenantId", "ParentTaskId")
                         .HasDatabaseName("IX_Tasks_TenantId_ParentTaskId");
@@ -2272,6 +2411,14 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "TemplateId")
                         .HasDatabaseName("IX_Tasks_TenantId_TemplateId");
+
+                    b.HasIndex("TenantId", "TrashRootId")
+                        .HasDatabaseName("IX_Tasks_TenantId_TrashRootId")
+                        .HasFilter("[TrashRootId] IS NOT NULL");
+
+                    b.HasIndex("TenantId", "WorkflowStatusId")
+                        .HasDatabaseName("IX_Tasks_TenantId_WorkflowStatusId")
+                        .HasFilter("[WorkflowStatusId] IS NOT NULL");
 
                     b.HasIndex("TenantId", "Status", "ClientDueAtUtc")
                         .HasDatabaseName("IX_Tasks_TenantId_Status_ClientDueAtUtc_WaitingOnClient")
@@ -2288,6 +2435,13 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsBillable")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsManual")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<DateTime>("StartedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -2297,12 +2451,24 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("TaskId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("TaskId");
+                    b.HasIndex("TaskId")
+                        .HasDatabaseName("IX_TaskTimers_TaskId");
+
+                    b.HasIndex("TaskId", "UserId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TaskTimers_Running")
+                        .HasFilter("[StoppedAtUtc] IS NULL");
 
                     b.HasIndex("UserId", "StartedAtUtc")
                         .HasDatabaseName("IX_TaskTimers_UserId_StartedAtUtc");
@@ -2343,6 +2509,10 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<string>("StandardKey")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -2353,6 +2523,11 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "IsActive")
                         .HasDatabaseName("IX_TaskTemplates_TenantId_IsActive");
+
+                    b.HasIndex("TenantId", "StandardKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_TaskTemplates_TenantId_StandardKey")
+                        .HasFilter("[StandardKey] IS NOT NULL");
 
                     b.ToTable("TaskTemplates", (string)null);
                 });
@@ -2864,6 +3039,15 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("TaxVision.Tasks.Domain.Activity.TaskActivity", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.Domain.Tasks.TaskItem", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("TaxVision.Tasks.Domain.ClientRequests.ClientRequestDocument", b =>
                 {
                     b.HasOne("TaxVision.Tasks.Domain.ClientRequests.ClientRequest", null)
@@ -2871,6 +3055,23 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
                         .HasForeignKey("ClientRequestId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("TaxVision.Tasks.Domain.Dependencies.TaskDependency", b =>
+                {
+                    b.HasOne("TaxVision.Tasks.Domain.Tasks.TaskItem", null)
+                        .WithMany()
+                        .HasForeignKey("DependsOnTaskId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_TaskDependencies_Tasks_DependsOnTaskId");
+
+                    b.HasOne("TaxVision.Tasks.Domain.Tasks.TaskItem", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired()
+                        .HasConstraintName("FK_TaskDependencies_Tasks_TaskId");
                 });
 
             modelBuilder.Entity("TaxVision.Tasks.Domain.Series.TaskSeries", b =>
@@ -2982,6 +3183,17 @@ namespace TaxVision.Tasks.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TaxVision.Tasks.Domain.Tasks.TaskItem", b =>
                 {
+                    b.HasOne("TaxVision.Tasks.Domain.Tasks.TaskItem", null)
+                        .WithMany()
+                        .HasForeignKey("ParentTaskId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("FK_Tasks_Tasks_ParentTaskId");
+
+                    b.HasOne("TaxVision.Tasks.Domain.Statuses.WorkflowStatus", null)
+                        .WithMany()
+                        .HasForeignKey("WorkflowStatusId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.OwnsOne("TaxVision.Tasks.Domain.ValueObjects.TaskReference", "Reference", b1 =>
                         {
                             b1.Property<Guid>("TaskItemId")

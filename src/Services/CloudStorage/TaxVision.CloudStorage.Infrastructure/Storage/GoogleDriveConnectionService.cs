@@ -38,6 +38,7 @@ public sealed class GoogleDriveConnectionService(
     IOptions<GoogleDriveOptions> options
 ) : IGoogleDriveConnectionService
 {
+    public const string ProviderId = "google-drive";
     private const string Scope = "openid email https://www.googleapis.com/auth/drive.file";
 
     // <summary>Starts the OAuth flow by creating a nonce and returning the Google authorization URL.</summary>
@@ -111,6 +112,7 @@ public sealed class GoogleDriveConnectionService(
             .SingleOrDefaultAsync(x => x.TenantId == state.TenantId && x.Provider == "google-drive", ct);
         if (old is not null)
             db.CloudConnections.Remove(old);
+        await ForgetFoldersAsync(state.TenantId, ct);
         var protector = services.GetRequiredService<ISecretProtector>();
         db.CloudConnections.Add(
             TenantCloudConnection.Connect(
@@ -156,8 +158,18 @@ public sealed class GoogleDriveConnectionService(
             catch (HttpRequestException) { }
         }
         db.CloudConnections.Remove(connection);
+        await ForgetFoldersAsync(tenantId, ct);
         await db.SaveChangesAsync(ct);
     }
+
+    // Las carpetas guardadas son de la cuenta anterior: otra cuenta (o la misma, reconectada) las resuelve de nuevo.
+    private async Task ForgetFoldersAsync(Guid tenantId, CancellationToken ct) =>
+        db.CloudFolders.RemoveRange(
+            await db
+                .CloudFolders.IgnoreQueryFilters()
+                .Where(x => x.TenantId == tenantId && x.Provider == ProviderId)
+                .ToListAsync(ct)
+        );
 
     // <summary>Throws if the Google Drive OAuth configuration is missing or incomplete.</summary>
     private static void EnsureConfigured(GoogleDriveOptions config)

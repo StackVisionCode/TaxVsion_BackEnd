@@ -26,7 +26,7 @@ internal static class FormRequestInboxVisibility
                 || (
                     item.CustomerId.HasValue
                     && context
-                        .CustomerAssignmentProjections.IgnoreQueryFilters()
+                        .CustomerAssignmentProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
                         .Any(assignment =>
                             assignment.TenantId == tenantId
                             && assignment.CustomerId == item.CustomerId.Value

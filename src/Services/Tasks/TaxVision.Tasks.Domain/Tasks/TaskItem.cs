@@ -10,11 +10,17 @@ namespace TaxVision.Tasks.Domain.Tasks;
 /// La unidad de trabajo. Se llama <c>TaskItem</c> y no <c>Task</c> para no chocar con
 /// <c>System.Threading.Tasks.Task</c>.
 /// </summary>
-public sealed class TaskItem : AggregateRoot, IHasOwner
+public sealed partial class TaskItem : AggregateRoot, IHasOwner
 {
     public TaskTitle Title { get; private set; } = default!;
     public TaskDescription? Description { get; private set; }
     public TaskItemStatus Status { get; private set; }
+
+    /// <summary>Estado de la oficina dentro de la etapa; null = el estado por defecto de la etapa.</summary>
+    public Guid? WorkflowStatusId { get; private set; }
+
+    /// <summary>Código de ese estado: no cambia nunca, así que se guarda junto al id.</summary>
+    public string? WorkflowStatusCode { get; private set; }
     public TaskPriority Priority { get; private set; }
 
     [UserReference(UserReferenceKind.Provenance, Note = "Da visibilidad al creador; no se transfiere.")]
@@ -33,6 +39,27 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
     [UserReference(UserReferenceKind.Provenance)]
     public Guid? CompletedByUserId { get; private set; }
 
+    public DateTime? CancelledAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
+    public Guid? CancelledByUserId { get; private set; }
+
+    public string? CancellationReason { get; private set; }
+
+    /// <summary>En la papelera desde (D-25). Nulo = viva. La purga la borra de verdad a los 30 días.</summary>
+    public DateTime? DeletedAtUtc { get; private set; }
+
+    [UserReference(UserReferenceKind.Provenance)]
+    public Guid? DeletedByUserId { get; private set; }
+
+    /// <summary>La tarea que se borró: ella misma o la ascendiente con la que se fue. Restore trae la rama entera.</summary>
+    public Guid? TrashRootId { get; private set; }
+
+    public bool IsInTrash => DeletedAtUtc is not null;
+
+    /// <summary>Días que pasa una tarea en la papelera antes de borrarse de verdad.</summary>
+    public const int TrashRetentionDays = 30;
+
     /// <summary>
     /// Cuándo se avisó de que venció. El barrido pasa cada hora y la tarea sigue vencida mañana: sin
     /// esta marca, el asignado recibiría el mismo aviso indefinidamente hasta silenciar el canal.
@@ -50,6 +77,9 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
     /// <summary>Se guarda, no se calcula subiendo el árbol.</summary>
     public int Depth { get; private set; }
     public int OpenSubtaskCount { get; private set; }
+
+    /// <summary>Todas las subtareas directas, abiertas o cerradas: da el "2 of 5" y el tope.</summary>
+    public int SubtaskCount { get; private set; }
 
     public int OpenBlockerCount { get; private set; }
 
@@ -169,7 +199,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         if (parent.Depth >= MaxDepth)
             return Result.Failure<TaskItem>(TaskErrors.MaxDepthExceeded(MaxDepth));
 
-        if (parent.OpenSubtaskCount >= MaxDirectChildren)
+        if (parent.SubtaskCount >= MaxDirectChildren)
             return Result.Failure<TaskItem>(TaskErrors.TooManyChildren(MaxDirectChildren));
 
         if (parent.IsClosed)
@@ -194,15 +224,9 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         subtask.ParentTaskId = parent.Id;
         subtask.Depth = parent.Depth + 1;
         parent.RegisterSubtaskOpened();
+        parent.SubtaskCount++;
 
         return Result.Success(subtask);
-    }
-
-    /// <summary>Los descendientes los borra el servicio de jerarquía; esto sólo marca la raíz.</summary>
-    public Result Delete(Guid byUserId, DateTime nowUtc)
-    {
-        AddDomainEvent(new TaskDeletedDomainEvent(Id, TenantId, ParentTaskId, IsClosed, byUserId, nowUtc));
-        return Result.Success();
     }
 
     public Result Start(Guid byUserId, DateTime nowUtc)
@@ -210,15 +234,16 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         if (IsClosed)
             return Result.Failure(TaskErrors.InvalidTransition(Status, nameof(Start)));
 
-        if (IsBlocked)
-            return Result.Failure(TaskErrors.BlockedByDependencies(OpenBlockerCount));
-
+        // Ya en curso: no-op antes de mirar el bloqueo (un bloqueo nuevo no la saca de In Progress).
         if (Status == TaskItemStatus.InProgress)
             return Result.Success();
 
+        if (IsBlocked)
+            return Result.Failure(TaskErrors.BlockedByDependencies(OpenBlockerCount));
+
         // Sólo la primera vez: Reopen() deriva su estado destino de este campo.
         StartedAtUtc ??= nowUtc;
-        Status = TaskItemStatus.InProgress;
+        ChangeCategory(TaskItemStatus.InProgress);
 
         AddDomainEvent(new TaskStartedDomainEvent(Id, TenantId, byUserId, nowUtc));
         return Result.Success();
@@ -237,7 +262,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
             return Result.Success();
 
         var previous = Status;
-        Status = TaskItemStatus.NotStarted;
+        ChangeCategory(TaskItemStatus.NotStarted);
         StartedAtUtc = null;
 
         AddDomainEvent(new TaskMovedToNotStartedDomainEvent(Id, TenantId, previous, byUserId, nowUtc));
@@ -259,7 +284,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         if (OpenSubtaskCount > 0)
             return Result.Failure(TaskErrors.HasOpenSubtasks(OpenSubtaskCount));
 
-        Status = TaskItemStatus.Completed;
+        ChangeCategory(TaskItemStatus.Completed);
         CompletedAtUtc = nowUtc;
         CompletedByUserId = byUserId;
 
@@ -277,9 +302,12 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         if (!IsClosed)
             return Result.Failure(TaskErrors.InvalidTransition(Status, nameof(Reopen)));
 
-        Status = StartedAtUtc is null ? TaskItemStatus.NotStarted : TaskItemStatus.InProgress;
+        ChangeCategory(StartedAtUtc is null ? TaskItemStatus.NotStarted : TaskItemStatus.InProgress);
         CompletedAtUtc = null;
         CompletedByUserId = null;
+        CancelledAtUtc = null;
+        CancelledByUserId = null;
+        CancellationReason = null;
         ReopenCount++;
 
         AddDomainEvent(new TaskReopenedDomainEvent(Id, TenantId, ParentTaskId, Status, byUserId, nowUtc, ReopenCount));
@@ -296,8 +324,13 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
 
         if (string.IsNullOrWhiteSpace(reason))
             return Result.Failure(TaskErrors.CancellationReasonRequired);
+        if (reason.Trim().Length > TaskErrors.CancellationReasonMaxLength)
+            return Result.Failure(TaskErrors.CancellationReasonTooLong);
 
-        Status = TaskItemStatus.Cancelled;
+        ChangeCategory(TaskItemStatus.Cancelled);
+        CancelledAtUtc = nowUtc;
+        CancelledByUserId = byUserId;
+        CancellationReason = reason.Trim();
 
         AddDomainEvent(
             new TaskCancelledDomainEvent(Id, TenantId, ParentTaskId, SeriesId, reason.Trim(), byUserId, nowUtc)
@@ -438,8 +471,8 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
     /// <summary>
     /// <paramref name="expectedItems"/> es obligatorio: viaja hasta el correo al cliente.
     /// <paramref name="clientDueAtUtc"/> es la fecha que se le pide al cliente, distinta del
-    /// vencimiento de la tarea. Quién pidió y cuándo se persisten porque
-    /// <c>task.client_responded.v1</c> los necesita semanas después.
+    /// vencimiento de la tarea. Quién pidió y cuándo se persisten porque la respuesta del cliente
+    /// (lo que sube semanas después) se atribuye a ese pedido.
     /// </summary>
     public Result MoveToWaitingOnClient(
         ClientRequestNote expectedItems,
@@ -455,7 +488,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         if (clientDueAtUtc is { Kind: not DateTimeKind.Utc })
             return Result.Failure(TaskErrors.WaitingOnClient.ClientDueNotUtc);
 
-        Status = TaskItemStatus.WaitingOnClient;
+        ChangeCategory(TaskItemStatus.WaitingOnClient);
         ExpectedItems = expectedItems;
         ClientDueAtUtc = clientDueAtUtc;
         ClientDueOn = clientDueAtUtc is null ? null : clientDueOn;
@@ -477,74 +510,8 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
         return Result.Success();
     }
 
-    /// <summary>
-    /// El único camino que abre un timer. Ni <see cref="Create"/>, ni <see cref="Assign"/>, ni
-    /// <see cref="Complete"/>, ni ningún consumer lo llaman: las horas facturables las decide una
-    /// persona, no el sistema.
-    /// </summary>
-    public Result<TaskTimer> StartTimer(Guid userId, bool isBillable, DateTime nowUtc)
-    {
-        if (IsClosed)
-            return Result.Failure<TaskTimer>(TaskErrors.InvalidTransition(Status, nameof(StartTimer)));
-
-        foreach (var running in _timers)
-        {
-            if (running.IsRunning && running.UserId == userId)
-                return Result.Failure<TaskTimer>(TaskErrors.Timer.AlreadyRunning);
-        }
-
-        var timer = TaskTimer.Start(Id, userId, isBillable, nowUtc);
-        _timers.Add(timer);
-        return Result.Success(timer);
-    }
-
-    /// <summary>
-    /// Sólo lo para quien lo abrió. Se puede parar sobre una tarea ya cerrada: si no, el tramo
-    /// quedaría corriendo para siempre y las horas imputadas nunca cuadrarían.
-    /// </summary>
-    public Result<TaskTimer> StopTimer(Guid timerId, Guid userId, DateTime nowUtc)
-    {
-        foreach (var timer in _timers)
-        {
-            if (timer.Id != timerId)
-                continue;
-
-            if (timer.UserId != userId)
-                return Result.Failure<TaskTimer>(TaskErrors.Timer.NotOwner);
-
-            if (!timer.IsRunning)
-                return Result.Failure<TaskTimer>(TaskErrors.Timer.NotRunning);
-
-            timer.Stop(nowUtc);
-            ActualHours += timer.Hours;
-            return Result.Success(timer);
-        }
-
-        return Result.Failure<TaskTimer>(TaskErrors.Timer.NotFound);
-    }
-
     // internal: los ve Application (InternalsVisibleTo) pero no Api, así que un controller que
     // intente llamarlos no compila.
-
-    /// <summary>
-    /// Cierre por sistema de los timers en marcha de alguien que ya no puede pararlos (retirado). Imputa
-    /// cada tramo igual que <see cref="StopTimer"/>; devuelve cuántos cerró (0 si no había, idempotente).
-    /// </summary>
-    internal int StopRunningTimersOf(Guid userId, DateTime nowUtc)
-    {
-        var stopped = 0;
-        foreach (var timer in _timers)
-        {
-            if (!timer.IsRunning || timer.UserId != userId)
-                continue;
-
-            timer.Stop(nowUtc);
-            ActualHours += timer.Hours;
-            stopped++;
-        }
-
-        return stopped;
-    }
 
     /// <summary>
     /// Marca la tarea como ocurrencia de una serie. Se hace después de crearla y no dentro de
@@ -559,218 +526,7 @@ public sealed class TaskItem : AggregateRoot, IHasOwner
 
     internal void AttachToTemplate(Guid templateId) => TemplateId = templateId;
 
-    internal void RegisterBlockerAdded() => OpenBlockerCount++;
-
-    /// <summary>Nunca baja de 0: un evento reprocesado no puede desbloquear una tarea que sigue bloqueada.</summary>
-    internal void RegisterBlockerResolved(DateTime nowUtc)
-    {
-        if (OpenBlockerCount == 0)
-            return;
-
-        OpenBlockerCount--;
-        if (OpenBlockerCount == 0)
-            AddDomainEvent(new TaskUnblockedDomainEvent(Id, TenantId, AssigneeUserId, nowUtc));
-    }
-
-    /// <summary>Un bloqueador ya resuelto se reabrió y vuelve a bloquear.</summary>
-    internal void RegisterBlockerReopened() => OpenBlockerCount++;
-
-    internal void RegisterSubtaskOpened() => OpenSubtaskCount++;
-
-    internal void RegisterSubtaskClosed()
-    {
-        if (OpenSubtaskCount > 0)
-            OpenSubtaskCount--;
-    }
-
-    internal void RegisterSubtaskReopened() => OpenSubtaskCount++;
-
-    /// <summary>
-    /// Fija los contadores contra la verdad de las filas. Separado de los <c>Register*</c> porque un
-    /// ajuste no es un hecho de negocio y no emite eventos.
-    /// </summary>
-    /// <summary>
-    /// Lo llama el barrido de vencidos tras publicar el aviso. Público como los <c>MarkAttachment*</c>
-    /// y por lo mismo: lo dispara un proceso de fondo, no una acción del usuario. Idempotente.
-    /// </summary>
-    public bool MarkOverdueNotified(DateTime nowUtc)
-    {
-        if (OverdueNotifiedAtUtc is not null)
-            return false;
-
-        OverdueNotifiedAtUtc = nowUtc;
-        return true;
-    }
-
-    internal void ReconcileCounters(int openBlockerCount, int openSubtaskCount)
-    {
-        OpenBlockerCount = openBlockerCount < 0 ? 0 : openBlockerCount;
-        OpenSubtaskCount = openSubtaskCount < 0 ? 0 : openSubtaskCount;
-    }
-
-    /// <summary>
-    /// Enlaza un archivo que ya está en CloudStorage —el caso dominante: el W-2 lo subió el cliente
-    /// por el portal antes de que existiera la tarea—.
-    /// </summary>
-    public Result<TaskAttachment> LinkExistingFile(
-        Guid fileId,
-        string? displayName,
-        string? contentType,
-        long sizeBytes,
-        Guid byUserId,
-        DateTime nowUtc
-    )
-    {
-        var allowed = EnsureCanAttach(fileId, displayName);
-        if (allowed.IsFailure)
-            return Result.Failure<TaskAttachment>(allowed.Error);
-
-        var attachment = TaskAttachment.Link(
-            Id,
-            TenantId,
-            fileId,
-            allowed.Value,
-            contentType,
-            sizeBytes,
-            byUserId,
-            nowUtc
-        );
-        _attachments.Add(attachment);
-        return Result.Success(attachment);
-    }
-
-    /// <summary>Recién subido a CloudStorage: queda pendiente hasta que el escaneo se pronuncie.</summary>
-    public Result<TaskAttachment> AttachUploadedFile(
-        Guid fileId,
-        string? displayName,
-        string? contentType,
-        long sizeBytes,
-        Guid byUserId,
-        DateTime nowUtc
-    )
-    {
-        var allowed = EnsureCanAttach(fileId, displayName);
-        if (allowed.IsFailure)
-            return Result.Failure<TaskAttachment>(allowed.Error);
-
-        var attachment = TaskAttachment.Upload(
-            Id,
-            TenantId,
-            fileId,
-            allowed.Value,
-            contentType,
-            sizeBytes,
-            byUserId,
-            nowUtc
-        );
-        _attachments.Add(attachment);
-        return Result.Success(attachment);
-    }
-
-    /// <summary>
-    /// El archivo de referencia del guion. Nace <c>Available</c> igual que un enlazado —ya está en
-    /// CloudStorage y ya fue escaneado— y lo comparten todas las instancias de la plantilla: un solo
-    /// objeto, N referencias.
-    /// </summary>
-    internal Result<TaskAttachment> AttachTemplateFile(
-        Guid fileId,
-        string displayName,
-        string? contentType,
-        long sizeBytes,
-        Guid byUserId,
-        DateTime nowUtc
-    )
-    {
-        var allowed = EnsureCanAttach(fileId, displayName);
-        if (allowed.IsFailure)
-            return Result.Failure<TaskAttachment>(allowed.Error);
-
-        var attachment = TaskAttachment.FromTemplate(
-            Id,
-            TenantId,
-            fileId,
-            allowed.Value,
-            contentType,
-            sizeBytes,
-            byUserId,
-            nowUtc
-        );
-        _attachments.Add(attachment);
-        return Result.Success(attachment);
-    }
-
-    /// <summary>
-    /// Los tres <c>MarkAttachment*</c> devuelven <c>false</c> cuando el archivo no es de esta tarea:
-    /// el consumer recibe los eventos de todo el monorepo y tirar excepción llenaría la DLQ con
-    /// archivos ajenos.
-    /// </summary>
-    public bool MarkAttachmentAvailable(Guid fileId) => FindActive(fileId)?.MarkAvailable() ?? false;
-
-    public bool MarkAttachmentUnderReview(Guid fileId) => FindActive(fileId)?.MarkUnderReview() ?? false;
-
-    public bool MarkAttachmentRejected(Guid fileId, string reason, DateTime nowUtc)
-    {
-        if (FindActive(fileId) is not { } attachment || !attachment.MarkRejected(reason, nowUtc))
-            return false;
-
-        AddDomainEvent(
-            new TaskAttachmentRejectedDomainEvent(
-                Id,
-                TenantId,
-                attachment.Id,
-                fileId,
-                attachment.DisplayName,
-                reason,
-                attachment.AttachedByUserId,
-                nowUtc
-            )
-        );
-        return true;
-    }
-
-    /// <summary>Lo borraron desde CloudStorage: la tarea no puede seguir mostrando el archivo.</summary>
-    public bool MarkAttachmentDetached(Guid fileId, DateTime nowUtc) => FindActive(fileId)?.Detach(nowUtc) ?? false;
-
-    /// <summary>
-    /// El usuario lo quita de la tarea. El byte sigue en CloudStorage: Task no es dueño del archivo
-    /// y borrarlo se llevaría por delante al resto de servicios que lo referencian.
-    /// </summary>
-    public Result DetachFile(Guid fileId, DateTime nowUtc)
-    {
-        if (FindActive(fileId) is not { } attachment)
-            return Result.Failure(TaskErrors.Attachment.NotFound);
-
-        attachment.Detach(nowUtc);
-        return Result.Success();
-    }
-
-    private Result<string> EnsureCanAttach(Guid fileId, string? displayName)
-    {
-        if (IsClosed)
-            return Result.Failure<string>(TaskErrors.Attachment.TaskClosed);
-
-        if (fileId == Guid.Empty)
-            return Result.Failure<string>(TaskErrors.Attachment.FileRequired);
-
-        var trimmed = displayName?.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed))
-            return Result.Failure<string>(TaskErrors.Attachment.DisplayNameRequired);
-
-        if (trimmed.Length > 260)
-            return Result.Failure<string>(TaskErrors.Attachment.DisplayNameTooLong);
-
-        if (FindActive(fileId) is not null)
-            return Result.Failure<string>(TaskErrors.Attachment.Duplicate);
-
-        return _attachments.Count(a => a.IsActive) >= MaxActiveAttachments
-            ? Result.Failure<string>(TaskErrors.Attachment.LimitReached)
-            : Result.Success(trimmed);
-    }
-
-    private TaskAttachment? FindActive(Guid fileId) =>
-        _attachments.FirstOrDefault(a => a.FileId == fileId && a.IsActive);
-
-    private bool IsClosed => Status is TaskItemStatus.Completed or TaskItemStatus.Cancelled;
+    private bool IsClosed => TaskItemStatuses.IsClosed(Status);
 
     /// <summary>
     /// P9: la oficina cambió de zona. El vencimiento propio y el del cliente que eran fin de día en la zona anterior

@@ -69,7 +69,7 @@ internal sealed class FormAttachmentReconciler(
         CancellationToken ct
     ) =>
         outbox
-            .DbContext.FormRequests.IgnoreQueryFilters()
+            .DbContext.FormRequests.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsSplitQuery()
             .Include(item => item.Submission)
                 .ThenInclude(submission => submission!.Attachments)
@@ -96,7 +96,7 @@ internal sealed class FormAttachmentReconciler(
             .Distinct()
             .ToArray();
         return outbox
-            .DbContext.FormFileScanVerdicts.IgnoreQueryFilters()
+            .DbContext.FormFileScanVerdicts.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(item => fileIds.Contains(item.Id))
             .ToDictionaryAsync(item => item.Id, ct);
     }

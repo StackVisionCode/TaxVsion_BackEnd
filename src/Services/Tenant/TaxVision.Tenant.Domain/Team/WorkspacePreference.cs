@@ -35,7 +35,7 @@ public sealed class WorkspacePreference : TenantEntity
         Guid tenantId,
         Guid? userId,
         string key,
-        DashboardLayout content,
+        IWorkspacePreferenceContent content,
         DateTime nowUtc
     )
     {
@@ -61,7 +61,7 @@ public sealed class WorkspacePreference : TenantEntity
     }
 
     /// <summary>Reemplaza el contenido; <c>false</c> si es igual al guardado (no escribe ni sube versión).</summary>
-    public Result<bool> Replace(DashboardLayout content, long expectedVersion, DateTime nowUtc)
+    public Result<bool> Replace(IWorkspacePreferenceContent content, long expectedVersion, DateTime nowUtc)
     {
         if (expectedVersion != Version)
             return Result.Failure<bool>(WorkspacePreferenceErrors.VersionConflict);

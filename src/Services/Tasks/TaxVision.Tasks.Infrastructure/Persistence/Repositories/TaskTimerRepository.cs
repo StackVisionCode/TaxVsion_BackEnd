@@ -1,5 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Timers.Abstractions;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -19,7 +20,7 @@ public sealed class TaskTimerRepository(TasksDbContext context) : ITaskTimerRepo
     )
     {
         var timers = context
-            .Tasks.IgnoreQueryFilters()
+            .Tasks.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .Where(t => t.TenantId == tenantId)
             .SelectMany(t => t.Timers, (task, timer) => new { task, timer })
             .Where(x =>

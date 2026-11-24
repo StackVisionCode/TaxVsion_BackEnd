@@ -26,13 +26,14 @@ namespace Internal.Generated.WolverineHandlers
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var tasksDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Infrastructure.Persistence.TasksDbContext>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Tasks.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
             */
             var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Common.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
+            var workflowStatusRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Statuses.Abstractions.IWorkflowStatusRepository>(serviceScope.ServiceProvider);
             var taskRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Tasks.Application.Tasks.Abstractions.ITaskRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var searchTasksQuery = (TaxVision.Tasks.Application.Tasks.Queries.SearchTasksQuery)context.Envelope.Message;
 
@@ -53,7 +54,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Tasks.Application.Tasks.Queries.SearchTasksHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Tasks.Application.Tasks.Queries.SearchTasksHandler.Handle(searchTasksQuery, taskRepository, officeTimeZone, _optionsOfTasksVisibilityOptions, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Tasks.Application.Tasks.Queries.SearchTasksHandler.Handle(searchTasksQuery, taskRepository, workflowStatusRepository, officeTimeZone, _optionsOfTasksVisibilityOptions, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

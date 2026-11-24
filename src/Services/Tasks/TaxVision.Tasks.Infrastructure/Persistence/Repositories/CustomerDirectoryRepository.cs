@@ -3,6 +3,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.Application.Projections.Abstractions;
 using TaxVision.Tasks.Domain.Projections;
+using TaxVision.Tasks.Infrastructure.Persistence;
 
 namespace TaxVision.Tasks.Infrastructure.Persistence.Repositories;
 
@@ -12,13 +13,13 @@ public sealed class CustomerDirectoryRepository(TasksDbContext db) : ICustomerDi
 {
     public Task<bool> ExistsAsync(Guid tenantId, Guid customerId, CancellationToken ct = default) =>
         db
-            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AnyAsync(x => x.TenantId == tenantId && x.CustomerId == customerId, ct);
 
     public async Task<string?> GetDisplayNameAsync(Guid tenantId, Guid customerId, CancellationToken ct = default)
     {
         var entry = await db
-            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CustomerId == customerId, ct);
         return entry?.DisplayName;
@@ -30,7 +31,7 @@ public sealed class CustomerDirectoryRepository(TasksDbContext db) : ICustomerDi
         CancellationToken ct = default
     ) =>
         db
-            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CustomerId == customerId, ct);
 
     public async Task AddAsync(CustomerDirectoryEntry entry, CancellationToken ct = default) =>
@@ -94,7 +95,7 @@ public sealed class CustomerDirectoryRepository(TasksDbContext db) : ICustomerDi
         CancellationToken ct = default
     ) =>
         await db
-            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .Where(x => x.DisplayName == null)
             .Select(x => x.TenantId)
@@ -110,7 +111,7 @@ public sealed class CustomerDirectoryRepository(TasksDbContext db) : ICustomerDi
     )
     {
         var entry = await db
-            .CustomerDirectoryEntries.IgnoreQueryFilters()
+            .CustomerDirectoryEntries.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.CustomerId == customerId, ct);
         entry?.ApplyDisplayNameIfMissing(displayName);
     }

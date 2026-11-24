@@ -32,6 +32,9 @@ public static class TasksPermissions
     /// <summary>Crear y editar las plantillas de tarea de la firma.</summary>
     public const string TemplatesManage = "tasks.templates.manage";
 
+    /// <summary>Gestionar los estados de la oficina: crear, renombrar, ordenar, archivar.</summary>
+    public const string StatusesManage = "tasks.statuses.manage";
+
     /// <summary>Pedirle documentación al cliente y cerrar lo que mande.</summary>
     public const string ClientRequestsManage = "tasks.client_requests.manage";
 

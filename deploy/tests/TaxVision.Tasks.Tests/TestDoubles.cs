@@ -168,6 +168,23 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
 
     public void Remove(TaskItem task) => _tasks.Remove(task);
 
+    public Dictionary<Guid, byte[]> ExpectedVersions { get; } = [];
+
+    public Task<IReadOnlyList<TaskItem>> ListBySeriesAsync(
+        Guid tenantId,
+        Guid seriesId,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<TaskItem>>([
+            .. _tasks
+                .Where(t => t.TenantId == tenantId && t.SeriesId == seriesId)
+                .OrderByDescending(t => t.OccurrenceNumber)
+                .Take(take),
+        ]);
+
+    public void ExpectVersion(TaskItem task, byte[] rowVersion) => ExpectedVersions[task.Id] = rowVersion;
+
     public Task<IReadOnlyList<Guid>> ListChildIdsAsync(
         Guid tenantId,
         IReadOnlyCollection<Guid> parentTaskIds,
@@ -181,9 +198,24 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
 
     public Task<Result<TaskItem>> GetByIdAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
     {
+        var task = _tasks.FirstOrDefault(t => t.TenantId == tenantId && t.Id == taskId && !t.IsInTrash);
+        return Task.FromResult(task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task));
+    }
+
+    public Task<Result<TaskItem>> GetIncludingTrashAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
+    {
         var task = _tasks.FirstOrDefault(t => t.TenantId == tenantId && t.Id == taskId);
         return Task.FromResult(task is null ? Result.Failure<TaskItem>(TaskErrors.NotFound) : Result.Success(task));
     }
+
+    public Task<IReadOnlyList<TaskItem>> ListTrashBranchAsync(
+        Guid tenantId,
+        Guid trashRootId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<TaskItem>>([
+            .. _tasks.Where(t => t.TenantId == tenantId && t.TrashRootId == trashRootId),
+        ]);
 
     // En memoria los timers ya cuelgan del agregado: no hay carga diferida que simular.
     public Task<Result<TaskItem>> GetByIdWithTimersAsync(Guid tenantId, Guid taskId, CancellationToken ct = default) =>
@@ -229,21 +261,6 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
         CancellationToken ct = default
     ) => throw new NotImplementedException();
 
-    // P2 — captura el assignedToUserId que le pasa el handler (para verificar el mapeo del flag).
-    public Guid? LastBoardAssignee { get; private set; }
-
-    public Task<IReadOnlyList<TaskItem>> ListForBoardAsync(
-        Guid tenantId,
-        TaskQueryFilter filter,
-        int take,
-        Guid? assignedToUserId = null,
-        CancellationToken ct = default
-    )
-    {
-        LastBoardAssignee = assignedToUserId;
-        return Task.FromResult<IReadOnlyList<TaskItem>>([.. _tasks.Where(t => t.TenantId == tenantId).Take(take)]);
-    }
-
     public TaskQueryFilter? LastCalendarFilter { get; private set; }
 
     public Task<IReadOnlyList<TaskItem>> ListForCalendarAsync(
@@ -276,8 +293,33 @@ internal sealed class InMemoryTaskRepository(params TaskItem[] seed) : ITaskRepo
             .. _tasks.Where(t => t.TenantId == tenantId && taskIds.Contains(t.Id)),
         ]);
 
-    public Task<IReadOnlyList<Guid>> GetAncestorIdsAsync(Guid tenantId, Guid taskId, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<Guid>>([]);
+    public async Task<IReadOnlyList<TaskItem>> ListByIdsForReadAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> taskIds,
+        Guid? assignedToUserId,
+        CancellationToken ct = default
+    )
+    {
+        var visible = new List<TaskItem>();
+        foreach (var id in taskIds)
+            if ((await GetByIdForReadAsync(tenantId, id, assignedToUserId, ct)).IsSuccess)
+                visible.Add(_tasks.First(t => t.Id == id));
+        return visible;
+    }
+
+    // Sube por ParentTaskId como el repositorio real (sin incluir la propia tarea).
+    public Task<IReadOnlyList<Guid>> GetAncestorIdsAsync(Guid tenantId, Guid taskId, CancellationToken ct = default)
+    {
+        var ancestors = new List<Guid>();
+        var current = _tasks.FirstOrDefault(t => t.TenantId == tenantId && t.Id == taskId);
+        while (current?.ParentTaskId is { } parentId)
+        {
+            ancestors.Add(parentId);
+            current = _tasks.FirstOrDefault(t => t.TenantId == tenantId && t.Id == parentId);
+        }
+
+        return Task.FromResult<IReadOnlyList<Guid>>(ancestors);
+    }
 
     public Task<PagedResult<TaskItem>> ListForAssigneeAsync(
         Guid tenantId,
@@ -416,6 +458,17 @@ internal sealed class InMemoryTaskDependencyRepository : ITaskDependencyReposito
             )
         );
 
+    public Task<IReadOnlyList<TaskDependency>> ListTouchingAsync(
+        Guid tenantId,
+        IReadOnlyCollection<Guid> taskIds,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<TaskDependency>>([
+            .. _edges.Where(d =>
+                d.TenantId == tenantId && (taskIds.Contains(d.TaskId) || taskIds.Contains(d.DependsOnTaskId))
+            ),
+        ]);
+
     public Task<IReadOnlyDictionary<Guid, IReadOnlyList<Guid>>> LoadUpstreamGraphAsync(
         Guid tenantId,
         Guid startTaskId,
@@ -473,6 +526,11 @@ internal sealed class ImmediateTransactionalScope : ITransactionalScope
 /// </summary>
 public sealed class RecordingSeriesMaterializer : ITaskSeriesMaterializer
 {
+    public Task<Result> CanReopenAsync(TaskItem task, CancellationToken ct = default) =>
+        Task.FromResult(Result.Success());
+
+    public Task RegisterReopenedAsync(TaskItem task, CancellationToken ct = default) => Task.CompletedTask;
+
     public int InstancesClosed { get; private set; }
 
     public Task<Result<TaskItem>> MaterializeNextAsync(
@@ -528,6 +586,8 @@ internal sealed class InMemoryTaskSeriesRepository(params TaskSeries[] seed) : I
 
     public void Add(TaskSeries series) => Stored.Add(series);
 
+    public void ExpectVersion(TaskSeries series, byte[] rowVersion) { }
+
     public Task<Result<TaskSeries>> GetByIdAsync(Guid tenantId, Guid seriesId, CancellationToken ct = default)
     {
         var found = Stored.FirstOrDefault(s => s.TenantId == tenantId && s.Id == seriesId);
@@ -545,9 +605,72 @@ internal sealed class InMemoryTaskSeriesRepository(params TaskSeries[] seed) : I
             Stored.Where(s => s.TenantId == tenantId && (status is null || s.Status == status)).ToList()
         );
 
-    public Task<IReadOnlyList<TaskSeries>> ListPendingMaterializationAsync(int take, CancellationToken ct = default) =>
+    /// <summary>Clientes asignados (cliente, usuario) para la visibilidad.</summary>
+    public HashSet<(Guid CustomerId, Guid UserId)> CustomerAssignments { get; } = [];
+
+    public Task<(IReadOnlyList<TaskSeries> Items, int Total)> ListPageAsync(
+        SeriesListFilter filter,
+        CancellationToken ct = default
+    )
+    {
+        var all = Stored
+            .Where(s => s.TenantId == filter.TenantId && (filter.Status is null || s.Status == filter.Status))
+            .Where(s =>
+                filter.OnlyFor is not { } mine || s.EffectiveOwnerUserId == mine || s.Blueprint.AssigneeUserId == mine
+            )
+            .Where(s =>
+                filter.VisibleTo is not { } viewer
+                || s.EffectiveOwnerUserId == viewer
+                || s.Blueprint.AssigneeUserId == viewer
+                || s.Blueprint.Reference.CustomerId is null
+                || CustomerAssignments.Contains((s.Blueprint.Reference.CustomerId.Value, viewer))
+            )
+            .OrderByDescending(s => s.CreatedAtUtc)
+            .ToList();
+        IReadOnlyList<TaskSeries> page = [.. all.Skip((filter.Page - 1) * filter.Size).Take(filter.Size)];
+        return Task.FromResult((page, all.Count));
+    }
+
+    public Task<IReadOnlyList<TaskSeries>> ListPendingMaterializationAsync(
+        int take,
+        DateTime nowUtc,
+        CancellationToken ct = default
+    ) =>
         Task.FromResult<IReadOnlyList<TaskSeries>>(
-            Stored.Where(s => s.Status == SeriesStatus.Active && s.OpenInstanceId == null).Take(take).ToList()
+            Stored
+                .Where(s =>
+                    s.Status == SeriesStatus.Active
+                    && s.OpenInstanceId == null
+                    && (s.NextMaterializationAtUtc == null || s.NextMaterializationAtUtc <= nowUtc)
+                )
+                .Take(take)
+                .ToList()
+        );
+}
+
+/// <summary>Historial en memoria, de lo más nuevo a lo más viejo como el repositorio real.</summary>
+internal sealed class InMemoryTaskActivityRepository(params TaxVision.Tasks.Domain.Activity.TaskActivity[] seed)
+    : TaxVision.Tasks.Application.Activity.Abstractions.ITaskActivityRepository
+{
+    public List<TaxVision.Tasks.Domain.Activity.TaskActivity> Stored { get; } = [.. seed];
+
+    public void Add(TaxVision.Tasks.Domain.Activity.TaskActivity activity) => Stored.Add(activity);
+
+    public Task<IReadOnlyList<TaxVision.Tasks.Domain.Activity.TaskActivity>> ListAsync(
+        Guid tenantId,
+        Guid taskId,
+        DateTime? before,
+        int take,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<TaxVision.Tasks.Domain.Activity.TaskActivity>>(
+            Stored
+                .Where(a =>
+                    a.TenantId == tenantId && a.TaskId == taskId && (before is null || a.OccurredAtUtc < before)
+                )
+                .OrderByDescending(a => a.OccurredAtUtc)
+                .Take(take)
+                .ToList()
         );
 }
 
@@ -556,4 +679,148 @@ internal sealed class FixedOfficeZone(string timeZoneId) : IOfficeTimeZone
 {
     public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
         Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve(timeZoneId));
+}
+
+/// <summary>Estados en memoria; las tareas se miran en el repositorio de tareas que se le pase.</summary>
+internal sealed class InMemoryWorkflowStatusRepository(params TaxVision.Tasks.Domain.Statuses.WorkflowStatus[] seed)
+    : TaxVision.Tasks.Application.Statuses.Abstractions.IWorkflowStatusRepository
+{
+    private static readonly TaskItemStatus[] Open =
+    [
+        TaskItemStatus.NotStarted,
+        TaskItemStatus.InProgress,
+        TaskItemStatus.WaitingOnClient,
+    ];
+
+    public List<TaxVision.Tasks.Domain.Statuses.WorkflowStatus> Stored { get; } = [.. seed];
+    public List<TaskItem> Tasks { get; } = [];
+
+    public void Add(TaxVision.Tasks.Domain.Statuses.WorkflowStatus status) => Stored.Add(status);
+
+    public void Remove(TaxVision.Tasks.Domain.Statuses.WorkflowStatus status) => Stored.Remove(status);
+
+    private IEnumerable<TaxVision.Tasks.Domain.Statuses.WorkflowStatus> Of(Guid tenantId) =>
+        Stored.Where(s => s.TenantId == tenantId);
+
+    public Task<Result<TaxVision.Tasks.Domain.Statuses.WorkflowStatus>> GetByIdAsync(
+        Guid tenantId,
+        Guid statusId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            Of(tenantId).FirstOrDefault(s => s.Id == statusId) is { } found
+                ? Result.Success(found)
+                : Result.Failure<TaxVision.Tasks.Domain.Statuses.WorkflowStatus>(TaskErrors.Label.NotFound)
+        );
+
+    public Task<TaxVision.Tasks.Domain.Statuses.WorkflowStatus?> GetByCodeAsync(
+        Guid tenantId,
+        TaxVision.Tasks.Domain.ValueObjects.TaskLabelCode code,
+        CancellationToken ct = default
+    ) => Task.FromResult(Of(tenantId).FirstOrDefault(s => s.Code == code));
+
+    public Task<bool> CodeExistsAsync(
+        Guid tenantId,
+        TaxVision.Tasks.Domain.ValueObjects.TaskLabelCode code,
+        Guid? excludingStatusId,
+        CancellationToken ct = default
+    ) => Task.FromResult(Of(tenantId).Any(s => s.Code == code && s.Id != excludingStatusId));
+
+    public Task<IReadOnlyList<TaxVision.Tasks.Domain.Statuses.WorkflowStatus>> ListAsync(
+        Guid tenantId,
+        bool includeArchived = false,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult<IReadOnlyList<TaxVision.Tasks.Domain.Statuses.WorkflowStatus>>([
+            .. Of(tenantId).Where(s => includeArchived || !s.IsArchived).OrderBy(s => s.SortOrder),
+        ]);
+
+    public Task<IReadOnlySet<string>> ListCodesAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlySet<string>>(Of(tenantId).Select(s => s.Code.Value).ToHashSet());
+
+    public Task<bool> NameTakenAsync(
+        Guid tenantId,
+        string displayName,
+        Guid? excludingStatusId,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            Of(tenantId)
+                .Any(s =>
+                    !s.IsArchived
+                    && string.Equals(s.DisplayName, displayName.Trim(), StringComparison.OrdinalIgnoreCase)
+                    && s.Id != excludingStatusId
+                )
+        );
+
+    public Task<int> CountActiveAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult(Of(tenantId).Count(s => !s.IsArchived));
+
+    public Task<int> CountOpenTasksAsync(Guid tenantId, Guid statusId, CancellationToken ct = default) =>
+        Task.FromResult(
+            Tasks.Count(t => t.TenantId == tenantId && t.WorkflowStatusId == statusId && Open.Contains(t.Status))
+        );
+
+    public Task<
+        IReadOnlyList<TaxVision.Tasks.Application.Statuses.Abstractions.OpenTaskTally>
+    > CountOpenTasksByCodeAsync(Guid tenantId, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<TaxVision.Tasks.Application.Statuses.Abstractions.OpenTaskTally>>([
+            .. Tasks
+                .Where(t => t.TenantId == tenantId && Open.Contains(t.Status))
+                .GroupBy(t => (t.Status, t.WorkflowStatusCode))
+                .Select(g => new TaxVision.Tasks.Application.Statuses.Abstractions.OpenTaskTally(
+                    g.Key.Status,
+                    g.Key.WorkflowStatusCode,
+                    g.Count()
+                )),
+        ]);
+
+    public Task<bool> IsUsedAsync(Guid tenantId, Guid statusId, CancellationToken ct = default) =>
+        Task.FromResult(Tasks.Any(t => t.TenantId == tenantId && t.WorkflowStatusId == statusId));
+
+    public Task<int> MoveOpenTasksAsync(
+        Guid tenantId,
+        Guid fromStatusId,
+        TaxVision.Tasks.Domain.Statuses.WorkflowStatusRef target,
+        CancellationToken ct = default
+    )
+    {
+        var moving = Tasks
+            .Where(t => t.TenantId == tenantId && t.WorkflowStatusId == fromStatusId && t.Status == target.Category)
+            .ToList();
+        foreach (var task in moving)
+            task.MoveTo(target, TaskMoveRequest.None, Guid.Empty, DateTime.UtcNow);
+        return Task.FromResult(moving.Count);
+    }
+
+    public byte[]? ExpectedVersion { get; private set; }
+
+    public void ExpectVersion(TaxVision.Tasks.Domain.Statuses.WorkflowStatus status, byte[] rowVersion) =>
+        ExpectedVersion = rowVersion;
+
+    public Task<int> ReleaseOpenTasksFromArchivedAsync(int take, CancellationToken ct = default) => Task.FromResult(0);
+}
+
+/// <summary>Quien guarda solo ve estos clientes.</summary>
+internal sealed class OnlyTheseCustomers(params Guid[] visible) : ITaskCustomerAccess
+{
+    public Task<bool> CanLinkAsync(
+        Guid tenantId,
+        Guid userId,
+        bool canViewAll,
+        Guid customerId,
+        CancellationToken ct
+    ) => Task.FromResult(canViewAll || visible.Contains(customerId));
+}
+
+/// <summary>Sin recorte: la visibilidad apagada o quien ve a todos.</summary>
+internal sealed class EveryCustomer : ITaskCustomerAccess
+{
+    public Task<bool> CanLinkAsync(
+        Guid tenantId,
+        Guid userId,
+        bool canViewAll,
+        Guid customerId,
+        CancellationToken ct
+    ) => Task.FromResult(true);
 }

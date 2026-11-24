@@ -124,7 +124,8 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
             )
         );
         Assert.Equal(1, await CountRowsAsync("wolverine_outgoing_envelopes", "TaskCreatedIntegrationEvent"));
-        Assert.Equal(0, await CountRowsAsync("wolverine_outgoing_envelopes", "TaskAssignedIntegrationEvent"));
+        // D-28: la ocurrencia que crea el barrido también avisa a su responsable.
+        Assert.Equal(1, await CountRowsAsync("wolverine_outgoing_envelopes", "TaskAssignedIntegrationEvent"));
     }
 
     private CreateTaskCommand Command(Guid assignee) =>
@@ -170,6 +171,7 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
                     new FixedOfficeZone("Etc/UTC")
                 );
                 options.Services.AddScoped<ITaskRepository, TaskRepository>();
+                options.Services.AddSingleton<ITaskCustomerAccess>(new EveryCustomer());
                 options.Services.AddScoped<ITaskSeriesRepository>(
                     sp => new SeriesMaterializationIntegrationTests.OwnTenantSeries(
                         sp.GetRequiredService<TasksDbContext>(),
@@ -177,6 +179,10 @@ public sealed class TaskDomainEventDispatchIntegrationTests : IAsyncLifetime
                     )
                 );
                 options.Services.AddScoped<ITaskSeriesMaterializer, TaskSeriesMaterializer>();
+                options.Services.AddScoped<
+                    TaxVision.Tasks.Application.Templates.Abstractions.ITaskTemplateRepository,
+                    TaxVision.Tasks.Infrastructure.Persistence.Repositories.TaskTemplateRepository
+                >();
                 options.UseEntityFrameworkCoreTransactions().WithDbContextAbstraction<IUnitOfWork, TasksDbContext>();
                 options.Policies.AutoApplyTransactions();
 

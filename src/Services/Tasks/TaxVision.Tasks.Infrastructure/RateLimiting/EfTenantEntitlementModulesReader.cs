@@ -13,7 +13,7 @@ internal sealed class EfTenantEntitlementModulesReader(TasksDbContext db) : ITen
     public async Task<IReadOnlyList<string>?> GetEnabledModulesAsync(Guid tenantId, CancellationToken ct = default)
     {
         var projection = await db
-            .TenantPlanCodeProjections.IgnoreQueryFilters()
+            .TenantPlanCodeProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
             .AsNoTracking()
             .FirstOrDefaultAsync(p => p.TenantId == tenantId, ct);
 
