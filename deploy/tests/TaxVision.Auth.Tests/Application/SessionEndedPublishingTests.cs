@@ -28,6 +28,7 @@ public sealed class SessionEndedPublishingTests
         var result = await RevokeSessionHandler.Handle(
             new RevokeSessionCommand(_world.Admin.Id, _world.Admin.TenantId, sessionId, CanManageOthers: false),
             _world.Sessions,
+            _world.Users,
             _world.Denylist,
             new QuietRevocations(),
             _world.Audit,
@@ -48,8 +49,15 @@ public sealed class SessionEndedPublishingTests
         var (sessionId, _) = await _world.StartWorkspaceSessionAsync();
 
         await RevokeSessionHandler.Handle(
-            new RevokeSessionCommand(Guid.NewGuid(), _world.Admin.TenantId, sessionId, CanManageOthers: true),
+            new RevokeSessionCommand(
+                Guid.NewGuid(),
+                _world.Admin.TenantId,
+                sessionId,
+                CanManageOthers: true,
+                RequestingActorType: UserActorType.TenantAdmin
+            ),
             _world.Sessions,
+            _world.Users,
             _world.Denylist,
             new QuietRevocations(),
             _world.Audit,

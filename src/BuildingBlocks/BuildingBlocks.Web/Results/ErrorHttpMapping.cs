@@ -183,7 +183,9 @@ public static class ErrorHttpMapping
             or "AddOn.AlreadyIncludedInPlan"
             or "AddOn.AlreadyActive"
             // Resetear el segundo factor de un cliente que aún no tiene acceso al portal.
-            or "Auth.NoPortalAccount" => StatusCodes.Status409Conflict,
+            or "Auth.NoPortalAccount"
+            or "Session.CurrentSessionNotRevocable"
+            or "Session.SelfRevokeNotAllowed" => StatusCodes.Status409Conflict,
             "FormTemplate.Archived"
             or "FormTemplate.NotArchived"
             or "FormTemplate.NothingToPublish"

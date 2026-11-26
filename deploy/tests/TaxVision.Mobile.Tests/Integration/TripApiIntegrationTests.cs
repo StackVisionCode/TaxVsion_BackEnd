@@ -214,6 +214,9 @@ public sealed class TripApiIntegrationTests
                 s.DisableAllExternalWolverineTransports();
                 s.RemoveAll<IRateCounter>();
                 s.AddSingleton<IRateCounter, Counter>();
+                // Sin Redis: el gate de módulo lee la proyección en SQL (sin fila → no deniega).
+                s.RemoveAll<BuildingBlocks.Caching.ICacheService>();
+                s.AddSingleton<BuildingBlocks.Caching.ICacheService, NoOpCache>();
             });
         });
 
@@ -265,6 +268,23 @@ public sealed class TripApiIntegrationTests
         public bool HasTenant => false;
 
         public void SetTenant(Guid id) { }
+    }
+
+    private sealed class NoOpCache : BuildingBlocks.Caching.ICacheService
+    {
+        public Task<T?> GetAsync<T>(string key, CancellationToken ct = default) => Task.FromResult(default(T));
+
+        public Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task RemoveAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<T> GetOrCreateAsync<T>(
+            string key,
+            Func<CancellationToken, Task<T>> factory,
+            TimeSpan? ttl = null,
+            CancellationToken ct = default
+        ) => factory(ct);
     }
 
     private sealed class Counter : IRateCounter

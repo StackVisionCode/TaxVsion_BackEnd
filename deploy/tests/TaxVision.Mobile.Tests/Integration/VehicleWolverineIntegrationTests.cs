@@ -62,6 +62,9 @@ public sealed class VehicleWolverineIntegrationTests
                 services.DisableAllExternalWolverineTransports();
                 services.RemoveAll<IRateCounter>();
                 services.AddSingleton<IRateCounter, Counter>();
+                // Sin Redis: el gate de módulo lee la proyección en SQL (sin fila → no deniega).
+                services.RemoveAll<BuildingBlocks.Caching.ICacheService>();
+                services.AddSingleton<BuildingBlocks.Caching.ICacheService, NoOpCache>();
             });
         });
         using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
@@ -109,6 +112,23 @@ public sealed class VehicleWolverineIntegrationTests
         public bool HasTenant => false;
 
         public void SetTenant(Guid id) { }
+    }
+
+    private sealed class NoOpCache : BuildingBlocks.Caching.ICacheService
+    {
+        public Task<T?> GetAsync<T>(string key, CancellationToken ct = default) => Task.FromResult(default(T));
+
+        public Task SetAsync<T>(string key, T value, TimeSpan? ttl = null, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task RemoveAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+
+        public Task<T> GetOrCreateAsync<T>(
+            string key,
+            Func<CancellationToken, Task<T>> factory,
+            TimeSpan? ttl = null,
+            CancellationToken ct = default
+        ) => factory(ct);
     }
 
     private sealed class Counter : IRateCounter

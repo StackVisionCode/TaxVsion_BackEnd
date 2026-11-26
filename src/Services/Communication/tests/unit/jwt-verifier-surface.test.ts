@@ -8,7 +8,7 @@ vi.mock('jose', () => ({
 }));
 
 vi.mock('../../src/infrastructure/redis/redis-client.js', () => ({
-  redis: { mget: async () => [null, null] },
+  redis: { mget: async () => [null, null], exists: async () => 0 },
 }));
 
 const { verifyAccessToken, UnauthorizedError } = await import(

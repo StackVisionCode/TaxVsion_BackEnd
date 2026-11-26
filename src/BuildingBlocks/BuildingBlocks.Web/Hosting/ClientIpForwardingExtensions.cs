@@ -31,6 +31,9 @@ public static class ClientIpForwardingExtensions
         "fc00::/7", // IPv6 ULA
     ];
 
+    // Con las listas vacías ASP.NET no comprueba al vecino y confía en cualquiera; "más estricto" es solo loopback.
+    private static readonly string[] LoopbackCidrs = ["127.0.0.0/8", "::1/128"];
+
     public static IServiceCollection AddTaxVisionClientIpForwarding(
         this IServiceCollection services,
         IConfiguration configuration
@@ -69,9 +72,10 @@ public static class ClientIpForwardingExtensions
             }
 
             var configuredExplicitly = forwarded.KnownProxies.Count > 0 || forwarded.KnownIPNetworks.Count > 0;
-            if (!configuredExplicitly && options.TrustPrivateNetworksByDefault)
+            if (!configuredExplicitly)
             {
-                foreach (var cidr in PrivateNetworkCidrs)
+                var defaults = options.TrustPrivateNetworksByDefault ? PrivateNetworkCidrs : LoopbackCidrs;
+                foreach (var cidr in defaults)
                 {
                     if (System.Net.IPNetwork.TryParse(cidr, out var net))
                         forwarded.KnownIPNetworks.Add(net);

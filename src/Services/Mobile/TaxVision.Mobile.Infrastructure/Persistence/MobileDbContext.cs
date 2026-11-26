@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Domain;
 using BuildingBlocks.EfCore;
 using BuildingBlocks.Persistence;
@@ -23,6 +24,8 @@ public sealed class MobileDbContext(DbContextOptions<MobileDbContext> options, I
     public DbSet<TripPoint> TripPoints => Set<TripPoint>();
     public DbSet<TripOperation> TripOperations => Set<TripOperation>();
     public DbSet<MileageRate> MileageRates => Set<MileageRate>();
+    public DbSet<StandardMileageRate> StandardMileageRates => Set<StandardMileageRate>();
+    public DbSet<StaffMileageAccessLog> StaffMileageAccessLogs => Set<StaffMileageAccessLog>();
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<UserPermissionsProjection> UserPermissionsProjections => Set<UserPermissionsProjection>();
     public DbSet<RolePermissionsProjection> RolePermissionsProjections => Set<RolePermissionsProjection>();
@@ -33,6 +36,8 @@ public sealed class MobileDbContext(DbContextOptions<MobileDbContext> options, I
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(MobileDbContext).Assembly);
         modelBuilder.ApplyTenantTimeZoneProjection();
+        // Clientes asignados a cada miembro del personal (visibilidad de las lecturas del personal).
+        modelBuilder.ApplyCustomerAssignmentProjection();
         var tenant = Expression.Property(Expression.Constant(this), nameof(EffectiveTenantId));
         foreach (var entity in modelBuilder.Model.GetEntityTypes())
         {

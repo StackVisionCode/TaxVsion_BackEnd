@@ -117,11 +117,18 @@ public sealed class PlatformSessionPolicy
         if (session.Channel != SessionChannel.Web)
             return null;
 
-        if (nowUtc - session.CreatedAtUtc >= TimeSpan.FromHours(AbsoluteLifetimeHours))
+        var window = ActivityWindow(refreshCadence, nowUtc);
+        if (session.CreatedAtUtc <= window.StartedAfterUtc)
             return "absolute_lifetime";
 
+        return session.LastSeenAtUtc < window.SeenSinceUtc ? "idle_timeout" : null;
+    }
+
+    /// <summary>Límites de una sesión web viva en este instante; la misma regla que <see cref="EndReason"/>.</summary>
+    public SessionActivityWindow ActivityWindow(TimeSpan refreshCadence, DateTime nowUtc)
+    {
         var idleLimit =
             TimeSpan.FromMinutes(IdleTimeoutMinutes) + TimeSpan.FromSeconds(WarningSeconds) + refreshCadence;
-        return nowUtc - session.LastSeenAtUtc > idleLimit ? "idle_timeout" : null;
+        return new SessionActivityWindow(nowUtc - TimeSpan.FromHours(AbsoluteLifetimeHours), nowUtc - idleLimit);
     }
 }

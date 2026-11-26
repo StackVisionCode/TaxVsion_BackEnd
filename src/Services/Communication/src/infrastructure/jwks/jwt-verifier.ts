@@ -99,8 +99,9 @@ async function ensureNotDenied(jti: string | undefined, sessionId: string | unde
   if (keys.length === 0) return;
 
   try {
-    const results = await redis.mget(...keys);
-    if (results.some((v) => v !== null)) {
+    // EXISTS y no MGET: Auth guarda la clave como hash (IDistributedCache) y MGET devuelve null para hashes.
+    const denied = await redis.exists(...keys);
+    if (denied > 0) {
       throw new UnauthorizedError('Auth.SessionRevoked', 'Session or token was revoked.');
     }
   } catch (err) {

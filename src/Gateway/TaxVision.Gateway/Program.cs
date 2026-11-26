@@ -94,22 +94,8 @@ builder
 builder
     .Services.AddReverseProxy()
     .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"))
-    // El Gateway ya resolvió la IP real (UseForwardedHeaders consume CF-Connecting-IP), pero ese header
-    // queda vacío hacia el backend; se re-inyecta para que cada servicio la lea igual que el Gateway.
-    .AddTransforms(context =>
-        context.AddRequestTransform(transform =>
-        {
-            var ip = transform.HttpContext.Connection.RemoteIpAddress;
-            if (ip is not null)
-            {
-                if (ip.IsIPv4MappedToIPv6)
-                    ip = ip.MapToIPv4();
-                transform.ProxyRequest.Headers.Remove("CF-Connecting-IP");
-                transform.ProxyRequest.Headers.TryAddWithoutValidation("CF-Connecting-IP", ip.ToString());
-            }
-            return ValueTask.CompletedTask;
-        })
-    );
+    // Re-inyecta hacia cada servicio la IP real ya resuelta (ver ClientIpProxyTransform).
+    .AddTransforms(context => context.AddRequestTransform(ClientIpProxyTransform.Apply));
 
 // Tarea 3 (senior) — validación Host↔tenant en el Gateway (TenantHostGuardMiddleware). El resolver
 // llama al `by-host` de Auth reusando la MISMA dirección del cluster YARP "auth" (dev localhost,

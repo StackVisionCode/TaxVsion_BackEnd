@@ -45,4 +45,66 @@ public sealed class UserSessionTests
         Assert.True(web.CompetesWith(SessionSurface.Account));
         Assert.True(mobile.CompetesWith(SessionSurface.Mobile));
     }
+
+    [Fact]
+    public void The_sign_in_ip_is_kept_when_the_last_seen_ip_changes()
+    {
+        var session = Start(SessionSurface.Workspace);
+
+        session.Touch("198.51.100.7");
+
+        Assert.Equal("127.0.0.1", session.StartIpAddress);
+        Assert.Equal("198.51.100.7", session.IpAddress);
+    }
+
+    [Fact]
+    public void A_revocation_records_who_did_it()
+    {
+        var session = Start(SessionSurface.Workspace);
+        var admin = Guid.NewGuid();
+
+        session.Revoke("admin_revoke", admin);
+
+        Assert.Equal(admin, session.RevokedByUserId);
+        Assert.Equal("admin_revoke", session.RevokedReason);
+    }
+
+    [Fact]
+    public void A_second_revocation_does_not_rewrite_the_first()
+    {
+        var session = Start(SessionSurface.Workspace);
+        var admin = Guid.NewGuid();
+        session.Revoke("admin_revoke", admin);
+
+        session.Revoke("user_logout", Guid.NewGuid());
+
+        Assert.Equal(admin, session.RevokedByUserId);
+        Assert.Equal("admin_revoke", session.RevokedReason);
+    }
+
+    [Fact]
+    public void A_self_sign_out_has_no_revoker()
+    {
+        var session = Start(SessionSurface.Workspace);
+
+        session.Revoke("user_logout");
+
+        Assert.Null(session.RevokedByUserId);
+    }
+
+    [Fact]
+    public void Attributing_a_revocation_needs_a_closed_session_without_an_author()
+    {
+        var open = Start(SessionSurface.Workspace);
+        var closed = Start(SessionSurface.Workspace);
+        var first = Guid.NewGuid();
+        closed.Revoke("admin_revoke");
+
+        open.AttributeRevocationTo(first);
+        closed.AttributeRevocationTo(first);
+        closed.AttributeRevocationTo(Guid.NewGuid());
+
+        Assert.Null(open.RevokedByUserId);
+        Assert.Equal(first, closed.RevokedByUserId);
+    }
 }

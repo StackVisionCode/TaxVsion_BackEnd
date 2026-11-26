@@ -31,4 +31,7 @@ public static class CustomersPermissions
     /// <summary>Importar customers en bloque (CSV/Excel). Operación administrativa — antes vivía bajo
     /// <c>[Authorize(Roles="TenantAdmin")]</c>; ahora es un permiso propio, admin-only por defecto.</summary>
     public const string Import = "customers.import";
+
+    /// <summary>Ver la ubicación aproximada (por IP) de las sesiones del portal de un cliente. Solo admin por defecto.</summary>
+    public const string PortalSessionsLocationView = "customers.portal_sessions.location.view";
 }

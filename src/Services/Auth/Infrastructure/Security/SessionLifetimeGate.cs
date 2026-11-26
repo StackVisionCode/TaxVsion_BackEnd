@@ -28,6 +28,13 @@ public sealed class SessionLifetimeGate(IServiceScopeFactory scopes, IOptions<Jw
         return policy.EndReason(session, TimeSpan.FromMinutes(jwt.Value.AccessMinutes), nowUtc);
     }
 
+    public async Task<SessionActivityWindow> ActivityWindowAsync(CancellationToken ct = default)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var policy = await CurrentAsync(nowUtc, ct);
+        return policy.ActivityWindow(TimeSpan.FromMinutes(jwt.Value.AccessMinutes), nowUtc);
+    }
+
     public void Invalidate() => Volatile.Write(ref _cached, null);
 
     private async Task<PlatformSessionPolicy> CurrentAsync(DateTime nowUtc, CancellationToken ct)

@@ -22,6 +22,34 @@ namespace TaxVision.Mobile.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("BuildingBlocks.CustomerVisibility.CustomerAssignmentProjection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Version")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId");
+
+                    b.HasIndex("TenantId", "CustomerId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("CustomerAssignmentProjections", (string)null);
+                });
+
             modelBuilder.Entity("BuildingBlocks.TenantTimeZones.TenantTimeZoneProjection", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -214,6 +242,402 @@ namespace TaxVision.Mobile.Infrastructure.Persistence.Migrations
                     b.ToTable("MobileMileageRetentionPolicies", null, t =>
                         {
                             t.HasCheckConstraint("CK_MobileMileageRetentionPolicies_Days", "[RetentionDays] IS NULL OR [RetentionDays] BETWEEN 1 AND 3650");
+                        });
+                });
+
+            modelBuilder.Entity("TaxVision.Mobile.Domain.Trips.StaffMileageAccessLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("StaffUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("TripId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "CustomerId", "OccurredAtUtc");
+
+                    b.ToTable("MobileStaffAccessLogs", (string)null);
+                });
+
+            modelBuilder.Entity("TaxVision.Mobile.Domain.Trips.StandardMileageRate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<decimal>("RatePerMile")
+                        .HasPrecision(10, 4)
+                        .HasColumnType("decimal(10,4)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Purpose", "EffectiveFrom")
+                        .IsUnique();
+
+                    b.ToTable("MobileStandardMileageRates", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MobileStandardMileageRates_Rate", "[RatePerMile] >= 0 AND [RatePerMile] <= 1000");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("73bb53d7-9a6f-6228-9896-368e21ef767c"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2020, 1, 1),
+                            Purpose = "business",
+                            RatePerMile = 0.575m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("4f047b57-d29a-4e22-e6b7-42526e2493e1"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2020, 1, 1),
+                            Purpose = "charity",
+                            RatePerMile = 0.14m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("b94a1b28-e6e6-2daf-954d-28d87253912b"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2020, 1, 1),
+                            Purpose = "medical",
+                            RatePerMile = 0.17m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("7bc8041e-a2f1-48f9-7ac2-9b5d33966959"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2020, 1, 1),
+                            Purpose = "moving",
+                            RatePerMile = 0.17m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("a0b8c5d3-a8f4-82c1-c866-4a4324fc6036"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2021, 1, 1),
+                            Purpose = "business",
+                            RatePerMile = 0.56m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("ec561439-0614-b309-8148-3c48d474b623"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2021, 1, 1),
+                            Purpose = "charity",
+                            RatePerMile = 0.14m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("4e0e4bfc-c3e9-0941-10eb-a0fc0b90f487"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2021, 1, 1),
+                            Purpose = "medical",
+                            RatePerMile = 0.16m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("c55c6c5f-8533-017a-cbc9-53d309ffdca9"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2021, 1, 1),
+                            Purpose = "moving",
+                            RatePerMile = 0.16m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("ad7bf7e5-a631-1a7a-ae6c-3fb5d161369a"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2022, 1, 1),
+                            Purpose = "business",
+                            RatePerMile = 0.585m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("92c04825-dce4-e370-5138-7df8e5d81f85"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2022, 1, 1),
+                            Purpose = "charity",
+                            RatePerMile = 0.14m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("5f3c5738-0f73-f3dc-657d-9245d5d670ed"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2022, 1, 1),
+                            Purpose = "medical",
+                            RatePerMile = 0.18m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("978fe4e5-74a0-c81b-68ee-aec68308d811"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2022, 1, 1),
+                            Purpose = "moving",
+                            RatePerMile = 0.18m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("de584ec6-db4a-d2ce-49a1-afbd5252a9bf"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2022, 7, 1),
+                            Purpose = "business",
+                            RatePerMile = 0.625m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("dd25efbe-dc19-f3f1-28bd-8fce8f92f2e3"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2022, 7, 1),
+                            Purpose = "charity",
+                            RatePerMile = 0.14m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("de4f7b45-234e-ffe1-04b1-cc7f8e3e9e49"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2022, 7, 1),
+                            Purpose = "medical",
+                            RatePerMile = 0.22m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("717dd18a-a601-fcdf-e678-8c09616395fa"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2022, 7, 1),
+                            Purpose = "moving",
+                            RatePerMile = 0.22m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("37b9e110-65f5-411e-a8e1-92da1b236e82"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2023, 1, 1),
+                            Purpose = "business",
+                            RatePerMile = 0.655m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("0384a26b-a345-09de-6960-5492d59934a9"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2023, 1, 1),
+                            Purpose = "charity",
+                            RatePerMile = 0.14m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("17e78014-5c0b-e475-2515-16795f77244b"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2023, 1, 1),
+                            Purpose = "medical",
+                            RatePerMile = 0.22m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("dfdcb798-446c-213a-bb8b-31716fcdc5dd"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2023, 1, 1),
+                            Purpose = "moving",
+                            RatePerMile = 0.22m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("69b6fc4f-8d7b-a81f-2a49-41998a4b1b10"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2024, 1, 1),
+                            Purpose = "business",
+                            RatePerMile = 0.67m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("a1bf252f-ab6c-ce5a-eca6-98b6db4b6dee"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2024, 1, 1),
+                            Purpose = "charity",
+                            RatePerMile = 0.14m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("4aa2b5d6-93b5-d0a1-18cf-4ffcbac3c4e8"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2024, 1, 1),
+                            Purpose = "medical",
+                            RatePerMile = 0.21m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("ac928479-d380-4282-1f3e-f77b66e7eab7"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2024, 1, 1),
+                            Purpose = "moving",
+                            RatePerMile = 0.21m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("98e8b6eb-bdab-b696-e9d7-fe37fa9b351e"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2025, 1, 1),
+                            Purpose = "business",
+                            RatePerMile = 0.70m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("67d9abc7-2252-5e25-c12e-0a78b7043342"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2025, 1, 1),
+                            Purpose = "charity",
+                            RatePerMile = 0.14m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("68b0d5e9-adca-e006-0fb6-9639379429e8"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2025, 1, 1),
+                            Purpose = "medical",
+                            RatePerMile = 0.21m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("13d78ee2-2f3d-93dc-ad14-c2a1477cd06a"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2025, 1, 1),
+                            Purpose = "moving",
+                            RatePerMile = 0.21m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("df36630c-24d8-df03-7fa4-25a9b218c996"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Purpose = "business",
+                            RatePerMile = 0.725m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("7c4c5da8-f433-33e8-c0e3-5f7a67006ac8"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Purpose = "charity",
+                            RatePerMile = 0.14m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("d73dbd30-35c8-39c9-eb9e-6b59ad0ab7b5"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Purpose = "medical",
+                            RatePerMile = 0.205m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("805557c0-7a85-bc3a-0743-1d5ec4b69656"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2026, 1, 1),
+                            Purpose = "moving",
+                            RatePerMile = 0.205m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("407ef66c-e907-b246-5161-03111869a28d"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2026, 7, 1),
+                            Purpose = "business",
+                            RatePerMile = 0.76m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("145b5c45-2fd8-71c4-a240-2158e24072ab"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2026, 7, 1),
+                            Purpose = "charity",
+                            RatePerMile = 0.14m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("5acf69f4-b0fd-07d5-76f7-e33eb971d46c"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2026, 7, 1),
+                            Purpose = "medical",
+                            RatePerMile = 0.235m,
+                            Source = "IRS standard mileage rates"
+                        },
+                        new
+                        {
+                            Id = new Guid("28d06d6d-ce92-04d6-b873-90eb8c609e45"),
+                            Currency = "USD",
+                            EffectiveFrom = new DateOnly(2026, 7, 1),
+                            Purpose = "moving",
+                            RatePerMile = 0.235m,
+                            Source = "IRS standard mileage rates"
                         });
                 });
 

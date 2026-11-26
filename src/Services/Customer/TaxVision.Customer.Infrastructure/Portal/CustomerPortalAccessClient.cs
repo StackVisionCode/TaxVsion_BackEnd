@@ -16,7 +16,7 @@ internal sealed class CustomerPortalAccessClient(
     HttpClient httpClient,
     IServiceTokenAcquirer tokenAcquirer,
     ILogger<CustomerPortalAccessClient> logger
-) : ICustomerPortalAccessClient
+) : ICustomerPortalAccessClient, ICustomerPortalSessionsClient
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -76,6 +76,101 @@ internal sealed class CustomerPortalAccessClient(
             SecurityUnavailable,
             ct
         );
+
+    public Task<Result<PortalSessionPage>> ListSessionsAsync(
+        Guid tenantId,
+        Guid customerId,
+        PortalSessionsQuery query,
+        CancellationToken ct = default
+    )
+    {
+        var parameters = new List<string>();
+        if (query.FromUtc is { } from)
+            parameters.Add($"from={Uri.EscapeDataString(from.ToString("O"))}");
+        if (query.ToUtc is { } to)
+            parameters.Add($"to={Uri.EscapeDataString(to.ToString("O"))}");
+        if (query.Page is { } page)
+            parameters.Add($"page={page}");
+        if (query.PageSize is { } pageSize)
+            parameters.Add($"pageSize={pageSize}");
+        var resource = parameters.Count == 0 ? "portal-sessions" : $"portal-sessions?{string.Join('&', parameters)}";
+        return SendAsync<PortalSessionPage>(
+            tenantId,
+            customerId,
+            HttpMethod.Get,
+            resource,
+            null,
+            SecurityUnavailable,
+            ct
+        );
+    }
+
+    public Task<Result> RevokeSessionAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid sessionId,
+        Guid requestedByUserId,
+        CancellationToken ct = default
+    ) =>
+        SendWithoutContentAsync(
+            tenantId,
+            customerId,
+            $"portal-sessions/{sessionId:D}?requestedByUserId={requestedByUserId:D}",
+            ct
+        );
+
+    public Task<Result> RevokeAllSessionsAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid requestedByUserId,
+        bool forgetTrustedDevices,
+        CancellationToken ct = default
+    ) =>
+        SendWithoutContentAsync(
+            tenantId,
+            customerId,
+            $"portal-sessions?requestedByUserId={requestedByUserId:D}&forgetTrustedDevices={(forgetTrustedDevices ? "true" : "false")}",
+            ct
+        );
+
+    /// <summary>DELETE que responde 204: mismo trato de errores que <see cref="SendAsync{T}"/>.</summary>
+    private async Task<Result> SendWithoutContentAsync(
+        Guid tenantId,
+        Guid customerId,
+        string resource,
+        CancellationToken ct
+    )
+    {
+        var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
+        if (string.IsNullOrEmpty(token))
+            return Result.Failure(SecurityUnavailable);
+
+        try
+        {
+            using var request = new HttpRequestMessage(
+                HttpMethod.Delete,
+                $"internal/tenants/{tenantId:D}/customers/{customerId:D}/{resource}"
+            );
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await httpClient.SendAsync(request, ct);
+            if (response.IsSuccessStatusCode)
+                return Result.Success();
+            if ((int)response.StatusCode < 500 && await ReadErrorAsync(response, ct) is { } rejection)
+                return Result.Failure(rejection);
+            logger.LogWarning(
+                "Portal sessions call for customer {CustomerId} in tenant {TenantId} failed with {Status}.",
+                customerId,
+                tenantId,
+                (int)response.StatusCode
+            );
+            return Result.Failure(SecurityUnavailable);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Portal sessions call for customer {CustomerId} threw.", customerId);
+            return Result.Failure(SecurityUnavailable);
+        }
+    }
 
     private async Task<Result<T>> SendAsync<T>(
         Guid tenantId,
