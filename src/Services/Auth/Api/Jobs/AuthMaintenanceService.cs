@@ -18,11 +18,13 @@ namespace TaxVision.Auth.Api.Jobs;
 public sealed class AuthMaintenanceService(
     IServiceScopeFactory scopeFactory,
     IHostApplicationLifetime lifetime,
+    IConfiguration configuration,
     ILogger<AuthMaintenanceService> logger
 ) : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(1);
     private static readonly TimeSpan PurgeAge = TimeSpan.FromDays(30);
+    private const int SessionPurgeBatchSize = 500;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -118,6 +120,34 @@ public sealed class AuthMaintenanceService(
         }
 
         await SweepExpiredSessionsAsync(now, ct);
+        await PurgeOldSessionsAsync(now, ct);
+    }
+
+    /// <summary>
+    /// Borra las sesiones cerradas hace más de <c>Auth:Sessions:RetentionMonths</c> (12 por defecto; 0 no
+    /// borra nada). Por lotes cortos para no bloquear la tabla. Las abiertas y la auditoría no se tocan.
+    /// </summary>
+    private async Task PurgeOldSessionsAsync(DateTime now, CancellationToken ct)
+    {
+        var months = configuration.GetValue("Auth:Sessions:RetentionMonths", 12);
+        if (months <= 0)
+            return;
+
+        var closedBefore = now.AddMonths(-months);
+        var purged = 0;
+        while (true)
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var removed = await scope
+                .ServiceProvider.GetRequiredService<ISessionHistory>()
+                .PurgeClosedBeforeAsync(closedBefore, SessionPurgeBatchSize, ct);
+            purged += removed;
+            if (removed < SessionPurgeBatchSize)
+                break;
+        }
+
+        if (purged > 0)
+            logger.LogInformation("Auth maintenance: {Purged} closed sessions past retention removed.", purged);
     }
 
     /// <summary>

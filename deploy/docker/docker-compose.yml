@@ -1648,6 +1648,8 @@ services:
       ServiceAuthClient__ClientSecret: ${MOBILE_SERVICE_CLIENT_SECRET:?Set MOBILE_SERVICE_CLIENT_SECRET in .env}
       # Plan del tenant por M2M (internal/tenants/{id}/entitlements) para reparar la proyección del gate.
       SubscriptionClient__BaseUrl: http://subscription-api:8080
+      # Clientes asignados al personal (lecturas de kilometraje): la reconciliación pide las asignaciones a Customer.
+      CustomerVisibility__Reconciliation__CustomerBaseUrl: http://customer-api:8080/
       # Directorio de oficinas (zona horaria y lista de tenants que repara el job del plan).
       TenantTimeZones__Reconciliation__TenantBaseUrl: http://tenant-api:8080
       RateLimit__EnforceTierQuotas: "false"

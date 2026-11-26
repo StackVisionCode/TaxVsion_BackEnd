@@ -17,6 +17,7 @@ public sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSess
         builder.Property(session => session.DeviceName).HasMaxLength(100);
         builder.Property(session => session.UserAgent).HasMaxLength(512);
         builder.Property(session => session.IpAddress).HasMaxLength(45);
+        builder.Property(session => session.StartIpAddress).HasMaxLength(45);
         builder.Property(session => session.RevokedReason).HasMaxLength(64);
         builder.Property(session => session.CreatedAtUtc).IsRequired();
         builder.Property(session => session.LastSeenAtUtc).IsRequired();
@@ -28,6 +29,21 @@ public sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSess
             .HasDefaultValue(SessionChannel.Web)
             .IsRequired();
         builder.Ignore(session => session.IsActive);
+
+        // Ubicación aproximada al iniciar; todas las columnas opcionales.
+        builder.OwnsOne(
+            session => session.Location,
+            location =>
+            {
+                location.Property(value => value.CountryCode).HasColumnName("LocationCountryCode").HasMaxLength(2);
+                location.Property(value => value.Region).HasColumnName("LocationRegion").HasMaxLength(128);
+                location.Property(value => value.City).HasColumnName("LocationCity").HasMaxLength(128);
+                location.Property(value => value.Latitude).HasColumnName("LocationLatitude");
+                location.Property(value => value.Longitude).HasColumnName("LocationLongitude");
+                location.Property(value => value.Source).HasColumnName("LocationSource").HasMaxLength(16);
+                location.Property(value => value.ResolvedAtUtc).HasColumnName("LocationResolvedAtUtc");
+            }
+        );
 
         builder.HasIndex(session => new { session.UserId, session.RevokedAtUtc });
         builder.HasIndex(session => session.TenantId);

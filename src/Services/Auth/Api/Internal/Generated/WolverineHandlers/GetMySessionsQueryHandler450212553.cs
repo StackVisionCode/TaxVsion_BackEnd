@@ -2,6 +2,7 @@
 #pragma warning disable
 using Microsoft.Extensions.DependencyInjection;
 using System.Collections.Generic;
+using TaxVision.Auth.Application.Abstractions;
 
 namespace Internal.Generated.WolverineHandlers
 {
@@ -11,11 +12,13 @@ namespace Internal.Generated.WolverineHandlers
     {
         private readonly Microsoft.Extensions.DependencyInjection.IServiceScopeFactory _serviceScopeFactory;
         private readonly System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper> _domainEventScraperIEnumerable;
+        private readonly TaxVision.Auth.Application.Abstractions.ISessionLifetimeGate _sessionLifetimeGate;
 
-        public GetMySessionsQueryHandler450212553(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper> domainEventScraperIEnumerable)
+        public GetMySessionsQueryHandler450212553(Microsoft.Extensions.DependencyInjection.IServiceScopeFactory serviceScopeFactory, System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper> domainEventScraperIEnumerable, TaxVision.Auth.Application.Abstractions.ISessionLifetimeGate sessionLifetimeGate)
         {
             _serviceScopeFactory = serviceScopeFactory;
             _domainEventScraperIEnumerable = domainEventScraperIEnumerable;
+            _sessionLifetimeGate = sessionLifetimeGate;
         }
 
 
@@ -47,7 +50,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Auth.Application.Sessions.Queries.GetMySessionsHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Auth.Application.Sessions.Queries.GetMySessionsHandler.Handle(getMySessionsQuery, sessionRepository, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Auth.Application.Sessions.Queries.GetMySessionsHandler.Handle(getMySessionsQuery, sessionRepository, _sessionLifetimeGate, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

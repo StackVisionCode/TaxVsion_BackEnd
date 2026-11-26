@@ -509,3 +509,7 @@ src/Services/CommunicationTranscriptWorker/vendor/whisper/models/*.bin
 # Anfitriones de la demo pública: datos de personas, no se versionan (ver hosts.example.json).
 scripts/public-demo/hosts.*.json
 !scripts/public-demo/hosts.example.json
+
+# Base de IP a ubicación (DB-IP, >100 MB): se descarga con scripts/geoip, nunca se versiona.
+*.mmdb
+*.mmdb.gz

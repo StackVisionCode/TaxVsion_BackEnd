@@ -226,6 +226,10 @@ public static class InfrastructureRegistration
                 http.Timeout = TimeSpan.FromSeconds(15);
             }
         );
+        // Sesiones del portal del cliente: el mismo cliente HTTP hacia Auth.
+        services.AddTransient<ICustomerPortalSessionsClient>(sp =>
+            (CustomerPortalAccessClient)sp.GetRequiredService<ICustomerPortalAccessClient>()
+        );
     }
 
     private static string NormalizeBaseUrl(string url) => url.EndsWith('/') ? url : url + "/";

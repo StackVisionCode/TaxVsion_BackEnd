@@ -41,11 +41,18 @@ public sealed class SessionAccessCutoff(
     public static readonly TimeSpan DenylistTtl = TimeSpan.FromMinutes(20);
 
     /// <summary>Corta el acceso de un usuario. Devuelve cuántas sesiones se revocaron.</summary>
-    public async Task<int> ForUserAsync(User target, string reason, CancellationToken ct)
+    /// <param name="revokedByUserId">Quién lo pidió desde la gestión del equipo; nulo si es el sistema.</param>
+    public async Task<int> ForUserAsync(User target, string reason, CancellationToken ct, Guid? revokedByUserId = null)
     {
         var active = await sessions.GetActiveSessionsByUserAsync(target.Id, ct);
         await CutAsync(active, reason, ct);
-        return await sessions.RevokeAllForUserAsync(target.Id, reason, null, ct);
+        var revoked = await sessions.RevokeAllForUserAsync(target.Id, reason, null, ct);
+        if (revokedByUserId is { } revokedBy)
+        {
+            foreach (var session in active)
+                session.AttributeRevocationTo(revokedBy);
+        }
+        return revoked;
     }
 
     /// <summary>Corta el acceso de un tenant completo (staff y clientes por igual: un tenant suspendido

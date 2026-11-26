@@ -25,6 +25,7 @@ using TaxVision.Customer.Application.Customers.Commands.Create;
 using TaxVision.Customer.Application.Customers.Commands.Deactivate;
 using TaxVision.Customer.Application.Customers.Commands.GrantAccess;
 using TaxVision.Customer.Application.Customers.Commands.PortalMfa;
+using TaxVision.Customer.Application.Customers.Commands.PortalSessions;
 using TaxVision.Customer.Application.Customers.Commands.Reactivate;
 using TaxVision.Customer.Application.Customers.Commands.RemoveAddress;
 using TaxVision.Customer.Application.Customers.Commands.RemoveContactPoint;
@@ -1095,6 +1096,108 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         );
         if (result.IsSuccess)
             return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Sesiones de la cuenta del portal del cliente (historial por fecha de inicio). La ubicación aproximada
+    /// solo con <c>customers.portal_sessions.location.view</c>.
+    /// </summary>
+    [HttpGet("{id:guid}/portal-sessions")]
+    [HasPermission(CustomersPermissions.View)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.f.get")]
+    [ProducesResponseType<PortalSessionPage>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPortalSessions(
+        Guid id,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        Response.Headers.CacheControl = "no-store";
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var canSeeLocation = await permissions.HasPermissionAsync(
+            User,
+            CustomersPermissions.PortalSessionsLocationView,
+            ct
+        );
+        var result = await bus.InvokeAsync<Result<PortalSessionPage>>(
+            new GetCustomerPortalSessionsQuery(
+                tenantId,
+                id,
+                userId,
+                canViewAll,
+                canSeeLocation,
+                from,
+                to,
+                page,
+                pageSize
+            ),
+            ct
+        );
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Cierra una sesión del portal del cliente; el cliente sale en tiempo real.</summary>
+    [HttpDelete("{id:guid}/portal-sessions/{sessionId:guid}")]
+    [HasPermission(CustomersPermissions.Manage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RevokePortalSession(Guid id, Guid sessionId, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new RevokeCustomerPortalSessionCommand(tenantId, id, sessionId, userId, canViewAll),
+            ct
+        );
+        if (result.IsSuccess)
+            return NoContent();
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Cierra todas las sesiones del portal del cliente; opcionalmente olvida sus dispositivos de confianza.</summary>
+    [HttpDelete("{id:guid}/portal-sessions")]
+    [HasPermission(CustomersPermissions.Manage)]
+    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [RateLimit("customer.g.write")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RevokePortalSessions(
+        Guid id,
+        [FromQuery] bool forgetTrustedDevices,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new RevokeCustomerPortalSessionsCommand(tenantId, id, userId, canViewAll, forgetTrustedDevices),
+            ct
+        );
+        if (result.IsSuccess)
+            return NoContent();
         if (result.Error.Code == "Customer.NotFound")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);

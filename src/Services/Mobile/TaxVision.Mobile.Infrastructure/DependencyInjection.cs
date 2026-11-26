@@ -1,3 +1,4 @@
+using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Infrastructure.RateLimiting;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Permissions;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using TaxVision.Mobile.Application.Projections.Abstractions;
 using TaxVision.Mobile.Application.RateLimiting;
 using TaxVision.Mobile.Application.RateLimiting.Abstractions;
+using TaxVision.Mobile.Application.Staff;
 using TaxVision.Mobile.Application.Trips.Abstractions;
 using TaxVision.Mobile.Application.Vehicles.Abstractions;
 using TaxVision.Mobile.Infrastructure.Permissions;
@@ -19,6 +21,7 @@ using TaxVision.Mobile.Infrastructure.Persistence.Repositories;
 using TaxVision.Mobile.Infrastructure.RateLimiting;
 using TaxVision.Mobile.Infrastructure.Retention;
 using TaxVision.Mobile.Infrastructure.Scheduling;
+using TaxVision.Mobile.Infrastructure.Staff;
 using TaxVision.Mobile.Infrastructure.Upstream;
 
 namespace TaxVision.Mobile.Infrastructure;
@@ -57,7 +60,25 @@ public static class DependencyInjection
         services.AddTenantTimeZoneProjection<MobileDbContext>();
         services.AddTenantTimeZoneReconciliation<MobileTenantTimeZoneTokenProvider>(configuration);
         AddTenantPlan(services, configuration);
+        AddStaffMileage(services, configuration);
         return services;
+    }
+
+    // Lecturas del personal: clientes asignados (proyección + reconciliación contra Customer) y lector.
+    private static void AddStaffMileage(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddCustomerVisibilityProjection<MobileDbContext>();
+        services.AddCustomerVisibilityReconciliation<MobilePlatformTokenProvider>(configuration);
+        // Si la sección propia no trae la URL de Customer, se reusa Services:Customer:BaseUrl (como FinancialInsights).
+        var customerUrl = configuration["Services:Customer:BaseUrl"];
+        if (
+            string.IsNullOrWhiteSpace(
+                configuration[$"{CustomerVisibilityReconciliationOptions.SectionName}:CustomerBaseUrl"]
+            ) && !string.IsNullOrWhiteSpace(customerUrl)
+        )
+            services.PostConfigure<CustomerVisibilityReconciliationOptions>(o => o.CustomerBaseUrl = customerUrl);
+        services.AddScoped<IStaffMileageReader, StaffMileageReader>();
+        services.AddScoped<IStaffCustomerAssignments, StaffCustomerAssignments>();
     }
 
     // Purga del recorrido GPS: opciones, lock entre réplicas y job. Igual en todos los entornos.

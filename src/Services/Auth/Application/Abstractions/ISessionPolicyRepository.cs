@@ -19,6 +19,9 @@ public interface ISessionLifetimeGate
     /// <summary>"idle_timeout", "absolute_lifetime" o null si la sesión sigue valiendo.</summary>
     Task<string?> EndReasonAsync(UserSession session, CancellationToken ct = default);
 
+    /// <summary>Límites de una sesión web viva ahora, para filtrar y contar en la base con la misma regla.</summary>
+    Task<SessionActivityWindow> ActivityWindowAsync(CancellationToken ct = default);
+
     /// <summary>Descarta la política en caché para que el siguiente refresh lea la recién guardada.</summary>
     void Invalidate();
 }

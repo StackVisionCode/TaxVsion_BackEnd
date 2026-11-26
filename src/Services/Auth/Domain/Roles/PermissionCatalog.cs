@@ -14,6 +14,7 @@ public static class PermissionCatalog
     public const string UsersInvite = "users.invite";
     public const string UsersManage = UserManagementPermissions.UsersManage;
     public const string UsersWorkView = UserManagementPermissions.UsersWorkView;
+    public const string SessionsLocationView = UserManagementPermissions.SessionsLocationView;
     public const string RolesManage = "roles.manage";
     public const string AuditView = "audit.view";
     public const string SettingsManage = "settings.manage";
@@ -39,6 +40,7 @@ public static class PermissionCatalog
     public const string CustomersView = CustomersPermissions.View;
     public const string CustomersViewAll = CustomersPermissions.ViewAll;
     public const string CustomersManage = CustomersPermissions.Manage;
+    public const string CustomersPortalSessionsLocationView = CustomersPermissions.PortalSessionsLocationView;
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
     public const string CustomersImport = CustomersPermissions.Import;
@@ -49,6 +51,7 @@ public static class PermissionCatalog
     public const string MobileRatesManage = MobilePermissions.RatesManage;
     public const string MobileVehiclesRead = MobilePermissions.VehiclesRead;
     public const string MobileVehiclesManage = MobilePermissions.VehiclesManage;
+    public const string MileageView = MileagePermissions.View;
     public const string FinancialImport = FinancialInsightsPermissions.Import;
     public const string FinancialView = FinancialInsightsPermissions.View;
     public const string FinancialPortalImport = FinancialInsightsPermissions.PortalImport;
@@ -462,6 +465,15 @@ public static class PermissionCatalog
             AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.TenantEmployee]
         ),
         new(
+            // Ubicación aproximada de las sesiones del equipo: dato personal, solo el admin por defecto.
+            new Guid("9621bed4-df29-4acd-b82c-1a8a48a11391"),
+            SessionsLocationView,
+            "users",
+            "View team members' session locations",
+            false,
+            AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.TenantEmployee]
+        ),
+        new(
             // Reservado: quien controla roles.manage puede asignar CUALQUIER rol (incluido
             // Tenant Admin) a cualquier usuario — es el vector de escalada de privilegios más
             // directo. Nunca asignable a un rol custom, solo lo tienen los roles de sistema.
@@ -547,6 +559,15 @@ public static class PermissionCatalog
             false
         ),
         new(
+            // Ubicación aproximada de las sesiones del portal de un cliente: dato personal, solo el admin por defecto.
+            new Guid("8b282e03-436f-4b4b-8ad0-b15ba8122507"),
+            CustomersPortalSessionsLocationView,
+            "customers",
+            "View clients' portal session locations",
+            false,
+            AllowedActorTypes: [UserActorType.TenantAdmin, UserActorType.TenantEmployee]
+        ),
+        new(
             // Importación masiva. NO viene en el bundle de SystemEmployee: por defecto solo el
             // administrador lo tiene. Pero es concedible a un empleado con un rol custom, y desde
             // entonces importa de verdad — `CustomerImportsController` admite TenantEmployee y deja
@@ -610,6 +631,15 @@ public static class PermissionCatalog
             "mobile",
             "Maintain own vehicles",
             true
+        ),
+        // Lectura del personal sobre el kilometraje de sus clientes (solo los asignados, salvo customers.view_all).
+        new(
+            new Guid("f49c9c30-7919-4eb8-b3b5-435fef11285e"),
+            MileageView,
+            "mobile",
+            "View client mileage trips and routes",
+            false,
+            AllowedActorTypes: [UserActorType.TenantEmployee, UserActorType.TenantAdmin, UserActorType.PlatformAdmin]
         ),
         new(
             new Guid("a1000000-0000-0000-0000-0000000001a2"),
@@ -2578,6 +2608,8 @@ public static class PermissionCatalog
                 // El módulo "financial_insights" lo filtra el gate por plan o add-on.
                 FinancialImport,
                 FinancialView,
+                // Mileage: el preparador revisa los viajes de sus clientes asignados. El módulo lo filtra el gate.
+                MileageView,
                 // Notes: una nota es del propio autor (el handler lo impone con
                 // CreatedByUserId == actorUserId), igual que un recordatorio. Sin estos dos el
                 // empleado no podía ni escribirse una nota sobre el caso que está preparando — el

@@ -43,7 +43,8 @@ public sealed class MfaEnrollmentSessionTests
             new FakeRequestContext(),
             Options.Create(new RefreshTokenOptions()),
             mfa,
-            Options.Create(new MfaOptions { Enforced = enforced })
+            Options.Create(new MfaOptions { Enforced = enforced }),
+            new NoSessionLocationResolver()
         );
         return (issuer, jwt, mfa, user);
     }

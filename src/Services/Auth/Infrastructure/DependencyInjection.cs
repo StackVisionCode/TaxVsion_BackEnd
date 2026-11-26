@@ -55,6 +55,7 @@ public static class DependencyInjection
         services.Configure<CloudflareOptions>(configuration.GetSection(CloudflareOptions.SectionName));
         services.Configure<TermsOptions>(configuration.GetSection(TermsOptions.SectionName));
         services.Configure<MfaOptions>(configuration.GetSection(MfaOptions.SectionName));
+        services.Configure<SessionLocationOptions>(configuration.GetSection(SessionLocationOptions.SectionName));
         services
             .AddOptions<CloudStorageClientOptions>()
             .Bind(configuration.GetSection(CloudStorageClientOptions.SectionName));
@@ -66,10 +67,12 @@ public static class DependencyInjection
         services.AddScoped<IInvitationRepository, InvitationRepository>();
         services.AddScoped<ISessionRepository, SessionRepository>();
         services.AddScoped<IExpiredSessionQuery, SessionRepository>();
+        services.AddScoped<ISessionHistory, SessionRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IMfaRepository, MfaRepository>();
         services.AddScoped<ISessionPolicyRepository, SessionPolicyRepository>();
         services.AddSingleton<ISessionLifetimeGate, SessionLifetimeGate>();
+        services.AddSingleton<ISessionLocationResolver, MmdbSessionLocationResolver>();
         services.AddScoped<ICredentialTokenRepository, CredentialTokenRepository>();
         services.AddScoped<ITenantPlanLimitsStore, TenantPlanLimitsStore>();
         services.AddScoped<

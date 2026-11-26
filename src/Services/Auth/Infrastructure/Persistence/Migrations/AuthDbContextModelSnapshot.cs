@@ -751,6 +751,19 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("9621bed4-df29-4acd-b82c-1a8a48a11391"),
+                            AllowedActorTypes = "TenantAdmin,TenantEmployee",
+                            Code = "users.sessions.location.view",
+                            Description = "View team members' session locations",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "users",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000004"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "roles.manage",
@@ -897,6 +910,20 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("8b282e03-436f-4b4b-8ad0-b15ba8122507"),
+                            AllowedActorTypes = "TenantAdmin,TenantEmployee",
+                            Code = "customers.portal_sessions.location.view",
+                            Description = "View clients' portal session locations",
+                            GatedModule = "customers",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "customers",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-00000000009c"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "customers.import",
@@ -1030,6 +1057,20 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             GatedModule = "mileage",
                             IsAssignableByTenant = true,
                             IsCustomerPortal = true,
+                            IsDangerous = false,
+                            IsReserved = false,
+                            Module = "mobile",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("f49c9c30-7919-4eb8-b3b5-435fef11285e"),
+                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            Code = "mileage.view",
+                            Description = "View client mileage trips and routes",
+                            GatedModule = "mileage",
+                            IsAssignableByTenant = true,
+                            IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
                             Module = "mobile",
@@ -3911,9 +3952,16 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("RevokedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("RevokedReason")
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("StartIpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("nvarchar(45)");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -4967,6 +5015,55 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.OwnsOne("TaxVision.Auth.Domain.Sessions.SessionLocation", "Location", b1 =>
+                        {
+                            b1.Property<Guid>("UserSessionId")
+                                .HasColumnType("uniqueidentifier");
+
+                            b1.Property<string>("City")
+                                .HasMaxLength(128)
+                                .HasColumnType("nvarchar(128)")
+                                .HasColumnName("LocationCity");
+
+                            b1.Property<string>("CountryCode")
+                                .IsRequired()
+                                .HasMaxLength(2)
+                                .HasColumnType("nvarchar(2)")
+                                .HasColumnName("LocationCountryCode");
+
+                            b1.Property<double?>("Latitude")
+                                .HasColumnType("float")
+                                .HasColumnName("LocationLatitude");
+
+                            b1.Property<double?>("Longitude")
+                                .HasColumnType("float")
+                                .HasColumnName("LocationLongitude");
+
+                            b1.Property<string>("Region")
+                                .HasMaxLength(128)
+                                .HasColumnType("nvarchar(128)")
+                                .HasColumnName("LocationRegion");
+
+                            b1.Property<DateTime>("ResolvedAtUtc")
+                                .HasColumnType("datetime2")
+                                .HasColumnName("LocationResolvedAtUtc");
+
+                            b1.Property<string>("Source")
+                                .IsRequired()
+                                .HasMaxLength(16)
+                                .HasColumnType("nvarchar(16)")
+                                .HasColumnName("LocationSource");
+
+                            b1.HasKey("UserSessionId");
+
+                            b1.ToTable("UserSessions");
+
+                            b1.WithOwner()
+                                .HasForeignKey("UserSessionId");
+                        });
+
+                    b.Navigation("Location");
                 });
 
             modelBuilder.Entity("TaxVision.Auth.Onboarding.Domain.TenantOnboardings.OnboardingCodeReservation", b =>

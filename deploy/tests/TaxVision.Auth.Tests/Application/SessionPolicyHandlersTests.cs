@@ -114,5 +114,8 @@ public sealed class FakeSessionLifetimeGate(string? endReason = null) : ISession
     public Task<string?> EndReasonAsync(UserSession session, CancellationToken ct = default) =>
         Task.FromResult(endReason);
 
+    public Task<SessionActivityWindow> ActivityWindowAsync(CancellationToken ct = default) =>
+        Task.FromResult(new SessionActivityWindow(DateTime.MinValue, DateTime.MinValue));
+
     public void Invalidate() => Invalidations++;
 }

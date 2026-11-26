@@ -29,7 +29,7 @@ public sealed class ReverseProxyTrustOptions
 
     /// <summary>
     /// Si no se configuró ningún proxy/red explícito, confiar en las redes privadas (Docker) por
-    /// default. <c>false</c> = solo lo explícitamente listado (más estricto).
+    /// default. <c>false</c> = solo loopback mientras no se liste nada (más estricto).
     /// </summary>
     public bool TrustPrivateNetworksByDefault { get; set; } = true;
 }

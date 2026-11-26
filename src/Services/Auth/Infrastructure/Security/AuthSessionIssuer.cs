@@ -25,7 +25,8 @@ public sealed class AuthSessionIssuer(
     IRequestContext request,
     IOptions<RefreshTokenOptions> options,
     IMfaRepository mfa,
-    IOptions<MfaOptions> mfaOptions
+    IOptions<MfaOptions> mfaOptions,
+    ISessionLocationResolver locations
 ) : IAuthSessionIssuer
 {
     private readonly RefreshTokenOptions _options = options.Value;
@@ -54,7 +55,8 @@ public sealed class AuthSessionIssuer(
             deviceName,
             request.UserAgent,
             request.IpAddress,
-            surface
+            surface,
+            locations.Resolve(request.IpAddress)
         );
         await sessions.AddSessionAsync(session, ct);
 

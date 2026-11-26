@@ -352,6 +352,12 @@ internal sealed class NoRolesRepository : IRoleRepository
 }
 
 /// <summary>Tokens opacos predecibles: el hash es el raw con prefijo, así el test puede canjearlos.</summary>
+/// <summary>Sin archivo de ubicación: las sesiones nacen sin ubicación.</summary>
+internal sealed class NoSessionLocationResolver : ISessionLocationResolver
+{
+    public TaxVision.Auth.Domain.Sessions.SessionLocation? Resolve(string? ipAddress) => null;
+}
+
 internal sealed class PredictableTokenService : ISecureTokenService
 {
     private int _next;
@@ -499,7 +505,8 @@ internal sealed class AccountSessionFixture
             // Estas pruebas cubren sesiones y handoffs, no el MFA exigido (MfaEnrollmentSessionTests).
             Microsoft.Extensions.Options.Options.Create(
                 new TaxVision.Auth.Application.Common.MfaOptions { Enforced = false }
-            )
+            ),
+            new NoSessionLocationResolver()
         );
     }
 
