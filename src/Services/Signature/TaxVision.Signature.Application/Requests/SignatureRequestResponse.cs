@@ -1,3 +1,4 @@
+using TaxVision.Signature.Application.Requests.Preparer;
 using TaxVision.Signature.Domain.Requests;
 
 namespace TaxVision.Signature.Application.Requests;
@@ -127,7 +128,10 @@ public sealed record SignatureRequestResponse(
     IReadOnlyList<SignerResponse> Signers,
     // Quién es el preparador (sin PTIN): la vista de staff lo muestra y ofrece cambiarlo si no firmó.
     Guid? PreparerUserId = null,
-    string? PreparerDisplayName = null
+    string? PreparerDisplayName = null,
+    // Datos 8879 ya guardados, para mostrarlos al reabrir el borrador. El PTIN/EFIN solo enmascarado.
+    string? PreparerTitleLabel = null,
+    string? PreparerMaskedIdentifier = null
 )
 {
     public static SignatureRequestResponse From(SignatureRequest request) =>
@@ -174,7 +178,9 @@ public sealed record SignatureRequestResponse(
             request.PreparerFields.Select(MapPreparerField).ToList(),
             request.Signers.Select(MapSigner).ToList(),
             request.Preparer?.UserId,
-            request.Preparer?.DisplayName
+            request.Preparer?.DisplayName,
+            request.Preparer?.TitleLabel,
+            request.Preparer is { } preparer ? PreparerIdentifierMask.Mask(preparer.PtinOrEfin) : null
         );
 
     private static PreparerFieldResponse MapPreparerField(PreparerField field) =>

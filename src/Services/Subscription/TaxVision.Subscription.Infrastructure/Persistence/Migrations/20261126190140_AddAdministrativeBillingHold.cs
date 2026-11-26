@@ -15,35 +15,32 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                 name: "BillingHeldAtUtc",
                 table: "TenantSubscriptions",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "BillingHoldReleasedAtUtc",
                 table: "TenantSubscriptions",
                 type: "datetime2",
-                nullable: true);
+                nullable: true
+            );
 
             migrationBuilder.AddColumn<long>(
                 name: "BillingHoldTenantVersion",
                 table: "TenantSubscriptions",
                 type: "bigint",
-                nullable: true);
+                nullable: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropColumn(
-                name: "BillingHeldAtUtc",
-                table: "TenantSubscriptions");
+            migrationBuilder.DropColumn(name: "BillingHeldAtUtc", table: "TenantSubscriptions");
 
-            migrationBuilder.DropColumn(
-                name: "BillingHoldReleasedAtUtc",
-                table: "TenantSubscriptions");
+            migrationBuilder.DropColumn(name: "BillingHoldReleasedAtUtc", table: "TenantSubscriptions");
 
-            migrationBuilder.DropColumn(
-                name: "BillingHoldTenantVersion",
-                table: "TenantSubscriptions");
+            migrationBuilder.DropColumn(name: "BillingHoldTenantVersion", table: "TenantSubscriptions");
         }
     }
 }

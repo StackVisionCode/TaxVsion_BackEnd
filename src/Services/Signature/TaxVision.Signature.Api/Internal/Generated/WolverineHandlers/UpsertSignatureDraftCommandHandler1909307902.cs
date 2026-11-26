@@ -23,6 +23,15 @@ namespace Internal.Generated.WolverineHandlers
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             
             /*
+            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.IFileMetadataRefRepository Lifetime: Scoped ImplementationType: TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository
+            * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository is not public, so requires service location
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
+            * The service registration for TaxVision.Signature.Application.Abstractions.Sealing.ISignatureCloudStorageClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            */
+            var requestDocumentVerifier = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.IRequestDocumentVerifier>(serviceScope.ServiceProvider);
+            
+            /*
             * Concrete type TaxVision.Signature.Infrastructure.Persistence.Queries.SignatureTemplateFileQuery is not public, so requires service location
             */
             var signatureTemplateFileQuery = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureTemplateFileQuery>(serviceScope.ServiceProvider);
@@ -62,7 +71,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Signature.Application.Requests.Commands.UpsertDraft.UpsertSignatureDraftHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Signature.Application.Requests.Commands.UpsertDraft.UpsertSignatureDraftHandler.Handle(upsertSignatureDraftCommand, signatureRequestRepository, customerEmailProjectionRepository, signatureCategoryResolver, signatureLimitsResolver, signaturePlatformSettingsProvider, unitOfWork, signatureRequestListCacheInvalidator, context, signatureTemplateFileQuery, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Signature.Application.Requests.Commands.UpsertDraft.UpsertSignatureDraftHandler.Handle(upsertSignatureDraftCommand, signatureRequestRepository, customerEmailProjectionRepository, signatureCategoryResolver, signatureLimitsResolver, signaturePlatformSettingsProvider, unitOfWork, signatureRequestListCacheInvalidator, context, signatureTemplateFileQuery, requestDocumentVerifier, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

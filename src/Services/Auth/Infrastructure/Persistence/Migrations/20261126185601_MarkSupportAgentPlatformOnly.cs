@@ -16,7 +16,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 keyColumn: "Id",
                 keyValue: new Guid("a1000000-0000-0000-0000-000000000049"),
                 columns: new[] { "AllowedActorTypes", "IsAssignableByTenant", "PlatformOnly" },
-                values: new object[] { "PlatformAdmin", false, true });
+                values: new object[] { "PlatformAdmin", false, true }
+            );
         }
 
         /// <inheritdoc />
@@ -27,7 +28,8 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                 keyColumn: "Id",
                 keyValue: new Guid("a1000000-0000-0000-0000-000000000049"),
                 columns: new[] { "AllowedActorTypes", "IsAssignableByTenant", "PlatformOnly" },
-                values: new object[] { "TenantEmployee,TenantAdmin,PlatformAdmin", true, false });
+                values: new object[] { "TenantEmployee,TenantAdmin,PlatformAdmin", true, false }
+            );
         }
     }
 }

@@ -30,6 +30,7 @@ public static class UpsertSignatureDraftHandler
         ISignatureRequestListCacheInvalidator listCache,
         IMessageBus bus,
         ISignatureTemplateFileQuery templates,
+        IRequestDocumentVerifier verifier,
         CancellationToken ct
     )
     {
@@ -59,6 +60,15 @@ public static class UpsertSignatureDraftHandler
         var fieldIds = ReconcileFields(request, cmd.Fields, signerIds.Value, documentIds.Value, maxFieldsPerSigner);
         if (fieldIds.IsFailure)
             return Result.Failure<UpsertSignatureDraftResponse>(fieldIds.Error);
+
+        // Como al crear o agregar un documento: si su archivo ya está escaneado se revisa ahora, así no
+        // espera al job de reconciliación. Uno inválido queda rechazado y el wizard lo muestra.
+        foreach (
+            var document in request
+                .Documents.Where(document => document.VerificationStatus == DocumentVerificationStatus.Pending)
+                .ToList()
+        )
+            await verifier.VerifyAsync(request, document.Id, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
         await listCache.InvalidateAsync(cmd.TenantId, ct);
