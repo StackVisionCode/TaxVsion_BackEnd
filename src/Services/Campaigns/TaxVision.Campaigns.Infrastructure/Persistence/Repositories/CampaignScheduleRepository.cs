@@ -1,5 +1,6 @@
 using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Campaigns.Application.RateLimiting;
 using TaxVision.Campaigns.Application.Scheduling.Abstractions;
 using TaxVision.Campaigns.Domain.Runs;
 using TaxVision.Campaigns.Domain.Scheduling;
@@ -55,6 +56,13 @@ public sealed class CampaignScheduleRepository(CampaignsDbContext db) : ICampaig
                 && s.ActiveRunId == null
                 && (s.DeferredUntilUtc == null || s.DeferredUntilUtc <= nowUtc)
                 && (s.LeasedUntilUtc == null || s.LeasedUntilUtc < nowUtc)
+                // Único de una oficina sin el módulo: espera a la reactivación sin ocupar el lote.
+                && (
+                    s.Kind == ScheduleKind.Recurring
+                    || !db
+                        .TenantPlanCodeProjections.IgnoreQueryFilters()
+                        .Any(p => p.TenantId == s.TenantId && !p.EnabledModulesJson.Contains(CampaignsModule.JsonToken))
+                )
             )
             .OrderBy(s => s.NextFireAtUtc)
             .Take(batchSize)

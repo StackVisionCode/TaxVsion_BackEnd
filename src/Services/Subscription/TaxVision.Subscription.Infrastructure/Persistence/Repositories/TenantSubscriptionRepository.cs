@@ -39,7 +39,10 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
         await WithRenewals(db.Subscriptions)
             .IgnoreQueryFilters()
             .Where(s =>
-                s.Status == SubscriptionStatus.Active && s.NextRenewalAtUtc != null && s.NextRenewalAtUtc <= nowUtc
+                s.Status == SubscriptionStatus.Active
+                && s.BillingHeldAtUtc == null
+                && s.NextRenewalAtUtc != null
+                && s.NextRenewalAtUtc <= nowUtc
             )
             .OrderBy(s => s.NextRenewalAtUtc)
             .Take(batchSize)
@@ -107,7 +110,12 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
         await WithRenewals(db.Subscriptions)
             .IgnoreQueryFilters()
             .Where(s =>
-                s.Status == SubscriptionStatus.Active && !s.CancelAtPeriodEnd && s.CurrentPeriodEndUtc <= cutoffUtc
+                s.Status == SubscriptionStatus.Active
+                && !s.CancelAtPeriodEnd
+                && s.CurrentPeriodEndUtc <= cutoffUtc
+                // Retenida, o recién liberada: primero tiene que pasar la renovación.
+                && s.BillingHeldAtUtc == null
+                && (s.BillingHoldReleasedAtUtc == null || s.BillingHoldReleasedAtUtc <= cutoffUtc)
             )
             .OrderBy(s => s.CurrentPeriodEndUtc)
             .Take(batchSize)
@@ -143,6 +151,8 @@ public sealed class TenantSubscriptionRepository(SubscriptionDbContext db) : ISu
                 s.Status == SubscriptionStatus.Active
                 // Una cancelación programada no renueva: se le avisa que TERMINA, no que se le va a cobrar.
                 && !s.CancelAtPeriodEnd
+                // Oficina suspendida por la plataforma: no se le cobra ni se le avisa la renovación.
+                && s.BillingHeldAtUtc == null
                 && s.NextRenewalAtUtc != null
                 && s.NextRenewalAtUtc >= fromUtc
                 && s.NextRenewalAtUtc <= toUtc

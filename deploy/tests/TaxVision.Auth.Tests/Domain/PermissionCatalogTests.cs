@@ -1086,4 +1086,22 @@ public sealed class PermissionCatalogTests
         Assert.Contains(code, PermissionCatalog.SystemTenantAdminRootPermissions());
         Assert.DoesNotContain(code, PermissionCatalog.SystemRoleDefaults(Role.SystemEmployee));
     }
+
+    [Fact]
+    public void Support_agent_is_platform_only_and_never_reaches_a_tenant_role()
+    {
+        // Atender chats de soporte es trabajo de la plataforma: no entra al bundle del admin de oficina.
+        var definition = PermissionCatalog.All.Single(d => d.Code == PermissionCatalog.CommunicationSupportAgent);
+
+        Assert.True(definition.PlatformOnly);
+        Assert.False(definition.IsAssignableByTenant);
+        Assert.DoesNotContain(
+            PermissionCatalog.CommunicationSupportAgent,
+            PermissionCatalog.SystemRoleDefaults(Role.SystemTenantAdmin)
+        );
+        Assert.DoesNotContain(
+            PermissionCatalog.CommunicationSupportAgent,
+            PermissionCatalog.DefaultsFor(UserActorType.TenantAdmin)
+        );
+    }
 }

@@ -29,6 +29,11 @@ namespace Internal.Generated.WolverineHandlers
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var tenantEntitlementModulesReader = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader>(serviceScope.ServiceProvider);
             var messageFetchFailureTracker = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Connectors.Application.Sync.MessageFetchFailureTracker>(serviceScope.ServiceProvider);
             
             /*
@@ -56,7 +61,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Connectors.Application.Sync.ProcessGraphNotificationHandler");
             
             // The actual message execution
-            var outgoing1 = await TaxVision.Connectors.Application.Sync.ProcessGraphNotificationHandler.Handle(processGraphNotificationCommand, providerWatchSubscriptionRepository, tenantEmailAccountRepository, providerSyncCursorRepository, emailProviderClientFactory, _distributedLock, _syncPendingFlag, outboxUnit, correlationContext, ((Microsoft.Extensions.Logging.ILogger)_loggerForMessage), messageFetchFailureTracker, cancellation).ConfigureAwait(false);
+            var outgoing1 = await TaxVision.Connectors.Application.Sync.ProcessGraphNotificationHandler.Handle(processGraphNotificationCommand, providerWatchSubscriptionRepository, tenantEmailAccountRepository, providerSyncCursorRepository, emailProviderClientFactory, _distributedLock, _syncPendingFlag, outboxUnit, correlationContext, ((Microsoft.Extensions.Logging.ILogger)_loggerForMessage), messageFetchFailureTracker, tenantEntitlementModulesReader, cancellation).ConfigureAwait(false);
 
             
             // Outgoing, cascaded message

@@ -1441,7 +1441,10 @@ public static class PermissionCatalog
             CommunicationSupportAgent,
             "communication",
             "Handle support chats as an agent (platform only)",
-            false
+            false,
+            // Solo plataforma: la bandeja de agente vive en la oficina de plataforma.
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
         new(
             // Dual-use (staff Y cliente): el cliente ahora puede LLAMAR a su preparador desde el

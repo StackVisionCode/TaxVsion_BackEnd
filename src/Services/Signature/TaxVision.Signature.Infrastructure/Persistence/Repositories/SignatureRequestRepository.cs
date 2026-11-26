@@ -137,8 +137,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         int maxRemindersPerRequest,
         CancellationToken ct = default
     ) =>
-        await db
-            .SignatureRequests.IgnoreQueryFilters()
+        await WithSignaturesModule(db.SignatureRequests.IgnoreQueryFilters())
             .Include(r => r.Signers)
             .Where(r =>
                 r.Status == SignatureRequestStatus.InProgress
@@ -267,8 +266,7 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
         int batchSize,
         CancellationToken ct = default
     ) =>
-        await db
-            .SignatureRequests.IgnoreQueryFilters()
+        await WithSignaturesModule(db.SignatureRequests.IgnoreQueryFilters())
             .Include(r => r.Signers)
             .Include(r => r.Documents)
             .Where(r =>
@@ -279,4 +277,15 @@ public sealed class SignatureRequestRepository(SignatureDbContext db) : ISignatu
             .OrderBy(r => r.ScheduledSendAtUtc)
             .Take(batchSize)
             .ToListAsync(ct);
+
+    // Jobs que avisan a firmantes: fuera la oficina cuya proyección no trae el módulo; sin proyección se incluye.
+    // Va en la consulta para que los pendientes de una oficina suspendida no tapen a las demás.
+    private const string SignaturesModuleToken = "\"signatures\"";
+
+    private IQueryable<SignatureRequest> WithSignaturesModule(IQueryable<SignatureRequest> requests) =>
+        requests.Where(r =>
+            !db.TenantPlanCodeProjections.Any(p =>
+                p.TenantId == r.TenantId && !p.EnabledModulesJson.Contains(SignaturesModuleToken)
+            )
+        );
 }

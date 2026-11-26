@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Accounts;
 using TaxVision.Connectors.Application.Sync;
@@ -25,6 +26,7 @@ public static class GraphLifecycleNotificationHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         ILogger logger,
+        ITenantEntitlementModulesReader modules,
         CancellationToken ct
     )
     {
@@ -72,6 +74,17 @@ public static class GraphLifecycleNotificationHandler
                     break;
 
                 case GraphLifecycleEvents.Missed:
+                    // Sin el módulo de correo no se sincroniza; renovar y recrear siguen (watch vivo).
+                    if (await MailboxSyncModuleGate.IsPausedAsync(modules, accountResult.Value.TenantId, ct))
+                    {
+                        logger.LogInformation(
+                            "Graph lifecycle event {LifecycleEvent} for account {AccountId} ignored — the tenant has no email module.",
+                            message.LifecycleEvent,
+                            subscription.AccountId
+                        );
+                        break;
+                    }
+
                     // El delta query desde el cursor guardado trae lo que no se notificó.
                     await bus.PublishAsync(
                         new GraphNotificationReceived(message.SubscriptionId, message.CorrelationId)

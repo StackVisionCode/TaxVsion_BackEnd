@@ -2722,11 +2722,12 @@
               }
             },
             "url": {
-              "raw": "{{UrlBase}}/admin/tenants/{{tenantId}}/signature-constraints",
+              "raw": "{{UrlBase}}/signature/admin/tenants/{{tenantId}}/signature-constraints",
               "host": [
                 "{{UrlBase}}"
               ],
               "path": [
+                "signature",
                 "admin",
                 "tenants",
                 "{{tenantId}}",

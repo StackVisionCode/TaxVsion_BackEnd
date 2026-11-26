@@ -2238,15 +2238,15 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000049"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "communication.support.agent",
                             Description = "Handle support chats as an agent (platform only)",
-                            IsAssignableByTenant = true,
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
                             Module = "communication",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {

@@ -58,6 +58,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -84,6 +85,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -124,6 +126,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -189,6 +192,7 @@ public class ProcessGraphNotificationHandlerTests
                 correlation,
                 NullLogger.Instance,
                 FetchFailures.None(),
+                FakeTenantEntitlementModulesReader.Unrestricted,
                 CancellationToken.None
             )
         );
@@ -208,6 +212,7 @@ public class ProcessGraphNotificationHandlerTests
             correlation,
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -327,6 +332,7 @@ public class ProcessGraphNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
     }
@@ -359,6 +365,7 @@ public class ProcessGraphNotificationHandlerTests
             correlation,
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -382,7 +389,47 @@ public class ProcessGraphNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
+    }
+
+    [Fact]
+    public async Task Handle_WhenTenantHasNoEmailModule_AcknowledgesWithoutSyncing()
+    {
+        var account = CreateActiveAccount();
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var subscriptionRepository = new FakeProviderWatchSubscriptionRepository();
+        subscriptionRepository.Subscriptions.Add(
+            ProviderWatchSubscription
+                .Create(account.Id, ProviderCode.Graph, "sub-123", null, Now.AddHours(70), Now)
+                .Value
+        );
+        var client = new FakeEmailProviderClient(ProviderCode.Graph)
+        {
+            OnGetHistory = (_, _) => new HistoryPage(["msg1"], "delta-link-1", false),
+        };
+        var bus = new FakeMessageBus();
+
+        var result = await ProcessGraphNotificationHandler.Handle(
+            new ProcessGraphNotificationCommand("sub-123"),
+            subscriptionRepository,
+            accountRepository,
+            new FakeProviderSyncCursorRepository(),
+            new FakeEmailProviderClientFactory(client),
+            new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
+            new FakeCorrelationContext(),
+            NullLogger.Instance,
+            FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.WithoutEmail,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(client.ReceivedCursors);
+        Assert.Empty(bus.Published);
     }
 }

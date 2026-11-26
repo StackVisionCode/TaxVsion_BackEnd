@@ -34,6 +34,7 @@ public sealed class FireCampaignScheduleHandlerTests
         public FakeMessageBus Bus { get; } = new();
         public CampaignSchedulerOptions Options { get; } = new();
         public FakeCampaignSmsWindowRepository SmsWindows { get; } = new();
+        public FakeTenantEntitlementModulesReader Modules { get; } = new();
         public TaxVision.Campaigns.Application.Scheduling.Abstractions.IOfficeTimeZone Zone { get; set; } =
             UnknownOfficeZone.Instance;
         public Campaign Campaign { get; }
@@ -115,6 +116,7 @@ public sealed class FireCampaignScheduleHandlerTests
                     Wallet,
                     Campaigns,
                     new FakeCorrelationContext(),
+                    Modules,
                     NullLogger<CampaignRunStarter>.Instance
                 ),
                 Bus,
@@ -201,6 +203,65 @@ public sealed class FireCampaignScheduleHandlerTests
     {
         public Task<BuildingBlocks.TimeZones.ResolvedTimeZone> ResolveAsync(Guid tenantId, CancellationToken ct) =>
             Task.FromResult(BuildingBlocks.TimeZones.ResolvedTimeZone.Resolve("America/New_York"));
+    }
+
+    // Oficina sin el módulo: el recurrente salta el slot atrasado y sigue con el próximo, sin run ni cobro.
+    [Fact]
+    public async Task A_recurring_slot_without_the_module_is_skipped_without_run_or_reservation()
+    {
+        var h = new Harness();
+        h.Modules.Modules = ["clients"];
+        h.AddContact("ana@x.com");
+        var slot = DateTime.UtcNow.AddHours(-3);
+        var schedule = h.AddRecurring(slot);
+
+        var result = await h.FireAsync(schedule, ScheduleLease.Take(schedule, DateTime.UtcNow.AddMinutes(2)), slot);
+
+        Assert.True(result.IsFailure);
+        Assert.Empty(h.Runs.Runs);
+        Assert.Empty(h.Wallet.ReservedReferences);
+        Assert.Empty(h.Bus.OfType<CampaignDispatchRequestedIntegrationEvent>());
+        Assert.Equal(ScheduleStatus.Active, schedule.Status);
+        Assert.True(schedule.NextFireAtUtc > DateTime.UtcNow);
+        Assert.Null(schedule.LeaseToken);
+    }
+
+    // Oficina sin el módulo: el único no se consume; espera y sale al reactivar.
+    [Fact]
+    public async Task A_one_time_slot_without_the_module_waits_without_run_or_reservation()
+    {
+        var h = new Harness();
+        h.Modules.Modules = [];
+        h.AddContact("ana@x.com");
+        var slot = DateTime.UtcNow.AddHours(-3);
+        var schedule = h.AddOneTime(slot);
+
+        var result = await h.FireAsync(schedule, ScheduleLease.Take(schedule, DateTime.UtcNow.AddMinutes(2)), slot);
+
+        Assert.True(result.IsFailure);
+        Assert.Empty(h.Runs.Runs);
+        Assert.Empty(h.Wallet.ReservedReferences);
+        Assert.Empty(h.Bus.OfType<CampaignDispatchRequestedIntegrationEvent>());
+        Assert.Equal(ScheduleStatus.Active, schedule.Status);
+        Assert.Equal(slot, schedule.NextFireAtUtc);
+        Assert.Equal(0, schedule.OccurrenceCount);
+    }
+
+    // Con el módulo, o sin proyección todavía, dispara como siempre.
+    [Fact]
+    public async Task A_slot_with_the_module_fires()
+    {
+        var h = new Harness();
+        h.Modules.Modules = ["Campaigns"];
+        h.AddContact("ana@x.com");
+        var slot = DateTime.UtcNow.AddMinutes(-1);
+        var schedule = h.AddOneTime(slot);
+
+        var result = await h.FireAsync(schedule, ScheduleLease.Take(schedule, DateTime.UtcNow.AddMinutes(2)), slot);
+
+        Assert.True(result.IsSuccess);
+        Assert.Single(h.Runs.Runs);
+        Assert.Single(h.Wallet.ReservedReferences);
     }
 
     [Fact]

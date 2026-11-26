@@ -41,6 +41,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -79,6 +80,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -125,6 +127,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -172,6 +175,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -210,6 +214,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -261,6 +266,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -296,6 +302,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -338,6 +345,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
         return (result, client, bus);
@@ -400,6 +408,7 @@ public class ReconcileAccountHandlerTests
                 new FakeCorrelationContext(),
                 NullLogger.Instance,
                 FetchFailures.None(),
+                FakeTenantEntitlementModulesReader.Unrestricted,
                 CancellationToken.None
             );
 
@@ -446,6 +455,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -503,6 +513,7 @@ public class ReconcileAccountHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -511,5 +522,40 @@ public class ReconcileAccountHandlerTests
         var inspect = Assert.Single(bus.Published.OfType<InspectDeliveryReport>());
         Assert.Equal("bounce-1", inspect.ProviderMessageId);
         Assert.Equal(account.TenantId, inspect.TenantId);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTenantHasNoEmailModule_SkipsWithoutSyncing()
+    {
+        // Oficina sin el módulo de correo: la sincronización del buzón queda en pausa.
+        var account = CreateActiveAccount("office@gmail.com", ProviderCode.Gmail);
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail)
+        {
+            OnGetHistory = (_, _) => new HistoryPage(["msg1"], "history-2", false),
+        };
+        var bus = new FakeMessageBus();
+
+        var result = await ReconcileAccountHandler.Handle(
+            new ReconcileAccountCommand(account.Id),
+            accountRepository,
+            new FakeProviderWatchSubscriptionRepository(),
+            new FakeProviderSyncCursorRepository(),
+            new FakeEmailProviderClientFactory(client),
+            new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
+            new FakeCorrelationContext(),
+            NullLogger.Instance,
+            FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.WithoutEmail,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.True(result.Value.Skipped);
+        Assert.Empty(client.ReceivedCursors);
+        Assert.Empty(bus.Published);
     }
 }

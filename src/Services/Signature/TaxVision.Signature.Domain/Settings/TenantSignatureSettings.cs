@@ -117,7 +117,7 @@ public sealed class TenantSignatureSettings : BaseEntity
     public DeliveryPolicy Delivery { get; private set; } = default!;
 
     /// <summary>
-    /// Excepción de PlatformAdmin sobre lo que vende el plan (PUT /admin/tenants/{id}/signature-constraints).
+    /// Excepción de PlatformAdmin sobre lo que vende el plan (PUT /signature/admin/tenants/{id}/signature-constraints).
     /// Nunca nulo: sin excepción es <see cref="SignaturePlanConstraints.None()"/> y rige el plan.
     /// </summary>
     public SignaturePlanConstraints PlanConstraints { get; private set; } = default!;

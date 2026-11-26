@@ -3966,7 +3966,7 @@ crean automaticamente al recibir `TenantCreatedIntegrationEvent`).
 
 | Verbo y ruta | Permiso |
 | --- | --- |
-| PUT `/admin/tenants/{tenantId}/signature-constraints` | `signature.constraints.manage` |
+| GET/PUT `/signature/admin/tenants/{tenantId}/signature-constraints` | `signature.constraints.manage` |
 
 Endpoint exclusivo de la **plataforma** (PlatformAdmin). Establece los techos de plan
 para un tenant. La configuracion existente del tenant se auto-corrige si excede los

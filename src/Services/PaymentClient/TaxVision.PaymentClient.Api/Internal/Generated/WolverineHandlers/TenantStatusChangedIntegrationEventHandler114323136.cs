@@ -20,16 +20,17 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            var tenantRecurringPaymentRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.PaymentClient.Application.Abstractions.ITenantRecurringPaymentRepository>(serviceScope.ServiceProvider);
             var tenantRegistry = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.PaymentClient.Application.Abstractions.ITenantRegistry>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var tenantStatusChangedIntegrationEvent = (BuildingBlocks.Messaging.TenantStatusChangedIntegrationEvent)context.Envelope.Message;
 
@@ -52,7 +53,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.PaymentClient.Application.Tenants.IntegrationEvents.TenantStatusChangedConsumer");
                 
                 // The actual message execution
-                await TaxVision.PaymentClient.Application.Tenants.IntegrationEvents.TenantStatusChangedConsumer.Handle(tenantStatusChangedIntegrationEvent, tenantRegistry, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
+                await TaxVision.PaymentClient.Application.Tenants.IntegrationEvents.TenantStatusChangedConsumer.Handle(tenantStatusChangedIntegrationEvent, tenantRegistry, tenantRecurringPaymentRepository, unitOfWork, correlationContext, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

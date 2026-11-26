@@ -46,6 +46,10 @@ public static class ResumeCreatedCampaignRunHandler
             return;
         }
 
+        // Oficina sin el módulo: sin reservar ni despachar; el run sigue en Created hasta la reactivación.
+        if (!await starter.HasCampaignsModuleAsync(run.TenantId, ct))
+            return;
+
         // Lo retoma el barrido, no una persona.
         var funding = await starter.ReserveAutomaticAsync(
             run.TenantId,

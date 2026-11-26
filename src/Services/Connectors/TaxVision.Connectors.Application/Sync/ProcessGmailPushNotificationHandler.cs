@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Abstractions;
@@ -33,6 +34,7 @@ public static class ProcessGmailPushNotificationHandler
         ICorrelationContext correlation,
         ILogger logger,
         MessageFetchFailureTracker fetchFailures,
+        ITenantEntitlementModulesReader modules,
         CancellationToken ct
     )
     {
@@ -51,6 +53,15 @@ public static class ProcessGmailPushNotificationHandler
                 "Gmail push for account {AccountId} ignored — account is {Status}.",
                 account.Id,
                 account.Status
+            );
+            return Result.Success();
+        }
+
+        if (await MailboxSyncModuleGate.IsPausedAsync(modules, account.TenantId, ct))
+        {
+            logger.LogInformation(
+                "Gmail push for account {AccountId} ignored — the tenant has no email module.",
+                account.Id
             );
             return Result.Success();
         }

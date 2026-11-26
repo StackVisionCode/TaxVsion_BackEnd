@@ -1,6 +1,7 @@
 using System.Reflection;
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Common;
 using Microsoft.EntityFrameworkCore;
@@ -85,6 +86,31 @@ public sealed class OverdueTaskSweepJobTests
         Assert.Empty(recorder.Pending);
     }
 
+    // Oficina sin el módulo: la tarea queda avisada pero el aviso no sale, ni ahora ni al reactivar.
+    [Fact]
+    public async Task An_office_without_the_module_gets_its_tasks_marked_without_a_notice()
+    {
+        var databaseName = await SeedAsync(2);
+        await using var db = NewContext(databaseName);
+        var (outbox, recorder) = RecordingDbContextOutbox.Create(db);
+        var tasks = await db.Tasks.IgnoreQueryFilters().ToListAsync();
+        var suspended = tasks[0];
+        var withoutProjection = tasks[1];
+        var modules = new ModulesByTenant(new() { [suspended.TenantId] = ["wallet"] });
+
+        var announced = await AnnounceChunkAsync(db, outbox, new RecordingTaskMetrics(), modules);
+
+        Assert.Equal(2, announced);
+        Assert.Equal(1, recorder.Saves);
+        var notice = Assert.Single(recorder.Flushed.OfType<TaskOverdueIntegrationEvent>());
+        Assert.Equal(withoutProjection.Id, notice.TaskId);
+        await using var check = NewContext(databaseName);
+        Assert.All(
+            await check.Tasks.IgnoreQueryFilters().ToListAsync(),
+            task => Assert.NotNull(task.OverdueNotifiedAtUtc)
+        );
+    }
+
     [Fact]
     public async Task Job_publishes_with_a_correlation_id()
     {
@@ -97,6 +123,7 @@ public sealed class OverdueTaskSweepJobTests
             .AddSingleton(outbox)
             .AddScoped<ICorrelationContext, CorrelationContext>()
             .AddSingleton<ITaskMetrics>(new RecordingTaskMetrics())
+            .AddSingleton<ITenantEntitlementModulesReader>(new ModulesByTenant(new()))
             .BuildServiceProvider();
 
         var (job, type) = NewJob(services);
@@ -124,7 +151,8 @@ public sealed class OverdueTaskSweepJobTests
     private static async Task<int> AnnounceChunkAsync(
         TasksDbContext db,
         IDbContextOutbox<TasksDbContext> outbox,
-        RecordingTaskMetrics metrics
+        RecordingTaskMetrics metrics,
+        ITenantEntitlementModulesReader? modules = null
     )
     {
         var tasks = await db.Tasks.IgnoreQueryFilters().ToListAsync();
@@ -133,6 +161,7 @@ public sealed class OverdueTaskSweepJobTests
             .AddSingleton(outbox)
             .AddSingleton<ICorrelationContext>(new NoOpCorrelationContext())
             .AddSingleton<ITaskMetrics>(metrics)
+            .AddSingleton(modules ?? new ModulesByTenant(new()))
             .BuildServiceProvider();
 
         var (job, type) = NewJob(services);
@@ -196,6 +225,14 @@ public sealed class OverdueTaskSweepJobTests
             targetMethod?.Name == nameof(ITaskRepository.ListOverdueAsync)
                 ? Task.FromResult(_tasks)
                 : throw new NotSupportedException(targetMethod?.Name);
+    }
+
+    // Sin fila para el tenant = sin proyección (null).
+    private sealed class ModulesByTenant(Dictionary<Guid, IReadOnlyList<string>> modules)
+        : ITenantEntitlementModulesReader
+    {
+        public Task<IReadOnlyList<string>?> GetEnabledModulesAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(modules.GetValueOrDefault(tenantId));
     }
 
     private sealed class NoTenantContext : ITenantContext

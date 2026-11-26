@@ -20,7 +20,16 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var tenantEntitlementModulesReader = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Wallet.Infrastructure.TimeZones.OfficeTimeZone is not public, so requires service location
@@ -28,14 +37,10 @@ namespace Internal.Generated.WolverineHandlers
             var officeTimeZone = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Wallet.Application.Settings.Abstractions.IOfficeTimeZone>(serviceScope.ServiceProvider);
             var walletSettingsRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Wallet.Application.Settings.Abstractions.IWalletSettingsRepository>(serviceScope.ServiceProvider);
             var walletRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Wallet.Application.Wallet.Abstractions.IWalletRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            
-            /*
-            * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
-            */
-            var correlationContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Common.ICorrelationContext>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var walletBalanceChangedDomainEvent = (TaxVision.Wallet.Domain.Wallet.Events.WalletBalanceChangedDomainEvent)context.Envelope.Message;
 
@@ -60,7 +65,7 @@ namespace Internal.Generated.WolverineHandlers
 
                 
                 // The actual message execution
-                var outgoing2 = await TaxVision.Wallet.Application.Settings.DomainEvents.WalletBalanceThresholdsHandler.Handle(walletBalanceChangedDomainEvent, walletRepository, walletSettingsRepository, officeTimeZone, unitOfWork, context.Envelope, cancellation).ConfigureAwait(false);
+                var outgoing2 = await TaxVision.Wallet.Application.Settings.DomainEvents.WalletBalanceThresholdsHandler.Handle(walletBalanceChangedDomainEvent, walletRepository, walletSettingsRepository, officeTimeZone, tenantEntitlementModulesReader, unitOfWork, context.Envelope, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

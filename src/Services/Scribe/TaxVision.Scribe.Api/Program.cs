@@ -59,6 +59,11 @@ builder.Services.AddSessionDenylist(builder.Configuration);
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 builder.Services.AddTaxVisionOpenTelemetry(builder.Configuration, "scribe-service");
 
+// Endpoints M2M (render): solo tokens de servicio. Un operador de plataforma no los usa.
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
 // Autorización por permiso ([HasPermission("scribe.*")]); los admins pasan siempre.
 // BuildingBlocks.ActorTypeAuthorization — Fase 3 del plan de autorización por actor type,
 // reemplaza a la copia local que tenía este servicio.

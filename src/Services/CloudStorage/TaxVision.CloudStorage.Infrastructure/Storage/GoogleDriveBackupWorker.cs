@@ -1,3 +1,4 @@
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.TimeZones;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -73,6 +74,10 @@ public sealed class CloudStorageBackupWorker(IServiceScopeFactory scopes, ILogge
             try
             {
                 using var tenantScope = scopes.CreateScope();
+                // Oficina sin el módulo: ni candado ni backup marcado como hecho; corre al reactivar.
+                var modules = tenantScope.ServiceProvider.GetRequiredService<ITenantEntitlementModulesReader>();
+                if (!await modules.HasModuleAsync(item.TenantId, StoragePolicyDispatcher.RequiredModule, ct))
+                    continue;
                 // Una réplica por oficina: si otra ya corre este backup, esta pasada lo salta.
                 await using var held = await tenantScope
                     .ServiceProvider.GetRequiredService<SqlTenantBackupLock>()

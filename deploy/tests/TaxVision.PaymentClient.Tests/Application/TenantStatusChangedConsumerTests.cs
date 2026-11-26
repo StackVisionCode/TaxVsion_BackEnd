@@ -5,7 +5,9 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Tenancy;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Application.Tenants.IntegrationEvents;
+using TaxVision.PaymentClient.Domain.Recurring;
 using TaxVision.PaymentClient.Domain.Tenants;
+using TaxVision.PaymentClient.Domain.ValueObjects;
 
 namespace TaxVision.PaymentClient.Tests.Application;
 
@@ -15,6 +17,8 @@ public sealed class TenantStatusChangedConsumerTests
     private readonly Tenant _tenant = Tenant
         .Register(Guid.NewGuid(), "Acme Tax Office", "acme-tax", TenantKind.Customer, "Etc/UTC", DateTime.UtcNow)
         .Value;
+
+    private readonly RecurringPlans _plans = new();
 
     [Fact]
     public async Task Handle_OlderVersionAfterNewer_IsIgnored()
@@ -70,6 +74,66 @@ public sealed class TenantStatusChangedConsumerTests
         Assert.False(_tenant.IsActive);
     }
 
+    [Fact]
+    public async Task Handle_Reactivation_SkipsThePeriodsDueDuringTheSuspension()
+    {
+        // L2-01: al reactivar no se cobran en cadena los períodos atrasados; se cobra desde el siguiente.
+        await HandleAsync(Status(isActive: false, version: 5));
+        var plan = MonthlyPlanStartingAt(DateTime.UtcNow.AddMonths(-3).AddDays(-1));
+        var overdue = plan.Schedules.Single();
+        _plans.Plans.Add(plan);
+
+        await HandleAsync(Status(isActive: true, version: 6));
+
+        Assert.Equal(RecurringScheduleStatus.Skipped, overdue.Status);
+        Assert.DoesNotContain(
+            plan.Schedules,
+            s => s.Status == RecurringScheduleStatus.Pending && s.ScheduledDate <= DateTime.UtcNow
+        );
+        var next = Assert.Single(plan.Schedules, s => s.Status == RecurringScheduleStatus.Pending);
+        Assert.True(next.ScheduledDate > DateTime.UtcNow);
+        Assert.Equal(4, plan.Schedules.Count(s => s.Status == RecurringScheduleStatus.Skipped));
+    }
+
+    [Fact]
+    public async Task Handle_StatusChangeOfAnActiveTenant_LeavesDueSchedulesAlone()
+    {
+        // Solo la reactivación omite períodos; un aviso repetido de una oficina activa no toca nada.
+        await HandleAsync(Status(isActive: true, version: 5));
+        var plan = MonthlyPlanStartingAt(DateTime.UtcNow.AddDays(-1));
+        _plans.Plans.Add(plan);
+
+        await HandleAsync(Status(isActive: true, version: 6));
+
+        Assert.Equal(RecurringScheduleStatus.Pending, plan.Schedules.Single().Status);
+    }
+
+    private TenantRecurringPayment MonthlyPlanStartingAt(DateTime startDate)
+    {
+        var plan = TenantRecurringPayment
+            .Create(
+                _tenant.Id,
+                Guid.NewGuid(),
+                PaymentProviderCode.Stripe,
+                "pm_123",
+                Money.Create(1999, "USD").Value,
+                PaymentPurpose.Create(PaymentPurposeKind.RetainerPayment, "plan-001").Value,
+                BillingCycle.Monthly,
+                null,
+                startDate,
+                null,
+                null,
+                RetryPolicy.Default,
+                null,
+                null,
+                Guid.Empty,
+                startDate
+            )
+            .Value;
+        plan.GenerateSchedules(1, startDate);
+        return plan;
+    }
+
     private TenantStatusChangedIntegrationEvent Status(bool isActive, long? version) =>
         new()
         {
@@ -84,6 +148,7 @@ public sealed class TenantStatusChangedConsumerTests
         TenantStatusChangedConsumer.Handle(
             evt,
             new ApplyingRegistry(_tenant),
+            _plans,
             new NoSaves(),
             new NoOpCorrelationContext(),
             CancellationToken.None
@@ -116,6 +181,50 @@ public sealed class TenantStatusChangedConsumerTests
             tenant.ApplyStatusChange(status, isActive, nowUtc, tenantVersion);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class RecurringPlans : ITenantRecurringPaymentRepository
+    {
+        public List<TenantRecurringPayment> Plans { get; } = [];
+
+        public Task<IReadOnlyList<TenantRecurringPayment>> GetActiveWithDuePendingSchedulesByTenantAsync(
+            Guid tenantId,
+            DateTime cutoffUtc,
+            CancellationToken ct = default
+        ) =>
+            Task.FromResult<IReadOnlyList<TenantRecurringPayment>>(
+                Plans
+                    .Where(p =>
+                        p.TenantId == tenantId
+                        && p.Status == RecurringStatus.Active
+                        && p.Schedules.Any(s =>
+                            s.Status == RecurringScheduleStatus.Pending && s.ScheduledDate <= cutoffUtc
+                        )
+                    )
+                    .ToList()
+            );
+
+        public Task<TenantRecurringPayment?> GetByIdAsync(Guid id, Guid tenantId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<TenantRecurringPayment>> SearchByTenantAsync(
+            Guid tenantId,
+            Guid? taxpayerId,
+            RecurringStatus? status,
+            int page,
+            int pageSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<TenantRecurringPayment>> GetWithDueSchedulesAsync(
+            RecurringScheduleStatus scheduleStatus,
+            DateTime cutoffUtc,
+            int batchSize,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task AddAsync(TenantRecurringPayment plan, CancellationToken ct = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class NoSaves : IUnitOfWork

@@ -45,6 +45,10 @@ public sealed class TenantAddOnRepository(SubscriptionDbContext db) : ITenantAdd
                 && addOn.AutoRenew
                 && addOn.NextRenewalAtUtc != null
                 && addOn.NextRenewalAtUtc <= nowUtc
+                // Oficina suspendida por la plataforma: sus add-ons esperan.
+                && !db
+                    .Subscriptions.IgnoreQueryFilters()
+                    .Any(s => s.TenantId == addOn.TenantId && s.BillingHeldAtUtc != null)
             )
             .OrderBy(addOn => addOn.NextRenewalAtUtc)
             .Take(batchSize)

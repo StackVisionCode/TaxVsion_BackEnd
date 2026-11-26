@@ -54,7 +54,13 @@ public sealed class StartCampaignRunHandlerTests
         );
 
     private CampaignRunStarter Starter() =>
-        new(_wallet, _campaigns, new FakeCorrelationContext(), NullLogger<CampaignRunStarter>.Instance);
+        new(
+            _wallet,
+            _campaigns,
+            new FakeCorrelationContext(),
+            new FakeTenantEntitlementModulesReader(),
+            NullLogger<CampaignRunStarter>.Instance
+        );
 
     private Task ResumeAsync(Guid runId) =>
         ResumeCreatedCampaignRunHandler.Handle(

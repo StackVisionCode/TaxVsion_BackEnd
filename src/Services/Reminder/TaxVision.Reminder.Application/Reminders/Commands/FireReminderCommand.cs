@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Reminder.Application.Reminders.Abstractions;
 using TaxVision.Reminder.Domain.Reminders;
@@ -41,6 +42,8 @@ public sealed record FireReminderCommand(Guid TenantId, Guid ReminderId, TimeSpa
 /// </summary>
 public static class FireReminderHandler
 {
+    private const string PlannerModule = "planner";
+
     public static async Task Handle(
         FireReminderCommand command,
         IReminderRepository reminders,
@@ -48,6 +51,7 @@ public static class FireReminderHandler
         IMessageBus bus,
         ICorrelationContext correlation,
         IReminderMetrics metrics,
+        ITenantEntitlementModulesReader modules,
         ILogger<ReminderAggregate> logger,
         CancellationToken ct
     )
@@ -70,6 +74,20 @@ public static class FireReminderHandler
         var nowUtc = DateTime.UtcNow;
         var delay = nowUtc - reminder.Schedule.FireAtUtc;
         var statusBeforeFiring = reminder.Status;
+
+        // Oficina sin el módulo: queda perdido sin avisar, así la reconciliación no lo reagenda en bucle.
+        if (!await modules.HasModuleAsync(command.TenantId, PlannerModule, ct))
+        {
+            if (reminder.MarkMissed(nowUtc).IsSuccess)
+                await unitOfWork.SaveChangesAsync(ct);
+            logger.LogInformation(
+                "Reminder {ReminderId} of tenant {TenantId} was not fired: the office lacks the {Module} module.",
+                command.ReminderId,
+                command.TenantId,
+                PlannerModule
+            );
+            return;
+        }
 
         var result = reminder.FireOrMiss(nowUtc, command.MisfireGrace);
         if (result.IsFailure)

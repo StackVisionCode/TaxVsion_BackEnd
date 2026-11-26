@@ -264,6 +264,9 @@ public sealed class CampaignRunDomainEventIntegrationTests : IAsyncLifetime
                 services.AddSingleton<ICampaignCustomerAssignmentReader>(new FakeCampaignCustomerAssignmentReader());
                 services.AddSingleton<IWalletSpendClient>(new FakeWalletSpendClient());
                 services.AddSingleton<ICorrelationContext>(new FakeCorrelationContext());
+                services.AddSingleton<BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader>(
+                    new FakeTenantEntitlementModulesReader()
+                );
             })
             .UseWolverine(options =>
             {

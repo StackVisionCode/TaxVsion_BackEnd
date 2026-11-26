@@ -16,6 +16,7 @@ public sealed class WalletBalanceThresholdsHandlerTests
     private readonly FakeWalletRepository _wallets = new();
     private readonly FakeWalletSettingsRepository _settings = new();
     private readonly FakeUnitOfWork _unitOfWork = new();
+    private readonly FakeTenantEntitlementModulesReader _modules = new();
 
     [Fact]
     public async Task Handle_BalanceAboveThresholdWithoutSettings_DoesNothing()
@@ -104,6 +105,45 @@ public sealed class WalletBalanceThresholdsHandlerTests
         Assert.Equal(2_500, notice.AmountCents);
     }
 
+    // Oficina sin el módulo: sin recarga automática (no se cobra la tarjeta) y sin consumir el cruce del umbral.
+    [Fact]
+    public async Task Handle_WithoutTheModule_DoesNotRechargeAndRechargesOnceReactivated()
+    {
+        SeedWallet(10_000_000);
+        var settings = SeedActiveAutoRecharge(thresholdMicros: 20_000_000);
+        _modules.Modules = ["clients"];
+
+        var suspended = await HandleAsync();
+
+        Assert.Empty(suspended);
+        Assert.Empty(_wallets.TopUps);
+        Assert.Equal(0, settings.RechargesOn(DateOnly.FromDateTime(DateTime.UtcNow)));
+        Assert.Equal(0, _unitOfWork.SaveCount);
+
+        _modules.Modules = ["wallet"];
+        var reactivated = await HandleAsync();
+
+        Assert.Single(_wallets.TopUps);
+        Assert.Single(reactivated.OfType<WalletTopUpDueIntegrationEvent>());
+    }
+
+    // Oficina sin el módulo: sin aviso de saldo bajo; sale en el primer cambio de saldo tras reactivar.
+    [Fact]
+    public async Task Handle_WithoutTheModule_DoesNotPublishTheLowBalanceNotice()
+    {
+        SeedWallet(4_000_000);
+        _modules.Modules = [];
+
+        var suspended = await HandleAsync();
+
+        Assert.Empty(suspended);
+        Assert.Empty(_settings.Settings);
+        Assert.Equal(0, _unitOfWork.SaveCount);
+
+        _modules.Modules = null;
+        Assert.IsType<WalletLowBalanceIntegrationEvent>(Assert.Single(await HandleAsync()));
+    }
+
     private void SeedWallet(long availableMicros)
     {
         var wallet = WalletAggregate.Create(_tenantId).Value;
@@ -133,6 +173,7 @@ public sealed class WalletBalanceThresholdsHandlerTests
                 _wallets,
                 _settings,
                 new FakeOfficeTimeZone(),
+                _modules,
                 _unitOfWork,
                 new Envelope { CorrelationId = "corr-1" },
                 CancellationToken.None

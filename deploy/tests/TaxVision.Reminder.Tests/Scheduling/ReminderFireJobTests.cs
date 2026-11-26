@@ -66,6 +66,7 @@ public sealed class ReminderFireJobTests
             handlerBus,
             new CorrelationContext(),
             new RecordingReminderMetrics(),
+            new FireReminderHandlerTests.FixedModules(["planner"]),
             NullLogger<ReminderAggregate>.Instance,
             CancellationToken.None
         );
