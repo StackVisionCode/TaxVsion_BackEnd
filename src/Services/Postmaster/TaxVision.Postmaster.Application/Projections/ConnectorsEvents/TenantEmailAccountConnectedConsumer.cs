@@ -25,10 +25,20 @@ public static class TenantEmailAccountConnectedConsumer
     {
         using (correlation.Push(evt.CorrelationId))
         {
+            // Dueño según lo que declara Connectors; un aviso viejo o contradictorio queda por reconciliar.
+            var (ownershipKnown, ownerUserId) = MailboxOwnership.Resolve(evt.OwnerUserId, evt.IsOffice);
             var existing = await repository.GetByAccountIdAsync(evt.TenantId, evt.AccountId, ct);
             if (existing is not null)
             {
-                if (!existing.ReconnectAt(evt.ProviderCode, evt.EmailAddress, evt.ConnectedAtUtc))
+                if (
+                    !existing.ReconnectAt(
+                        evt.ProviderCode,
+                        evt.EmailAddress,
+                        evt.ConnectedAtUtc,
+                        ownerUserId,
+                        ownershipKnown
+                    )
+                )
                 {
                     logger.LogInformation(
                         "ConnectedMailbox {AccountId}: connected event from {ConnectedAtUtc} is older than the last update; ignored.",
@@ -51,7 +61,9 @@ public static class TenantEmailAccountConnectedConsumer
                     evt.AccountId,
                     evt.ProviderCode,
                     evt.EmailAddress,
-                    evt.ConnectedAtUtc
+                    evt.ConnectedAtUtc,
+                    ownerUserId,
+                    ownershipKnown
                 );
                 await repository.AddAsync(account, ct);
                 logger.LogInformation(

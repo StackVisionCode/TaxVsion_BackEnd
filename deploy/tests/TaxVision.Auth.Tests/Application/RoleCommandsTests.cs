@@ -253,6 +253,7 @@ public sealed class RoleCommandsTests
     {
         public string? IpAddress => null;
         public string? UserAgent => null;
+        public string? ActorType => null;
     }
 
     private sealed class FakeCorrelationContext : ICorrelationContext

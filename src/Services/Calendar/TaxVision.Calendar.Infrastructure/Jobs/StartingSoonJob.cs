@@ -37,6 +37,7 @@ internal sealed class StartingSoonJob(
 ) : BackgroundService
 {
     private const string UniqueConstraintCode = "Persistence.UniqueConstraint";
+    private const string PlannerModuleToken = "\"planner\"";
 
     private TimeSpan Interval => options.Value.Interval;
     private TimeSpan Lead => options.Value.Lead;
@@ -142,6 +143,12 @@ internal sealed class StartingSoonJob(
     internal static IQueryable<Appointment> Candidates(CalendarDbContext context, DateTime fromUtc, DateTime toUtc) =>
         AppointmentRepository
             .ListStartingWithin(context, fromUtc, toUtc)
+            // Oficina sin el módulo: sin aviso. Sin proyección se avisa igual.
+            .Where(a =>
+                !context.TenantPlanCodeProjections.Any(p =>
+                    p.TenantId == a.TenantId && !p.EnabledModulesJson.Contains(PlannerModuleToken)
+                )
+            )
             .Include(a => a.Attendees)
             .Include(a => a.Exceptions);
 

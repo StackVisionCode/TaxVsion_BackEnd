@@ -490,6 +490,7 @@ public sealed class SetUserPermissionOverridesHandlerTests
     {
         public string? IpAddress => "203.0.113.10";
         public string? UserAgent => "test-agent";
+        public string? ActorType => null;
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

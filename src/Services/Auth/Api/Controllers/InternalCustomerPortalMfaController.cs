@@ -1,4 +1,6 @@
+using System.Text.Json.Serialization;
 using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Common;
 using BuildingBlocks.Results;
 using BuildingBlocks.Web.ActorTypeAuthorization;
@@ -6,23 +8,41 @@ using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TaxVision.Auth.Api.Security;
+using TaxVision.Auth.Application.Credentials.Administration;
+using TaxVision.Auth.Application.Customers;
 using TaxVision.Auth.Application.Customers.Commands;
+using TaxVision.Auth.Domain.Credentials;
 using Wolverine;
 
 namespace TaxVision.Auth.Api.Controllers;
 
 /// <summary>
 /// M2M-only: Customer consulta y resetea el segundo factor del portal de un cliente para la oficina. El
-/// permiso y la visibilidad del cliente los comprobó Customer antes de llamar.
+/// permiso, la visibilidad del cliente y el step-up los comprobó Customer; Auth vuelve a validar permiso, ventana de
+/// reautenticación y política con quien lo pidió, leído del token reenviado (SR-03).
 /// </summary>
 [ApiController]
 [Route("internal/tenants/{tenantId:guid}/customers/{customerId:guid}/portal-mfa")]
 [Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
-public sealed class InternalCustomerPortalMfaController(IMessageBus bus, ICorrelationContext correlation)
-    : ControllerBase
+public sealed class InternalCustomerPortalMfaController(
+    IMessageBus bus,
+    ICorrelationContext correlation,
+    PortalCredentialActorGate actors
+) : ControllerBase
 {
-    public sealed record ResetPortalMfaRequest(Guid RequestedByUserId);
+    /// <summary>Campos aditivos (03 §14.3). <see cref="ReauthenticatedAtUtc"/> ya no se usa: el step-up sale del token del actor (SR-03).</summary>
+    public sealed record ResetPortalMfaRequest(
+        Guid RequestedByUserId,
+        DateTime? ReauthenticatedAtUtc = null,
+        string? ActorIpAddress = null,
+        string? ActorUserAgent = null,
+        [property: JsonConverter(typeof(ReasonCodeJsonConverter))]
+            CredentialAdministrationReasonCode? ReasonCode = null,
+        string? ReasonNote = null,
+        bool? IdentityConfirmed = null
+    );
 
     [HttpGet]
     [RateLimitExempt("M2M ServiceOnly — lo invoca Customer al mostrar la ficha; nunca expuesto al Gateway público.")]
@@ -54,12 +74,34 @@ public sealed class InternalCustomerPortalMfaController(IMessageBus bus, ICorrel
     {
         if (!User.TryGetTenantId(out var tokenTenantId) || tokenTenantId != tenantId)
             return Forbid();
+        var actor = await actors.CheckAsync(
+            Request,
+            tenantId,
+            customerId,
+            request.RequestedByUserId,
+            CustomersPermissions.PortalMfaReset,
+            OfficeCredentialAdministration.ResetMfaModality,
+            requireReauthentication: true,
+            request.ActorIpAddress,
+            request.ActorUserAgent,
+            ct
+        );
+        if (actor.IsFailure)
+            return StatusCode(actor.Error.ToHttpStatusCode(), actor.Error);
 
         var result = await bus.InvokeAsync<Result<ResetCustomerPortalMfaResult>>(
             new ResetCustomerPortalMfaCommand(
                 tenantId,
                 customerId,
-                request.RequestedByUserId,
+                new PortalCredentialCommandEnvelope(
+                    actor.Value.UserId,
+                    actor.Value.ReauthenticatedAtUtc!.Value,
+                    request.ActorIpAddress,
+                    request.ActorUserAgent,
+                    request.ReasonCode,
+                    request.ReasonNote,
+                    request.IdentityConfirmed
+                ),
                 correlation.CorrelationId
             ),
             ct

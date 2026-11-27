@@ -151,6 +151,10 @@ builder.Services.AddScoped<IResolvedTenantContext, ResolvedTenantContext>();
 
 builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 
+// SR-03: token del actor reenviado por Customer en los M2M de credenciales del portal.
+builder.Services.AddScoped<TaxVision.Auth.Api.Security.ForwardedActorTokenValidator>();
+builder.Services.AddScoped<TaxVision.Auth.Api.Security.PortalCredentialActorGate>();
+
 // Autorización por permisos: [HasPermission("users.invite")] ⇒ claim "perm" (BuildingBlocks.
 // ActorTypeAuthorization — Fase 3 del plan de autorización por actor type, reemplaza a la copia
 // local que tenía este servicio).
@@ -649,6 +653,9 @@ app.UseAuthentication();
 
 // Token solo-MFA: solo puede configurar el segundo factor; todo lo demás da 403 (deniega por defecto).
 app.UseMiddleware<MfaEnrollmentGateMiddleware>();
+
+// Token de cambio obligatorio: solo cambiar la contraseña y cerrar sesión (03 §9.1).
+app.UseMiddleware<PasswordChangeGateMiddleware>();
 
 // RBAC Fase 5 — setea BuildingBlocks.Web.Tenancy.TenantContext desde el JWT, para que el
 // HasQueryFilter global de AuthDbContext tenga tenant listo. Distinto de

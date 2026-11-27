@@ -414,6 +414,18 @@ public static partial class RateLimitPolicyCatalog
         RateLimitAlgorithm.FixedWindow
     );
 
+    // Credenciales de empleados por la oficina (reset link, cambio obligatorio, asegurar, MFA): N por usuario, 429 auditado.
+    public static readonly RateLimitPolicyDefinition AuthCredentialAdmin = Define(
+        "auth.n.credential_admin",
+        RateLimitCategory.N,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 20,
+        windowSeconds: 3600,
+        RateLimitAlgorithm.FixedWindow,
+        auditBlocked: true
+    );
+
     // TermsVersionsController.Publish — PlatformAdmin-only, sube el documento legal vigente.
     public static readonly RateLimitPolicyDefinition AuthTermsVersionPublish = Define(
         "auth.g.terms_version_publish",

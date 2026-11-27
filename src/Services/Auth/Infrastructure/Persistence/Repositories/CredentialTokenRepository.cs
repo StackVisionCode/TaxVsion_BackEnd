@@ -34,6 +34,26 @@ public sealed class CredentialTokenRepository(AuthDbContext db) : ICredentialTok
             )
             .ToListAsync(ct);
 
+    public Task<PasswordResetToken?> GetLatestPasswordResetAsync(Guid userId, CancellationToken ct = default) =>
+        db
+            .PasswordResetTokens.IgnoreQueryFilters()
+            .Where(token => token.UserId == userId)
+            .OrderByDescending(token => token.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+    public Task<int> CountOfficePasswordResetsSinceAsync(
+        Guid userId,
+        DateTime sinceUtc,
+        CancellationToken ct = default
+    ) =>
+        db
+            .PasswordResetTokens.IgnoreQueryFilters()
+            .CountAsync(
+                token =>
+                    token.UserId == userId && token.Origin != ResetOrigin.SelfService && token.CreatedAtUtc >= sinceUtc,
+                ct
+            );
+
     public async Task AddEmailVerificationAsync(EmailVerificationToken token, CancellationToken ct = default) =>
         await db.EmailVerificationTokens.AddAsync(token, ct);
 
@@ -42,6 +62,13 @@ public sealed class CredentialTokenRepository(AuthDbContext db) : ICredentialTok
         string tokenHash,
         CancellationToken ct = default
     ) => db.EmailVerificationTokens.IgnoreQueryFilters().FirstOrDefaultAsync(token => token.TokenHash == tokenHash, ct);
+
+    public Task<EmailVerificationToken?> GetLatestEmailVerificationAsync(Guid userId, CancellationToken ct = default) =>
+        db
+            .EmailVerificationTokens.IgnoreQueryFilters()
+            .Where(token => token.UserId == userId)
+            .OrderByDescending(token => token.CreatedAtUtc)
+            .FirstOrDefaultAsync(ct);
 
     public async Task AddPhoneVerificationAsync(PhoneVerificationToken token, CancellationToken ct = default) =>
         await db.PhoneVerificationTokens.AddAsync(token, ct);

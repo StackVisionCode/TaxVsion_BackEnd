@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Infrastructure.Hosting;
 using BuildingBlocks.Messaging.TasksIntegrationEvents;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -68,6 +69,8 @@ internal sealed class OverdueTaskSweepJob(
     /// </summary>
     private const int ChunkSize = 25;
 
+    private const string PlannerModule = "planner";
+
     private async Task SweepAsync(int batchSize, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
@@ -104,7 +107,16 @@ internal sealed class OverdueTaskSweepJob(
         if (marked.Count == 0)
             return 0;
 
-        foreach (var task in marked)
+        // Oficina sin el módulo: la tarea queda marcada pero sin aviso (no hay ola al reactivar).
+        var modules = scope.ServiceProvider.GetRequiredService<ITenantEntitlementModulesReader>();
+        var silenced = new HashSet<Guid>();
+        foreach (var tenantId in marked.Select(task => task.TenantId).Distinct())
+        {
+            if (!await modules.HasModuleAsync(tenantId, PlannerModule, ct))
+                silenced.Add(tenantId);
+        }
+
+        foreach (var task in marked.Where(task => !silenced.Contains(task.TenantId)))
             await outbox.PublishAsync(BuildEvent(task, correlation.CorrelationId));
 
         try

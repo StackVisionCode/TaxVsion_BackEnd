@@ -35,7 +35,8 @@ public static class DisableMfaHandler
         if (user is null || !user.IsActive)
             return Result.Failure(new Error("User.NotFound", "User does not exist."));
 
-        if (!hasher.Verify(command.Password, user.PasswordHash))
+        // I-2: la contraseña de una cuenta asegurada no autoriza nada.
+        if (!hasher.Verify(command.Password, user.PasswordHash) || user.EnsurePasswordSignInAllowed().IsFailure)
             return Result.Failure(new Error("Auth.Invalid", "Invalid credentials."));
 
         if (await MfaRequirement.IsRequiredByPolicyAsync(user, mfa, ct))
@@ -102,7 +103,7 @@ public static class RegenerateRecoveryCodesHandler
             return Result.Failure<RegenerateRecoveryCodesResponse>(new Error("Mfa.NotEnabled", "MFA is not enabled."));
         }
 
-        if (!hasher.Verify(command.Password, user.PasswordHash))
+        if (!hasher.Verify(command.Password, user.PasswordHash) || user.EnsurePasswordSignInAllowed().IsFailure)
         {
             return Result.Failure<RegenerateRecoveryCodesResponse>(new Error("Auth.Invalid", "Invalid credentials."));
         }

@@ -678,7 +678,144 @@ public static partial class NotificationTemplateSeedSource
                 ),
             ]
         ),
+        ["auth.password-reset.office"] = new(
+            "{{ office }} te envió un enlace para restablecer tu contraseña{% if account_kind == 'portal' %} del portal de cliente{% endif %}",
+            "Crea una contraseña nueva para tu cuenta {% if account_kind == 'portal' %}del portal de cliente{% else %}de equipo{% endif %}. El enlace solo se puede usar una vez.",
+            [
+                (">Security<", ">Seguridad<"),
+                ("Set a new password", "Crea una contraseña nueva"),
+                (
+                    """An office administrator at <strong style="color:#23384B;">{{ office }}</strong> sent you a link to set a new password for your {% if account_kind == 'portal' %}client portal account{% else %}{{ product_name }} team account{% endif %}.""",
+                    """Un administrador de la oficina <strong style="color:#23384B;">"""
+                        + OfficeEs
+                        + """</strong> te envió un enlace para crear una contraseña nueva para tu {% if account_kind == 'portal' %}cuenta del portal de cliente{% else %}cuenta de equipo de {{ product_name }}{% endif %}."""
+                ),
+                ButtonFallbackEs,
+                (
+                    "This link expires {{ expires_at | office_deadline }} and can be used once. Your current password keeps working until you set a new one. After you change it, you'll be signed out of all devices.",
+                    "Este enlace vence {{ expires_at | office_deadline }} y solo se puede usar una vez. Tu contraseña actual sigue funcionando hasta que crees una nueva. Después de cambiarla, se cerrará tu sesión en todos los dispositivos."
+                ),
+                (
+                    "{% if account_kind == 'portal' %}Your documents and information aren't changed. {% endif %}If you use two-step verification, you'll still need your code to sign in.",
+                    "{% if account_kind == 'portal' %}Tus documentos y tu información no cambian. {% endif %}Si usas la verificación en dos pasos, seguirás necesitando tu código para iniciar sesión."
+                ),
+                (
+                    """<strong style="color:#23384B;">Didn't expect this?</strong> You don't need to do anything: your password won't change unless you use the link. If you think something is wrong, contact {{ office }} directly using the phone number or email you usually use with them.""",
+                    """<strong style="color:#23384B;">¿No lo esperabas?</strong> No tienes que hacer nada: tu contraseña no cambiará a menos que uses el enlace. Si crees que algo está mal, comunícate directamente con {{ office }} por el teléfono o el correo que sueles usar con ellos."""
+                ),
+                (
+                    "This email is about your account at {{ office }} on {{ product_name }}. It doesn't affect any other office you may use. {{ product_name }} and {{ office }} will never ask you for your password by email or phone.",
+                    "Este correo trata sobre tu cuenta en {{ office }} en {{ product_name }}. No afecta a ninguna otra oficina que uses. {{ product_name }} y {{ office }} nunca te pedirán tu contraseña por correo ni por teléfono."
+                ),
+            ]
+        ),
         // El motivo llega como código (reason_code) y aquí se escribe en español; sin código vale reason.
+        ["auth.account-secured"] = new(
+            "Acción necesaria: se aseguró tu cuenta de " + OfficeEs,
+            "Crea una contraseña nueva para volver a entrar. El enlace solo se puede usar una vez.",
+            [
+                (">Security<", ">Seguridad<"),
+                ("Your account was secured", "Se aseguró tu cuenta"),
+                (
+                    """An office administrator at <strong style="color:#23384B;">{{ office }}</strong> secured your {% if account_kind == 'portal' %}client portal account{% else %}{{ product_name }} team account{% endif %} as a precaution. This usually happens when there's a concern that someone else could access it.""",
+                    """Un administrador de la oficina <strong style="color:#23384B;">"""
+                        + OfficeEs
+                        + """</strong> aseguró tu {% if account_kind == 'portal' %}cuenta del portal de cliente{% else %}cuenta de equipo de {{ product_name }}{% endif %} como precaución. Esto suele pasar cuando preocupa que otra persona pueda entrar a ella."""
+                ),
+                (
+                    """<strong style="color:#23384B;">What changed:</strong>""",
+                    """<strong style="color:#23384B;">Qué cambió:</strong>"""
+                ),
+                ("&bull; Your previous password no longer works.", "&bull; Ya no funciona tu contraseña anterior."),
+                (
+                    "&bull; You've been signed out of all devices.",
+                    "&bull; Se cerró tu sesión en todos los dispositivos."
+                ),
+                ("To get back in, set a new password:", "Para volver a entrar, crea una contraseña nueva:"),
+                ("Set a new password", "Crea una contraseña nueva"),
+                ButtonFallbackEs,
+                (
+                    """This link expires {{ expires_at | office_deadline }} and can be used once. If it expires, use "Forgot password?" on the {{ office }} sign-in page.""",
+                    """Este enlace vence {{ expires_at | office_deadline }} y solo se puede usar una vez. Si vence, usa "¿Olvidaste tu contraseña?" en la página de inicio de sesión de """
+                        + OfficeEs
+                        + "."
+                ),
+                (
+                    "Choose a password you don't use anywhere else. If you used the same password on other sites or with other offices, change it there too.",
+                    "Elige una contraseña que no uses en ningún otro lugar. Si usaste la misma contraseña en otros sitios o con otras oficinas, cámbiala allí también."
+                ),
+                (
+                    """<strong style="color:#23384B;">Didn't expect this, or have questions?</strong> Contact {{ office }} directly using the phone number or email you usually use with them.""",
+                    """<strong style="color:#23384B;">¿No lo esperabas o tienes preguntas?</strong> Comunícate directamente con """
+                        + OfficeEs
+                        + " por el teléfono o el correo que sueles usar."
+                ),
+                (
+                    "This email is about your account at {{ office }} on {{ product_name }}. It doesn't affect any other office you may use. {{ product_name }} and {{ office }} will never ask you for your password by email or phone.",
+                    "Este correo trata sobre tu cuenta en "
+                        + OfficeEs
+                        + " en {{ product_name }}. No afecta a ninguna otra oficina que uses. {{ product_name }} y "
+                        + OfficeEs
+                        + " nunca te pedirán tu contraseña por correo ni por teléfono."
+                ),
+            ]
+        ),
+        ["auth.password-change-required"] = new(
+            "{% if tenant_name %}{{ tenant_name }}{% else %}Tu oficina{% endif %} te pide actualizar tu contraseña",
+            "Elegirás una contraseña nueva la próxima vez que inicies sesión.",
+            [
+                ("""{% assign office = "your office" %}""", """{% assign office = "tu oficina" %}"""),
+                (">Security<", ">Seguridad<"),
+                ("Update your password", "Actualiza tu contraseña"),
+                (
+                    """An office administrator at <strong style="color:#23384B;">{{ office }}</strong> asked you to choose a new password for your {% if account_kind == 'portal' %}client portal account{% else %}{{ product_name }} team account{% endif %}.""",
+                    """Un administrador de la oficina <strong style="color:#23384B;">{{ office }}</strong> te pidió elegir una contraseña nueva para tu {% if account_kind == 'portal' %}cuenta del portal de cliente{% else %}cuenta de equipo de {{ product_name }}{% endif %}."""
+                ),
+                (
+                    "For your security, you've been signed out of all devices. Next time you sign in with your current password, we'll ask you to set a new one before you continue.",
+                    "Por tu seguridad, se cerró tu sesión en todos los dispositivos. La próxima vez que inicies sesión con tu contraseña actual, te pediremos crear una nueva antes de continuar."
+                ),
+                ("Sign in to {{ office }}", "Iniciar sesión en {{ office }}"),
+                (
+                    """Forgot your current password? Use "Forgot password?" on the sign-in page.""",
+                    """¿Olvidaste tu contraseña actual? Usa "¿Olvidaste tu contraseña?" en la página de inicio de sesión."""
+                ),
+                (
+                    """<strong style="color:#23384B;">Didn't expect this?</strong> Contact {{ office }} directly using the phone number or email you usually use with them.""",
+                    """<strong style="color:#23384B;">¿No lo esperabas?</strong> Comunícate directamente con {{ office }} por el teléfono o el correo que sueles usar."""
+                ),
+                (
+                    "This email is about your account at {{ office }} on {{ product_name }}. It doesn't affect any other office you may use. {{ product_name }} and {{ office }} will never ask you for your password by email or phone.",
+                    "Este correo trata sobre tu cuenta en {{ office }} en {{ product_name }}. No afecta a ninguna otra oficina que uses. {{ product_name }} y {{ office }} nunca te pedirán tu contraseña por correo ni por teléfono."
+                ),
+            ]
+        ),
+        ["auth.password-changed"] = new(
+            "Se cambió tu contraseña{% if tenant_name %} de {{ tenant_name }}{% endif %}",
+            "Si fuiste tú, no tienes que hacer nada más.",
+            [
+                ("""{% assign office = "your office" %}""", """{% assign office = "tu oficina" %}"""),
+                (">Security<", ">Seguridad<"),
+                ("Your password was changed", "Se cambió tu contraseña"),
+                (
+                    """The password for your {% if account_kind == 'portal' %}client portal account{% else %}{{ product_name }} team account{% endif %} at <strong style="color:#23384B;">{{ office }}</strong> was changed{% if changed_at %} on {{ changed_at | office_date }}{% endif %}.""",
+                    """Se cambió la contraseña de tu {% if account_kind == 'portal' %}cuenta del portal de cliente{% else %}cuenta de equipo de {{ product_name }}{% endif %} en <strong style="color:#23384B;">{{ office }}</strong>{% if changed_at %} el {{ changed_at | office_date }}{% endif %}."""
+                ),
+                (
+                    "You've been signed out of your other devices. Sign in again with your new password.",
+                    "Se cerró tu sesión en tus otros dispositivos. Vuelve a iniciar sesión con tu contraseña nueva."
+                ),
+                (
+                    """<strong style="color:#23384B;">Wasn't you?</strong> Use "Forgot password?" on the {{ office }} sign-in page right away to set a new password, then contact {{ office }} directly using the phone number or email you usually use with them.""",
+                    """<strong style="color:#23384B;">¿No fuiste tú?</strong> Usa de inmediato "¿Olvidaste tu contraseña?" en la página de inicio de sesión de {{ office }} para crear una contraseña nueva y luego comunícate directamente con {{ office }} por el teléfono o el correo que sueles usar."""
+                ),
+                ("Go to {{ office }} sign-in", "Ir al inicio de sesión de {{ office }}"),
+                (
+                    "This email is about your account at {{ office }} on {{ product_name }}. It doesn't affect any other office you may use. {{ product_name }} and {{ office }} will never ask you for your password by email or phone.",
+                    "Este correo trata sobre tu cuenta en {{ office }} en {{ product_name }}. No afecta a ninguna otra oficina que uses. {{ product_name }} y {{ office }} nunca te pedirán tu contraseña por correo ni por teléfono."
+                ),
+            ]
+        ),
         ["auth.otp_code"] = new(
             "{{ code }} es tu código de {{ product_name }}",
             "Aquí tienes tu código de verificación de un solo uso. Vale por unos minutos.",

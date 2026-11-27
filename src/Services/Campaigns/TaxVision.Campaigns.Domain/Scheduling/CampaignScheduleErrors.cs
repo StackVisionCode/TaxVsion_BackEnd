@@ -30,6 +30,12 @@ public static class CampaignScheduleErrors
 
     // Otro claim tomó el slot o el agendado cambió desde el claim: este disparo no hace nada.
     public static readonly Error LeaseLost = new("CampaignSchedule.LeaseLost", "The schedule lease is no longer held.");
+
+    // Oficina sin el módulo: el único no se consume; espera a la reactivación.
+    public static readonly Error ModuleDisabled = new(
+        "CampaignSchedule.ModuleDisabled",
+        "The office does not have the Campaigns module; the schedule waits."
+    );
     public static readonly Error OutsideSmsWindow = new(
         "CampaignSchedule.OutsideSmsWindow",
         "Text messages are only sent within the allowed hours; the run waits for the next opening."

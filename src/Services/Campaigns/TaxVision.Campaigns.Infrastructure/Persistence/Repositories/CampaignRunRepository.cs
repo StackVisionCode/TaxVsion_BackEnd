@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using BuildingBlocks.Common;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Campaigns.Application.RateLimiting;
 using TaxVision.Campaigns.Application.Runs;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Domain.Runs;
@@ -189,6 +190,12 @@ public sealed class CampaignRunRepository(CampaignsDbContext db) : ICampaignRunR
             .CampaignRuns.IgnoreQueryFilters()
             .AsNoTracking()
             .Where(r => r.Status == CampaignRunStatus.Created && r.CreatedAtUtc < createdBeforeUtc)
+            // Oficina sin el módulo: no se reserva ni despacha, así que no ocupa el lote.
+            .Where(r =>
+                !db
+                    .TenantPlanCodeProjections.IgnoreQueryFilters()
+                    .Any(p => p.TenantId == r.TenantId && !p.EnabledModulesJson.Contains(CampaignsModule.JsonToken))
+            )
             .OrderBy(r => r.CreatedAtUtc)
             .Take(batchSize)
             .Select(r => new StaleRunRef(r.TenantId, r.Id))

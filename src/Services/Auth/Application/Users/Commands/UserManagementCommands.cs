@@ -5,11 +5,13 @@ using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Application.Credentials.Commands;
 using TaxVision.Auth.Application.Mfa;
 using TaxVision.Auth.Application.Offboarding;
 using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Application.Users.Avatars;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Offboarding;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Users;
@@ -48,6 +50,7 @@ public static class DeactivateUserHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICredentialTokenRepository credentials,
         CancellationToken ct
     )
     {
@@ -92,6 +95,15 @@ public static class DeactivateUserHandler
         // así que la pestaña abierta del usuario dado de baja se quedaba con la sesión muerta hasta su
         // siguiente request en vez de recibir el logout al instante.
         var revokedSessions = await accessCutoff.ForUserAsync(target, "admin_revoke", ct);
+        // Los links pendientes no reviven al reactivar la cuenta (04 §3.5).
+        await PendingPasswordResets.RevokeAsync(
+            credentials,
+            target.Id,
+            DateTime.UtcNow,
+            ResetRevocationReason.CancelledByOffice,
+            command.RequestedByUserId,
+            ct
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(

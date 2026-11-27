@@ -53,7 +53,8 @@ public static class EntitlementSnapshotBuilder
 
         // Enforcement status-aware: si la base no da acceso, los módulos del plan se apagan y
         // los add-ons (dependientes) no cuentan. Los límites/cuotas se conservan (el gate es por módulo).
-        var grantsAccess = SubscriptionAccess.GrantsAccess(subscription.Status);
+        // Oficina suspendida o cerrada por la plataforma (cobro retenido): tampoco da acceso.
+        var grantsAccess = SubscriptionAccess.GrantsAccess(subscription.Status) && !subscription.IsBillingHeld;
 
         var baseEntries = ContractedEntitlementPolicy.BaseEntries(
             planVersion,

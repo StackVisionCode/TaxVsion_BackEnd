@@ -93,6 +93,7 @@ public sealed class LastAdminGuardConcurrencyIntegrationTests : IAsyncLifetime
             new FakeCorrelationContext(),
             db,
             new FakeMessageBus(),
+            new TaxVision.Auth.Infrastructure.Persistence.Repositories.CredentialTokenRepository(db),
             CancellationToken.None
         );
         await transaction.CommitAsync();

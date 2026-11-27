@@ -29,6 +29,8 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -42,15 +44,31 @@ namespace Internal.Generated.WolverineHandlers
             var recipientLocale = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IRecipientLocale>(serviceScope.ServiceProvider);
             
             /*
+            * The service registration for TaxVision.Notification.Application.Abstractions.ITenantHostResolver is an 'opaque' lambda factory with the Transient lifetime and requires service location
+            */
+            var tenantHostResolver = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.ITenantHostResolver>(serviceScope.ServiceProvider);
+            
+            /*
             * The service registration for TaxVision.Notification.Application.Abstractions.IScribeRenderClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             */
             var scribeRenderClient = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IScribeRenderClient>(serviceScope.ServiceProvider);
+            
+            /*
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IOfficeReplyToResolver Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.OfficeReplyToResolver
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IRecipientResolver Lifetime: Scoped ImplementationType: TaxVision.Notification.Infrastructure.Permissions.RecipientResolver
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.CustomerVisibility.ICustomerAssignmentProjectionStore Lifetime: Scoped ImplementationFactory: BuildingBlocks.CustomerVisibility.CustomerVisibilityServiceCollectionExtensions+<>c__0"1.<AddCustomerVisibilityProjection>b__0_0
+            * The service registration for BuildingBlocks.CustomerVisibility.ICustomerAssignmentProjectionStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IUserEmailResolver Lifetime: Scoped ImplementationFactory: TaxVision.Notification.Infrastructure.DependencyInjection+<>c.<AddNotificationInfrastructure>b__0_10
+            * The service registration for TaxVision.Notification.Application.Abstractions.IUserEmailResolver is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
             var emailDispatchGateway = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Application.Abstractions.IEmailDispatchGateway>(serviceScope.ServiceProvider);
-            var handlerBus = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Notification.Infrastructure.Messaging.HandlerBus>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var invitationCreatedIntegrationEvent = (BuildingBlocks.Messaging.AuthIntegrationEvents.InvitationCreatedIntegrationEvent)context.Envelope.Message;
 
@@ -74,7 +92,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Notification.Application.Consumers.InvitationCreatedConsumer");
                 
                 // The actual message execution
-                await TaxVision.Notification.Application.Consumers.InvitationCreatedConsumer.Handle(invitationCreatedIntegrationEvent, emailDispatchGateway, scribeRenderClient, _optionsOfPortalOptions, _platformSettings, _authAccountTokenReader, recipientLocale, correlationContext, cancellation).ConfigureAwait(false);
+                await TaxVision.Notification.Application.Consumers.InvitationCreatedConsumer.Handle(invitationCreatedIntegrationEvent, emailDispatchGateway, scribeRenderClient, _optionsOfPortalOptions, _platformSettings, tenantHostResolver, _authAccountTokenReader, recipientLocale, correlationContext, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

@@ -221,6 +221,12 @@ namespace TaxVision.Postmaster.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<Guid?>("OwnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("OwnershipKnown")
+                        .HasColumnType("bit");
+
                     b.Property<string>("ProviderCode")
                         .IsRequired()
                         .HasMaxLength(50)

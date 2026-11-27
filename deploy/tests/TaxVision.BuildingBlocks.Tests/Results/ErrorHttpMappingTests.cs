@@ -16,6 +16,30 @@ public sealed class ErrorHttpMappingTests
 {
     private static int Map(string code) => new Error(code, "irrelevante").ToHttpStatusCode();
 
+    // Administración de credenciales por la oficina (03 §15): cada código con su HTTP.
+    [Theory]
+    [InlineData("Auth.CredentialAdmin.ActorNotAllowed", StatusCodes.Status403Forbidden)]
+    [InlineData("Auth.CredentialAdmin.OwnerOnly", StatusCodes.Status403Forbidden)]
+    [InlineData("Auth.CredentialAdmin.SelfNotAllowed", StatusCodes.Status403Forbidden)]
+    [InlineData("Auth.CredentialAdmin.TargetProtected", StatusCodes.Status403Forbidden)]
+    [InlineData("Auth.CredentialAdmin.Hierarchy", StatusCodes.Status403Forbidden)]
+    [InlineData("Auth.CredentialAdmin.TargetInactive", StatusCodes.Status409Conflict)]
+    [InlineData("Auth.CredentialAdmin.EmailUnverified", StatusCodes.Status409Conflict)]
+    [InlineData("Auth.CredentialAdmin.InvalidTransition", StatusCodes.Status409Conflict)]
+    [InlineData("Auth.CredentialAdmin.ReasonRequired", StatusCodes.Status400BadRequest)]
+    [InlineData("Auth.CredentialAdmin.InvalidReason", StatusCodes.Status400BadRequest)]
+    [InlineData("Auth.CredentialAdmin.NoPendingLink", StatusCodes.Status404NotFound)]
+    [InlineData("Auth.CredentialAdmin.LinkAlreadyUsed", StatusCodes.Status409Conflict)]
+    [InlineData("Auth.CredentialAdmin.TargetRateLimited", StatusCodes.Status429TooManyRequests)]
+    [InlineData("Auth.CredentialAdmin.DeliveryUnavailable", StatusCodes.Status503ServiceUnavailable)]
+    [InlineData("Auth.CredentialAdmin.StaleReauthentication", StatusCodes.Status401Unauthorized)]
+    [InlineData("Auth.CredentialAdmin.ActorTokenInvalid", StatusCodes.Status401Unauthorized)]
+    [InlineData("Auth.CredentialAdmin.EmailChangeCooldown", StatusCodes.Status409Conflict)]
+    [InlineData("Auth.PasswordChangeRequired", StatusCodes.Status403Forbidden)]
+    [InlineData("User.CredentialResetRequired", StatusCodes.Status409Conflict)]
+    public void Credential_administration_codes_map_to_their_status(string code, int expected) =>
+        Assert.Equal(expected, Map(code));
+
     [Theory]
     [InlineData("User.NotFound", StatusCodes.Status404NotFound)]
     [InlineData("Auth.Invalid", StatusCodes.Status401Unauthorized)]

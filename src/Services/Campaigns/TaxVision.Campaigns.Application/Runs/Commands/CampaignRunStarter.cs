@@ -1,7 +1,9 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Campaigns.Application.Campaigns.Abstractions;
+using TaxVision.Campaigns.Application.RateLimiting;
 using TaxVision.Campaigns.Application.Runs.Abstractions;
 using TaxVision.Campaigns.Domain.Campaigns;
 using TaxVision.Campaigns.Domain.Runs;
@@ -17,9 +19,14 @@ public sealed class CampaignRunStarter(
     IWalletSpendClient wallet,
     ICampaignRepository campaigns,
     ICorrelationContext correlation,
+    ITenantEntitlementModulesReader modules,
     ILogger<CampaignRunStarter> logger
 )
 {
+    /// <summary>Envíos automáticos (agendado o barrido): sin el módulo no se reserva en el Wallet ni se despacha.</summary>
+    public Task<bool> HasCampaignsModuleAsync(Guid tenantId, CancellationToken ct) =>
+        modules.HasModuleAsync(tenantId, CampaignsModule.Code, ct);
+
     /// <summary>
     /// Núcleo compartido del envío manual y del basado en audiencia (contactos/listas). Pasado el paso 1 no sale ninguna
     /// excepción: el reintento en línea abriría otro run y reservaría otra vez. Lo que quede a medias lo retoma el barrido.

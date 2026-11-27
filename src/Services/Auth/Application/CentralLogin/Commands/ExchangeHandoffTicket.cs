@@ -38,7 +38,8 @@ public sealed record HandoffSessionResponse(
     bool TakeoverRequired = false,
     string? TakeoverTicket = null,
     int? TakeoverTicketExpiresInSeconds = null,
-    string? DeviceToken = null
+    string? DeviceToken = null,
+    bool PasswordChangeRequired = false
 )
 {
     public static HandoffSessionResponse ForTokens(
@@ -99,9 +100,14 @@ public static class ExchangeHandoffTicketHandler
         if (tenant is null || !tenant.IsActive)
             return Result.Failure<HandoffSessionResponse>(invalid);
 
-        // El vale es confiable, pero el usuario pudo desactivarse en la ventana; se revalida el estado.
+        // El vale es confiable, pero el usuario pudo desactivarse o quedar asegurado (I-2) en la ventana.
         var user = await users.GetByIdAsync(payload.UserId, ct);
-        if (user is null || user.TenantId != payload.TenantId || !user.IsActive)
+        if (
+            user is null
+            || user.TenantId != payload.TenantId
+            || !user.IsActive
+            || user.EnsurePasswordSignInAllowed().IsFailure
+        )
             return Result.Failure<HandoffSessionResponse>(invalid);
 
         // Fase 2 — defensa en profundidad: DiscoverLogin ya excluye oficinas bloqueadas por billing para
@@ -161,7 +167,10 @@ public static class ExchangeHandoffTicketHandler
                     outcome.TakeoverTicket!.Value.ToString(),
                     (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
                     payload.MustEnrollMfa
-                )
+                ) with
+                {
+                    PasswordChangeRequired = PasswordChangeRequirement.Applies(user, command.Surface),
+                }
             );
         }
 
@@ -207,7 +216,10 @@ public static class ExchangeHandoffTicketHandler
                 issued.ExpiresInSeconds,
                 payload.MustEnrollMfa,
                 deviceToken
-            )
+            ) with
+            {
+                PasswordChangeRequired = PasswordChangeRequirement.Applies(user, command.Surface),
+            }
         );
     }
 }

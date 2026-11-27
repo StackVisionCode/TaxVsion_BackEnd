@@ -19,9 +19,27 @@ public sealed class PasswordResetTokenConfiguration : IEntityTypeConfiguration<P
         builder.Property(token => token.Attempts).IsRequired();
         builder.Property(token => token.CreatedAtUtc).IsRequired();
         builder.Property(token => token.ExpiresAtUtc).IsRequired();
+        builder.Property(token => token.Origin).IsRequired();
+        builder.Property(token => token.RevocationReason);
+        builder.Property(token => token.RequestedByUserId);
+        builder.Property(token => token.RevokedByUserId);
+        builder.Property(token => token.NotificationEventId);
+        builder.Property(token => token.RowVersion).IsRowVersion();
 
         builder.HasIndex(token => token.TokenHash).IsUnique();
         builder.HasIndex(token => new { token.UserId, token.UsedAtUtc });
+        // Último link del usuario, idempotencia y tope por objetivo (03 §16).
+        builder
+            .HasIndex(token => new { token.UserId, token.CreatedAtUtc }, "IX_PasswordResetTokens_UserId_CreatedAtUtc")
+            .IsDescending(false, true)
+            .IncludeProperties(token => new
+            {
+                token.Origin,
+                token.UsedAtUtc,
+                token.RevokedAtUtc,
+                token.ExpiresAtUtc,
+                token.RequestedByUserId,
+            });
 
         builder.HasOne<User>().WithMany().HasForeignKey(token => token.UserId).OnDelete(DeleteBehavior.Cascade);
     }
@@ -37,6 +55,7 @@ public sealed class EmailVerificationTokenConfiguration : IEntityTypeConfigurati
         builder.Property(token => token.TenantId).IsRequired();
         builder.Property(token => token.UserId).IsRequired();
         builder.Property(token => token.NewEmail).HasMaxLength(320).IsRequired();
+        builder.Property(token => token.RequestedByUserId);
         builder.Property(token => token.TokenHash).HasMaxLength(64).IsRequired();
         builder.Property(token => token.CreatedAtUtc).IsRequired();
         builder.Property(token => token.ExpiresAtUtc).IsRequired();

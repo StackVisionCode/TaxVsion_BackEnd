@@ -36,6 +36,15 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(user => user.EmailVerified).IsRequired();
         builder.Property(user => user.PhoneVerified).IsRequired();
         builder.Property(user => user.MfaEnabled).IsRequired();
+        // Estado de la credencial (03 §16): Active por defecto para las filas existentes.
+        builder.Property(user => user.CredentialStatus).IsRequired();
+        builder.Property(user => user.CredentialStateReasonCode);
+        builder
+            .Property(user => user.CredentialStateReasonNote)
+            .HasMaxLength(TaxVision.Auth.Domain.Credentials.CredentialAdministrationReason.MaxNoteLength);
+        builder.Property(user => user.CredentialStateChangedAtUtc);
+        builder.Property(user => user.EmailChangedByOfficeAtUtc);
+        builder.Property(user => user.CredentialStateChangedByUserId);
         builder.Property(user => user.FailedLoginCount).IsRequired();
         builder.Property(user => user.PermissionsVersion).IsRequired();
         builder.Property(user => user.PermissionsBackfilledAt);
@@ -70,6 +79,7 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Ignore(user => user.AccountKind);
         builder.Ignore(user => user.IsOwner);
         builder.Ignore(user => user.HasLoginFailures);
+        builder.Ignore(user => user.CredentialState);
 
         var converter = new ValueConverter<List<string>, string>(
             roles => JsonSerializer.Serialize(roles, (JsonSerializerOptions?)null),

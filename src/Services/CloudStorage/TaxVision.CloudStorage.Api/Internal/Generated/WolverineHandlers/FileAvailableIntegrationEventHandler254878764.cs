@@ -32,12 +32,16 @@ namespace Internal.Generated.WolverineHandlers
             * 
             * Dependency: Descriptor: ServiceType: TaxVision.CloudStorage.Infrastructure.Storage.IStoragePolicyProviderAdapter Lifetime: Scoped ImplementationFactory: TaxVision.CloudStorage.Infrastructure.DependencyInjection+<>c.<AddCloudStorageInfrastructure>b__0_13
             * The service registration for TaxVision.CloudStorage.Infrastructure.Storage.IStoragePolicyProviderAdapter is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader Lifetime: Scoped ImplementationFactory: BuildingBlocks.Infrastructure.RateLimiting.TenantEntitlementModulesRegistration+<>c__0"1.<AddCachedTenantEntitlementModulesReader>b__0_1
+            * The service registration for BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
             var storagePolicyDispatcher = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.CloudStorage.Application.Abstractions.IStoragePolicyDispatcher>(serviceScope.ServiceProvider);
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var cloudStorageDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.CloudStorage.Infrastructure.Persistence.CloudStorageDbContext>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var fileAvailableIntegrationEvent = (BuildingBlocks.Messaging.CloudStorageIntegrationEvents.FileAvailableIntegrationEvent)context.Envelope.Message;
 

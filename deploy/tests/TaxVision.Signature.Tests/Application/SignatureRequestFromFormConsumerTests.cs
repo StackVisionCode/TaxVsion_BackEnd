@@ -2,6 +2,7 @@ using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Messaging.SignatureIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Signature.Application.Abstractions;
@@ -585,6 +586,34 @@ public sealed class SignatureRequestFromFormConsumerTests
         Assert.Equal("original", original.SourceRole);
     }
 
+    [Fact]
+    public async Task Auto_send_is_held_when_the_office_lacks_the_module()
+    {
+        var tenantId = Guid.NewGuid();
+        var fileId = Guid.NewGuid();
+        var repo = new CapturingRepository();
+        var bus = new CapturingBus();
+
+        await Handle(
+            BuildCommand(tenantId, fileId, null, autoSend: true),
+            repo,
+            bus,
+            StorageWith(fileId, "Available", Hash, "Signature", "Signatures"),
+            modules: new FixedModules(["campaigns"])
+        );
+
+        // Se crea y se avisa a Tasks, pero no sale a los firmantes.
+        Assert.NotNull(repo.Added);
+        Assert.Contains(bus.Messages, m => m is SignatureRequestFromFormCreatedIntegrationEvent);
+        Assert.DoesNotContain(bus.Messages, m => m is SendSignatureRequestCommand);
+    }
+
+    private sealed class FixedModules(IReadOnlyList<string>? modules) : ITenantEntitlementModulesReader
+    {
+        public Task<IReadOnlyList<string>?> GetEnabledModulesAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(modules);
+    }
+
     private static SignatureRequestFromFormRequestedIntegrationEvent WithSigner(
         SignatureRequestFromFormRequestedIntegrationEvent command,
         Func<SignatureRequestFromFormSigner, SignatureRequestFromFormSigner> change
@@ -614,7 +643,8 @@ public sealed class SignatureRequestFromFormConsumerTests
         ISignatureCategoryResolver? categories = null,
         IRequestDocumentVerifier? verifier = null,
         ICustomerEmailProjectionRepository? customerEmails = null,
-        IUnitOfWork? unitOfWork = null
+        IUnitOfWork? unitOfWork = null,
+        ITenantEntitlementModulesReader? modules = null
     ) =>
         SignatureRequestFromFormRequestedConsumer.Handle(
             command,
@@ -634,6 +664,7 @@ public sealed class SignatureRequestFromFormConsumerTests
             new NoOpCache(),
             files ?? new ProjectionFiles(),
             new Envelope { Attempts = attempt },
+            modules ?? new FixedModules(null),
             NullLogger<SignatureRequestFromFormRequestedIntegrationEvent>.Instance,
             CancellationToken.None
         );

@@ -26,12 +26,16 @@ public sealed class AccountTokenProtectionTests
             new InMemoryCredentialTokenRepository(),
             world.TokenService,
             protector,
+            new NoUserLoginLock(),
             new PermissiveLoginThrottler(),
             world.Audit,
             world.Request,
             world.Correlation,
             world.UnitOfWork,
             bus,
+            Microsoft.Extensions.Options.Options.Create(
+                new TaxVision.Auth.Application.Common.CredentialAdministrationOptions()
+            ),
             CancellationToken.None
         );
 
@@ -130,12 +134,16 @@ public sealed class AccountTokenProtectionTests
             new InMemoryCredentialTokenRepository(),
             world.TokenService,
             new NullAccountTokenProtector(),
+            new NoUserLoginLock(),
             new PermissiveLoginThrottler(),
             world.Audit,
             world.Request,
             world.Correlation,
             world.UnitOfWork,
             bus,
+            Microsoft.Extensions.Options.Options.Create(
+                new TaxVision.Auth.Application.Common.CredentialAdministrationOptions()
+            ),
             CancellationToken.None
         );
 
@@ -195,6 +203,20 @@ public sealed class AccountTokenProtectionTests
             DateTime utcNow,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
+
+        public Task<PasswordResetToken?> GetLatestPasswordResetAsync(Guid userId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<int> CountOfficePasswordResetsSinceAsync(
+            Guid userId,
+            DateTime sinceUtc,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<EmailVerificationToken?> GetLatestEmailVerificationAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<EmailVerificationToken?>(null);
 
         public Task<EmailVerificationToken?> GetEmailVerificationByHashAsync(
             string tokenHash,

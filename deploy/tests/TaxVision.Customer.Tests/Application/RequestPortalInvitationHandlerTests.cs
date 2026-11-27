@@ -149,7 +149,7 @@ public sealed class RequestPortalInvitationHandlerTests
         public Task<Result<PortalMfaResetOutcome>> ResetMfaAsync(
             Guid tenantId,
             Guid customerId,
-            Guid requestedByUserId,
+            PortalCredentialRequest request,
             CancellationToken ct = default
         ) => throw new NotSupportedException();
     }

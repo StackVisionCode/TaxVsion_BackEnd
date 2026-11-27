@@ -30,7 +30,9 @@ public sealed record UserSummaryResponse(
     // Foto confirmada del usuario (null = iniciales). Se sirve en /storage/avatars/{id}.
     Guid? AvatarFileId = null,
     // Cuándo se retiró (solo Offboarded): la tabla muestra "Offboarded <fecha>" en vez de "Joined".
-    DateTime? RemovedAtUtc = null
+    DateTime? RemovedAtUtc = null,
+    // Dueño de la cuenta de la oficina: el CRM lo marca y no ofrece acciones de credencial sobre él.
+    bool IsOwner = false
 );
 
 public sealed record GetUsersQuery(
@@ -101,7 +103,8 @@ public static class GetUsersHandler
                     slot?.SlotIndex,
                     slot?.IsGated ?? false,
                     user.AvatarFileId,
-                    user.RemovedAtUtc
+                    user.RemovedAtUtc,
+                    user.IsOwner
                 )
             );
         }
@@ -152,7 +155,8 @@ public static class GetUserByIdHandler
                 slot?.SlotIndex,
                 slot?.IsGated ?? false,
                 user.AvatarFileId,
-                user.RemovedAtUtc
+                user.RemovedAtUtc,
+                user.IsOwner
             )
         );
     }

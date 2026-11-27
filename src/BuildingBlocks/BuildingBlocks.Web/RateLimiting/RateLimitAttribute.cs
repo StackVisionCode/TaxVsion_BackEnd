@@ -99,7 +99,7 @@ public sealed class RateLimitAttribute(string policyName) : Attribute, IAsyncRes
             return;
         }
 
-        if (policy.Category == RateLimitCategory.M)
+        if (policy.Category == RateLimitCategory.M || policy.AuditBlocked)
             await AuditBlockedAsync(context, policy, tenantId, userId).ConfigureAwait(false);
 
         await WriteRateLimitResponseAsync(context, policy, verdict).ConfigureAwait(false);

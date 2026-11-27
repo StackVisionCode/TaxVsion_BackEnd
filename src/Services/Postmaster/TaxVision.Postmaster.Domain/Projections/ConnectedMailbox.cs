@@ -1,4 +1,6 @@
-﻿namespace TaxVision.Postmaster.Domain.Projections;
+﻿using BuildingBlocks.Domain;
+
+namespace TaxVision.Postmaster.Domain.Projections;
 
 /// <summary>
 /// Buzón que la oficina conectó en Connectors y por el que Postmaster puede enviar. Vale para los
@@ -25,12 +27,29 @@ public sealed class ConnectedMailbox
     public DateTime? DisconnectedAtUtc { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
+    /// <summary>Dueño del buzón personal; null en el de oficina (solo cuenta si <see cref="OwnershipKnown"/>).</summary>
+    [UserReference(
+        UserReferenceKind.Projection,
+        HandledBy = "Connectors:ConnectorsUserOffboardedConsumer",
+        Via = "ConnectorsTenantEmailAccountDisconnectedIntegrationEvent",
+        Note = "Copia del dueño en Connectors: el retiro desconecta allá y el evento desactiva esta fila."
+    )]
+    public Guid? OwnerUserId { get; private set; }
+
+    /// <summary>False en filas y avisos anteriores a estos campos: hasta reconciliar con Connectors, no se usa.</summary>
+    public bool OwnershipKnown { get; private set; }
+
+    /// <summary>DM-02: los correos de la oficina solo salen por un buzón de oficina, nunca por uno personal.</summary>
+    public bool IsOfficeMailbox => OwnershipKnown && OwnerUserId is null;
+
     public static ConnectedMailbox ForNewConnection(
         Guid tenantId,
         Guid accountId,
         string providerCode,
         string fromAddress,
-        DateTime connectedAtUtc
+        DateTime connectedAtUtc,
+        Guid? ownerUserId = null,
+        bool ownershipKnown = true
     )
     {
         if (tenantId == Guid.Empty)
@@ -53,6 +72,8 @@ public sealed class ConnectedMailbox
             ConnectedAtUtc = connectedAtUtc,
             DisconnectedAtUtc = null,
             UpdatedAtUtc = connectedAtUtc,
+            OwnerUserId = ownerUserId,
+            OwnershipKnown = ownershipKnown,
         };
     }
 
@@ -68,17 +89,34 @@ public sealed class ConnectedMailbox
         DateTime disconnectedAtUtc
     )
     {
-        var mailbox = ForNewConnection(tenantId, accountId, providerCode, fromAddress, disconnectedAtUtc);
+        var mailbox = ForNewConnection(
+            tenantId,
+            accountId,
+            providerCode,
+            fromAddress,
+            disconnectedAtUtc,
+            ownershipKnown: false
+        );
         mailbox.IsActive = false;
         mailbox.DisconnectedAtUtc = disconnectedAtUtc;
         return mailbox;
     }
 
     /// <summary>False si el aviso es anterior al último aplicado: la cola no garantiza el orden.</summary>
-    public bool ReconnectAt(string providerCode, string fromAddress, DateTime connectedAtUtc)
+    public bool ReconnectAt(
+        string providerCode,
+        string fromAddress,
+        DateTime connectedAtUtc,
+        Guid? ownerUserId = null,
+        bool ownershipKnown = false
+    )
     {
         if (connectedAtUtc < UpdatedAtUtc)
             return false;
+
+        // Un aviso sin dueño (emisor viejo) no borra lo que ya se sabe.
+        if (ownershipKnown)
+            ApplyOwnership(ownerUserId);
 
         ProviderCode = providerCode;
         FromAddress = fromAddress;
@@ -87,6 +125,13 @@ public sealed class ConnectedMailbox
         DisconnectedAtUtc = null;
         UpdatedAtUtc = connectedAtUtc;
         return true;
+    }
+
+    /// <summary>Dueño leído de Connectors (aviso nuevo o reconciliación). No mueve la marca de orden.</summary>
+    public void ApplyOwnership(Guid? ownerUserId)
+    {
+        OwnerUserId = ownerUserId;
+        OwnershipKnown = true;
     }
 
     /// <summary>False si el aviso es anterior al último aplicado: la cola no garantiza el orden.</summary>

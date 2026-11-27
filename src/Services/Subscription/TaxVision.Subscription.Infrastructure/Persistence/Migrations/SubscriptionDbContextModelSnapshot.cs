@@ -2344,6 +2344,15 @@ namespace TaxVision.Subscription.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<DateTime?>("BillingHeldAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("BillingHoldReleasedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<long?>("BillingHoldTenantVersion")
+                        .HasColumnType("bigint");
+
                     b.Property<bool>("CancelAtPeriodEnd")
                         .HasColumnType("bit");
 

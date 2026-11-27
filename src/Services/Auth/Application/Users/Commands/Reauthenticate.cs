@@ -101,6 +101,10 @@ public static class ReauthenticateHandler
                 ct
             );
 
+        // I-2: con la cuenta asegurada la contraseña no confirma nada; no suma al bloqueo.
+        if (user.EnsurePasswordSignInAllowed().IsFailure)
+            return Result.Failure<ReauthenticateResponse>(Failed);
+
         // El step-up sigue la MISMA regla que el login (`MfaRequirement`), incluido el interruptor
         // `Mfa:Enforced`. Antes miraba solo si el usuario tenía un TOTP confirmado, ignorando el
         // interruptor: en desarrollo local se entraba sin código pero era IMPOSIBLE completar un
@@ -141,7 +145,25 @@ public static class ReauthenticateHandler
 
         var (roleNames, _) = await UserAccessResolver.ResolveAsync(user, roles, ct);
         var timeZone = UserAccessResolver.EffectiveTimeZone(user, tenant);
-        var accessToken = jwt.Generate(user, timeZone, session.Id, roleNames, authMethods, command.Surface, now);
+        // Mismas marcas restringidas que la emisión normal (defensa en profundidad, SR-08).
+        var (passwordChangeOnly, mfaEnrollmentOnly) = await RestrictedTokenMarks.ResolveAsync(
+            user,
+            command.Surface,
+            mfa,
+            mfaOptions.Value.Enforced,
+            ct
+        );
+        var accessToken = jwt.Generate(
+            user,
+            timeZone,
+            session.Id,
+            roleNames,
+            authMethods,
+            command.Surface,
+            now,
+            mfaEnrollmentOnly: mfaEnrollmentOnly,
+            passwordChangeOnly: passwordChangeOnly
+        );
 
         await audit.AddAsync(
             AuthAuditLog.Record(

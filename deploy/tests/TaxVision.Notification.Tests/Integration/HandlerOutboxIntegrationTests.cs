@@ -384,6 +384,9 @@ public sealed class HandlerOutboxIntegrationTests : IAsyncLifetime
                 services.ConfigureDbContext<NotificationDbContext>(options => options.AddInterceptors(saves));
                 services.RemoveAll<IScribeRenderClient>();
                 services.AddSingleton<IScribeRenderClient, NoScribe>();
+                // Los links de cuenta exigen el subdominio de la oficina (D-04): sin Auth, un host fijo.
+                services.RemoveAll<ITenantHostResolver>();
+                services.AddSingleton<ITenantHostResolver>(new FakeTenantHostResolver("acme.test"));
 
                 services.ConfigureWolverine(options =>
                 {

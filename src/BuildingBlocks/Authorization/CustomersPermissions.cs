@@ -34,4 +34,16 @@ public static class CustomersPermissions
 
     /// <summary>Ver la ubicación aproximada (por IP) de las sesiones del portal de un cliente. Solo admin por defecto.</summary>
     public const string PortalSessionsLocationView = "customers.portal_sessions.location.view";
+
+    /// <summary>Enviar o cancelar el link de restablecimiento del portal de un cliente. Solo el admin raíz.</summary>
+    public const string PortalCredentialsSendReset = "customers.portal_credentials.send_reset";
+
+    /// <summary>Exigir al cliente que cambie su contraseña del portal en el próximo ingreso. Solo el admin raíz.</summary>
+    public const string PortalCredentialsRequireChange = "customers.portal_credentials.require_change";
+
+    /// <summary>Asegurar la cuenta del portal (cerrar sesiones y forzar el restablecimiento). Solo el admin raíz.</summary>
+    public const string PortalCredentialsSecure = "customers.portal_credentials.secure";
+
+    /// <summary>Resetear la verificación en dos pasos del portal de un cliente (D-10). Solo el admin raíz.</summary>
+    public const string PortalMfaReset = "customers.portal_mfa.reset";
 }

@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<NotificationDbContext>());
         services.AddScoped<INotificationLogRepository, NotificationLogRepository>();
         services.AddScoped<INotificationLogStatusRepository, NotificationLogRepository>();
+        services.AddScoped<INotificationDeliveryStatusReader, NotificationLogRepository>();
         services.AddScoped<ISeatGateNotificationLogRepository, SeatGateNotificationLogRepository>();
         services
             .AddOptions<NotificationRetentionOptions>()
@@ -204,6 +205,7 @@ public static class DependencyInjection
         // "rollback" no encendía nada. Un interruptor de emergencia que no funciona es peor que no
         // tenerlo: el día que algo arda, alguien lo gira y pierde una hora entendiendo por qué no
         // pasó nada. Se retiró el flag, sus dos ramas y toda la cadena que las sostenía.
+        services.AddScoped<IOfficeReplyToResolver, OfficeReplyToResolver>();
         services.AddScoped<IEmailDispatchGateway, EventBasedEmailDispatchGateway>();
         services.AddScoped<IEmailDeliveryService, PostmasterEmailDeliveryService>();
         services.AddScoped<INotificationLogQueryRepository, NotificationLogQueryRepository>();

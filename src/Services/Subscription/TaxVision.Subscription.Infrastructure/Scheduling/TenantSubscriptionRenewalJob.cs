@@ -76,7 +76,7 @@ public sealed class TenantSubscriptionRenewalJob(
         var subscription = await unit
             .Services.GetRequiredService<ISubscriptionRepository>()
             .GetByTenantIdAsync(tenantId, ct);
-        if (subscription is null || subscription.Status != SubscriptionStatus.Active)
+        if (subscription is null || subscription.Status != SubscriptionStatus.Active || subscription.IsBillingHeld)
             return false;
 
         // Cancelación programada: llegó el fin del período, así que en vez de renovar se expira. Va

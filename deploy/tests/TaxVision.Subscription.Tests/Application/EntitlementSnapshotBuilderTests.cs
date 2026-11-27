@@ -181,11 +181,28 @@ public sealed class EntitlementSnapshotBuilderTests
         return null;
     }
 
-    private static async Task<TenantEntitlementSnapshot> BuildAsync(SubscriptionStatus status, bool withActiveAddOn)
+    [Fact]
+    public async Task An_office_with_billing_held_by_the_platform_has_its_modules_off()
+    {
+        // Suspendida o cerrada por la plataforma: sin módulos, sus procesos automáticos se detienen.
+        var snapshot = await BuildAsync(SubscriptionStatus.Active, withActiveAddOn: true, billingHeld: true);
+
+        Assert.Equal("False", ModuleValue(snapshot, "module.documents"));
+        Assert.Null(ModuleValue(snapshot, "module.email"));
+        Assert.Equal("3", ModuleValue(snapshot, "seats.max"));
+    }
+
+    private static async Task<TenantEntitlementSnapshot> BuildAsync(
+        SubscriptionStatus status,
+        bool withActiveAddOn,
+        bool billingHeld = false
+    )
     {
         var tenantId = Guid.NewGuid();
         var plan = BuildPublishedPlan();
         var subscription = BuildSubscription(tenantId, plan, status);
+        if (billingHeld)
+            subscription.ApplyTenantStatus(tenantIsActive: false, tenantVersion: 1, DateTime.UtcNow);
 
         var addOnDefs = new FakeAddOnDefinitionRepository();
         var addOns = new List<TenantAddOn>();

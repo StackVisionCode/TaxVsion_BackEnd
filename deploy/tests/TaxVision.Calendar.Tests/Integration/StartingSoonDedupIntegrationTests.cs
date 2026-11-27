@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TaxVision.Calendar.Domain.Appointments;
+using TaxVision.Calendar.Domain.RateLimiting;
 using TaxVision.Calendar.Domain.Scheduling;
 using TaxVision.Calendar.Domain.ValueObjects;
 using TaxVision.Calendar.Infrastructure.Jobs;
@@ -119,6 +120,36 @@ public sealed class StartingSoonDedupIntegrationTests : IAsyncLifetime
                     DateTime.UtcNow
                 )
             );
+            await db.SaveChangesAsync();
+        }
+
+        await NewJob().NotifyAsync(CancellationToken.None);
+
+        Assert.Equal(1, await _received.SettledCountAsync(appointmentId));
+    }
+
+    /// <summary>Oficina sin el módulo: no hay aviso ni marca; con el módulo de vuelta, la ventana sigue y se avisa.</summary>
+    [Fact(Timeout = 120_000)]
+    public async Task OfficeWithoutTheModule_IsNotAnnounced_UntilItIsBack()
+    {
+        var appointmentId = await SeedAsync(DateTime.UtcNow.AddMinutes(10));
+        var projection = TenantPlanCodeProjection.Create(_tenantId, "pro", 1);
+        projection.ApplyIfNewer("pro", 1, ["campaigns"]);
+        await using (var db = _database.NewContext())
+        {
+            db.TenantPlanCodeProjections.Add(projection);
+            await db.SaveChangesAsync();
+        }
+
+        await NewJob().NotifyAsync(CancellationToken.None);
+
+        await using (var read = _database.NewContext())
+            Assert.Equal(0, await read.StartingSoonNotices.IgnoreQueryFilters().CountAsync());
+
+        await using (var db = _database.NewContext())
+        {
+            var stored = await db.TenantPlanCodeProjections.IgnoreQueryFilters().SingleAsync();
+            stored.ApplyIfNewer("pro", 2, ["planner"]);
             await db.SaveChangesAsync();
         }
 

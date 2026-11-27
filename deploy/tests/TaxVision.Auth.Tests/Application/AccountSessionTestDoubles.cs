@@ -389,6 +389,9 @@ internal sealed class CapturingJwtTokenGenerator : IJwtTokenGenerator
         bool MfaEnrollmentOnly
     )> Issued { get; } = [];
 
+    /// <summary>Si cada token emitido fue de cambio obligatorio (en el orden de <see cref="Issued"/>).</summary>
+    public List<bool> PasswordChangeOnly { get; } = [];
+
     public AccessToken Generate(
         User user,
         string effectiveTimeZoneId,
@@ -397,10 +400,12 @@ internal sealed class CapturingJwtTokenGenerator : IJwtTokenGenerator
         IReadOnlyCollection<string> authMethods,
         SessionSurface surface = SessionSurface.Workspace,
         DateTime? reauthenticatedAtUtc = null,
-        bool mfaEnrollmentOnly = false
+        bool mfaEnrollmentOnly = false,
+        bool passwordChangeOnly = false
     )
     {
         Issued.Add((sessionId, surface, reauthenticatedAtUtc, [.. authMethods], mfaEnrollmentOnly));
+        PasswordChangeOnly.Add(passwordChangeOnly);
         return new AccessToken($"access-{surface}-{Issued.Count}", 900);
     }
 
@@ -430,6 +435,24 @@ internal sealed class InMemoryAccountHandoffTicketStore : IAccountHandoffTicketS
 
     public Task<AccountHandoffPayload?> ConsumeAsync(Guid ticket, CancellationToken ct = default) =>
         Task.FromResult(_tickets.Remove(ticket, out var payload) ? payload : null);
+}
+
+/// <summary>Registra los anuncios de sesión revocada (auth:session-revoked) que saldrían por Pub/Sub.</summary>
+internal sealed class RecordingSessionRevocationPublisher : ISessionRevocationPublisher
+{
+    public List<(Guid SessionId, string Reason)> Published { get; } = [];
+
+    public Task PublishRevokedAsync(
+        Guid tenantId,
+        Guid userId,
+        Guid sessionId,
+        string reason,
+        CancellationToken ct = default
+    )
+    {
+        Published.Add((sessionId, reason));
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class RecordingAccessTokenDenylist : IAccessTokenDenylist
@@ -773,13 +796,40 @@ internal sealed class InMemoryCredentialTokenRepository : ICredentialTokenReposi
                 .ToList()
         );
 
-    public Task AddEmailVerificationAsync(EmailVerificationToken token, CancellationToken ct = default) =>
-        throw new NotSupportedException();
+    public Task<PasswordResetToken?> GetLatestPasswordResetAsync(Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(PasswordResets.Where(token => token.UserId == userId).LastOrDefault());
+
+    public Task<int> CountOfficePasswordResetsSinceAsync(
+        Guid userId,
+        DateTime sinceUtc,
+        CancellationToken ct = default
+    ) =>
+        Task.FromResult(
+            PasswordResets.Count(token =>
+                token.UserId == userId && token.Origin != ResetOrigin.SelfService && token.CreatedAtUtc >= sinceUtc
+            )
+        );
+
+    public List<EmailVerificationToken> EmailVerifications { get; } = [];
+
+    public Task AddEmailVerificationAsync(EmailVerificationToken token, CancellationToken ct = default)
+    {
+        EmailVerifications.Add(token);
+        return Task.CompletedTask;
+    }
 
     public Task<EmailVerificationToken?> GetEmailVerificationByHashAsync(
         string tokenHash,
         CancellationToken ct = default
-    ) => throw new NotSupportedException();
+    ) => Task.FromResult(EmailVerifications.FirstOrDefault(token => token.TokenHash == tokenHash));
+
+    public Task<EmailVerificationToken?> GetLatestEmailVerificationAsync(Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(
+            EmailVerifications
+                .Where(token => token.UserId == userId)
+                .OrderBy(token => token.CreatedAtUtc)
+                .LastOrDefault()
+        );
 
     public List<PhoneVerificationToken> PhoneVerifications { get; } = [];
 

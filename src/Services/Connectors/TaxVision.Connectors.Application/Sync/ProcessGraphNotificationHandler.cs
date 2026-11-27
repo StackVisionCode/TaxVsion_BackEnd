@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Abstractions;
@@ -29,6 +30,7 @@ public static class ProcessGraphNotificationHandler
         ICorrelationContext correlation,
         ILogger logger,
         MessageFetchFailureTracker fetchFailures,
+        ITenantEntitlementModulesReader modules,
         CancellationToken ct
     )
     {
@@ -68,6 +70,16 @@ public static class ProcessGraphNotificationHandler
             );
             return Result.Success();
         }
+
+        if (await MailboxSyncModuleGate.IsPausedAsync(modules, account.TenantId, ct))
+        {
+            logger.LogInformation(
+                "Graph notification for account {AccountId} ignored — the tenant has no email module.",
+                account.Id
+            );
+            return Result.Success();
+        }
+
         var clientResult = emailClientFactory.Resolve(account.ProviderCode);
         if (clientResult.IsFailure)
             return Result.Failure(clientResult.Error);

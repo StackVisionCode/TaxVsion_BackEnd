@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Abstractions;
 using TaxVision.Connectors.Application.Accounts;
@@ -27,6 +28,7 @@ public static class GraphNotificationReceivedHandler
         ICorrelationContext correlation,
         ILogger logger,
         MessageFetchFailureTracker fetchFailures,
+        ITenantEntitlementModulesReader modules,
         CancellationToken ct
     )
     {
@@ -44,6 +46,7 @@ public static class GraphNotificationReceivedHandler
                 correlation,
                 logger,
                 fetchFailures,
+                modules,
                 ct
             );
 

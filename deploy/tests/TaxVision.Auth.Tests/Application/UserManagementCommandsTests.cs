@@ -294,6 +294,7 @@ public sealed class UserManagementCommandsTests
     {
         public string? IpAddress => throw new InvalidOperationException("No debería leerse.");
         public string? UserAgent => throw new InvalidOperationException("No debería leerse.");
+        public string? ActorType => throw new InvalidOperationException("No debería leerse.");
     }
 
     private sealed class ThrowingCorrelationContext : BuildingBlocks.Common.ICorrelationContext
@@ -425,6 +426,7 @@ public sealed class UserManagementCommandsTests
             new ThrowingCorrelationContext(),
             new ThrowingUnitOfWork(),
             new FakeMessageBus(),
+            new InMemoryCredentialTokenRepository(),
             CancellationToken.None
         );
 
@@ -490,6 +492,7 @@ public sealed class UserManagementCommandsTests
             new QuietCorrelationContext(),
             new QuietUnitOfWork(),
             new FakeMessageBus(),
+            new InMemoryCredentialTokenRepository(),
             CancellationToken.None
         );
 
@@ -586,6 +589,7 @@ public sealed class UserManagementCommandsTests
     {
         public string? IpAddress => "203.0.113.10";
         public string? UserAgent => "test-agent";
+        public string? ActorType => null;
     }
 
     private sealed class QuietCorrelationContext : BuildingBlocks.Common.ICorrelationContext
@@ -786,6 +790,7 @@ public sealed class UserManagementCommandsTests
             new ThrowingCorrelationContext(),
             new ThrowingUnitOfWork(),
             bus,
+            new InMemoryCredentialTokenRepository(),
             CancellationToken.None
         );
 

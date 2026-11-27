@@ -55,6 +55,17 @@ public sealed class SessionAccessCutoff(
         return revoked;
     }
 
+    /// <summary>Igual que <see cref="ForUserAsync(User, string, CancellationToken, Guid?)"/> pero conserva la sesión
+    /// <paramref name="exceptSessionId"/> (cambio de contraseña autenticado). Devuelve cuántas se revocaron.</summary>
+    public async Task<int> ForUserAsync(User target, string reason, Guid exceptSessionId, CancellationToken ct)
+    {
+        var active = (await sessions.GetActiveSessionsByUserAsync(target.Id, ct))
+            .Where(session => session.Id != exceptSessionId)
+            .ToList();
+        await CutAsync(active, reason, ct);
+        return await sessions.RevokeAllForUserAsync(target.Id, reason, exceptSessionId, ct);
+    }
+
     /// <summary>Corta el acceso de un tenant completo (staff y clientes por igual: un tenant suspendido
     /// no atiende a nadie). Devuelve cuántas sesiones se revocaron.</summary>
     public async Task<int> ForTenantAsync(Guid tenantId, string reason, CancellationToken ct)

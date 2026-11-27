@@ -860,6 +860,90 @@ public sealed class NotificationTemplateSeedSourceTests
         Assert.Contains("Referral discount + Promo code SPRI...0420", html);
     }
 
+    // ---------- Cambio obligatorio, cuenta asegurada y contraseña cambiada (F4-L7) ----------
+
+    // Con link (cuenta asegurada) sale por el sistema; sin token, con la marca y el carril de la oficina (DM-02).
+    [Theory]
+    [InlineData("auth.account_secured.v1", "auth.account-secured", "system-base")]
+    [InlineData("auth.password_change_required.v1", "auth.password-change-required", "tenant-base")]
+    [InlineData("auth.password_changed.v1", "auth.password-changed", "tenant-base")]
+    public void Credential_state_notices_use_the_lane_of_their_content(
+        string eventKey,
+        string templateKey,
+        string layout
+    )
+    {
+        var seed = Seed(eventKey);
+
+        Assert.Equal(templateKey, seed.TemplateKey);
+        Assert.Equal(layout, seed.LayoutKey);
+        AssertDeclaresEveryVariable(seed);
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+    }
+
+    [Theory]
+    [InlineData(null, "Action needed: your Acme Tax account was secured", "Your previous password no longer works.")]
+    [InlineData("Es", "Acción necesaria: se aseguró tu cuenta de Acme Tax", "Ya no funciona tu contraseña anterior.")]
+    public void Account_secured_carries_the_secure_link_and_names_only_the_office(
+        string? language,
+        string subject,
+        string bodyFragment
+    )
+    {
+        var context = new TemplateContext();
+        context.SetValue("account_kind", "portal");
+        context.SetValue("office", "Acme Tax");
+        context.SetValue("reset_link", "https://acme.taxoffix.io/portal/client/auth/reset-password/new?token=t");
+        context.SetValue("expires_at", "on Nov 27");
+        context.SetValue("product_name", "TaxOffix");
+        if (language is not null)
+            context.SetValue("language", language);
+        var seed = Seed("auth.account_secured.v1");
+
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Equal(subject, Parser.Parse(seed.Subject).Render(context));
+        Assert.Contains(bodyFragment, html, StringComparison.Ordinal);
+        Assert.Contains("href=\"https://acme.taxoffix.io/portal/client/auth/reset-password/new?token=t\"", html);
+    }
+
+    [Theory]
+    [InlineData(null, "Acme Tax asks you to update your password", "Sign in to Acme Tax")]
+    [InlineData("Es", "Acme Tax te pide actualizar tu contraseña", "Iniciar sesión en Acme Tax")]
+    public void Password_change_required_links_to_the_office_sign_in(string? language, string subject, string button)
+    {
+        var context = new TemplateContext();
+        context.SetValue("account_kind", "workspace");
+        context.SetValue("tenant_name", "Acme Tax");
+        context.SetValue("sign_in_link", "https://acme.taxoffix.io/login");
+        context.SetValue("product_name", "TaxOffix");
+        if (language is not null)
+            context.SetValue("language", language);
+        var seed = Seed("auth.password_change_required.v1");
+
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Equal(subject, Parser.Parse(seed.Subject).Render(context));
+        Assert.Contains(button, html, StringComparison.Ordinal);
+        Assert.Contains("href=\"https://acme.taxoffix.io/login\"", html);
+    }
+
+    // Sin nombre de la oficina en la proyección, el texto dice "your office"; sin host, no hay botón.
+    [Fact]
+    public void Password_changed_without_office_name_or_link_still_reads_well()
+    {
+        var context = new TemplateContext();
+        context.SetValue("account_kind", "workspace");
+        context.SetValue("product_name", "TaxOffix");
+        var seed = Seed("auth.password_changed.v1");
+
+        var html = Parser.Parse(seed.Html).Render(context);
+
+        Assert.Equal("Your password was changed", Parser.Parse(seed.Subject).Render(context));
+        Assert.Contains("your office", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=", html, StringComparison.Ordinal);
+    }
+
     private static void AssertDeclaresEveryVariable(NotificationTemplateSeed seed)
     {
         var declared = seed.Variables.Select(v => v.Name).ToHashSet();
@@ -1060,6 +1144,48 @@ public sealed class NotificationTemplateSeedSourceTests
         Assert.Contains("FTC Safeguards Rule", html);
         Assert.Contains("Office settings &rarr; Compliance", html);
         Assert.Contains("href=\"https://manfer.taxoffix.io/company/settings#compliance\"", html);
+    }
+
+    // ---------- Reset de contraseña enviado por la oficina (DM-02: con token sale por el sistema) ----------
+
+    [Theory]
+    [InlineData("workspace", null, "Acme Tax sent you a link to reset your password", "team account")]
+    [InlineData("portal", null, "Acme Tax sent you a link to reset your client portal password", "Your documents")]
+    [InlineData("workspace", "Es", "Acme Tax te envió un enlace para restablecer tu contraseña", "cuenta de equipo")]
+    [InlineData(
+        "portal",
+        "Es",
+        "Acme Tax te envió un enlace para restablecer tu contraseña del portal de cliente",
+        "Tus documentos"
+    )]
+    public void Office_reset_template_names_the_office_and_never_the_administrator(
+        string accountKind,
+        string? language,
+        string subject,
+        string bodyFragment
+    )
+    {
+        var seed = Seed("auth.password_reset_by_office.v1");
+        Assert.Equal("auth.password-reset.office", seed.TemplateKey);
+        // El link con token no sale por el buzón de la oficina (quedaría en Enviados).
+        Assert.Equal("system-base", seed.LayoutKey);
+        AssertDeclaresEveryVariable(seed);
+        Assert.Contains(NotificationTemplateSeedSource.VariablesWithPreheader(seed), v => v.Name == "preheader");
+
+        var context = new TemplateContext();
+        context.SetValue("account_kind", accountKind);
+        context.SetValue("office", "Acme Tax");
+        context.SetValue("reset_link", "https://acme.taxoffix.io/reset-password?token=t");
+        context.SetValue("expires_at", "on Nov 27");
+        context.SetValue("product_name", "TaxOffix");
+        if (language is not null)
+            context.SetValue("language", language);
+
+        var html = Parser.Parse(seed.Html).Render(context);
+        Assert.Equal(subject, Parser.Parse(seed.Subject).Render(context));
+        Assert.Contains(bodyFragment, html, StringComparison.Ordinal);
+        Assert.Contains("href=\"https://acme.taxoffix.io/reset-password?token=t\"", html);
+        Assert.Contains(language is null ? "An office administrator at" : "Un administrador de la oficina", html);
     }
 
     private static NotificationTemplateSeed Seed(string key) =>

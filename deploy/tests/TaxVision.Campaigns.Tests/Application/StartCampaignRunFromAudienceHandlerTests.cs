@@ -78,6 +78,7 @@ public sealed class StartCampaignRunFromAudienceHandlerTests
                 _wallet,
                 _campaigns,
                 new FakeCorrelationContext(),
+                new FakeTenantEntitlementModulesReader(),
                 NullLogger<CampaignRunStarter>.Instance
             ),
             _bus,

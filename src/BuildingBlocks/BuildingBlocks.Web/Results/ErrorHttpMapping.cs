@@ -544,6 +544,26 @@ public static class ErrorHttpMapping
             "PayPal.ConfigurationMissing" or "PayPal.WebhookId.Missing" => StatusCodes.Status503ServiceUnavailable,
             "Growth.Idempotency.ConcurrentClaimUnavailable" or "Growth.Idempotency.SavepointsRequired" =>
                 StatusCodes.Status503ServiceUnavailable,
+            // Administración de credenciales por la oficina (Auth, 03 §15).
+            "Auth.CredentialAdmin.ActorNotAllowed"
+            or "Auth.CredentialAdmin.OwnerOnly"
+            or "Auth.CredentialAdmin.SelfNotAllowed"
+            or "Auth.CredentialAdmin.TargetProtected"
+            or "Auth.CredentialAdmin.Hierarchy"
+            or "Auth.PasswordChangeRequired" => StatusCodes.Status403Forbidden,
+            "Auth.CredentialAdmin.TargetInactive"
+            or "Auth.CredentialAdmin.EmailUnverified"
+            or "Auth.CredentialAdmin.InvalidTransition"
+            or "Auth.CredentialAdmin.LinkAlreadyUsed"
+            or "Auth.CredentialAdmin.EmailChangeCooldown"
+            or "User.CredentialResetRequired" => StatusCodes.Status409Conflict,
+            "Auth.CredentialAdmin.ReasonRequired" or "Auth.CredentialAdmin.InvalidReason" =>
+                StatusCodes.Status400BadRequest,
+            "Auth.CredentialAdmin.NoPendingLink" => StatusCodes.Status404NotFound,
+            "Auth.CredentialAdmin.TargetRateLimited" => StatusCodes.Status429TooManyRequests,
+            "Auth.CredentialAdmin.DeliveryUnavailable" => StatusCodes.Status503ServiceUnavailable,
+            "Auth.CredentialAdmin.StaleReauthentication" or "Auth.CredentialAdmin.ActorTokenInvalid" =>
+                StatusCodes.Status401Unauthorized,
             _ => StatusCodes.Status400BadRequest,
         };
 }

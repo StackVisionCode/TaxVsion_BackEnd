@@ -105,6 +105,7 @@ internal sealed class AvatarRequestContext : IRequestContext
 {
     public string? IpAddress => "203.0.113.10";
     public string? UserAgent => "test-agent";
+    public string? ActorType => null;
 }
 
 internal sealed class AvatarCorrelation : ICorrelationContext

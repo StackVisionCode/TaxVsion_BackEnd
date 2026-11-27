@@ -20,10 +20,19 @@ public static class AccountSurfacePolicy
         "Set up two-step verification in your office workspace first, then come back."
     );
 
+    /// <summary>Con el cambio obligatorio pendiente, primero se cambia la contraseña en el workspace (03 §9.2 paso 5).</summary>
+    public static readonly Error PasswordChangeRequired = new(
+        "Auth.PasswordChangeRequired",
+        "Update your password in your office workspace first, then come back."
+    );
+
     public static Error? Check(User user, bool mustEnrollMfa)
     {
         if (user.ActorType != UserActorType.TenantAdmin)
             return AdminOnly;
+
+        if (user.CredentialStatus == CredentialStatus.ChangeRequired)
+            return PasswordChangeRequired;
 
         return mustEnrollMfa ? MfaSetupRequired : null;
     }

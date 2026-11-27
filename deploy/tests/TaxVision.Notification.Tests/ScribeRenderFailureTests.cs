@@ -207,7 +207,7 @@ public sealed class ScribeRenderFailureTests
                 gateway,
                 scribeClient,
                 Options.Create(new PortalOptions()),
-                new FakeTenantHostResolver(),
+                new FakeTenantHostResolver("acme.taxoffix.test"),
                 FixedRecipientLocale.English,
                 new NoOpCorrelationContext(),
                 CancellationToken.None

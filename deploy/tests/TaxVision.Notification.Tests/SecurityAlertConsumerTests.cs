@@ -25,10 +25,10 @@ public sealed class SecurityAlertConsumerTests
     private const string AffectedEmail = "ana@example.com";
 
     [Fact]
-    public async Task Password_changed_sends_an_email_to_the_account_owner()
+    public async Task Mfa_disabled_sends_an_email_to_the_account_owner()
     {
         var context = new Context();
-        var evt = Alert(SecurityAlertType.PasswordChanged);
+        var evt = Alert(SecurityAlertType.MfaDisabled);
 
         await context.HandleAsync(evt);
 
@@ -44,8 +44,74 @@ public sealed class SecurityAlertConsumerTests
         Assert.Equal(1, context.Gateway.Sent);
     }
 
+    // F4-L7: contraseña cambiada y cambio obligatorio tienen plantilla propia (tenant-base), un solo correo.
     [Theory]
-    [InlineData(SecurityAlertType.PasswordChanged, "The password of your TaxOffix workspace account was changed.")]
+    [InlineData(SecurityAlertType.PasswordChanged, "auth.password_changed.v1", "auth.password-changed")]
+    [InlineData(
+        SecurityAlertType.PasswordChangeRequired,
+        "auth.password_change_required.v1",
+        "auth.password-change-required"
+    )]
+    public async Task Office_account_notices_use_their_own_template_once(
+        string alertType,
+        string eventKey,
+        string templateKey
+    )
+    {
+        var context = new Context();
+        var evt = Alert(alertType);
+
+        await context.HandleAsync(evt);
+        await context.HandleAsync(evt);
+
+        Assert.All(context.Gateway.Requests, request => Assert.Equal(templateKey, request.TemplateKey));
+        Assert.Equal(AffectedEmail, context.Gateway.Requests[0].To);
+        Assert.Equal(eventKey, context.Scribe.LastEventKey);
+        Assert.Equal("workspace", context.Scribe.LastVariables["account_kind"]);
+        Assert.Equal("https://acme.taxoffix.test/login", context.Scribe.LastVariables["sign_in_link"]);
+        Assert.Equal(1, context.Gateway.Sent);
+    }
+
+    [Fact]
+    public async Task The_sign_in_link_of_a_portal_account_goes_to_the_portal()
+    {
+        var userId = Guid.NewGuid();
+        var context = new Context(portalUserId: userId);
+
+        await context.HandleAsync(Alert(SecurityAlertType.PasswordChangeRequired) with { UserId = userId });
+
+        Assert.Equal("portal", context.Scribe.LastVariables["account_kind"]);
+        Assert.Equal(
+            "https://acme.taxoffix.test/portal/client/auth/login",
+            context.Scribe.LastVariables["sign_in_link"]
+        );
+    }
+
+    // Sin host de la oficina el aviso sale igual, sin botón (nunca un link a otra base: D-04).
+    [Fact]
+    public async Task Without_an_office_host_the_notice_goes_out_without_a_link()
+    {
+        var context = new Context(host: null);
+
+        await context.HandleAsync(Alert(SecurityAlertType.PasswordChanged));
+
+        Assert.Equal("auth.password_changed.v1", context.Scribe.LastEventKey);
+        Assert.Null(context.Scribe.LastVariables["sign_in_link"]);
+    }
+
+    // La cuenta asegurada recibe el correo con el link seguro (otra plantilla): la alerta no manda un segundo.
+    [Fact]
+    public async Task Account_secured_sends_no_second_email_but_rings_the_bell()
+    {
+        var context = new Context();
+
+        await context.HandleAsync(Alert(SecurityAlertType.AccountSecured));
+
+        Assert.Empty(context.Gateway.Requests);
+        Assert.NotEmpty(context.InApp());
+    }
+
+    [Theory]
     [InlineData(
         SecurityAlertType.MfaDisabled,
         "Two-step verification was turned off on your TaxOffix workspace account."
@@ -63,6 +129,10 @@ public sealed class SecurityAlertConsumerTests
         "A session of your TaxOffix workspace account was used from an unexpected address and was closed."
     )]
     [InlineData(SecurityAlertType.EmailChanged, "The email address of your TaxOffix workspace account was changed.")]
+    [InlineData(
+        SecurityAlertType.MfaResetByOffice,
+        "An office administrator reset two-step verification on your TaxOffix workspace account."
+    )]
     [InlineData("something_new", "We noticed important security activity on your TaxOffix workspace account.")]
     public async Task The_description_is_in_English_for_each_alert_type(string alertType, string description)
     {
@@ -129,6 +199,39 @@ public sealed class SecurityAlertConsumerTests
         Assert.Equal(evt.UserId, Assert.Single(context.Gateway.Requests).RecipientUserId);
     }
 
+    // El afectado ya recibe el correo del link (auth.password-reset.office): la alerta no manda otro.
+    [Fact]
+    public async Task Office_reset_link_sends_no_second_email_and_skips_the_bell_of_the_owner_who_sent_it()
+    {
+        var context = new Context();
+        var evt = Alert(SecurityAlertType.PasswordResetSentByOffice) with
+        {
+            DetailsJson = $$"""{"origin":"office","actorUserId":"{{context.Owner}}"}""",
+        };
+
+        await context.HandleAsync(evt);
+
+        Assert.Empty(context.Gateway.Requests);
+        Assert.Equal(
+            new[] { evt.UserId, context.Subscriber }.Order(),
+            context.InApp().Select(notification => notification.RecipientUserId).Order()
+        );
+    }
+
+    [Fact]
+    public async Task Office_reset_link_sent_by_another_administrator_rings_the_owner()
+    {
+        var context = new Context();
+        var evt = Alert(SecurityAlertType.PasswordResetSentByOffice) with
+        {
+            DetailsJson = $$"""{"origin":"office","actorUserId":"{{Guid.NewGuid()}}"}""",
+        };
+
+        await context.HandleAsync(evt);
+
+        Assert.Contains(context.Owner, context.InApp().Select(notification => notification.RecipientUserId));
+    }
+
     [Fact]
     public async Task A_user_without_a_known_address_still_gets_the_bell()
     {
@@ -147,11 +250,11 @@ public sealed class SecurityAlertConsumerTests
         var userId = Guid.NewGuid();
         var context = new Context(portalUserId: userId);
 
-        await context.HandleAsync(Alert(SecurityAlertType.PasswordChanged) with { UserId = userId });
+        await context.HandleAsync(Alert(SecurityAlertType.MfaDisabled) with { UserId = userId });
 
         Assert.Equal(ScribeRenderAudience.Client, context.Scribe.LastAudience);
         Assert.Equal(
-            "The password of your client portal account was changed.",
+            "Two-step verification was turned off on your client portal account.",
             context.Scribe.LastVariables["description"]
         );
     }
@@ -170,11 +273,11 @@ public sealed class SecurityAlertConsumerTests
     {
         var context = new Context(locales: new FixedRecipientLocale("es"));
 
-        await context.HandleAsync(Alert(SecurityAlertType.PasswordChanged));
+        await context.HandleAsync(Alert(SecurityAlertType.MfaDisabled));
 
         Assert.Equal("Es", context.Scribe.LastVariables["language"]);
         Assert.Equal(
-            $"Se cambió la contraseña de tu cuenta de {TestPlatform.Settings.Current.BrandName}.",
+            $"Se desactivó la verificación en dos pasos de tu cuenta de {TestPlatform.Settings.Current.BrandName}.",
             context.Scribe.LastVariables["description"]
         );
     }
@@ -182,7 +285,8 @@ public sealed class SecurityAlertConsumerTests
     private sealed class Context(
         string? knownEmail = AffectedEmail,
         Guid? portalUserId = null,
-        IRecipientLocale? locales = null
+        IRecipientLocale? locales = null,
+        string? host = "acme.taxoffix.test"
     )
     {
         public Guid Owner { get; } = Guid.NewGuid();
@@ -206,6 +310,7 @@ public sealed class SecurityAlertConsumerTests
                 TestPlatform.Settings,
                 new OfficeResolver(Owner, Subscriber),
                 locales ?? FixedRecipientLocale.English,
+                new FakeTenantHostResolver(host),
                 new TestCorrelationContext(),
                 NullLogger<SecurityAlertIntegrationEvent>.Instance,
                 CancellationToken.None

@@ -45,6 +45,17 @@ public sealed class AccountSurfacePolicyTests
         Assert.Equal(AccountSurfacePolicy.MfaSetupRequired, denied);
     }
 
+    // 03 §9.2 paso 5: con cambio obligatorio pendiente el Account no abre; primero cambia la contraseña.
+    [Fact]
+    public void An_admin_who_must_change_the_password_is_refused_before_the_mfa_check()
+    {
+        var admin = Admin(UserActorType.TenantAdmin).RequireChange();
+
+        var denied = AccountSurfacePolicy.Check(admin, mustEnrollMfa: true);
+
+        Assert.Equal("Auth.PasswordChangeRequired", denied!.Code);
+    }
+
     private static User Admin(UserActorType actorType, Guid? tenantId = null) =>
         User.Register(
             tenantId ?? Guid.NewGuid(),

@@ -16,7 +16,17 @@ public sealed class TenantMfaPolicyTests
         var policy = TenantMfaPolicy.CreateDefault(Guid.NewGuid());
 
         Assert.False(policy.RequiresFor(UserActorType.TenantAdmin));
-        Assert.False(policy.RequiresFor(UserActorType.PlatformAdmin));
+    }
+
+    [Fact]
+    public void Platform_operators_always_require_mfa_whatever_the_policy_says()
+    {
+        // Guardar la política de la oficina de plataforma la crea con los valores por defecto:
+        // eso no puede dejar a los operadores sin segundo factor.
+        var policy = TenantMfaPolicy.CreateDefault(Guid.NewGuid());
+        policy.Update(requireForEmployees: false, requireForCustomerPortal: false, trustedDeviceDays: 30);
+
+        Assert.True(policy.RequiresFor(UserActorType.PlatformAdmin));
     }
 
     [Fact]

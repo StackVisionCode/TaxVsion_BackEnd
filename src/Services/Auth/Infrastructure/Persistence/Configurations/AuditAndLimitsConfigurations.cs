@@ -15,6 +15,7 @@ public sealed class AuthAuditLogConfiguration : IEntityTypeConfiguration<AuthAud
         builder.Property(log => log.TenantId).IsRequired();
         builder.Property(log => log.Action).HasMaxLength(64).IsRequired();
         builder.Property(log => log.TargetType).HasMaxLength(32);
+        builder.Property(log => log.ActorType).HasMaxLength(32);
         builder.Property(log => log.IpAddress).HasMaxLength(45);
         builder.Property(log => log.UserAgent).HasMaxLength(512);
         builder.Property(log => log.CorrelationId).HasMaxLength(128);
@@ -28,6 +29,18 @@ public sealed class AuthAuditLogConfiguration : IEntityTypeConfiguration<AuthAud
             log.OccurredAtUtc,
         });
         builder.HasIndex(log => new { log.TenantId, log.Action });
+        // "Security activity" de una ficha: GET /auth/audit?targetId= (03 §13.3).
+        builder
+            .HasIndex(
+                log => new
+                {
+                    log.TenantId,
+                    log.TargetId,
+                    log.OccurredAtUtc,
+                },
+                "IX_AuthAuditLogs_TenantId_TargetId_OccurredAtUtc"
+            )
+            .HasFilter("[TargetId] IS NOT NULL");
     }
 }
 

@@ -1,4 +1,5 @@
 using BuildingBlocks.Common;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Connectors.Application.Abstractions;
@@ -52,6 +53,7 @@ public static class ReconcileAccountHandler
         ICorrelationContext correlation,
         ILogger logger,
         MessageFetchFailureTracker fetchFailures,
+        ITenantEntitlementModulesReader modules,
         CancellationToken ct
     )
     {
@@ -60,6 +62,15 @@ public static class ReconcileAccountHandler
             return Result.Failure<ReconciliationOutcome>(accountResult.Error);
 
         var account = accountResult.Value;
+        if (await MailboxSyncModuleGate.IsPausedAsync(modules, account.TenantId, ct))
+        {
+            logger.LogInformation(
+                "Reconciliation for account {AccountId} skipped — the tenant has no email module.",
+                account.Id
+            );
+            return Result.Success(new ReconciliationOutcome(MessagesFound: 0, CursorWasSeeded: false, Skipped: true));
+        }
+
         var clientResult = emailClientFactory.Resolve(account.ProviderCode);
         if (clientResult.IsFailure)
             return Result.Failure<ReconciliationOutcome>(clientResult.Error);

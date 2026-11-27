@@ -9,4 +9,10 @@ namespace TaxVision.Notification.Application.Abstractions;
 public interface ITenantHostResolver
 {
     Task<string?> ResolveHostAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Variante estricta para links de cuenta: sin host lanza <see cref="TenantHostUnavailableException"/>
+    /// (nunca base fijo): distingue fallo transitorio de oficina sin subdominio.
+    /// </summary>
+    Task<string> ResolveRequiredHostAsync(Guid tenantId, CancellationToken ct = default);
 }

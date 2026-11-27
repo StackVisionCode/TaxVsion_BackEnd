@@ -1,12 +1,10 @@
-using System.Text.Json;
-using BuildingBlocks.Common;
-using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
-using TaxVision.Auth.Application.Mfa;
-using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Application.Credentials.Administration;
+using TaxVision.Auth.Domain.Users;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.Customers.Commands;
@@ -58,14 +56,16 @@ public sealed record ResetCustomerPortalMfaResult(string Outcome);
 public sealed record ResetCustomerPortalMfaCommand(
     Guid TenantId,
     Guid CustomerId,
-    Guid RequestedByUserId,
+    PortalCredentialCommandEnvelope Envelope,
     string CorrelationId
 );
 
 /// <summary>
 /// El cliente perdió el teléfono (o los códigos): la oficina, tras verificar su identidad, le quita el
-/// segundo factor. Si la oficina lo exige, el próximo login le pide enrolarlo de nuevo. Queda auditado
-/// con quién lo hizo y el cliente recibe la alerta de seguridad de "segundo factor desactivado".
+/// segundo factor. Si la oficina lo exige, el próximo login le pide enrolarlo de nuevo. Endurecido (CS-10):
+/// misma política y ventana de reautenticación que el resto de la administración de credenciales, motivo
+/// obligatorio (D-16), sesiones y dispositivos revocados, auditoría con la IP real del actor y alerta
+/// <c>mfa_reset_by_office</c>.
 /// </summary>
 public static class ResetCustomerPortalMfaHandler
 {
@@ -77,7 +77,10 @@ public static class ResetCustomerPortalMfaHandler
     public static async Task<Result<ResetCustomerPortalMfaResult>> Handle(
         ResetCustomerPortalMfaCommand command,
         IUserRepository users,
+        IUserLoginLock userLock,
+        SessionAccessCutoff cutoff,
         IMfaRepository mfa,
+        IOptions<CredentialAdministrationOptions> options,
         IAuthAuditWriter audit,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
@@ -88,42 +91,37 @@ public static class ResetCustomerPortalMfaHandler
         if (user is null)
             return Result.Failure<ResetCustomerPortalMfaResult>(NoPortalAccount);
 
-        var hasFactors = user.MfaEnabled || (await mfa.GetMethodsAsync(user.Id, ct)).Count > 0;
-        if (!hasFactors)
-            return Result.Success(new ResetCustomerPortalMfaResult(CustomerPortalMfaResetOutcome.NotEnabled));
+        var trail = PortalCredentialAudit.For(command.TenantId, command.Envelope, command.CorrelationId, audit);
+        if (
+            await PortalCredentialAudit.RejectStaleAsync(
+                trail,
+                user,
+                OfficeCredentialAdministration.ResetMfaModality,
+                unitOfWork,
+                ct
+            ) is
+            { } stale
+        )
+            return Result.Failure<ResetCustomerPortalMfaResult>(stale);
+        if (PortalCredentialAudit.ReasonOf(command.Envelope) is not { } request)
+            return Result.Failure<ResetCustomerPortalMfaResult>(CredentialAdministrationErrors.ReasonRequired);
 
-        await MfaFactors.ClearAsync(user, mfa, ct);
-
-        var details = JsonSerializer.Serialize(
-            new { resetBy = "office", requestedByUserId = command.RequestedByUserId }
-        );
-
-        // La IP y el agente serían los del servicio que llama; quién lo pidió va como actor del registro.
-        await audit.AddAsync(
-            AuthAuditLog.Record(
-                user.TenantId,
-                command.RequestedByUserId,
-                AuthAuditAction.MfaResetByOffice,
-                true,
-                ipAddress: null,
-                userAgent: null,
-                command.CorrelationId,
-                targetType: "User",
-                targetId: user.Id
-            ),
+        var reset = await OfficeCredentialAdministration.ResetMfaAsync(
+            user.Id,
+            user,
+            request,
+            options.Value,
+            users,
+            userLock,
+            cutoff,
+            mfa,
+            trail,
+            unitOfWork,
+            bus,
             ct
         );
-        await unitOfWork.SaveChangesAsync(ct);
-        await bus.PublishAsync(
-            new SecurityAlertIntegrationEvent
-            {
-                TenantId = user.TenantId,
-                UserId = user.Id,
-                AlertType = SecurityAlertType.MfaDisabled,
-                DetailsJson = details,
-                CorrelationId = command.CorrelationId,
-            }
-        );
-        return Result.Success(new ResetCustomerPortalMfaResult(CustomerPortalMfaResetOutcome.Reset));
+        return reset.IsSuccess
+            ? Result.Success(new ResetCustomerPortalMfaResult(reset.Value.Outcome))
+            : Result.Failure<ResetCustomerPortalMfaResult>(reset.Error);
     }
 }

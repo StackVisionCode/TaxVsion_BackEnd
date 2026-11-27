@@ -186,6 +186,34 @@ public sealed class RecipientLanguageTemplatesTests
             "Reset your",
             "We received a request"
         ),
+        (
+            "auth.password-reset.office",
+            "te envió un enlace",
+            "Un administrador de la oficina",
+            "sent you a link",
+            "An office administrator at"
+        ),
+        (
+            "auth.account-secured",
+            "Acción necesaria: se aseguró tu cuenta",
+            "Ya no funciona tu contraseña anterior",
+            "Action needed: your",
+            "Your previous password no longer works"
+        ),
+        (
+            "auth.password-change-required",
+            "te pide actualizar tu contraseña",
+            "te pidió elegir una contraseña nueva",
+            "asks you to update your password",
+            "asked you to choose a new password"
+        ),
+        (
+            "auth.password-changed",
+            "Se cambió tu contraseña",
+            "Se cambió la contraseña de tu",
+            "password was changed",
+            "The password for your"
+        ),
         ("auth.otp_code", "es tu código de", "Tu código de verificación", "is your", "Your verification code"),
         (
             "auth.email_change",

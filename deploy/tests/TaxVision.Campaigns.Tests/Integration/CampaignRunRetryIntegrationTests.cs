@@ -352,6 +352,9 @@ public sealed class CampaignRunRetryIntegrationTests : IAsyncLifetime
                 services.AddSingleton<ICampaignCustomerAssignmentReader>(new FakeCampaignCustomerAssignmentReader());
                 services.AddSingleton<IWalletSpendClient>(_wallet);
                 services.AddSingleton<ICorrelationContext>(new FakeCorrelationContext());
+                services.AddSingleton<BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader>(
+                    new FakeTenantEntitlementModulesReader()
+                );
                 services.AddSingleton(Options.Create(new CampaignSchedulerOptions()));
             })
             .UseWolverine(options =>

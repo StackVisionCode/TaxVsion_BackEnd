@@ -48,6 +48,7 @@ public class ProcessGmailPushNotificationHandlerTests
                 new FakeCorrelationContext(),
                 NullLogger.Instance,
                 FetchFailures.None(),
+                FakeTenantEntitlementModulesReader.Unrestricted,
                 CancellationToken.None
             );
         return (client, cursors);
@@ -137,6 +138,7 @@ public class ProcessGmailPushNotificationHandlerTests
             correlation,
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -187,6 +189,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -227,6 +230,7 @@ public class ProcessGmailPushNotificationHandlerTests
             correlation,
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -249,6 +253,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -280,6 +285,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -322,6 +328,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -357,6 +364,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -390,6 +398,7 @@ public class ProcessGmailPushNotificationHandlerTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -461,6 +470,7 @@ public class ProcessGmailPushNotificationHandlerTests
                 correlation,
                 NullLogger.Instance,
                 FetchFailures.None(),
+                FakeTenantEntitlementModulesReader.Unrestricted,
                 CancellationToken.None
             )
         );
@@ -480,6 +490,7 @@ public class ProcessGmailPushNotificationHandlerTests
             correlation,
             NullLogger.Instance,
             FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 
@@ -499,5 +510,38 @@ public class ProcessGmailPushNotificationHandlerTests
         // B dejó la marca y A hizo una pasada más desde el cursor avanzado.
         Assert.Equal(1, sharedPendingFlag.MarkCount);
         Assert.Equal(["history-5", "history-2"], client.ReceivedCursors);
+    }
+
+    [Fact]
+    public async Task Handle_WhenTenantHasNoEmailModule_AcknowledgesWithoutSyncing()
+    {
+        var account = CreateActiveAccount();
+        var accountRepository = new FakeTenantEmailAccountRepository();
+        accountRepository.Accounts.Add(account);
+        var client = new FakeEmailProviderClient(ProviderCode.Gmail)
+        {
+            OnGetHistory = (_, _) => new HistoryPage(["msg1"], "history-2", false),
+        };
+        var bus = new FakeMessageBus();
+
+        var result = await ProcessGmailPushNotificationHandler.Handle(
+            new ProcessGmailPushNotificationCommand(account.Id, "push-history-1"),
+            accountRepository,
+            new FakeProviderWatchSubscriptionRepository(),
+            new FakeProviderSyncCursorRepository(),
+            new FakeEmailProviderClientFactory(client),
+            new InMemoryDistributedLock(),
+            new InMemorySyncPendingFlag(),
+            new HandlerTransactionUnit(new FakeUnitOfWork(), bus),
+            new FakeCorrelationContext(),
+            NullLogger.Instance,
+            FetchFailures.None(),
+            FakeTenantEntitlementModulesReader.WithoutEmail,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Empty(client.ReceivedCursors);
+        Assert.Empty(bus.Published);
     }
 }

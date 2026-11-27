@@ -72,6 +72,7 @@ public class RawMessageSyncOrchestratorTests
             new FakeCorrelationContext(),
             NullLogger.Instance,
             FetchFailures.Tracker(s.Failures, s.Metrics),
+            FakeTenantEntitlementModulesReader.Unrestricted,
             CancellationToken.None
         );
 

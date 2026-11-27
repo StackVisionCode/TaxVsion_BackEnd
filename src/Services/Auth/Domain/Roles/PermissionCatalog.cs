@@ -15,6 +15,10 @@ public static class PermissionCatalog
     public const string UsersManage = UserManagementPermissions.UsersManage;
     public const string UsersWorkView = UserManagementPermissions.UsersWorkView;
     public const string SessionsLocationView = UserManagementPermissions.SessionsLocationView;
+    public const string UsersPasswordSendReset = "users.password.send_reset";
+    public const string UsersPasswordRequireChange = "users.password.require_change";
+    public const string UsersCredentialsSecure = "users.credentials.secure";
+    public const string UsersMfaReset = "users.mfa.reset";
     public const string RolesManage = "roles.manage";
     public const string AuditView = "audit.view";
     public const string SettingsManage = "settings.manage";
@@ -44,6 +48,10 @@ public static class PermissionCatalog
     public const string CustomersFiscalProfileReveal = CustomersPermissions.FiscalProfileReveal;
     public const string CustomersPreparerManage = CustomersPermissions.PreparerManage;
     public const string CustomersImport = CustomersPermissions.Import;
+    public const string CustomersPortalCredentialsSendReset = CustomersPermissions.PortalCredentialsSendReset;
+    public const string CustomersPortalCredentialsRequireChange = CustomersPermissions.PortalCredentialsRequireChange;
+    public const string CustomersPortalCredentialsSecure = CustomersPermissions.PortalCredentialsSecure;
+    public const string CustomersPortalMfaReset = CustomersPermissions.PortalMfaReset;
     public const string MobileTripsRead = MobilePermissions.TripsRead;
     public const string MobileTripsManage = MobilePermissions.TripsManage;
     public const string MobileTripsSync = MobilePermissions.TripsSync;
@@ -486,6 +494,48 @@ public static class PermissionCatalog
             IsAssignableByTenant: false,
             IsDangerous: true
         ),
+        // Administración de credenciales por la oficina: solo el TenantAdmin raíz (el "solo Owner" lo impone
+        // CredentialAdministrationPolicy). Nunca en roles custom ni en el bundle del empleado.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000234"),
+            UsersPasswordSendReset,
+            "users",
+            "Send or cancel a password reset link to a team member",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin],
+            IsDangerous: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000235"),
+            UsersPasswordRequireChange,
+            "users",
+            "Require a team member to change their password",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin],
+            IsDangerous: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000236"),
+            UsersCredentialsSecure,
+            "users",
+            "Secure a team member's account (sign out and force a reset)",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin],
+            IsDangerous: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000237"),
+            UsersMfaReset,
+            "users",
+            "Reset a team member's two-step verification",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin],
+            IsDangerous: true
+        ),
         new(new Guid("a1000000-0000-0000-0000-000000000005"), AuditView, "audit", "View the audit log", false),
         new(
             new Guid("a1000000-0000-0000-0000-000000000006"),
@@ -577,6 +627,48 @@ public static class PermissionCatalog
             "customers",
             "Bulk import clients (CSV/Excel)",
             false
+        ),
+        // Credenciales del portal de un cliente: mismo criterio que las de empleados; gateadas por el módulo customers.
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000238"),
+            CustomersPortalCredentialsSendReset,
+            "customers",
+            "Send or cancel a client portal password reset link",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin],
+            IsDangerous: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-000000000239"),
+            CustomersPortalCredentialsRequireChange,
+            "customers",
+            "Require a client to change their portal password",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin],
+            IsDangerous: true
+        ),
+        new(
+            new Guid("a1000000-0000-0000-0000-00000000023a"),
+            CustomersPortalCredentialsSecure,
+            "customers",
+            "Secure a client's portal account (sign out and force a reset)",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin],
+            IsDangerous: true
+        ),
+        // D-10: el reset de MFA del cliente deja customers.manage (bundle del empleado) y pasa a este, solo admin.
+        new(
+            new Guid("a1000000-0000-0000-0000-00000000023b"),
+            CustomersPortalMfaReset,
+            "customers",
+            "Reset a client's portal two-step verification",
+            false,
+            IsAssignableByTenant: false,
+            AllowedActorTypes: [UserActorType.TenantAdmin],
+            IsDangerous: true
         ),
         // Financial Insights es un módulo normal: entra al bundle del admin; el plan lo filtra por módulo.
         new(
@@ -1441,7 +1533,10 @@ public static class PermissionCatalog
             CommunicationSupportAgent,
             "communication",
             "Handle support chats as an agent (platform only)",
-            false
+            false,
+            // Solo plataforma: la bandeja de agente vive en la oficina de plataforma.
+            IsAssignableByTenant: false,
+            PlatformOnly: true
         ),
         new(
             // Dual-use (staff Y cliente): el cliente ahora puede LLAMAR a su preparador desde el

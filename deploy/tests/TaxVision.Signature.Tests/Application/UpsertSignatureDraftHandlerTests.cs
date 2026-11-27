@@ -33,11 +33,29 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FakeCache(),
             new CapturingBus(),
             TemplateFiles.None,
+            AcceptingDocumentVerifier.Instance,
             CancellationToken.None
         );
 
         Assert.True(result.IsFailure);
         Assert.Equal("Signature.Request.VersionConflict", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task A_document_whose_file_is_already_scanned_is_verified_when_the_draft_is_saved()
+    {
+        // Cambiar el documento de un borrador por uno de la biblioteca (ya escaneado): queda listo para
+        // enviar en el mismo guardado, sin esperar al job de reconciliación.
+        var draft = NewDraftWithOneSigner();
+        var command = NewCommand(draft) with
+        {
+            Documents = [new DraftDocumentSpec("doc-2", null, Guid.NewGuid(), "Form 1040.pdf", null)],
+        };
+
+        var result = await Upsert(command, new FakeRepository(draft));
+
+        Assert.True(result.IsSuccess, result.IsFailure ? result.Error.Message : null);
+        Assert.All(draft.Documents, document => Assert.NotNull(document.DocumentHashPre));
     }
 
     [Fact]
@@ -76,6 +94,7 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FakeCache(),
             new CapturingBus(),
             TemplateFiles.None,
+            AcceptingDocumentVerifier.Instance,
             CancellationToken.None
         );
 
@@ -106,6 +125,7 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FakeCache(),
             new CapturingBus(),
             TemplateFiles.None,
+            AcceptingDocumentVerifier.Instance,
             CancellationToken.None
         );
 
@@ -129,6 +149,7 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FakeCache(),
             new CapturingBus(),
             TemplateFiles.None,
+            AcceptingDocumentVerifier.Instance,
             CancellationToken.None
         );
 
@@ -275,6 +296,7 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FakeCache(),
             bus,
             templates ?? TemplateFiles.None,
+            AcceptingDocumentVerifier.Instance,
             CancellationToken.None
         );
         Assert.True(result.IsSuccess);
@@ -299,6 +321,7 @@ public sealed class UpsertSignatureDraftHandlerTests
             new FakeCache(),
             new CapturingBus(),
             TemplateFiles.None,
+            AcceptingDocumentVerifier.Instance,
             CancellationToken.None
         );
 

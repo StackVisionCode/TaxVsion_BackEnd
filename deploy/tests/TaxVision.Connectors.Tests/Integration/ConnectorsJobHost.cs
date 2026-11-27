@@ -4,6 +4,7 @@ using BuildingBlocks.Infrastructure.Resilience;
 using BuildingBlocks.Messaging.ConnectorsIntegrationEvents;
 using BuildingBlocks.Messaging.EmailIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.Web.Common;
 using BuildingBlocks.Web.Hosting;
@@ -27,6 +28,7 @@ using TaxVision.Connectors.Infrastructure.Persistence;
 using TaxVision.Connectors.Infrastructure.Persistence.Repositories;
 using TaxVision.Connectors.Infrastructure.Watch;
 using TaxVision.Connectors.Tests.OAuth;
+using TaxVision.Connectors.Tests.Sync;
 using Wolverine;
 using Wolverine.EntityFrameworkCore;
 using Wolverine.SqlServer;
@@ -113,6 +115,10 @@ internal sealed class ConnectorsJobHost : IAsyncDisposable
                     options.Services.AddSingleton(new HttpResiliencePipelineRegistry());
                     options.Services.AddSingleton<IEncryptedSecretProtector, FakeEncryptedSecretProtector>();
                     options.Services.AddSingleton<IDistributedLock, InMemoryDistributedLock>();
+                    // Sin proyección de módulos: la sincronización no se pausa.
+                    options.Services.AddSingleton<ITenantEntitlementModulesReader>(
+                        FakeTenantEntitlementModulesReader.Unrestricted
+                    );
                     configureServices(options.Services);
 
                     options

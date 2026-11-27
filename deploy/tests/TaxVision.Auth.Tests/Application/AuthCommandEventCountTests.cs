@@ -214,6 +214,7 @@ public sealed class AuthCommandEventCountTests
             [
                 db,
                 new UserRepository(db),
+                new CredentialTokenRepository(db),
                 new TenantDomainRepository(db),
                 new TenantRegistry(db),
                 bus,

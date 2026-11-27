@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.CloudStorage.Application.Abstractions;
 using TaxVision.CloudStorage.Domain.Files;
@@ -9,9 +10,13 @@ namespace TaxVision.CloudStorage.Infrastructure.Storage;
 /// <summary>Applies the same CRM storage mode to any registered cloud provider adapter.</summary>
 public sealed class StoragePolicyDispatcher(
     CloudStorageDbContext db,
-    IEnumerable<IStoragePolicyProviderAdapter> adapters
+    IEnumerable<IStoragePolicyProviderAdapter> adapters,
+    ITenantEntitlementModulesReader modules
 ) : IStoragePolicyDispatcher
 {
+    // Módulo que vende las copias a la nube de la oficina.
+    internal const string RequiredModule = "documents";
+
     public async Task CopyAvailableFileAsync(FileAvailableIntegrationEvent message, CancellationToken ct)
     {
         // Fotos de perfil y pistas de grabación no se espejan al Drive/OneDrive/Dropbox de la oficina:
@@ -26,6 +31,9 @@ public sealed class StoragePolicyDispatcher(
             .StoragePolicies.IgnoreQueryFilters()
             .SingleOrDefaultAsync(x => x.TenantId == message.TenantId, ct);
         if (policy is null || policy.Mode is not ("primary" or "both"))
+            return;
+        // Oficina sin el módulo: no se copia a su nube.
+        if (!await modules.HasModuleAsync(message.TenantId, RequiredModule, ct))
             return;
         await Resolve(policy.ProviderId).CopyAvailableFileAsync(message, ct);
     }

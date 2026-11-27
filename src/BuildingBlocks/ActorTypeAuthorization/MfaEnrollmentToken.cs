@@ -21,6 +21,9 @@ public static class MfaEnrollmentToken
         ("POST", "/auth/mfa/totp/confirm"),
         ("GET", "/auth/mfa/status"),
         ("POST", "/auth/logout"),
+        // Aceptar los términos vigentes no da acceso a datos; sin esto, términos y MFA se bloquean entre sí.
+        ("GET", "/auth/tenant/terms/status"),
+        ("POST", "/auth/tenant/terms/accept"),
     ];
 
     public static bool IsPending(System.Security.Claims.ClaimsPrincipal user) =>

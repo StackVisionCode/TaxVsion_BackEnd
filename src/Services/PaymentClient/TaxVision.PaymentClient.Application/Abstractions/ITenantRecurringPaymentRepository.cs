@@ -29,5 +29,13 @@ public interface ITenantRecurringPaymentRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Planes <c>Active</c> de una oficina con algún schedule <c>Pending</c> vencido, con sus
+    /// <c>Schedules</c> cargados. Lo usa la reactivación de la oficina.</summary>
+    Task<IReadOnlyList<TenantRecurringPayment>> GetActiveWithDuePendingSchedulesByTenantAsync(
+        Guid tenantId,
+        DateTime cutoffUtc,
+        CancellationToken ct = default
+    );
+
     Task AddAsync(TenantRecurringPayment plan, CancellationToken ct = default);
 }

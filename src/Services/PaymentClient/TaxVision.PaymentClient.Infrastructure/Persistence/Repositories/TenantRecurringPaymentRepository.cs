@@ -1,3 +1,4 @@
+using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.PaymentClient.Application.Abstractions;
 using TaxVision.PaymentClient.Domain.Recurring;
@@ -63,6 +64,12 @@ public sealed class TenantRecurringPaymentRepository(PaymentClientDbContext db) 
                         ? schedule.ScheduledDate <= cutoffUtc
                         : schedule.NextRetryAtUtc <= cutoffUtc
                 )
+                // No cobra a clientes de una oficina que no puede operar (Tenant.CanOperate()). Se usa el estado de
+                // la oficina y no el lector de módulos porque los cobros no tienen módulo comercial. En la consulta
+                // para que esos schedules no llenen el lote; sin proyección de la oficina se sigue cobrando.
+                && !db.Tenants.Any(tenant =>
+                    tenant.Id == schedule.TenantId && !(tenant.IsActive && tenant.Kind == TenantKind.Customer)
+                )
             )
             .OrderBy(schedule => schedule.ScheduledDate)
             .Select(schedule => schedule.TenantRecurringPaymentId)
@@ -79,6 +86,23 @@ public sealed class TenantRecurringPaymentRepository(PaymentClientDbContext db) 
             .Where(plan => plan.Status == RecurringStatus.Active && dueScheduleIds.Contains(plan.Id))
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<TenantRecurringPayment>> GetActiveWithDuePendingSchedulesByTenantAsync(
+        Guid tenantId,
+        DateTime cutoffUtc,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .TenantRecurringPayments.IgnoreQueryFilters()
+            .Include(plan => plan.Schedules)
+            .Where(plan =>
+                plan.TenantId == tenantId
+                && plan.Status == RecurringStatus.Active
+                && plan.Schedules.Any(schedule =>
+                    schedule.Status == RecurringScheduleStatus.Pending && schedule.ScheduledDate <= cutoffUtc
+                )
+            )
+            .ToListAsync(ct);
 
     public async Task AddAsync(TenantRecurringPayment plan, CancellationToken ct = default) =>
         await db.TenantRecurringPayments.AddAsync(plan, ct);

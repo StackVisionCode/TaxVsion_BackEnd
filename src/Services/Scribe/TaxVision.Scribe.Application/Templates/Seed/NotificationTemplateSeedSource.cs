@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using TaxVision.Scribe.Domain.Templates;
 
@@ -102,6 +102,10 @@ public static partial class NotificationTemplateSeedSource
             InvoiceSent,
             Invitation,
             PasswordReset,
+            PasswordResetByOffice,
+            AccountSecured,
+            PasswordChangeRequiredNotice,
+            PasswordChangedNotice,
             OtpCode,
             EmailChange,
             SecurityAlert,
@@ -313,6 +317,11 @@ public static partial class NotificationTemplateSeedSource
         ["auth.invitation"] = "You've been invited to collaborate — activate your account to get started.",
         ["referral.reward.granted"] = "Your referral reward was added to your Wallet — use it on your next payment.",
         ["auth.password_reset"] = "Use the secure link inside to reset your password. It expires soon.",
+        ["auth.password-reset.office"] =
+            "Set a new password for your {% if account_kind == 'portal' %}client portal{% else %}team{% endif %} account. The link can be used once.",
+        ["auth.account-secured"] = "Set a new password to get back in. The link can be used once.",
+        ["auth.password-change-required"] = "You'll choose a new password the next time you sign in.",
+        ["auth.password-changed"] = "If this was you, there's nothing else to do.",
         ["auth.otp_code"] = "Here's your one-time verification code. It's valid for a few minutes.",
         ["auth.email_change"] = "Confirm your new email address to keep your account secure.",
         ["auth.security_alert"] = "We noticed important activity on your account. Please review it.",
@@ -1214,6 +1223,69 @@ public static partial class NotificationTemplateSeedSource
                 ("office", VariableType.String, false, "your office", "Nombre de la oficina de esa cuenta."),
             ],
             ContentVersion: TypedDatesVersion
+        );
+
+    /// <summary>Plantilla nueva: versión propia, por encima de las demás.</summary>
+    private const int PasswordResetByOfficeVersion = 43;
+
+    // Reset enviado por la oficina (04 §6.2–6.3). Lleva token: system-base, carril del sistema (DM-02), con el
+    // nombre de la oficina en el texto. Nunca el nombre de quien lo envió.
+    private static NotificationTemplateSeed PasswordResetByOffice { get; } =
+        new(
+            EventKey: "auth.password_reset_by_office.v1",
+            TemplateKey: "auth.password-reset.office",
+            Name: "Auth — Reset enviado por la oficina",
+            Subject: "{{ office }} sent you a link to reset your {% if account_kind == 'portal' %}client portal {% endif %}password",
+            Html: """
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="padding-bottom:2px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:16px;letter-spacing:1.2px;text-transform:uppercase;color:#70869A;mso-line-height-rule:exactly;">Security</td></tr>
+              <tr><td style="padding:6px 0 16px 0;"><table role="presentation" width="40" cellpadding="0" cellspacing="0" border="0"><tr><td height="3" bgcolor="#67BAF4" style="background-color:#67BAF4;height:3px;line-height:3px;font-size:0;">&nbsp;</td></tr></table></td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:26px;line-height:34px;font-weight:bold;letter-spacing:-0.4px;color:#23384B;mso-line-height-rule:exactly;">Set a new password</td></tr>
+              <tr><td style="padding-bottom:6px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#496174;mso-line-height-rule:exactly;">An office administrator at <strong style="color:#23384B;">{{ office }}</strong> sent you a link to set a new password for your {% if account_kind == 'portal' %}client portal account{% else %}{{ product_name }} team account{% endif %}.</td></tr>
+              <tr>
+                <td align="left" style="padding:26px 0 22px 0;">
+                  <!--[if mso]>
+                  <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="{{ reset_link }}" style="height:46px;v-text-anchor:middle;width:220px;" arcsize="22%" strokecolor="#1E466B" fillcolor="#1E466B"><w:anchorlock/><center style="color:#FFFFFF;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">Set a new password</center></v:roundrect>
+                  <![endif]-->
+                  <!--[if !mso]><!-- -->
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#1E466B" style="background-color:#1E466B;border-radius:10px;"><a href="{{ reset_link }}" target="_blank" style="display:inline-block;padding:14px 32px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:18px;font-weight:bold;color:#FFFFFF;text-decoration:none;border-radius:10px;">Set a new password</a></td></tr></table>
+                  <!--<![endif]-->
+                </td>
+              </tr>
+              <tr><td style="padding-bottom:18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#EAF4FF" style="background-color:#EAF4FF;border-radius:10px;"><tr><td style="padding:14px 18px;border-left:3px solid #67BAF4;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">Button not working? Copy this link into your browser:<br /><span style="word-break:break-all;color:#1E466B;">{{ reset_link }}</span></td></tr></table></td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;mso-line-height-rule:exactly;">This link expires {{ expires_at | office_deadline }} and can be used once. Your current password keeps working until you set a new one. After you change it, you'll be signed out of all devices.</td></tr>
+              <tr><td style="padding-bottom:12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;mso-line-height-rule:exactly;">{% if account_kind == 'portal' %}Your documents and information aren't changed. {% endif %}If you use two-step verification, you'll still need your code to sign in.</td></tr>
+              <tr><td style="padding-bottom:18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:22px;color:#496174;mso-line-height-rule:exactly;"><strong style="color:#23384B;">Didn't expect this?</strong> You don't need to do anything: your password won't change unless you use the link. If you think something is wrong, contact {{ office }} directly using the phone number or email you usually use with them.</td></tr>
+              <tr><td style="font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#70869A;mso-line-height-rule:exactly;">This email is about your account at {{ office }} on {{ product_name }}. It doesn't affect any other office you may use. {{ product_name }} and {{ office }} will never ask you for your password by email or phone.</td></tr>
+            </table>
+            """,
+            Variables:
+            [
+                ("reset_link", VariableType.Url, true, null, "URL de restablecimiento de contraseña."),
+                (
+                    "expires_at",
+                    VariableType.Date,
+                    true,
+                    null,
+                    "Instante tipado: Scribe lo imprime como plazo en la zona de quien lee."
+                ),
+                (
+                    "product_name",
+                    VariableType.String,
+                    false,
+                    "TaxOffix",
+                    "Branding del producto (lo inyecta el renderer desde PlatformSettings)."
+                ),
+                (
+                    "account_kind",
+                    VariableType.String,
+                    false,
+                    "workspace",
+                    "portal o workspace: de qué cuenta es el reset."
+                ),
+                ("office", VariableType.String, false, "your office", "Nombre de la oficina de esa cuenta."),
+            ],
+            ContentVersion: PasswordResetByOfficeVersion
         );
 
     private static NotificationTemplateSeed OtpCode { get; } =

@@ -11,4 +11,8 @@ public sealed record CustomerUpdatedDomainEvent(
     Guid TenantId,
     Guid ModifiedByUserId,
     DateTime OccurredAtUtc
-) : IDomainEvent;
+) : IDomainEvent
+{
+    /// <summary>Correo con el que empezó la transacción (null si no tenía o en eventos viejos).</summary>
+    public string? PreviousPrimaryEmail { get; init; }
+}

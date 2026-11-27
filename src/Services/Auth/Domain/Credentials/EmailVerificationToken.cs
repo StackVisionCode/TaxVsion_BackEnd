@@ -19,6 +19,12 @@ public sealed class EmailVerificationToken : TenantEntity
     public DateTime ExpiresAtUtc { get; private set; }
     public DateTime? UsedAtUtc { get; private set; }
 
+    [UserReference(UserReferenceKind.Provenance, Note = "Quién de la oficina pidió el cambio de correo: historia.")]
+    public Guid? RequestedByUserId { get; private set; }
+
+    /// <summary>El cambio lo pidió alguien de la oficina, no el propio usuario (D-08, D-11).</summary>
+    public bool RequestedByOffice => RequestedByUserId is { } by && by != UserId;
+
     public bool IsUsable(DateTime utcNow) => UsedAtUtc is null && utcNow < ExpiresAtUtc;
 
     public static EmailVerificationToken Create(
@@ -26,7 +32,8 @@ public sealed class EmailVerificationToken : TenantEntity
         Guid userId,
         string newEmail,
         string tokenHash,
-        TimeSpan validity
+        TimeSpan validity,
+        Guid? requestedByUserId = null
     )
     {
         var token = new EmailVerificationToken
@@ -37,6 +44,7 @@ public sealed class EmailVerificationToken : TenantEntity
             TokenHash = tokenHash,
             CreatedAtUtc = DateTime.UtcNow,
             ExpiresAtUtc = DateTime.UtcNow.Add(validity),
+            RequestedByUserId = requestedByUserId,
         };
         token.SetTenant(tenantId);
         return token;

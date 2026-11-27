@@ -47,6 +47,8 @@ public sealed class MfaEnrollmentGateMiddlewareTests
     [InlineData("POST", "/auth/mfa/totp/confirm")]
     [InlineData("GET", "/auth/mfa/status")]
     [InlineData("POST", "/auth/logout")]
+    [InlineData("GET", "/auth/tenant/terms/status")]
+    [InlineData("POST", "/auth/tenant/terms/accept")]
     public async Task The_enrollment_token_reaches_only_the_mfa_setup_endpoints(string method, string path)
     {
         var (_, passed) = await SendAsync(method, path, enrollmentOnly: true);
@@ -62,6 +64,7 @@ public sealed class MfaEnrollmentGateMiddlewareTests
     [InlineData("PUT", "/auth/mfa/policy")]
     [InlineData("POST", "/auth/users/invite")]
     [InlineData("GET", "/auth/mfa/totp/setup")]
+    [InlineData("GET", "/auth/tenant/terms/accept")]
     public async Task Anything_else_is_forbidden_with_the_enrollment_token(string method, string path)
     {
         var (status, passed) = await SendAsync(method, path, enrollmentOnly: true);
@@ -88,7 +91,7 @@ public sealed class MfaEnrollmentGateMiddlewareTests
 
     // Si alguien agrega una ruta a la lista blanca, esta prueba obliga a revisarlo.
     [Fact]
-    public void The_whitelist_is_exactly_the_mfa_setup_flow()
+    public void The_whitelist_is_exactly_the_mfa_setup_flow_plus_the_terms_gate()
     {
         Assert.Equal(
             [
@@ -96,6 +99,8 @@ public sealed class MfaEnrollmentGateMiddlewareTests
                 ("POST", "/auth/mfa/totp/confirm"),
                 ("GET", "/auth/mfa/status"),
                 ("POST", "/auth/logout"),
+                ("GET", "/auth/tenant/terms/status"),
+                ("POST", "/auth/tenant/terms/accept"),
             ],
             MfaEnrollmentToken.AllowedRoutes
         );

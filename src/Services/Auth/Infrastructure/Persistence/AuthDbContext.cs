@@ -7,6 +7,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Invitations;
@@ -39,8 +40,12 @@ namespace TaxVision.Auth.Infrastructure.Persistence;
 /// </summary>
 public sealed class AuthDbContext(DbContextOptions<AuthDbContext> options, ITenantContext tenantContext)
     : DbContext(options),
-        IUnitOfWork
+        IUnitOfWork,
+        IPendingChangesDiscarder
 {
+    // Tras un choque de RowVersion manejado por el handler: el commit del middleware no reintenta lo descartado.
+    public void DiscardPendingChanges() => ChangeTracker.Clear();
+
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<TenantPlanLimits> TenantPlanLimits => Set<TenantPlanLimits>();
     public DbSet<User> Users => Set<User>();

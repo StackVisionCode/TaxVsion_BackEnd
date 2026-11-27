@@ -3,6 +3,7 @@ using BuildingBlocks.CustomerVisibility;
 using BuildingBlocks.Results;
 using Microsoft.EntityFrameworkCore;
 using TaxVision.Tasks.ClientForms.Application.Actions;
+using TaxVision.Tasks.ClientForms.Application.Common;
 using TaxVision.Tasks.ClientForms.Application.Requests;
 using TaxVision.Tasks.ClientForms.Application.Requests.Abstractions;
 using TaxVision.Tasks.ClientForms.Application.Requests.Queries;
@@ -15,6 +16,9 @@ namespace TaxVision.Tasks.Infrastructure.ClientForms.Persistence.Repositories;
 
 internal sealed class FormRequestRepository(TasksDbContext context) : IFormRequestRepository
 {
+    // El módulo tal como queda en EnabledModulesJson.
+    private static readonly string RequiredModuleJson = $"\"{ClientFormsModule.RequiredModule}\"";
+
     public void Add(FormRequest request) => context.FormRequests.Add(request);
 
     public async Task<Result<FormRequest>> GetForCommandAsync(
@@ -254,6 +258,7 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
 
     // Filtro grueso: abiertas, con fecha límite dentro de la ventana y bajo el tope. El cronograma fino
     // (etapas y último envío) lo decide ReminderSchedule en memoria. Rastreadas, para mutar y guardar.
+    // La oficina sin el módulo queda fuera en la consulta (sin proyección todavía, entra).
     public async Task<IReadOnlyList<FormRequest>> ListReminderCandidatesAsync(
         DateTime dueThresholdUtc,
         int maxReminders,
@@ -267,6 +272,12 @@ internal sealed class FormRequestRepository(TasksDbContext context) : IFormReque
                 && item.DueAtUtc != null
                 && item.DueAtUtc <= dueThresholdUtc
                 && item.ReminderCount < maxReminders
+                && !context
+                    .TenantPlanCodeProjections.IgnoreQueryFilters(TaskQueryFilters.TenantOnly)
+                    .Any(projection =>
+                        projection.TenantId == item.TenantId
+                        && !projection.EnabledModulesJson.Contains(RequiredModuleJson)
+                    )
             )
             .OrderBy(item => item.DueAtUtc)
             .ThenBy(item => item.Id)

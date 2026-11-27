@@ -11,6 +11,9 @@ public sealed class AuthAuditLog : TenantEntity
     public Guid? UserId { get; private set; }
     public string Action { get; private set; } = default!;
     public string? TargetType { get; private set; }
+
+    /// <summary>Tipo de actor del claim de quien hizo la acción (H-C07); nulo en anónimos y filas viejas.</summary>
+    public string? ActorType { get; private set; }
     public Guid? TargetId { get; private set; }
     public string? IpAddress { get; private set; }
     public string? UserAgent { get; private set; }
@@ -29,7 +32,8 @@ public sealed class AuthAuditLog : TenantEntity
         string? correlationId,
         string? targetType = null,
         Guid? targetId = null,
-        string? detailsJson = null
+        string? detailsJson = null,
+        string? actorType = null
     )
     {
         var log = new AuthAuditLog
@@ -43,6 +47,7 @@ public sealed class AuthAuditLog : TenantEntity
             CorrelationId = Truncate(correlationId, 128),
             TargetType = Truncate(targetType, 32),
             TargetId = targetId,
+            ActorType = Truncate(actorType, 32),
             DetailsJson = detailsJson,
             OccurredAtUtc = DateTime.UtcNow,
         };
@@ -87,6 +92,14 @@ public static class AuthAuditAction
     public const string PasswordChanged = "auth.password.changed";
     public const string PasswordResetRequested = "auth.password.reset_requested";
     public const string PasswordResetCompleted = "auth.password.reset_completed";
+
+    // Administración de credenciales por la oficina (03 §13.1): actor en UserId, afectado en TargetId.
+    public const string PasswordResetSentByOffice = "auth.password.reset_sent_by_office";
+    public const string PasswordResetCancelledByOffice = "auth.password.reset_cancelled_by_office";
+    public const string CredentialAdminDenied = "auth.credential_admin.denied";
+    public const string PasswordChangeRequired = "auth.password.change_required";
+    public const string UserSecured = "auth.user.secured";
+    public const string EmailChangeRequestedByOffice = "auth.email.change_requested_by_office";
     public const string EmailChangeRequested = "auth.email.change_requested";
     public const string EmailChanged = "auth.email.changed";
     public const string PhoneVerificationRequested = "auth.phone.verification_requested";

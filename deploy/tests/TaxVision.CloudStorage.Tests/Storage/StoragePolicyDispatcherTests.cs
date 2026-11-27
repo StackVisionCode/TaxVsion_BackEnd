@@ -1,6 +1,8 @@
 using BuildingBlocks.Messaging.CloudStorageIntegrationEvents;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Tenancy;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using TaxVision.CloudStorage.Domain.Providers;
 using TaxVision.CloudStorage.Infrastructure.Persistence;
 using TaxVision.CloudStorage.Infrastructure.Storage;
@@ -48,7 +50,7 @@ public sealed class StoragePolicyDispatcherTests
         await db.SaveChangesAsync();
         var adapter = new CountingAdapter();
 
-        await new StoragePolicyDispatcher(db, [adapter]).CopyAvailableFileAsync(
+        await new StoragePolicyDispatcher(db, [adapter], new FixedModules(null)).CopyAvailableFileAsync(
             new FileAvailableIntegrationEvent
             {
                 TenantId = tenantId,
@@ -67,5 +69,56 @@ public sealed class StoragePolicyDispatcherTests
         );
 
         Assert.Equal(mirrored ? 1 : 0, adapter.Copied.Count);
+    }
+
+    // Oficina sin el módulo: el archivo no se copia a su nube. Sin proyección todavía, sí.
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task An_office_without_the_module_gets_no_mirror_copy(bool withoutProjection, bool mirrored)
+    {
+        var tenantId = Guid.NewGuid();
+        await using var db = new CloudStorageDbContext(
+            new DbContextOptionsBuilder<CloudStorageDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
+            new NoTenantContext()
+        );
+        var policy = TenantStoragePolicy.Create(tenantId, "google-drive");
+        policy.Configure("google-drive", "primary", null, null, null);
+        db.StoragePolicies.Add(policy);
+        await db.SaveChangesAsync();
+        var adapter = new CountingAdapter();
+        var services = new ServiceCollection()
+            .AddSingleton(db)
+            .AddSingleton<IStoragePolicyProviderAdapter>(adapter)
+            .AddSingleton<ITenantEntitlementModulesReader>(new FixedModules(withoutProjection ? null : ["wallet"]))
+            .BuildServiceProvider();
+
+        await ActivatorUtilities
+            .CreateInstance<StoragePolicyDispatcher>(services)
+            .CopyAvailableFileAsync(
+                new FileAvailableIntegrationEvent
+                {
+                    TenantId = tenantId,
+                    FileId = Guid.NewGuid(),
+                    ObjectKey = "tenants/t/documents/return.pdf",
+                    ContentType = "application/pdf",
+                    SizeBytes = 10,
+                    ChecksumSha256 = new string('a', 64),
+                    CreatedBy = Guid.NewGuid(),
+                    OwnerType = "Customer",
+                    OwnerId = Guid.NewGuid(),
+                    FolderType = "Documents",
+                    OriginalName = "return.pdf",
+                },
+                CancellationToken.None
+            );
+
+        Assert.Equal(mirrored ? 1 : 0, adapter.Copied.Count);
+    }
+
+    private sealed class FixedModules(IReadOnlyList<string>? modules) : ITenantEntitlementModulesReader
+    {
+        public Task<IReadOnlyList<string>?> GetEnabledModulesAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(modules);
     }
 }

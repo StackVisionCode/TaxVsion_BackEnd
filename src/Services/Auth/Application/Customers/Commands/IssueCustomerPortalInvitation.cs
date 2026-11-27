@@ -23,7 +23,8 @@ public sealed record IssueCustomerPortalInvitationCommand(
     string Email,
     Guid? RequestedByUserId,
     string? FirstName = null,
-    string? LastName = null
+    string? LastName = null,
+    string? ActorType = null
 );
 
 public enum PortalInvitationOutcome
@@ -148,7 +149,8 @@ public static class IssueCustomerPortalInvitationHandler
                 correlation.CorrelationId,
                 targetType: "Invitation",
                 targetId: invitation.Id,
-                detailsJson: $$"""{"customerId":"{{command.CustomerId}}","accountKind":"portal"}"""
+                detailsJson: $$"""{"customerId":"{{command.CustomerId}}","accountKind":"portal"}""",
+                actorType: command.ActorType
             ),
             ct
         );

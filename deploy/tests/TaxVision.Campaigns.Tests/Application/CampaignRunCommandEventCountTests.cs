@@ -257,6 +257,7 @@ public sealed class CampaignRunCommandEventCountTests
                     Wallet,
                     Campaigns,
                     new FakeCorrelationContext(),
+                    new FakeTenantEntitlementModulesReader(),
                     NullLogger<CampaignRunStarter>.Instance
                 ),
                 new CampaignRunDispatcher(Campaigns, new FakeSenderProfileRepository()),

@@ -31,14 +31,6 @@ public sealed class AuthSessionIssuer(
 {
     private readonly RefreshTokenOptions _options = options.Value;
 
-    /// <summary>
-    /// Mientras falte configurar el MFA que la oficina exige, el espacio de trabajo y la app solo reciben tokens
-    /// para configurarlo. Se evalúa en cada emisión y cada renovación: no depende de lo que haga el front.
-    /// </summary>
-    private async Task<bool> MfaEnrollmentOnlyAsync(User user, SessionSurface surface, CancellationToken ct) =>
-        surface is SessionSurface.Workspace or SessionSurface.Mobile
-        && (await MfaRequirement.DisposeAsync(user, mfa, ct, mfaOptions.Value.Enforced)).MustEnroll;
-
     public async Task<IssuedTokens> StartSessionAsync(
         User user,
         string effectiveTimeZoneId,
@@ -100,15 +92,14 @@ public sealed class AuthSessionIssuer(
         currentToken.Rotate(replacement.Id);
         await sessions.AddTokenAsync(replacement, ct);
 
-        var enrollmentOnly = await MfaEnrollmentOnlyAsync(user, currentToken.Surface, ct);
-        var accessToken = jwt.Generate(
+        var accessToken = await GenerateAccessAsync(
             user,
             effectiveTimeZoneId,
             session.Id,
             roles,
             authMethods,
             currentToken.Surface,
-            mfaEnrollmentOnly: enrollmentOnly
+            ct
         );
 
         return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
@@ -135,17 +126,46 @@ public sealed class AuthSessionIssuer(
         );
         await sessions.AddTokenAsync(refreshToken, ct);
 
-        var enrollmentOnly = await MfaEnrollmentOnlyAsync(user, surface, ct);
-        var accessToken = jwt.Generate(
+        var accessToken = await GenerateAccessAsync(
             user,
             effectiveTimeZoneId,
             session.Id,
             roles,
             authMethods,
             surface,
-            mfaEnrollmentOnly: enrollmentOnly
+            ct
         );
 
         return new IssuedTokens(accessToken.Token, rawRefreshToken, accessToken.ExpiresInSeconds, session.Id);
+    }
+
+    // Marcas restringidas en cada emisión y renovación (RestrictedTokenMarks): no depende de lo que haga el front.
+    private async Task<AccessToken> GenerateAccessAsync(
+        User user,
+        string effectiveTimeZoneId,
+        Guid sessionId,
+        IReadOnlyCollection<string> roles,
+        IReadOnlyCollection<string> authMethods,
+        SessionSurface surface,
+        CancellationToken ct
+    )
+    {
+        var (passwordChangeOnly, enrollmentOnly) = await RestrictedTokenMarks.ResolveAsync(
+            user,
+            surface,
+            mfa,
+            mfaOptions.Value.Enforced,
+            ct
+        );
+        return jwt.Generate(
+            user,
+            effectiveTimeZoneId,
+            sessionId,
+            roles,
+            authMethods,
+            surface,
+            mfaEnrollmentOnly: enrollmentOnly,
+            passwordChangeOnly: passwordChangeOnly
+        );
     }
 }

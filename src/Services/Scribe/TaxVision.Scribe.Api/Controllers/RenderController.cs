@@ -22,7 +22,8 @@ namespace TaxVision.Scribe.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("scribe/render")]
-[Authorize]
+// Toma el TenantId del body: solo servicios, nunca un humano (tampoco un operador de plataforma).
+[Authorize(Policy = "ServiceOnly")]
 [AllowActorTypes(ActorType.Service)]
 public sealed class RenderController(IMessageBus bus) : ControllerBase
 {

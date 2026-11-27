@@ -6,6 +6,7 @@ using BuildingBlocks.Web.ActorTypeAuthorization;
 using BuildingBlocks.Web.Identity;
 using BuildingBlocks.Web.RateLimiting;
 using BuildingBlocks.Web.Results;
+using BuildingBlocks.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TaxVision.Customer.Api.Requests;
@@ -24,6 +25,7 @@ using TaxVision.Customer.Application.Customers.Commands.BulkChangeStatus;
 using TaxVision.Customer.Application.Customers.Commands.Create;
 using TaxVision.Customer.Application.Customers.Commands.Deactivate;
 using TaxVision.Customer.Application.Customers.Commands.GrantAccess;
+using TaxVision.Customer.Application.Customers.Commands.PortalCredentials;
 using TaxVision.Customer.Application.Customers.Commands.PortalMfa;
 using TaxVision.Customer.Application.Customers.Commands.PortalSessions;
 using TaxVision.Customer.Application.Customers.Commands.Reactivate;
@@ -1076,22 +1078,40 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
     /// <summary>
     /// Quita el segundo factor del portal del cliente (perdió el teléfono o los códigos), tras verificar su
     /// identidad fuera del sistema. Si la oficina lo exige, el próximo login le pide activarlo de nuevo.
+    /// Permiso propio solo admin (D-10), step-up y motivo obligatorio (D-16); cierra las sesiones del portal.
     /// </summary>
     [HttpPost("{id:guid}/portal-mfa/reset")]
-    [HasPermission(CustomersPermissions.Manage)]
-    [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
+    [HasPermission(CustomersPermissions.PortalMfaReset)]
+    [AllowActorTypes(ActorType.TenantAdmin)]
+    [RequireRecentAuthentication]
     [RateLimit("customer.g.write")]
     [ProducesResponseType<PortalMfaResetOutcome>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> ResetPortalMfa(Guid id, CancellationToken ct)
+    public async Task<IActionResult> ResetPortalMfa(
+        Guid id,
+        [FromBody] PortalCredentialAdministrationRequest request,
+        CancellationToken ct
+    )
     {
-        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId) || !TryGetReauthenticatedAt(out var reauthAt))
             return Unauthorized();
 
         var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
         var result = await bus.InvokeAsync<Result<PortalMfaResetOutcome>>(
-            new ResetCustomerPortalMfaCommand(tenantId, id, userId, canViewAll),
+            new ResetCustomerPortalMfaCommand(
+                tenantId,
+                id,
+                userId,
+                canViewAll,
+                reauthAt,
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                Request.Headers.UserAgent.ToString(),
+                request.ReasonCode,
+                request.ReasonNote,
+                request.IdentityConfirmed
+            ),
             ct
         );
         if (result.IsSuccess)
@@ -1099,6 +1119,202 @@ public sealed class CustomerController(IMessageBus bus, IUserPermissionsSource p
         if (result.Error.Code == "Customer.NotFound")
             return NotFound(result.Error);
         return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Credencial del portal del cliente para el panel "Sign-in security": estado y último link de reset (03 §14.2).
+    /// Sin token, link ni correo. Auth decide qué acciones permite (hoy solo el Owner).
+    /// </summary>
+    [HttpGet("{id:guid}/portal-credentials")]
+    [HasPermission(CustomersPermissions.PortalCredentialsSendReset)]
+    [AllowActorTypes(ActorType.TenantAdmin)]
+    [RateLimit("customer.f.get")]
+    [ProducesResponseType<PortalCredentialStatusResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPortalCredentials(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<PortalCredentialStatusResponse>>(
+            new GetCustomerPortalCredentialsQuery(tenantId, id, userId, canViewAll),
+            ct
+        );
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Envía (o reenvía) el link de reset del portal al correo del cliente. La contraseña actual sigue sirviendo
+    /// hasta que la cambie. Exige reautenticación reciente; Auth la vuelve a validar con el sobre M2M.
+    /// </summary>
+    [HttpPost("{id:guid}/portal-credentials/reset-link")]
+    [HasPermission(CustomersPermissions.PortalCredentialsSendReset)]
+    [AllowActorTypes(ActorType.TenantAdmin)]
+    [RequireRecentAuthentication]
+    [RateLimit("customer.n.portal_credential_admin")]
+    [ProducesResponseType<ResetLinkIssuedResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> SendPortalResetLink(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId) || !TryGetReauthenticatedAt(out var reauthAt))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<ResetLinkIssuedResponse>>(
+            new SendCustomerPortalResetLinkCommand(
+                tenantId,
+                id,
+                userId,
+                canViewAll,
+                reauthAt,
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                Request.Headers.UserAgent.ToString()
+            ),
+            ct
+        );
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>Cancela el link de reset pendiente del portal. No se avisa al cliente (Q-04).</summary>
+    [HttpDelete("{id:guid}/portal-credentials/reset-link")]
+    [HasPermission(CustomersPermissions.PortalCredentialsSendReset)]
+    [AllowActorTypes(ActorType.TenantAdmin)]
+    [RequireRecentAuthentication]
+    [RateLimit("customer.n.portal_credential_admin")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CancelPortalResetLink(Guid id, CancellationToken ct)
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId) || !TryGetReauthenticatedAt(out var reauthAt))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result>(
+            new CancelCustomerPortalResetLinkCommand(
+                tenantId,
+                id,
+                userId,
+                canViewAll,
+                reauthAt,
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                Request.Headers.UserAgent.ToString()
+            ),
+            ct
+        );
+        if (result.IsSuccess)
+            return NoContent();
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Pide que el cliente cambie la contraseña del portal en su próximo inicio de sesión (03 §14.2). Motivo
+    /// obligatorio; la nota queda con la cuenta, no en la auditoría. Repetido: 200 con <c>alreadyInState</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/portal-credentials/require-change")]
+    [HasPermission(CustomersPermissions.PortalCredentialsRequireChange)]
+    [AllowActorTypes(ActorType.TenantAdmin)]
+    [RequireRecentAuthentication]
+    [RateLimit("customer.n.portal_credential_admin")]
+    [ProducesResponseType<CredentialStateChangedResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RequirePortalPasswordChange(
+        Guid id,
+        [FromBody] PortalCredentialAdministrationRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId) || !TryGetReauthenticatedAt(out var reauthAt))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<CredentialStateChangedResponse>>(
+            new RequireCustomerPortalPasswordChangeCommand(
+                tenantId,
+                id,
+                userId,
+                canViewAll,
+                reauthAt,
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                Request.Headers.UserAgent.ToString(),
+                request.ReasonCode,
+                request.ReasonNote,
+                request.IdentityConfirmed
+            ),
+            ct
+        );
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    /// <summary>
+    /// Asegura la cuenta del portal: la contraseña deja de servir, se cierran sus sesiones y se envía un link seguro
+    /// (03 §14.2). De nuevo sobre una cuenta asegurada = reenviar el link seguro (AJ-15).
+    /// </summary>
+    [HttpPost("{id:guid}/portal-credentials/secure")]
+    [HasPermission(CustomersPermissions.PortalCredentialsSecure)]
+    [AllowActorTypes(ActorType.TenantAdmin)]
+    [RequireRecentAuthentication]
+    [RateLimit("customer.n.portal_credential_admin")]
+    [ProducesResponseType<AccountSecuredResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<Error>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<Error>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<Error>(StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> SecurePortalAccount(
+        Guid id,
+        [FromBody] PortalCredentialAdministrationRequest request,
+        CancellationToken ct
+    )
+    {
+        if (!this.TryGetTenantAndUser(out var tenantId, out var userId) || !TryGetReauthenticatedAt(out var reauthAt))
+            return Unauthorized();
+
+        var canViewAll = await permissions.HasPermissionAsync(User, CustomersPermissions.ViewAll, ct);
+        var result = await bus.InvokeAsync<Result<AccountSecuredResponse>>(
+            new SecureCustomerPortalAccountCommand(
+                tenantId,
+                id,
+                userId,
+                canViewAll,
+                reauthAt,
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                Request.Headers.UserAgent.ToString(),
+                request.ReasonCode,
+                request.ReasonNote,
+                request.IdentityConfirmed
+            ),
+            ct
+        );
+        if (result.IsSuccess)
+            return Ok(result.Value);
+        if (result.Error.Code == "Customer.NotFound")
+            return NotFound(result.Error);
+        return StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
+    // El filtro de step-up ya exigió la marca; se reenvía a Auth en el sobre M2M.
+    private bool TryGetReauthenticatedAt(out DateTime reauthenticatedAtUtc)
+    {
+        var found = User.TryGetReauthenticatedAt(out var reauthenticatedAt);
+        reauthenticatedAtUtc = reauthenticatedAt.UtcDateTime;
+        return found;
     }
 
     /// <summary>

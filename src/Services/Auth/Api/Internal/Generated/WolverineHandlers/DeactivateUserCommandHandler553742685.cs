@@ -22,6 +22,7 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var credentialTokenRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.ICredentialTokenRepository>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -64,7 +65,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Auth.Application.Users.Commands.DeactivateUserHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Auth.Application.Users.Commands.DeactivateUserHandler.Handle(deactivateUserCommand, userRepository, tenantAdminLock, sessionAccessCutoff, authAuditWriter, requestContext, correlationContext, unitOfWork, context, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Auth.Application.Users.Commands.DeactivateUserHandler.Handle(deactivateUserCommand, userRepository, tenantAdminLock, sessionAccessCutoff, authAuditWriter, requestContext, correlationContext, unitOfWork, context, credentialTokenRepository, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

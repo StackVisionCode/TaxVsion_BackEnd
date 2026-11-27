@@ -98,6 +98,15 @@ public static class FireCampaignScheduleHandler
             return Result.Failure<CampaignRunResponse>(CampaignScheduleErrors.LeaseLost);
         }
 
+        // Oficina sin el módulo: el recurrente salta al próximo slot; el único espera (el claim ya no lo toma).
+        if (!await starter.HasCampaignsModuleAsync(schedule.TenantId, ct))
+        {
+            CampaignsMetrics.RecordScheduleFireSkipped("module_disabled");
+            if (schedule.Kind == ScheduleKind.Recurring)
+                return await SkipAsync(command, CampaignScheduleErrors.ModuleDisabled, bus, ct);
+            return Result.Failure<CampaignRunResponse>(CampaignScheduleErrors.ModuleDisabled);
+        }
+
         var withinMaxDelay = DateTime.UtcNow - command.SlotUtc <= schedulerOptions.Value.MaxFireDelay;
         var slot = new ScheduledSlot(schedule.Id, command.SlotUtc, command.LeaseToken);
         var opened = await runOpener.OpenAsync(schedule, slot, bus, ct);

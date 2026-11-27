@@ -38,6 +38,7 @@ public static class InvitationCreatedConsumer
         IScribeRenderClient scribeClient,
         IOptions<PortalOptions> portal,
         IPlatformSettings platform,
+        ITenantHostResolver hostResolver,
         AuthAccountTokenReader tokens,
         IRecipientLocale locales,
         ICorrelationContext correlation,
@@ -46,6 +47,9 @@ public static class InvitationCreatedConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
+            // Mismo resolver que el reset: subdominio primario activo, sin base fijo (D-04).
+            // TenantSubdomain del evento queda solo como dato informativo.
+            var tenantHost = await hostResolver.ResolveRequiredHostAsync(evt.TenantId, ct);
             var token = tokens.Read(
                 evt.ProtectedToken,
                 evt.RawToken,
@@ -57,10 +61,8 @@ public static class InvitationCreatedConsumer
                 return;
 
             var office = string.IsNullOrWhiteSpace(evt.TenantName) ? platform.Current.BrandName : evt.TenantName!;
-            var tenantPortalUrl = string.IsNullOrWhiteSpace(evt.TenantSubdomain)
-                ? portal.Value.BaseUrl.TrimEnd('/')
-                : $"https://{platform.Current.TenantHost(evt.TenantSubdomain.Trim().ToLowerInvariant())}";
-            var inviteLink = $"{tenantPortalUrl}/accept-invitation?token={Uri.EscapeDataString(token)}";
+            var inviteLink =
+                $"{TenantEmailLinks.RequiredStaffBase(tenantHost)}/accept-invitation?token={Uri.EscapeDataString(token)}";
 
             // Quien aún no tiene cuenta no tiene idioma propio, y el evento no trae uno: inglés.
             var render = (
@@ -119,7 +121,8 @@ public static class PasswordResetRequestedConsumer
             // Link al subdominio de la oficina (no a un base fijo): el reset lo resuelve por Host.
             // El destino depende del actor de ESTA oficina: cliente → portal, staff → CRM. Un email
             // multi-oficina recibe un correo por oficina, cada uno con su link al destino correcto.
-            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
+            // Sin subdominio lanza y Wolverine reintenta: nunca base fijo (D-04).
+            var tenantHost = await hostResolver.ResolveRequiredHostAsync(evt.TenantId, ct);
             var token = tokens.Read(
                 evt.ProtectedToken,
                 evt.RawToken,
@@ -132,12 +135,19 @@ public static class PasswordResetRequestedConsumer
 
             var resetToken = Uri.EscapeDataString(token);
             var resetLink = AuthAccountCopy.IsPortal(evt.ActorType)
-                ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/reset-password/new?token={resetToken}"
-                : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/reset-password?token={resetToken}";
+                ? $"{TenantEmailLinks.RequiredClientBase(tenantHost, portal.Value)}/client/auth/reset-password/new?token={resetToken}"
+                : $"{TenantEmailLinks.RequiredStaffBase(tenantHost)}/reset-password?token={resetToken}";
 
+            // El link de la oficina y el link seguro de la cuenta asegurada tienen su plantilla (system-base, DM-02).
+            var (eventKey, templateKey) = evt.Origin switch
+            {
+                "Administrative" => ("auth.password_reset_by_office.v1", "auth.password-reset.office"),
+                "Incident" => ("auth.account_secured.v1", "auth.account-secured"),
+                _ => ("auth.password_reset_requested.v1", "auth.password_reset"),
+            };
             var render = (
                 await scribeClient.RenderForRecipientAsync(
-                    "auth.password_reset_requested.v1",
+                    eventKey,
                     evt.TenantId,
                     new Dictionary<string, object?>
                     {
@@ -152,13 +162,13 @@ public static class PasswordResetRequestedConsumer
                     await locales.ForUserAsync(evt.TenantId, evt.UserId, ct),
                     ct
                 )
-            ).EnsureRendered("auth.password_reset_requested.v1");
+            ).EnsureRendered(eventKey);
 
             await gateway.QueueEmailAsync(
                 render.ToDispatchRequest(
                     tenantId: evt.TenantId,
                     to: evt.Email,
-                    templateKey: "auth.password_reset",
+                    templateKey: templateKey,
                     relatedEventId: evt.EventId,
                     correlationId: correlation.CorrelationId
                 ) with
@@ -312,7 +322,8 @@ public static class EmailChangeRequestedConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             // Link al subdominio de la oficina: el cliente confirma en su portal y el staff en el CRM.
-            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
+            // Sin subdominio lanza y Wolverine reintenta: nunca base fijo (D-04).
+            var tenantHost = await hostResolver.ResolveRequiredHostAsync(evt.TenantId, ct);
             var token = tokens.Read(
                 evt.ProtectedToken,
                 evt.RawToken,
@@ -325,8 +336,8 @@ public static class EmailChangeRequestedConsumer
 
             var confirmToken = Uri.EscapeDataString(token);
             var confirmLink = AuthAccountCopy.IsPortal(evt.ActorType)
-                ? $"{TenantEmailLinks.ClientBase(tenantHost, portal.Value)}/client/auth/confirm-email?token={confirmToken}"
-                : $"{TenantEmailLinks.StaffBase(tenantHost, portal.Value)}/confirm-email?token={confirmToken}";
+                ? $"{TenantEmailLinks.RequiredClientBase(tenantHost, portal.Value)}/client/auth/confirm-email?token={confirmToken}"
+                : $"{TenantEmailLinks.RequiredStaffBase(tenantHost)}/confirm-email?token={confirmToken}";
             var office = string.IsNullOrWhiteSpace(evt.TenantName) ? platform.Current.BrandName : evt.TenantName;
             var locale = await locales.ForUserAsync(evt.TenantId, evt.UserId, ct);
 
@@ -419,7 +430,7 @@ public static class UserRegisteredConsumer
     {
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
-            var tenantHost = await hostResolver.ResolveHostAsync(evt.TenantId, ct);
+            var tenantHost = await hostResolver.ResolveRequiredHostAsync(evt.TenantId, ct);
             var render = (
                 await scribeClient.RenderForRecipientAsync(
                     "auth.user_registered.v1",
@@ -431,8 +442,8 @@ public static class UserRegisteredConsumer
                         // raíz (CRM). Mandar a todos a la raíz llevaba al cliente al CRM del staff.
                         ["portal_link"] =
                             evt.ActorType == "CustomerPortal"
-                                ? TenantEmailLinks.ClientBase(tenantHost, portal.Value)
-                                : TenantEmailLinks.StaffBase(tenantHost, portal.Value),
+                                ? TenantEmailLinks.RequiredClientBase(tenantHost, portal.Value)
+                                : TenantEmailLinks.RequiredStaffBase(tenantHost),
                     },
                     AuthAccountCopy.Audience(evt.ActorType),
                     await locales.ForUserAsync(evt.TenantId, evt.UserId, ct),

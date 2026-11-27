@@ -1,3 +1,4 @@
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Connectors.Application.Sync;
@@ -6,6 +7,7 @@ using TaxVision.Connectors.Domain.Accounts;
 using TaxVision.Connectors.Domain.Shared;
 using TaxVision.Connectors.Domain.Watch;
 using TaxVision.Connectors.Tests.OAuth;
+using TaxVision.Connectors.Tests.Sync;
 
 namespace TaxVision.Connectors.Tests.Watch;
 
@@ -48,6 +50,28 @@ public sealed class GraphLifecycleNotificationHandlerTests
         Assert.Equal("sub-123", queued.SubscriptionId);
         Assert.Equal("lifecycle-correlation", queued.CorrelationId);
         Assert.Empty(fixture.Renewal.Renewed);
+    }
+
+    [Fact]
+    public async Task Missed_WhenTenantHasNoEmailModule_DoesNotQueueASync()
+    {
+        // Sin el módulo de correo la sincronización queda en pausa.
+        var fixture = new Fixture { Modules = FakeTenantEntitlementModulesReader.WithoutEmail };
+
+        await fixture.HandleAsync(GraphLifecycleEvents.Missed);
+
+        Assert.Empty(fixture.Bus.Published);
+    }
+
+    [Fact]
+    public async Task ReauthorizationRequired_WhenTenantHasNoEmailModule_StillRenews()
+    {
+        // El watch se sigue renovando aunque la sincronización esté en pausa.
+        var fixture = new Fixture { Modules = FakeTenantEntitlementModulesReader.WithoutEmail };
+
+        await fixture.HandleAsync(GraphLifecycleEvents.ReauthorizationRequired);
+
+        Assert.Equal([fixture.Subscription.Id], fixture.Renewal.Renewed);
     }
 
     [Fact]
@@ -121,6 +145,7 @@ public sealed class GraphLifecycleNotificationHandlerTests
         public FakeProviderWatchSubscriptionRepository Subscriptions { get; } = new();
         public RecordingWatchRenewalService Renewal { get; } = new();
         public FakeMessageBus Bus { get; } = new();
+        public ITenantEntitlementModulesReader Modules { get; set; } = FakeTenantEntitlementModulesReader.Unrestricted;
 
         public Task HandleAsync(string lifecycleEvent, string subscriptionRef = "sub-123") =>
             GraphLifecycleNotificationHandler.Handle(
@@ -131,6 +156,7 @@ public sealed class GraphLifecycleNotificationHandlerTests
                 Bus,
                 new FakeCorrelationContext(),
                 NullLogger.Instance,
+                Modules,
                 CancellationToken.None
             );
 

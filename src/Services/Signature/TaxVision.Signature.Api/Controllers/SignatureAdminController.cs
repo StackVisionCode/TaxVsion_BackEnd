@@ -10,6 +10,7 @@ using TaxVision.Signature.Api.Requests;
 using TaxVision.Signature.Application.Admin;
 using TaxVision.Signature.Application.Audit;
 using TaxVision.Signature.Application.Delivery;
+using TaxVision.Signature.Application.Limits;
 using TaxVision.Signature.Application.Sealing;
 using TaxVision.Signature.Application.Settings.Commands.ApplyPlanConstraints;
 using TaxVision.Signature.Domain.Settings;
@@ -22,10 +23,20 @@ namespace TaxVision.Signature.Api.Controllers;
 /// Requieren el permiso <c>signature.constraints.manage</c> en el JWT.
 /// </summary>
 [ApiController]
-[Route("admin/tenants/{tenantId:guid}")]
+// Bajo /signature: el Gateway solo enruta ese prefijo.
+[Route("signature/admin/tenants/{tenantId:guid}")]
 [AllowActorTypes(ActorType.PlatformAdmin)]
 public sealed class SignatureAdminController(IMessageBus bus) : ControllerBase
 {
+    /// <summary>Límites vigentes de la oficina: techos del plan con la excepción aplicada y lo que eligió la oficina.</summary>
+    [HttpGet("signature-constraints")]
+    [HasPermission(SignaturePermissions.PlanConstraintsManage)]
+    [RateLimit("signature.f.settings_read")]
+    [ProducesResponseType(typeof(EffectiveSignatureLimitsResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetConstraints(Guid tenantId, CancellationToken ct) =>
+        Ok(await bus.InvokeAsync<EffectiveSignatureLimitsResponse>(new GetEffectiveSignatureLimitsQuery(tenantId), ct));
+
     /// <summary>
     /// Fija la excepción del tenant sobre su plan (campo nulo = hereda del plan). Lo que eligió la oficina
     /// por encima de los techos nuevos se acota al leerlo.

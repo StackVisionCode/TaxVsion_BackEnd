@@ -22,6 +22,7 @@ public static class CustomerUpdatedDomainEventHandler
                 CustomerUpdatedEvents.From(customer, updated.ModifiedByUserId, correlation.CorrelationId) with
                 {
                     OccurredOn = updated.OccurredAtUtc,
+                    PreviousEmail = updated.PreviousPrimaryEmail,
                 }
             );
         return messages;

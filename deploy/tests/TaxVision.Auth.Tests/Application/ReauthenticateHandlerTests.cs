@@ -46,6 +46,20 @@ public sealed class ReauthenticateHandlerTests
         Assert.Contains(world.Audit.Logs, log => log.Action == AuthAuditAction.ReauthenticationFailed && !log.Success);
     }
 
+    // I-2: la contraseña de una cuenta asegurada no sirve para el step-up ni suma al bloqueo.
+    [Fact]
+    public async Task The_password_of_a_secured_account_does_not_reauthenticate()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, _) = await world.StartWorkspaceSessionAsync();
+        world.Admin.Secure();
+
+        var result = await HandleAsync(world, sessionId, Password);
+
+        Assert.Equal("Auth.ReauthenticationFailed", result.Error.Code);
+        Assert.Equal(0, world.Admin.FailedLoginCount);
+    }
+
     [Fact]
     public async Task Repeated_failures_lock_the_account_and_report_the_wait()
     {
@@ -116,6 +130,48 @@ public sealed class ReauthenticateHandlerTests
         var result = await HandleAsync(world, sessionId, Password);
 
         Assert.Equal("Auth.SessionRevoked", result.Error.Code);
+    }
+
+    // SR-08: el step-up emite con las mismas marcas restringidas que AuthSessionIssuer (defensa en profundidad).
+    [Fact]
+    public async Task A_pending_password_change_keeps_the_restricted_mark_on_the_elevated_token()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, _) = await world.StartWorkspaceSessionAsync();
+        world.Admin.RequireChange();
+
+        var result = await HandleAsync(world, sessionId, Password, mfa: WithTotp(world), code: TotpCode);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(world.Jwt.PasswordChangeOnly[^1]);
+        Assert.False(world.Jwt.Issued[^1].MfaEnrollmentOnly);
+    }
+
+    [Fact]
+    public async Task A_pending_mfa_enrollment_keeps_the_enrollment_mark_on_the_elevated_token()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, _) = await world.StartWorkspaceSessionAsync();
+
+        var result = await HandleAsync(world, sessionId, Password);
+
+        Assert.True(result.IsSuccess);
+        Assert.True(world.Jwt.Issued[^1].MfaEnrollmentOnly);
+        Assert.False(world.Jwt.PasswordChangeOnly[^1]);
+    }
+
+    [Fact]
+    public async Task The_account_surface_never_gets_restricted_marks()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, _) = await world.StartWorkspaceSessionAsync();
+        world.Admin.RequireChange();
+
+        var result = await HandleAsync(world, sessionId, Password, surface: SessionSurface.Account);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(world.Jwt.PasswordChangeOnly[^1]);
+        Assert.False(world.Jwt.Issued[^1].MfaEnrollmentOnly);
     }
 
     private static FakeMfaRepository WithTotp(AccountSessionFixture world)

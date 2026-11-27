@@ -210,13 +210,14 @@ public sealed class SessionEndedPublishingTests
             _world.TokenService,
             _world.Users,
             _world.Tenants,
-            _world.Sessions,
-            _world.Denylist,
+            new SessionAccessCutoff(_world.Sessions, _world.Denylist, new RecordingSessionRevocationPublisher()),
+            new InMemoryMfaRepository(),
             new PrefixedPasswordHasher(),
             _world.Audit,
             _world.Request,
             _world.Correlation,
             _world.UnitOfWork,
+            new NoUserLoginLock(),
             _bus,
             CancellationToken.None
         );
@@ -236,8 +237,8 @@ public sealed class SessionEndedPublishingTests
             _world.Users,
             new InMemoryCredentialTokenRepository(),
             new PrefixedPasswordHasher(),
-            _world.Sessions,
-            _world.Denylist,
+            _world.Tenants,
+            new SessionAccessCutoff(_world.Sessions, _world.Denylist, new RecordingSessionRevocationPublisher()),
             _world.Audit,
             _world.Request,
             _world.Correlation,
@@ -274,6 +275,7 @@ public sealed class SessionEndedPublishingTests
             _world.Correlation,
             _world.UnitOfWork,
             _bus,
+            new InMemoryCredentialTokenRepository(),
             CancellationToken.None
         );
 

@@ -408,6 +408,21 @@ public sealed class SessionTakeoverTests
         Assert.Equal(0, issuer.StartCount);
     }
 
+    [Fact]
+    public async Task Takeover_does_not_open_a_session_on_an_account_secured_after_the_password()
+    {
+        // El vale nació antes de que la oficina asegurara la cuenta: ya no abre sesión ni corta la otra.
+        var user = BuildUser().Secure();
+        var sessions = new FakeSessions { Active = [BuildSession(user.Id)] };
+        var store = new FakeTakeoverStore { ToConsume = new SessionTakeoverPayload(TenantId, user.Id, ["pwd"], null) };
+
+        var result = await Confirm(store, user, sessions, new FakeMfa());
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.TakeoverInvalid", result.Error.Code);
+        Assert.Empty(sessions.Revoked);
+    }
+
     // ---- "no volver a pedirme el código" cuando hubo interstitial ----
 
     [Fact]

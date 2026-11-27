@@ -1,5 +1,6 @@
 using BuildingBlocks.Messaging.WalletIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.TimeZones;
 using TaxVision.Wallet.Application.Settings.Abstractions;
 using TaxVision.Wallet.Application.Wallet.Abstractions;
@@ -17,17 +18,24 @@ namespace TaxVision.Wallet.Application.Settings.DomainEvents;
 /// </summary>
 public static class WalletBalanceThresholdsHandler
 {
+    private const string WalletModule = "wallet";
+
     public static async Task<OutgoingMessages> Handle(
         WalletBalanceChangedDomainEvent changed,
         IWalletRepository wallets,
         IWalletSettingsRepository settingsRepository,
         IOfficeTimeZone officeTimeZone,
+        ITenantEntitlementModulesReader modules,
         IUnitOfWork unitOfWork,
         Envelope envelope,
         CancellationToken ct
     )
     {
         var messages = new OutgoingMessages();
+        // Oficina sin el módulo: sin recarga ni avisos, y sin consumir el cruce del umbral (se evalúa al reactivar).
+        if (!await modules.HasModuleAsync(changed.TenantId, WalletModule, ct))
+            return messages;
+
         var wallet = await wallets.GetByTenantAsync(changed.TenantId, Domain.Wallet.Wallet.DefaultCurrency, ct);
         if (wallet is null)
             return messages;

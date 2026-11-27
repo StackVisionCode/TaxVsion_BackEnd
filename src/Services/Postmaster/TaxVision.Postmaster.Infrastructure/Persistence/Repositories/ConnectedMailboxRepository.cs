@@ -11,9 +11,16 @@ internal sealed class ConnectedMailboxRepository(PostmasterDbContext db) : IConn
 
     public Task<ConnectedMailbox?> FindActiveByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         db
-            .ConnectedMailboxes.Where(a => a.TenantId == tenantId && a.IsActive)
+            .ConnectedMailboxes.Where(a =>
+                a.TenantId == tenantId && a.IsActive && a.OwnershipKnown && a.OwnerUserId == null
+            )
             .OrderByDescending(a => a.ConnectedAtUtc)
             .FirstOrDefaultAsync(ct);
+
+    public async Task<IReadOnlyList<ConnectedMailbox>> ListWithUnknownOwnershipAsync(
+        int max,
+        CancellationToken ct = default
+    ) => await db.ConnectedMailboxes.Where(a => !a.OwnershipKnown).OrderBy(a => a.TenantId).Take(max).ToListAsync(ct);
 
     public async Task AddAsync(ConnectedMailbox account, CancellationToken ct = default)
     {

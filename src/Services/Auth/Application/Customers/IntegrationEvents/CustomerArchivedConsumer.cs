@@ -4,8 +4,10 @@ using BuildingBlocks.Messaging.CustomerIntegrationEvents;
 using BuildingBlocks.Persistence;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Application.Credentials.Commands;
 using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Domain.Audit;
+using TaxVision.Auth.Domain.Credentials;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.Customers.IntegrationEvents;
@@ -23,6 +25,7 @@ public static class CustomerArchivedConsumer
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        ICredentialTokenRepository credentials,
         CancellationToken ct
     )
     {
@@ -41,6 +44,15 @@ public static class CustomerArchivedConsumer
 
         // Mismo corte que la baja y el retiro: denylist, anuncio y revocación. Repetirlo no cambia nada.
         var revokedSessions = await accessCutoff.ForUserAsync(user, CutoffReason, ct);
+        // Los links pendientes no reviven al restaurar el cliente.
+        await PendingPasswordResets.RevokeAsync(
+            credentials,
+            user.Id,
+            DateTime.UtcNow,
+            ResetRevocationReason.CancelledByOffice,
+            evt.ArchivedByUserId,
+            ct
+        );
         if (wasActive)
         {
             await audit.AddAsync(

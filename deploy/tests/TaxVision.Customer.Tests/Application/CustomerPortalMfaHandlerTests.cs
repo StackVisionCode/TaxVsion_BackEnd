@@ -1,4 +1,9 @@
+using System.Reflection;
+using BuildingBlocks.ActorTypeAuthorization;
+using BuildingBlocks.Authorization;
 using BuildingBlocks.Results;
+using BuildingBlocks.Web.ActorTypeAuthorization;
+using BuildingBlocks.Web.Security;
 using TaxVision.Customer.Application.Abstractions;
 using TaxVision.Customer.Application.Customers.Commands.PortalMfa;
 using TaxVision.Customer.Application.Customers.Queries.OffboardingImpact;
@@ -13,24 +18,58 @@ public sealed class CustomerPortalMfaHandlerTests
 {
     private static readonly Guid TenantId = Guid.NewGuid();
     private static readonly Guid Admin = Guid.NewGuid();
+    private static readonly DateTime ReauthAt = DateTime.UtcNow.AddMinutes(-2);
+
+    private static ResetCustomerPortalMfaCommand Reset(Guid customerId, Guid actor, bool canViewAll) =>
+        new(
+            TenantId,
+            customerId,
+            actor,
+            canViewAll,
+            ReauthAt,
+            "203.0.113.7",
+            "Chrome",
+            "UserRequest",
+            "lost phone",
+            true
+        );
 
     [Fact]
-    public async Task An_assigned_preparer_resets_the_clients_two_step_and_auth_records_who_asked()
+    public async Task A_visible_client_is_reset_and_auth_receives_step_up_real_ip_and_reason()
     {
         var customer = NewCustomer();
-        var preparer = Guid.NewGuid();
-        customer.GrantAccess(preparer, Admin);
         var portal = new FakePortalSecurity();
 
         var result = await ResetCustomerPortalMfaHandler.Handle(
-            new ResetCustomerPortalMfaCommand(TenantId, customer.Id, preparer, CanViewAll: false),
+            Reset(customer.Id, Admin, canViewAll: true),
             new SingleCustomer(customer),
             portal,
             CancellationToken.None
         );
 
         Assert.Equal("Reset", result.Value.Outcome);
-        Assert.Equal((TenantId, customer.Id, preparer), portal.LastReset);
+        Assert.Equal((TenantId, customer.Id), portal.LastReset);
+        Assert.Equal(
+            new PortalCredentialRequest(Admin, ReauthAt, "203.0.113.7", "Chrome", "UserRequest", "lost phone", true),
+            portal.LastRequest
+        );
+    }
+
+    [Fact]
+    public void The_reset_endpoint_needs_its_own_admin_permission_and_recent_authentication()
+    {
+        var action = typeof(TaxVision.Customer.Api.Controllers.CustomerController).GetMethod("ResetPortalMfa")!;
+
+        Assert.Equal("customers.portal_mfa.reset", CustomersPermissions.PortalMfaReset);
+        Assert.Equal(
+            HasPermissionAttribute.PolicyPrefix + CustomersPermissions.PortalMfaReset,
+            action.GetCustomAttribute<HasPermissionAttribute>()!.Policy
+        );
+        Assert.NotNull(action.GetCustomAttribute<RequireRecentAuthenticationAttribute>());
+        Assert.Equal(
+            new[] { ActorType.TenantAdmin },
+            action.GetCustomAttribute<AllowActorTypesAttribute>()!.ActorTypes
+        );
     }
 
     [Fact]
@@ -40,7 +79,7 @@ public sealed class CustomerPortalMfaHandlerTests
         var portal = new FakePortalSecurity();
 
         var reset = await ResetCustomerPortalMfaHandler.Handle(
-            new ResetCustomerPortalMfaCommand(TenantId, customer.Id, Guid.NewGuid(), CanViewAll: false),
+            Reset(customer.Id, Guid.NewGuid(), canViewAll: false),
             new SingleCustomer(customer),
             portal,
             CancellationToken.None
@@ -72,7 +111,7 @@ public sealed class CustomerPortalMfaHandlerTests
             CancellationToken.None
         );
         var reset = await ResetCustomerPortalMfaHandler.Handle(
-            new ResetCustomerPortalMfaCommand(TenantId, customer.Id, Admin, CanViewAll: true),
+            Reset(customer.Id, Admin, canViewAll: true),
             new SingleCustomer(customer),
             portal,
             CancellationToken.None
@@ -98,7 +137,8 @@ public sealed class CustomerPortalMfaHandlerTests
 
     private sealed class FakePortalSecurity : ICustomerPortalAccessClient
     {
-        public (Guid TenantId, Guid CustomerId, Guid RequestedBy)? LastReset { get; private set; }
+        public (Guid TenantId, Guid CustomerId)? LastReset { get; private set; }
+        public PortalCredentialRequest? LastRequest { get; private set; }
         public bool StatusAsked { get; private set; }
         public Result<PortalMfaResetOutcome> ResetResult { get; init; } =
             Result.Success(new PortalMfaResetOutcome("Reset"));
@@ -126,11 +166,12 @@ public sealed class CustomerPortalMfaHandlerTests
         public Task<Result<PortalMfaResetOutcome>> ResetMfaAsync(
             Guid tenantId,
             Guid customerId,
-            Guid requestedByUserId,
+            PortalCredentialRequest request,
             CancellationToken ct = default
         )
         {
-            LastReset = (tenantId, customerId, requestedByUserId);
+            LastReset = (tenantId, customerId);
+            LastRequest = request;
             return Task.FromResult(ResetResult);
         }
     }

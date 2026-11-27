@@ -54,7 +54,9 @@ public sealed class TenantMfaPolicy : BaseEntity
     public bool RequiresFor(UserActorType actorType) =>
         actorType switch
         {
-            UserActorType.TenantAdmin or UserActorType.PlatformAdmin => RequireForAdmins,
+            // Los operadores de plataforma siempre usan segundo factor: ninguna política lo apaga.
+            UserActorType.PlatformAdmin => true,
+            UserActorType.TenantAdmin => RequireForAdmins,
             UserActorType.TenantEmployee => RequireForEmployees,
             UserActorType.CustomerPortal => RequireForCustomerPortal,
             _ => false,

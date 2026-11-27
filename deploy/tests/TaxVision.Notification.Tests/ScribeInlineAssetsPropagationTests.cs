@@ -50,7 +50,7 @@ public sealed class ScribeInlineAssetsPropagationTests
             gateway,
             scribeClient,
             Options.Create(new PortalOptions()),
-            new FakeTenantHostResolver(),
+            new FakeTenantHostResolver("acme.taxoffix.test"),
             FixedRecipientLocale.English,
             new NoOpCorrelationContext(),
             CancellationToken.None

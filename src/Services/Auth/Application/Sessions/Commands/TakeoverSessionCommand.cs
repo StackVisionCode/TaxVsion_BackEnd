@@ -56,9 +56,14 @@ public static class TakeoverSessionHandler
         if (tenant is null || !tenant.IsActive)
             return Result.Failure<LoginResponse>(invalid);
 
-        // El vale es confiable, pero el usuario pudo desactivarse en la ventana; se revalida el estado.
+        // El vale es confiable, pero el usuario pudo desactivarse o quedar asegurado (I-2) en la ventana.
         var user = await users.GetByIdAsync(payload.UserId, ct);
-        if (user is null || user.TenantId != payload.TenantId || !user.IsActive)
+        if (
+            user is null
+            || user.TenantId != payload.TenantId
+            || !user.IsActive
+            || user.EnsurePasswordSignInAllowed().IsFailure
+        )
             return Result.Failure<LoginResponse>(invalid);
 
         // Tomar la sesión tampoco abre una oficina sin pagar.
@@ -148,7 +153,10 @@ public static class TakeoverSessionHandler
                 // el segundo factor: el takeover no es un caso aparte para quien lo consume.
                 new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds, deviceToken),
                 mfaSetupRequired: payload.MustEnrollMfa
-            )
+            ) with
+            {
+                PasswordChangeRequired = PasswordChangeRequirement.Applies(user, payload.Surface),
+            }
         );
     }
 }

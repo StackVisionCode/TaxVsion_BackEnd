@@ -27,6 +27,7 @@ public sealed class LoginSessionStep(
     {
         var user = attempt.User;
         var mustEnrollMfa = entry == LoginSessionEntry.MfaSetupPending;
+        var passwordChangeRequired = PasswordChangeRequirement.Applies(user, attempt.Surface);
         var outcome = await SessionEstablishment.IssueOrRequireTakeoverAsync(
             user,
             attempt.Tenant,
@@ -58,7 +59,10 @@ public sealed class LoginSessionStep(
                     (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds,
                     mfaSetupRequired: mustEnrollMfa,
                     actorType: user.ActorType.ToString()
-                )
+                ) with
+                {
+                    PasswordChangeRequired = passwordChangeRequired,
+                }
             );
         }
 
@@ -68,7 +72,10 @@ public sealed class LoginSessionStep(
                 new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds),
                 mfaSetupRequired: mustEnrollMfa,
                 actorType: user.ActorType.ToString()
-            )
+            ) with
+            {
+                PasswordChangeRequired = passwordChangeRequired,
+            }
         );
     }
 

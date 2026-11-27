@@ -23,7 +23,11 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var tenantEntitlementModulesReader = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader>(serviceScope.ServiceProvider);
             
             /*
             * Concrete type TaxVision.Signature.Infrastructure.Persistence.Repositories.FileMetadataRefRepository is not public, so requires service location
@@ -62,6 +66,7 @@ namespace Internal.Generated.WolverineHandlers
             var signatureRequestRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Signature.Application.Abstractions.ISignatureRequestRepository>(serviceScope.ServiceProvider);
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var unitOfWork = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Persistence.IUnitOfWork>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             // The actual message body
             var signatureRequestFromFormRequestedIntegrationEvent = (BuildingBlocks.Messaging.ClientFormsIntegrationEvents.SignatureRequestFromFormRequestedIntegrationEvent)context.Envelope.Message;
 
@@ -82,7 +87,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Signature.Application.Requests.Commands.FromForm.SignatureRequestFromFormRequestedConsumer");
                 
                 // The actual message execution
-                await TaxVision.Signature.Application.Requests.Commands.FromForm.SignatureRequestFromFormRequestedConsumer.Handle(signatureRequestFromFormRequestedIntegrationEvent, signatureRequestRepository, signatureRequestFromFormBuilder, signatureCloudStorageClient, requestDocumentVerifier, unitOfWork, context, correlationContext, signatureRequestListCacheInvalidator, fileMetadataRefRepository, context.Envelope, _loggerForMessage, cancellation).ConfigureAwait(false);
+                await TaxVision.Signature.Application.Requests.Commands.FromForm.SignatureRequestFromFormRequestedConsumer.Handle(signatureRequestFromFormRequestedIntegrationEvent, signatureRequestRepository, signatureRequestFromFormBuilder, signatureCloudStorageClient, requestDocumentVerifier, unitOfWork, context, correlationContext, signatureRequestListCacheInvalidator, fileMetadataRefRepository, context.Envelope, tenantEntitlementModulesReader, _loggerForMessage, cancellation).ConfigureAwait(false);
 
                 
                 // Added by EF Core Transaction Middleware

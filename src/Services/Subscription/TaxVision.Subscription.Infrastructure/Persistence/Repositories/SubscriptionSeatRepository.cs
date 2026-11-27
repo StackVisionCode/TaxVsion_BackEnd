@@ -42,6 +42,10 @@ public sealed class SubscriptionSeatRepository(SubscriptionDbContext db) : ISubs
                 && seat.AutoRenew
                 && seat.NextRenewalAtUtc != null
                 && seat.NextRenewalAtUtc <= nowUtc
+                // Oficina suspendida por la plataforma: sus asientos esperan.
+                && !db
+                    .Subscriptions.IgnoreQueryFilters()
+                    .Any(s => s.TenantId == seat.TenantId && s.BillingHeldAtUtc != null)
             )
             .OrderBy(seat => seat.NextRenewalAtUtc)
             .Take(batchSize)

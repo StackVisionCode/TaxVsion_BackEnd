@@ -270,6 +270,7 @@ public sealed class UserSlotPriorityAdminTests
     {
         public string? IpAddress => "203.0.113.10";
         public string? UserAgent => "test-agent";
+        public string? ActorType => null;
     }
 
     private sealed class CorrelationContext : ICorrelationContext

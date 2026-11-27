@@ -23,7 +23,11 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            
+            /*
+            * The service registration for BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            */
+            var tenantEntitlementModulesReader = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.RateLimiting.ITenantEntitlementModulesReader>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -52,6 +56,7 @@ namespace Internal.Generated.WolverineHandlers
             var watchRenewalService = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Connectors.Application.Watch.IWatchRenewalService>(serviceScope.ServiceProvider);
             var tenantEmailAccountRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Connectors.Application.Accounts.ITenantEmailAccountRepository>(serviceScope.ServiceProvider);
             var providerWatchSubscriptionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Connectors.Application.Watch.IProviderWatchSubscriptionRepository>(serviceScope.ServiceProvider);
+            var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
             // The actual message body
             var graphLifecycleNotificationReceived = (TaxVision.Connectors.Application.Watch.GraphLifecycleNotificationReceived)context.Envelope.Message;
 
@@ -60,7 +65,7 @@ namespace Internal.Generated.WolverineHandlers
             System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Connectors.Application.Watch.GraphLifecycleNotificationHandler");
             
             // The actual message execution
-            await TaxVision.Connectors.Application.Watch.GraphLifecycleNotificationHandler.Handle(graphLifecycleNotificationReceived, providerWatchSubscriptionRepository, tenantEmailAccountRepository, watchRenewalService, context, correlationContext, ((Microsoft.Extensions.Logging.ILogger)_loggerForMessage), cancellation).ConfigureAwait(false);
+            await TaxVision.Connectors.Application.Watch.GraphLifecycleNotificationHandler.Handle(graphLifecycleNotificationReceived, providerWatchSubscriptionRepository, tenantEmailAccountRepository, watchRenewalService, context, correlationContext, ((Microsoft.Extensions.Logging.ILogger)_loggerForMessage), tenantEntitlementModulesReader, cancellation).ConfigureAwait(false);
 
         }
 

@@ -72,6 +72,7 @@ public static class DependencyInjection
         );
         services.AddHostedService<SystemEmailProviderSeeder>();
         services.AddHostedService<TenantDirectoryBackfillService>();
+        services.AddHostedService<MailboxOwnershipBackfillService>();
         services.AddSingleton(
             configuration.GetSection(RecordSendResultRetryOptions.SectionName).Get<RecordSendResultRetryOptions>()
                 ?? new RecordSendResultRetryOptions()
@@ -321,6 +322,15 @@ public static class DependencyInjection
                 var opt = sp.GetRequiredService<IOptions<ConnectorsClientOptions>>().Value;
                 http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
                 http.Timeout = opt.EffectiveTimeout;
+            }
+        );
+        // Dueño de cada buzón (DM-02): solo lectura, tope corto.
+        services.AddHttpClient<IConnectorsMailboxDirectory, ConnectorsMailboxDirectoryClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<ConnectorsClientOptions>>().Value;
+                http.BaseAddress = new Uri(NormalizeBaseUrl(opt.BaseUrl));
+                http.Timeout = TimeSpan.FromSeconds(15);
             }
         );
     }

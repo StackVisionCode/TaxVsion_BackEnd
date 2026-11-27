@@ -144,6 +144,7 @@ public sealed class IssueServiceTokenHandlerTests
     {
         public string? IpAddress => ipAddress;
         public string? UserAgent => "test";
+        public string? ActorType => null;
     }
 
     private sealed class CapturingTokenGenerator : IJwtTokenGenerator
@@ -161,7 +162,8 @@ public sealed class IssueServiceTokenHandlerTests
             TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface =
                 TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Workspace,
             DateTime? reauthenticatedAtUtc = null,
-            bool mfaEnrollmentOnly = false
+            bool mfaEnrollmentOnly = false,
+            bool passwordChangeOnly = false
         ) => throw new NotSupportedException();
 
         public AccessToken GenerateServiceToken(

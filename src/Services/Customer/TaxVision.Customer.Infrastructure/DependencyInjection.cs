@@ -217,6 +217,8 @@ public static class InfrastructureRegistration
         );
         services.AddHostedService<EmployeeDirectoryReconciliationJob>();
 
+        // SR-03: el Api lo reemplaza por el lector del bearer de la petición; fuera de HTTP no hay token.
+        services.TryAddSingleton<IActorAccessTokenReader, NoActorAccessToken>();
         // Acceso al portal de un cliente: Auth crea/reenvía la invitación y devuelve el desenlace.
         services.AddHttpClient<ICustomerPortalAccessClient, CustomerPortalAccessClient>(
             (sp, http) =>
@@ -228,6 +230,9 @@ public static class InfrastructureRegistration
         );
         // Sesiones del portal del cliente: el mismo cliente HTTP hacia Auth.
         services.AddTransient<ICustomerPortalSessionsClient>(sp =>
+            (CustomerPortalAccessClient)sp.GetRequiredService<ICustomerPortalAccessClient>()
+        );
+        services.AddTransient<ICustomerPortalCredentialsClient>(sp =>
             (CustomerPortalAccessClient)sp.GetRequiredService<ICustomerPortalAccessClient>()
         );
     }

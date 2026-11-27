@@ -75,6 +75,17 @@ public sealed partial class TenantSubscription : AggregateRoot
     /// de ese endpoint contra reintentos del mismo comando M2M.</summary>
     public Guid? OnboardingId { get; private set; }
 
+    /// <summary>Cobro retenido porque la plataforma suspendió o cerró la oficina. Null = se cobra normal.</summary>
+    public DateTime? BillingHeldAtUtc { get; private set; }
+
+    /// <summary>Cuándo se liberó la última retención: da margen a la renovación antes de suspender por vencida.</summary>
+    public DateTime? BillingHoldReleasedAtUtc { get; private set; }
+
+    /// <summary>Versión de la oficina del último estado aplicado: un mensaje más viejo no deshace uno nuevo.</summary>
+    public long? BillingHoldTenantVersion { get; private set; }
+
+    public bool IsBillingHeld => BillingHeldAtUtc is not null;
+
     private TenantSubscription() { }
 
     /// <summary>Fin de período de la base al que co-terminar un add-on cuyo período termina en
@@ -447,12 +458,34 @@ public sealed partial class TenantSubscription : AggregateRoot
     /// si hay un paso a otro ciclo agendado que llega antes que el fin del extra (la base lo aplica primero).
     /// </summary>
     public bool HoldsExtraRenewals(DateTime extraPeriodEndUtc) =>
-        _planChangeRequests.Any(request => request.Status == PlanChangeRequestStatus.AwaitingPayment)
+        IsBillingHeld
+        || _planChangeRequests.Any(request => request.Status == PlanChangeRequestStatus.AwaitingPayment)
         || (
             FindScheduledDowngrade() is { ToBillingCycle: { } cycle }
             && cycle != BillingCycle
             && extraPeriodEndUtc >= CurrentPeriodEndUtc
         );
+
+    /// <summary>
+    /// Aplica el estado administrativo de la oficina (Tenant): inactiva retiene el cobro, activa lo libera.
+    /// No toca el estado comercial. Devuelve si cambió algo.
+    /// </summary>
+    public bool ApplyTenantStatus(bool tenantIsActive, long? tenantVersion, DateTime nowUtc)
+    {
+        if (tenantVersion < BillingHoldTenantVersion)
+            return false;
+
+        var hold = !tenantIsActive;
+        if (hold == IsBillingHeld)
+            return false;
+
+        BillingHeldAtUtc = hold ? nowUtc : null;
+        if (!hold)
+            BillingHoldReleasedAtUtc = nowUtc;
+        BillingHoldTenantVersion = tenantVersion ?? BillingHoldTenantVersion;
+        UpdatedAtUtc = nowUtc;
+        return true;
+    }
 
     /// <summary>Hay un downgrade agendado o un upgrade esperando su cobro.</summary>
     public bool HasPlanChangeInProgress => HasPendingPlanChange();

@@ -18,6 +18,25 @@ namespace TaxVision.Notification.Tests.Integration;
 /// </summary>
 public static class JwtTestTokenFactory
 {
+    /// <summary>Token de servicio M2M (actor_type=Service), como el que mintea Auth para sus llamadas internas.</summary>
+    public static string MintService(NotificationApiFactory factory, Guid tenantId)
+    {
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(factory.JwtSecret));
+        var token = new JwtSecurityToken(
+            issuer: factory.JwtIssuer,
+            audience: factory.JwtAudience,
+            claims:
+            [
+                new Claim("sub", "auth-notification-delivery"),
+                new Claim("tenant_id", tenantId.ToString()),
+                new Claim("actor_type", "Service"),
+            ],
+            expires: DateTime.UtcNow.AddMinutes(5),
+            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256)
+        );
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
     public static string Mint(NotificationApiFactory factory, Guid tenantId, Guid userId)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(factory.JwtSecret));

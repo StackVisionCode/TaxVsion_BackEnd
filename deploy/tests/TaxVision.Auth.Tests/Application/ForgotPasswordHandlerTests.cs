@@ -31,12 +31,16 @@ public sealed class ForgotPasswordHandlerTests
             new CapturingCredentialTokenRepository(),
             new StubSecureTokenService(),
             new NullAccountTokenProtector(),
+            new NoUserLoginLock(),
             throttler,
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
             bus,
+            Microsoft.Extensions.Options.Options.Create(
+                new TaxVision.Auth.Application.Common.CredentialAdministrationOptions()
+            ),
             CancellationToken.None
         );
 
@@ -60,12 +64,16 @@ public sealed class ForgotPasswordHandlerTests
             credentials,
             new StubSecureTokenService(),
             new NullAccountTokenProtector(),
+            new NoUserLoginLock(),
             throttler,
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
             bus,
+            Microsoft.Extensions.Options.Options.Create(
+                new TaxVision.Auth.Application.Common.CredentialAdministrationOptions()
+            ),
             CancellationToken.None
         );
 
@@ -92,12 +100,16 @@ public sealed class ForgotPasswordHandlerTests
             new CapturingCredentialTokenRepository(),
             new StubSecureTokenService(),
             new NullAccountTokenProtector(),
+            new NoUserLoginLock(),
             new FakeThrottler { RetryAfter = null },
             new FakeAuthAuditWriter(),
             new FakeRequestContext(),
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
             bus,
+            Microsoft.Extensions.Options.Options.Create(
+                new TaxVision.Auth.Application.Common.CredentialAdministrationOptions()
+            ),
             CancellationToken.None
         );
 
@@ -111,6 +123,53 @@ public sealed class ForgotPasswordHandlerTests
         var staff = Assert.Single(events, e => e.TenantId == staffTenant);
         Assert.Equal(nameof(UserActorType.TenantEmployee), staff.ActorType);
     }
+
+    // I-4: a lo sumo un link utilizable por usuario; el nuevo revoca los pendientes como Superseded.
+    [Fact]
+    public async Task A_second_forgot_supersedes_the_pending_link()
+    {
+        var world = new AccountSessionFixture();
+        var credentials = new InMemoryCredentialTokenRepository();
+        var bus = new FakeMessageBus();
+
+        await ForgotOnceAsync(world, credentials, bus);
+        await ForgotOnceAsync(world, credentials, bus);
+
+        Assert.Equal(2, credentials.PasswordResets.Count);
+        var (first, second) = (credentials.PasswordResets[0], credentials.PasswordResets[1]);
+        Assert.Equal(PasswordResetTokenStatus.Superseded, first.StatusAt(DateTime.UtcNow));
+        Assert.Equal(ResetRevocationReason.Superseded, first.RevocationReason);
+        Assert.Equal(PasswordResetTokenStatus.Pending, second.StatusAt(DateTime.UtcNow));
+        Assert.Equal(ResetOrigin.SelfService, second.Origin);
+        // El EventId del correo queda guardado en el token para seguir su entrega.
+        var events = bus.Published.OfType<PasswordResetRequestedIntegrationEvent>().ToList();
+        Assert.Equal(events[1].EventId, second.NotificationEventId);
+    }
+
+    private static Task ForgotOnceAsync(
+        AccountSessionFixture world,
+        InMemoryCredentialTokenRepository credentials,
+        FakeMessageBus bus
+    ) =>
+        ForgotPasswordHandler.Handle(
+            new ForgotPasswordCommand(world.Admin.Email),
+            world.Users,
+            world.Tenants,
+            credentials,
+            world.TokenService,
+            new NullAccountTokenProtector(),
+            new NoUserLoginLock(),
+            new PermissiveLoginThrottler(),
+            world.Audit,
+            world.Request,
+            world.Correlation,
+            world.UnitOfWork,
+            bus,
+            Microsoft.Extensions.Options.Options.Create(
+                new TaxVision.Auth.Application.Common.CredentialAdministrationOptions()
+            ),
+            CancellationToken.None
+        );
 
     // ---- dobles ----
 
@@ -241,12 +300,16 @@ public sealed class ForgotPasswordHandlerTests
                 new CapturingCredentialTokenRepository(),
                 new StubSecureTokenService(),
                 new NullAccountTokenProtector(),
+                new NoUserLoginLock(),
                 new PermissiveLoginThrottler(),
                 new FakeAuthAuditWriter(),
                 new FakeRequestContext(),
                 new FakeCorrelationContext(),
                 new FakeUnitOfWork(),
                 bus,
+                Microsoft.Extensions.Options.Options.Create(
+                    new TaxVision.Auth.Application.Common.CredentialAdministrationOptions()
+                ),
                 CancellationToken.None
             );
             return bus;
@@ -270,12 +333,16 @@ public sealed class ForgotPasswordHandlerTests
             new CapturingCredentialTokenRepository(),
             new StubSecureTokenService(),
             new NullAccountTokenProtector(),
+            new NoUserLoginLock(),
             new PermissiveLoginThrottler(),
             world.Audit,
             world.Request,
             world.Correlation,
             world.UnitOfWork,
             bus,
+            Microsoft.Extensions.Options.Options.Create(
+                new TaxVision.Auth.Application.Common.CredentialAdministrationOptions()
+            ),
             CancellationToken.None
         );
         return bus;
@@ -372,10 +439,27 @@ public sealed class ForgotPasswordHandlerTests
             Guid userId,
             DateTime utcNow,
             CancellationToken ct = default
-        ) => throw new NotSupportedException();
+        ) =>
+            Task.FromResult<IReadOnlyList<PasswordResetToken>>(
+                Added.Where(token => token.UserId == userId && token.IsUsable(utcNow)).ToList()
+            );
+
+        public Task<PasswordResetToken?> GetLatestPasswordResetAsync(Guid userId, CancellationToken ct = default) =>
+            Task.FromResult(Added.LastOrDefault(token => token.UserId == userId));
+
+        public Task<int> CountOfficePasswordResetsSinceAsync(
+            Guid userId,
+            DateTime sinceUtc,
+            CancellationToken ct = default
+        ) => Task.FromResult(0);
 
         public Task AddEmailVerificationAsync(EmailVerificationToken token, CancellationToken ct = default) =>
             throw new NotSupportedException();
+
+        public Task<EmailVerificationToken?> GetLatestEmailVerificationAsync(
+            Guid userId,
+            CancellationToken ct = default
+        ) => Task.FromResult<EmailVerificationToken?>(null);
 
         public Task<EmailVerificationToken?> GetEmailVerificationByHashAsync(
             string tokenHash,

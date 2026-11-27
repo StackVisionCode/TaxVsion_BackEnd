@@ -24,4 +24,8 @@ public static class SecurityAlertType
     public const string MfaDisabled = "mfa_disabled";
     public const string PasswordChanged = "password_changed";
     public const string EmailChanged = "email_changed";
+    public const string PasswordResetSentByOffice = "password_reset_sent_by_office";
+    public const string PasswordChangeRequired = "password_change_required";
+    public const string AccountSecured = "account_secured";
+    public const string MfaResetByOffice = "mfa_reset_by_office";
 }

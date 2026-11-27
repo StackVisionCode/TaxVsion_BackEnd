@@ -64,7 +64,7 @@ public sealed class BaselineSmokeTests
             scribeClient,
             portal,
             TestPlatform.Settings,
-            new FakeTenantHostResolver(),
+            new FakeTenantHostResolver("acme.taxoffix.test"),
             new AuthAccountTokenReader(
                 new NoProtectedPayloadCodec(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<AuthAccountTokenReader>.Instance

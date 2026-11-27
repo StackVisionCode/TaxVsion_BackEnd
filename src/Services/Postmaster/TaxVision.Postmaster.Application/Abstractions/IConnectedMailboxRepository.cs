@@ -7,11 +7,13 @@ public interface IConnectedMailboxRepository
     Task<ConnectedMailbox?> GetByAccountIdAsync(Guid tenantId, Guid accountId, CancellationToken ct = default);
 
     /// <summary>
-    /// La cuenta activa más recientemente conectada para el tenant. Regla interina explícita: si un
-    /// tenant llega a conectar más de una cuenta, la última conexión gana — no existe hoy un concepto
-    /// de "cuenta primaria" seleccionable por el usuario.
+    /// El buzón de OFICINA activo más recientemente conectado (DM-02): nunca uno personal ni uno con dueño sin
+    /// reconciliar. Si hay más de uno de oficina, la última conexión gana.
     /// </summary>
     Task<ConnectedMailbox?> FindActiveByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Filas con dueño sin reconciliar (anteriores a la proyección del dueño), con seguimiento.</summary>
+    Task<IReadOnlyList<ConnectedMailbox>> ListWithUnknownOwnershipAsync(int max, CancellationToken ct = default);
 
     Task AddAsync(ConnectedMailbox account, CancellationToken ct = default);
 }

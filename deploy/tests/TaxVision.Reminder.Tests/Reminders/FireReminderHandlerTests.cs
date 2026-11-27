@@ -1,4 +1,5 @@
 using BuildingBlocks.Messaging.ReminderIntegrationEvents;
+using BuildingBlocks.RateLimiting;
 using Microsoft.Extensions.Logging.Abstractions;
 using TaxVision.Reminder.Application.Reminders.Abstractions;
 using TaxVision.Reminder.Application.Reminders.Commands;
@@ -81,6 +82,38 @@ public sealed class FireReminderHandlerTests
         Assert.Empty(metrics.Fired);
     }
 
+    /// <summary>
+    /// Oficina sin el módulo: el aviso no sale y el recordatorio queda perdido, para que la
+    /// reconciliación no le vuelva a crear el trigger cada pocos minutos.
+    /// </summary>
+    [Fact]
+    public async Task Disparar_SinElModuloDeLaOficina_QuedaMissedYNoPublica()
+    {
+        var reminders = new FakeReminderRepository();
+        var bus = new RecordingMessageBus();
+        var metrics = new RecordingReminderMetrics();
+        var reminder = Seed(reminders, DateTime.UtcNow.AddMinutes(-1));
+
+        await Fire(reminder, reminders, bus, metrics, new FixedModules(["campaigns"]));
+
+        Assert.Equal(ReminderStatus.Missed, reminder.Status);
+        Assert.Empty(bus.Published);
+        Assert.Empty(metrics.Fired);
+    }
+
+    [Fact]
+    public async Task Disparar_SinProyeccionDeModulos_PublicaIgual()
+    {
+        var reminders = new FakeReminderRepository();
+        var bus = new RecordingMessageBus();
+        var reminder = Seed(reminders, DateTime.UtcNow.AddMinutes(-1));
+
+        await Fire(reminder, reminders, bus, modules: new FixedModules(null));
+
+        Assert.Equal(ReminderStatus.Fired, reminder.Status);
+        Assert.Single(bus.Published);
+    }
+
     [Fact]
     public async Task Disparar_UnRecordatorioQueYaNoExiste_NoRevientaNiPublica()
     {
@@ -94,6 +127,7 @@ public sealed class FireReminderHandlerTests
             bus,
             new FixedCorrelationContext(),
             new RecordingReminderMetrics(),
+            new FixedModules(["planner"]),
             NullLogger<ReminderAggregate>.Instance,
             CancellationToken.None
         );
@@ -105,7 +139,8 @@ public sealed class FireReminderHandlerTests
         ReminderAggregate reminder,
         FakeReminderRepository reminders,
         RecordingMessageBus bus,
-        RecordingReminderMetrics? metrics = null
+        RecordingReminderMetrics? metrics = null,
+        ITenantEntitlementModulesReader? modules = null
     ) =>
         FireReminderHandler.Handle(
             new FireReminderCommand(reminder.TenantId, reminder.Id, Grace, "fire-test"),
@@ -114,9 +149,16 @@ public sealed class FireReminderHandlerTests
             bus,
             new FixedCorrelationContext(),
             metrics ?? new RecordingReminderMetrics(),
+            modules ?? new FixedModules(["planner"]),
             NullLogger<ReminderAggregate>.Instance,
             CancellationToken.None
         );
+
+    internal sealed class FixedModules(IReadOnlyList<string>? modules) : ITenantEntitlementModulesReader
+    {
+        public Task<IReadOnlyList<string>?> GetEnabledModulesAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult(modules);
+    }
 
     internal static ReminderAggregate Seed(FakeReminderRepository reminders, DateTime fireAtUtc)
     {

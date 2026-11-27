@@ -618,6 +618,22 @@
       "en": "The email address of {account} was changed.",
       "es": "Se cambió el correo electrónico de {account}."
     },
+    "auth.security_alert.password_reset_sent_by_office": {
+      "en": "An office administrator sent a password reset link for {account}.",
+      "es": "Un administrador de la oficina envió un enlace para restablecer la contraseña de {account}."
+    },
+    "auth.security_alert.password_change_required": {
+      "en": "An office administrator asked you to change the password of {account} the next time you sign in.",
+      "es": "Un administrador de la oficina pidió que cambies la contraseña de {account} la próxima vez que inicies sesión."
+    },
+    "auth.security_alert.account_secured": {
+      "en": "An office administrator secured {account}: all sessions were signed out and a new password is required.",
+      "es": "Un administrador de la oficina aseguró {account}: se cerraron todas las sesiones y se requiere una contraseña nueva."
+    },
+    "auth.security_alert.mfa_reset_by_office": {
+      "en": "An office administrator reset two-step verification on {account}.",
+      "es": "Un administrador de la oficina restableció la verificación en dos pasos de {account}."
+    },
     "auth.security_alert.other": {
       "en": "We noticed important security activity on {account}.",
       "es": "Detectamos actividad de seguridad importante en {account}."

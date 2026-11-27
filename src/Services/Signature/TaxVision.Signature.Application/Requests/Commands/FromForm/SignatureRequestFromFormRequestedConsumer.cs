@@ -1,6 +1,7 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Messaging.ClientFormsIntegrationEvents;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.RateLimiting;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
 using TaxVision.Signature.Application.Abstractions;
@@ -28,6 +29,7 @@ public static class SignatureRequestFromFormRequestedConsumer
     private const string OwnerTypeSignature = "Signature";
     private const string FolderTypeSignatures = "Signatures";
     private const string AvailableStatus = "Available";
+    private const string SignaturesModule = "signatures";
 
     /// <summary>
     /// Espera de una copia en vuelo: un reintento por cada pausa; el intento que sigue a la última es el final.
@@ -64,6 +66,7 @@ public static class SignatureRequestFromFormRequestedConsumer
         ISignatureRequestListCacheInvalidator listCache,
         IFileMetadataRefRepository files,
         Envelope envelope,
+        ITenantEntitlementModulesReader modules,
         ILogger<SignatureRequestFromFormRequestedIntegrationEvent> logger,
         CancellationToken ct
     )
@@ -232,7 +235,8 @@ public static class SignatureRequestFromFormRequestedConsumer
             // 6) Envío automático: se publica por el outbox para que corra DESPUÉS del commit de este
             // consumer. Invocarlo en línea fallaba con NotFound porque el Send abre su propio scope y no
             // veía la solicitud recién guardada (aún sin confirmar la transacción Wolverine del consumer).
-            if (command.AutoSend)
+            // Sin el módulo de firmas la solicitud queda creada pero no sale a los firmantes.
+            if (command.AutoSend && await modules.HasModuleAsync(command.TenantId, SignaturesModule, ct))
                 await bus.PublishAsync(new SendSignatureRequestCommand(command.TenantId, request.Id));
             // La copia del formulario es un archivo nuevo: nunca es base de una plantilla.
             await OriginalFileSources.PublishAsync(

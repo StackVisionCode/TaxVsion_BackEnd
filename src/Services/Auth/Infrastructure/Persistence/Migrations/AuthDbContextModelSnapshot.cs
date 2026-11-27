@@ -33,6 +33,10 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<string>("ActorType")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<string>("CorrelationId")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");
@@ -76,6 +80,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "UserId", "OccurredAtUtc");
 
+                    b.HasIndex(new[] { "TenantId", "TargetId", "OccurredAtUtc" }, "IX_AuthAuditLogs_TenantId_TargetId_OccurredAtUtc")
+                        .HasFilter("[TargetId] IS NOT NULL");
+
                     b.ToTable("AuthAuditLogs", (string)null);
                 });
 
@@ -95,6 +102,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
+
+                    b.Property<Guid?>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -135,12 +145,33 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ExpiresAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("NotificationEventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte>("Origin")
+                        .HasColumnType("tinyint");
+
+                    b.Property<Guid?>("RequestedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("RequestedIp")
                         .HasMaxLength(45)
                         .HasColumnType("nvarchar(45)");
 
+                    b.Property<byte?>("RevocationReason")
+                        .HasColumnType("tinyint");
+
                     b.Property<DateTime?>("RevokedAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RevokedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
@@ -162,6 +193,11 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.HasIndex("UserId", "UsedAtUtc");
+
+                    b.HasIndex(new[] { "UserId", "CreatedAtUtc" }, "IX_PasswordResetTokens_UserId_CreatedAtUtc")
+                        .IsDescending(false, true);
+
+                    SqlServerIndexBuilderExtensions.IncludeProperties(b.HasIndex(new[] { "UserId", "CreatedAtUtc" }, "IX_PasswordResetTokens_UserId_CreatedAtUtc"), new[] { "Origin", "UsedAtUtc", "RevokedAtUtc", "ExpiresAtUtc", "RequestedByUserId" });
 
                     b.ToTable("PasswordResetTokens", (string)null);
                 });
@@ -777,6 +813,58 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         },
                         new
                         {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000234"),
+                            AllowedActorTypes = "TenantAdmin",
+                            Code = "users.password.send_reset",
+                            Description = "Send or cancel a password reset link to a team member",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = true,
+                            IsReserved = false,
+                            Module = "users",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000235"),
+                            AllowedActorTypes = "TenantAdmin",
+                            Code = "users.password.require_change",
+                            Description = "Require a team member to change their password",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = true,
+                            IsReserved = false,
+                            Module = "users",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000236"),
+                            AllowedActorTypes = "TenantAdmin",
+                            Code = "users.credentials.secure",
+                            Description = "Secure a team member's account (sign out and force a reset)",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = true,
+                            IsReserved = false,
+                            Module = "users",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000237"),
+                            AllowedActorTypes = "TenantAdmin",
+                            Code = "users.mfa.reset",
+                            Description = "Reset a team member's two-step verification",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = true,
+                            IsReserved = false,
+                            Module = "users",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
                             Id = new Guid("a1000000-0000-0000-0000-000000000005"),
                             AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
                             Code = "audit.view",
@@ -932,6 +1020,62 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                             IsAssignableByTenant = true,
                             IsCustomerPortal = false,
                             IsDangerous = false,
+                            IsReserved = false,
+                            Module = "customers",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000238"),
+                            AllowedActorTypes = "TenantAdmin",
+                            Code = "customers.portal_credentials.send_reset",
+                            Description = "Send or cancel a client portal password reset link",
+                            GatedModule = "customers",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = true,
+                            IsReserved = false,
+                            Module = "customers",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-000000000239"),
+                            AllowedActorTypes = "TenantAdmin",
+                            Code = "customers.portal_credentials.require_change",
+                            Description = "Require a client to change their portal password",
+                            GatedModule = "customers",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = true,
+                            IsReserved = false,
+                            Module = "customers",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-00000000023a"),
+                            AllowedActorTypes = "TenantAdmin",
+                            Code = "customers.portal_credentials.secure",
+                            Description = "Secure a client's portal account (sign out and force a reset)",
+                            GatedModule = "customers",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = true,
+                            IsReserved = false,
+                            Module = "customers",
+                            PlatformOnly = false
+                        },
+                        new
+                        {
+                            Id = new Guid("a1000000-0000-0000-0000-00000000023b"),
+                            AllowedActorTypes = "TenantAdmin",
+                            Code = "customers.portal_mfa.reset",
+                            Description = "Reset a client's portal two-step verification",
+                            GatedModule = "customers",
+                            IsAssignableByTenant = false,
+                            IsCustomerPortal = false,
+                            IsDangerous = true,
                             IsReserved = false,
                             Module = "customers",
                             PlatformOnly = false
@@ -2238,15 +2382,15 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1000000-0000-0000-0000-000000000049"),
-                            AllowedActorTypes = "TenantEmployee,TenantAdmin,PlatformAdmin",
+                            AllowedActorTypes = "PlatformAdmin",
                             Code = "communication.support.agent",
                             Description = "Handle support chats as an agent (platform only)",
-                            IsAssignableByTenant = true,
+                            IsAssignableByTenant = false,
                             IsCustomerPortal = false,
                             IsDangerous = false,
                             IsReserved = false,
                             Module = "communication",
-                            PlatformOnly = false
+                            PlatformOnly = true
                         },
                         new
                         {
@@ -4314,6 +4458,22 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("CredentialStateChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CredentialStateChangedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte?>("CredentialStateReasonCode")
+                        .HasColumnType("tinyint");
+
+                    b.Property<string>("CredentialStateReasonNote")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<byte>("CredentialStatus")
+                        .HasColumnType("tinyint");
+
                     b.Property<Guid?>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
@@ -4331,6 +4491,9 @@ namespace TaxVision.Auth.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTime?>("EmailChangedByOfficeAtUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<bool>("EmailVerified")
                         .HasColumnType("bit");
