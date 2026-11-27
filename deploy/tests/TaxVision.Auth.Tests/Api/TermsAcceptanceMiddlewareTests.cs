@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using BuildingBlocks.ActorTypeAuthorization;
 using Microsoft.AspNetCore.Http;
 using TaxVision.Auth.Api.Middleware;
 using TaxVision.Auth.Application.Abstractions;
@@ -235,5 +236,81 @@ public sealed class TermsAcceptanceMiddlewareTests
         await InvokeAsync(middleware, context, acceptances, versions);
 
         Assert.True(nextCalled[0]);
+    }
+
+    private static HttpContext EnrollmentOnlyContext(Guid tenantId, string method, string path)
+    {
+        var context = new DefaultHttpContext();
+        var identity = new ClaimsIdentity(
+            [
+                new Claim("tenant_id", tenantId.ToString()),
+                new Claim("sub", Guid.NewGuid().ToString()),
+                new Claim(MfaEnrollmentToken.ClaimType, MfaEnrollmentToken.Pending),
+            ],
+            "Test"
+        );
+        context.User = new ClaimsPrincipal(identity);
+        context.Request.Method = method;
+        context.Request.Path = path;
+        context.Response.Body = new MemoryStream();
+        return context;
+    }
+
+    // BV-04: con el token solo-MFA y términos sin aceptar, configurar el MFA no puede quedar bloqueado por términos.
+    [Theory]
+    [InlineData("POST", "/auth/mfa/totp/setup")]
+    [InlineData("POST", "/auth/mfa/totp/confirm")]
+    [InlineData("GET", "/auth/mfa/status")]
+    public async Task The_mfa_setup_flow_of_an_enrollment_token_is_not_blocked_by_pending_terms(
+        string method,
+        string path
+    )
+    {
+        var (middleware, acceptances, versions, nextCalled) = BuildMiddleware();
+        var context = EnrollmentOnlyContext(Guid.NewGuid(), method, path);
+
+        await InvokeAsync(middleware, context, acceptances, versions);
+
+        Assert.True(nextCalled[0]);
+    }
+
+    [Fact]
+    public async Task A_full_session_still_needs_the_terms_before_the_mfa_endpoints()
+    {
+        var (middleware, acceptances, versions, nextCalled) = BuildMiddleware();
+        var context = AuthenticatedContext(Guid.NewGuid());
+        context.Request.Method = "POST";
+        context.Request.Path = "/auth/mfa/totp/setup";
+
+        await InvokeAsync(middleware, context, acceptances, versions);
+
+        Assert.False(nextCalled[0]);
+        Assert.Equal(StatusCodes.Status409Conflict, context.Response.StatusCode);
+    }
+
+    // BV-04 de punta a punta en el orden real de Program.cs (gate de MFA → gate de términos): el admin sale en
+    // cualquier orden, aceptando primero los términos o configurando primero el MFA.
+    [Theory]
+    [InlineData("POST", "/auth/tenant/terms/accept")]
+    [InlineData("GET", "/auth/tenant/terms/status")]
+    [InlineData("POST", "/auth/mfa/totp/setup")]
+    [InlineData("POST", "/auth/mfa/totp/confirm")]
+    public async Task An_enrollment_token_with_pending_terms_is_not_locked_out_either_way(string method, string path)
+    {
+        var acceptances = new FakeTenantTermsAcceptanceRepository();
+        var versions = new FakeTermsVersionRepository();
+        versions.Seed("2026-07-14");
+        var reached = false;
+        var terms = new TermsAcceptanceMiddleware(_ =>
+        {
+            reached = true;
+            return Task.CompletedTask;
+        });
+        var gate = new MfaEnrollmentGateMiddleware(ctx => terms.InvokeAsync(ctx, acceptances, versions));
+        var context = EnrollmentOnlyContext(Guid.NewGuid(), method, path);
+
+        await gate.InvokeAsync(context);
+
+        Assert.True(reached, $"status {context.Response.StatusCode}");
     }
 }

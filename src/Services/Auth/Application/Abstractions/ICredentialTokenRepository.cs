@@ -20,10 +20,19 @@ public interface ICredentialTokenRepository
         CancellationToken ct = default
     );
 
+    /// <summary>Último link de reset del usuario en cualquier estado: panel de la oficina e idempotencia.</summary>
+    Task<PasswordResetToken?> GetLatestPasswordResetAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>Links pedidos por la oficina (Administrative o Incident) para el usuario desde una fecha.</summary>
+    Task<int> CountOfficePasswordResetsSinceAsync(Guid userId, DateTime sinceUtc, CancellationToken ct = default);
+
     Task AddEmailVerificationAsync(EmailVerificationToken token, CancellationToken ct = default);
 
     /// <summary>Busca un token de verificación de correo por su hash.</summary>
     Task<EmailVerificationToken?> GetEmailVerificationByHashAsync(string tokenHash, CancellationToken ct = default);
+
+    /// <summary>Último pedido de cambio de correo del usuario en cualquier estado (idempotencia de D-08).</summary>
+    Task<EmailVerificationToken?> GetLatestEmailVerificationAsync(Guid userId, CancellationToken ct = default);
 
     Task AddPhoneVerificationAsync(PhoneVerificationToken token, CancellationToken ct = default);
 

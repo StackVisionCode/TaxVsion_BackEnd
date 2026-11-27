@@ -86,6 +86,26 @@ public sealed class CredentialsController(IMessageBus bus) : ControllerBase
         return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
     }
 
+    public sealed record ValidateResetTokenRequest(string? Token);
+
+    /// <summary>D-15: igual que el GET pero con el token en el body, para que no quede en URLs ni logs de proxies.
+    /// El GET se conserva una versión mientras los fronts migran. Siempre 200 (anti-enumeración).</summary>
+    [HttpPost("password/reset/validate")]
+    [AllowAnonymous]
+    [RateLimitExempt(
+        "Anónimo (token de reset por email) — el token es imposible de adivinar y el Gateway acota la ruta por IP (PreAuthByIp)."
+    )]
+    [ProducesResponseType<PasswordResetValidationResponse>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ValidateResetTokenByPost(ValidateResetTokenRequest request, CancellationToken ct)
+    {
+        var result = await bus.InvokeAsync<Result<PasswordResetValidationResponse>>(
+            new ValidatePasswordResetTokenQuery(request?.Token ?? string.Empty),
+            ct
+        );
+
+        return result.IsSuccess ? Ok(result.Value) : StatusCode(result.Error.ToHttpStatusCode(), result.Error);
+    }
+
     public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
     [HttpPost("password/change")]

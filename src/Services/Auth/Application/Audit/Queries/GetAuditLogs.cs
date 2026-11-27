@@ -15,7 +15,8 @@ public sealed record AuditLogResponse(
     string? CorrelationId,
     string? DetailsJson,
     bool Success,
-    DateTime OccurredAtUtc
+    DateTime OccurredAtUtc,
+    string? ActorType = null
 );
 
 public sealed record GetAuditLogsQuery(
@@ -25,7 +26,8 @@ public sealed record GetAuditLogsQuery(
     DateTime? FromUtc = null,
     DateTime? ToUtc = null,
     int Page = 1,
-    int Size = 50
+    int Size = 50,
+    Guid? TargetId = null
 );
 
 public static class GetAuditLogsHandler
@@ -51,7 +53,8 @@ public static class GetAuditLogsHandler
             query.ToUtc,
             query.Page,
             query.Size,
-            ct
+            ct,
+            query.TargetId
         );
 
         IReadOnlyList<AuditLogResponse> responses = items
@@ -66,7 +69,8 @@ public static class GetAuditLogsHandler
                 log.CorrelationId,
                 log.DetailsJson,
                 log.Success,
-                log.OccurredAtUtc
+                log.OccurredAtUtc,
+                log.ActorType
             ))
             .ToList();
 

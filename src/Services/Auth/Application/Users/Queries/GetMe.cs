@@ -40,7 +40,9 @@ public sealed record MeResponse(
     string? AvatarModerationStatus = null,
     Guid? AvatarModerationFileId = null,
     // Idioma de los avisos ("en" | "es"); null = sin preferencia.
-    string? Language = null
+    string? Language = null,
+    // Dueño de la cuenta de la oficina.
+    bool IsOwner = false
 );
 
 public sealed record GetMeQuery(Guid UserId);
@@ -105,7 +107,8 @@ public static class GetMeHandler
                 user.HasLivePendingAvatar(DateTime.UtcNow),
                 AvatarModerationStatusName.Of(user.AvatarModerationState),
                 user.AvatarModerationFileId,
-                user.Language
+                user.Language,
+                user.IsOwner
             )
         );
     }

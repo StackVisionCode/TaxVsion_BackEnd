@@ -67,6 +67,34 @@ public sealed class LoginHandlerTests
         Assert.Equal(UserActorType.CustomerPortal.ToString(), single.Value.ActorType);
     }
 
+    // I-2: con la cuenta asegurada la contraseña correcta responde igual que una mala, sin sumar al bloqueo.
+    [Fact]
+    public async Task A_secured_account_answers_invalid_credentials_without_counting_toward_lockout()
+    {
+        var (world, staff, _) = DualAccounts();
+        staff.Secure();
+
+        var result = await LoginAsync(world, "staff-pass", UserAccountKind.Staff);
+
+        Assert.Equal("Auth.Invalid", result.Error.Code);
+        Assert.Equal(0, staff.FailedLoginCount);
+        Assert.Empty(world.Sessions.Sessions);
+        Assert.Contains(world.Audit.Logs, log => log.DetailsJson?.Contains("credential_reset_required") == true);
+    }
+
+    // 03 §9.2: con cambio obligatorio el login entra, marca el flag y el token sale restringido.
+    [Fact]
+    public async Task A_required_change_signs_in_with_the_flag_and_a_password_change_token()
+    {
+        var (world, staff, _) = DualAccounts();
+        staff.RequireChange();
+
+        var result = await LoginAsync(world, "staff-pass", UserAccountKind.Staff);
+
+        Assert.True(result.Value.PasswordChangeRequired);
+        Assert.True(world.Jwt.PasswordChangeOnly[^1]);
+    }
+
     private static (AccountSessionFixture World, User Staff, User Portal) DualAccounts()
     {
         var world = new AccountSessionFixture();

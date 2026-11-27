@@ -9,6 +9,7 @@ public sealed record PasswordResetRequestedIntegrationEvent : IntegrationEvent
 {
     public required Guid UserId { get; init; }
     public required string Email { get; init; }
+
     // NOT-04: solo viaja si Auth no pudo cifrar; no se borra para no romper mensajes en cola.
     public string? RawToken { get; init; }
 
@@ -23,4 +24,10 @@ public sealed record PasswordResetRequestedIntegrationEvent : IntegrationEvent
 
     // Nombre de la oficina, para que el correo diga de qué cuenta es (una persona puede tener varias).
     public string? TenantName { get; init; }
+
+    // Quién originó el link: "SelfService", "Administrative" o "Incident". Sin valor = self-service (mensaje viejo).
+    public string? Origin { get; init; }
+
+    // Rol mostrado al afectado cuando lo pidió la oficina ("office_administrator"), nunca el nombre de la persona.
+    public string? RequestedByRole { get; init; }
 }

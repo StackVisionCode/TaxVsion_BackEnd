@@ -31,7 +31,7 @@ public sealed class CredentialTokenRepositoryTests
         var used = NewLink(tenantId, userId, TimeSpan.FromMinutes(30));
         used.MarkUsed();
         var revoked = NewLink(tenantId, userId, TimeSpan.FromMinutes(30));
-        revoked.Revoke(now);
+        revoked.Revoke(now, ResetRevocationReason.PasswordChanged);
         var expired = NewLink(tenantId, userId, TimeSpan.FromMinutes(-1));
         var otherAccount = NewLink(tenantId, Guid.NewGuid(), TimeSpan.FromMinutes(30));
 

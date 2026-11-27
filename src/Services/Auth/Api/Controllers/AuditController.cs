@@ -22,12 +22,13 @@ namespace TaxVision.Auth.Api.Controllers;
 [AllowActorTypes(ActorType.TenantEmployee, ActorType.TenantAdmin, ActorType.PlatformAdmin)]
 public sealed class AuditController(IMessageBus bus) : ControllerBase
 {
-    /// <summary>Devuelve los eventos de auditoría paginados, con filtros opcionales por usuario, acción y rango de fechas.</summary>
+    /// <summary>Devuelve los eventos de auditoría paginados, con filtros opcionales por usuario, objetivo, acción y rango de fechas.</summary>
     [HttpGet]
     [RateLimit("auth.h.audit_read")]
     [ProducesResponseType<PagedResult<AuditLogResponse>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAuditLogs(
         [FromQuery] Guid? userId = null,
+        [FromQuery] Guid? targetId = null,
         [FromQuery] string? action = null,
         [FromQuery] DateTime? fromUtc = null,
         [FromQuery] DateTime? toUtc = null,
@@ -40,7 +41,7 @@ public sealed class AuditController(IMessageBus bus) : ControllerBase
             return Unauthorized();
 
         var result = await bus.InvokeAsync<Result<PagedResult<AuditLogResponse>>>(
-            new GetAuditLogsQuery(tenantId, userId, action, fromUtc, toUtc, page, size),
+            new GetAuditLogsQuery(tenantId, userId, action, fromUtc, toUtc, page, size, targetId),
             ct
         );
 

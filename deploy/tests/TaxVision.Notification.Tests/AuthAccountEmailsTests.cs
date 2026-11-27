@@ -101,6 +101,170 @@ public sealed class AuthAccountEmailsTests
         Assert.Equal(ScribeRenderAudience.Staff, scribe.Rendered.Single().Audience);
     }
 
+    // D-04: sin subdominio de la oficina el reset no sale ni cae al base fijo; Wolverine reintenta.
+    [Theory]
+    [InlineData(TenantHostUnavailableReason.NoActiveSubdomain, "TenantEmployee")]
+    [InlineData(TenantHostUnavailableReason.Transient, "CustomerPortal")]
+    public async Task A_reset_without_the_office_subdomain_is_not_sent_and_never_uses_the_fixed_base(
+        TenantHostUnavailableReason failure,
+        string actorType
+    )
+    {
+        var gateway = new CapturingGateway();
+        var scribe = new CapturingScribe();
+
+        var thrown = await Assert.ThrowsAsync<TenantHostUnavailableException>(() =>
+            PasswordResetRequestedConsumer.Handle(
+                new PasswordResetRequestedIntegrationEvent
+                {
+                    TenantId = Guid.NewGuid(),
+                    UserId = Guid.NewGuid(),
+                    Email = "ana@example.com",
+                    RawToken = "tok",
+                    ExpiresAtUtc = DateTime.UtcNow.AddMinutes(30),
+                    ActorType = actorType,
+                },
+                gateway,
+                scribe,
+                Portal,
+                TestPlatform.Settings,
+                new FakeTenantHostResolver(failure: failure),
+                Tokens(),
+                FixedRecipientLocale.English,
+                new Correlation(),
+                CancellationToken.None
+            )
+        );
+
+        Assert.Equal(failure, thrown.Reason);
+        Assert.Empty(gateway.Requests);
+        Assert.Empty(scribe.Rendered);
+    }
+
+    // El host sale del subdominio primario activo, no del slug que viajó en el evento.
+    [Fact]
+    public async Task An_invitation_links_to_the_office_primary_subdomain_not_the_event_subdomain()
+    {
+        var scribe = new CapturingScribe();
+
+        await InvitationCreatedConsumer.Handle(
+            new InvitationCreatedIntegrationEvent
+            {
+                TenantId = Guid.NewGuid(),
+                InvitationId = Guid.NewGuid(),
+                Email = "ana@example.com",
+                ActorType = "TenantEmployee",
+                RawToken = "tok",
+                ExpiresAtUtc = DateTime.UtcNow.AddDays(7),
+                TenantSubdomain = "old-slug",
+            },
+            new CapturingGateway(),
+            scribe,
+            Portal,
+            TestPlatform.Settings,
+            new FakeTenantHostResolver(Host),
+            Tokens(),
+            FixedRecipientLocale.English,
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        Assert.Equal($"https://{Host}/accept-invitation?token=tok", scribe.Rendered.Single().Variables["invite_link"]);
+    }
+
+    [Fact]
+    public async Task An_invitation_without_the_office_subdomain_is_not_sent()
+    {
+        var gateway = new CapturingGateway();
+
+        await Assert.ThrowsAsync<TenantHostUnavailableException>(() =>
+            InvitationCreatedConsumer.Handle(
+                new InvitationCreatedIntegrationEvent
+                {
+                    TenantId = Guid.NewGuid(),
+                    InvitationId = Guid.NewGuid(),
+                    Email = "ana@example.com",
+                    ActorType = "TenantEmployee",
+                    RawToken = "tok",
+                    ExpiresAtUtc = DateTime.UtcNow.AddDays(7),
+                    TenantSubdomain = "acme",
+                },
+                gateway,
+                new CapturingScribe(),
+                Portal,
+                TestPlatform.Settings,
+                new FakeTenantHostResolver(),
+                Tokens(),
+                FixedRecipientLocale.English,
+                new Correlation(),
+                CancellationToken.None
+            )
+        );
+
+        Assert.Empty(gateway.Requests);
+    }
+
+    [Fact]
+    public async Task An_email_change_without_the_office_subdomain_is_not_sent()
+    {
+        var gateway = new CapturingGateway();
+
+        await Assert.ThrowsAsync<TenantHostUnavailableException>(() =>
+            EmailChangeRequestedConsumer.Handle(
+                new EmailChangeRequestedIntegrationEvent
+                {
+                    TenantId = Guid.NewGuid(),
+                    UserId = Guid.NewGuid(),
+                    CurrentEmail = "ana@example.com",
+                    NewEmail = "ana.new@example.com",
+                    RawToken = "tok",
+                    ExpiresAtUtc = DateTime.UtcNow.AddHours(1),
+                    ActorType = "CustomerPortal",
+                },
+                gateway,
+                new CapturingScribe(),
+                Portal,
+                TestPlatform.Settings,
+                new FakeTenantHostResolver(),
+                Tokens(),
+                FixedRecipientLocale.English,
+                new Correlation(),
+                CancellationToken.None
+            )
+        );
+
+        Assert.Empty(gateway.Requests);
+    }
+
+    [Fact]
+    public async Task A_welcome_email_without_the_office_subdomain_is_not_sent()
+    {
+        var gateway = new CapturingGateway();
+
+        await Assert.ThrowsAsync<TenantHostUnavailableException>(() =>
+            UserRegisteredConsumer.Handle(
+                new UserRegisteredIntegrationEvent
+                {
+                    TenantId = Guid.NewGuid(),
+                    UserId = Guid.NewGuid(),
+                    Email = "ana@example.com",
+                    ActorType = "CustomerPortal",
+                    Name = "Ana",
+                    LastName = "Perez",
+                },
+                gateway,
+                new CapturingScribe(),
+                Portal,
+                new FakeTenantHostResolver(),
+                FixedRecipientLocale.English,
+                new Correlation(),
+                CancellationToken.None
+            )
+        );
+
+        Assert.Empty(gateway.Requests);
+    }
+
     /// <summary>Los dos correos del cambio de correo, en el idioma del usuario (la frase del aviso también).</summary>
     [Fact]
     public async Task Email_is_rendered_with_the_recipient_language()
@@ -202,6 +366,7 @@ public sealed class AuthAccountEmailsTests
             scribe,
             Portal,
             TestPlatform.Settings,
+            new FakeTenantHostResolver(Host),
             Tokens(),
             FixedRecipientLocale.English,
             new Correlation(),
@@ -215,6 +380,50 @@ public sealed class AuthAccountEmailsTests
             "$instant",
             Assert.IsAssignableFrom<IDictionary<string, object?>>(variables["expires_at"]).Keys
         );
+    }
+
+    // Origin elige la plantilla: el link enviado por la oficina tiene la suya; sin Origin o self-service, la de hoy.
+    [Theory]
+    [InlineData("Administrative", "auth.password_reset_by_office.v1", "auth.password-reset.office")]
+    [InlineData("Incident", "auth.account_secured.v1", "auth.account-secured")]
+    [InlineData("SelfService", "auth.password_reset_requested.v1", "auth.password_reset")]
+    [InlineData(null, "auth.password_reset_requested.v1", "auth.password_reset")]
+    public async Task The_reset_template_follows_the_origin(string? origin, string eventKey, string templateKey)
+    {
+        var scribe = new CapturingScribe();
+        var gateway = new CapturingGateway();
+
+        await PasswordResetRequestedConsumer.Handle(
+            new PasswordResetRequestedIntegrationEvent
+            {
+                TenantId = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                Email = "ana@example.com",
+                RawToken = "tok",
+                ExpiresAtUtc = DateTime.UtcNow.AddHours(24),
+                ActorType = "CustomerPortal",
+                TenantName = "Acme Tax",
+                Origin = origin,
+                RequestedByRole = origin is "Administrative" or "Incident" ? "office_administrator" : null,
+            },
+            gateway,
+            scribe,
+            Portal,
+            TestPlatform.Settings,
+            new FakeTenantHostResolver(Host),
+            Tokens(),
+            FixedRecipientLocale.English,
+            new Correlation(),
+            CancellationToken.None
+        );
+
+        var render = Assert.Single(scribe.Rendered);
+        Assert.Equal(eventKey, render.EventKey);
+        Assert.Equal($"https://{Host}/portal/client/auth/reset-password/new?token=tok", render.Variables["reset_link"]);
+        Assert.Equal("Acme Tax", render.Variables["office"]);
+        var request = Assert.Single(gateway.Requests);
+        Assert.Equal(templateKey, request.TemplateKey);
+        Assert.True(request.Confidential);
     }
 
     // NOT-04: el enlace con token no viaja por el fanout taxvision-events, va directo a la cola de Postmaster.
@@ -266,6 +475,7 @@ public sealed class AuthAccountEmailsTests
             new CapturingScribe(),
             Portal,
             TestPlatform.Settings,
+            new FakeTenantHostResolver(Host),
             Tokens(),
             FixedRecipientLocale.English,
             new Correlation(),

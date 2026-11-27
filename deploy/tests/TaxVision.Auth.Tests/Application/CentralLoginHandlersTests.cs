@@ -9,6 +9,7 @@ using TaxVision.Auth.Domain.Mfa;
 using TaxVision.Auth.Domain.RefreshTokens;
 using TaxVision.Auth.Domain.Roles;
 using TaxVision.Auth.Domain.Sessions;
+using TaxVision.Auth.Domain.TenantDomains;
 using TaxVision.Auth.Domain.Tenants;
 using TaxVision.Auth.Domain.Users;
 using Xunit;
@@ -439,6 +440,20 @@ public sealed class CentralLoginHandlersTests
         Assert.Equal("Auth.HandoffInvalid", second.Error.Code);
     }
 
+    [Fact]
+    public async Task FromTicket_of_an_account_secured_after_the_password_is_rejected()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.TenantEmployee);
+        var ticket = await world.Tickets.IssueAsync(new HandoffTicketPayload(tenantId, world.UserIn(tenantId)));
+        world.Users.Get(tenantId).Secure();
+
+        var result = await FromTicket(world, ticket);
+
+        Assert.True(result.IsFailure);
+        Assert.Equal("Auth.HandoffInvalid", result.Error.Code);
+    }
+
     // --- PlatformAdmin fuera del login central ---
 
     [Fact]
@@ -580,6 +595,56 @@ public sealed class CentralLoginHandlersTests
 
         Assert.Equal("access", result.Value.AccessToken);
         Assert.Equal(SessionSurface.Mobile, Assert.Single(world.Issuer.Started).Surface);
+    }
+
+    // F4-L6: con cambio obligatorio la app recibe el flag y el link del portal de la oficina (sin fallback).
+    [Fact]
+    public async Task Mobile_a_required_change_returns_the_flag_and_the_portal_url_of_the_primary_host()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail);
+        world.Domains.Seed(
+            TenantDomain
+                .CreateSubdomain(
+                    tenantId,
+                    SubdomainSlug.Create("acme").Value,
+                    "taxoffix.test",
+                    Guid.NewGuid(),
+                    DateTime.UtcNow
+                )
+                .Value
+        );
+        (await world.Users.GetByIdAsync(world.UserIn(tenantId)))!.RequireChange();
+
+        var result = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword, tenantId));
+
+        Assert.True(result.Value.PasswordChangeRequired);
+        Assert.Equal("https://acme.taxoffix.test/portal/client/auth/login", result.Value.PortalUrl);
+    }
+
+    [Fact]
+    public async Task Mobile_a_required_change_without_an_active_subdomain_has_no_portal_url()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail);
+        (await world.Users.GetByIdAsync(world.UserIn(tenantId)))!.RequireChange();
+
+        var result = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword, tenantId));
+
+        Assert.True(result.Value.PasswordChangeRequired);
+        Assert.Null(result.Value.PortalUrl);
+    }
+
+    [Fact]
+    public async Task Mobile_a_normal_sign_in_has_no_flag_and_no_portal_url()
+    {
+        var world = new World();
+        var tenantId = world.AddOffice("acme", UserActorType.CustomerPortal, ClientEmail);
+
+        var result = await MobileSignIn(world, new MobileSignInCommand(ClientEmail, GoodPassword, tenantId));
+
+        Assert.False(result.Value.PasswordChangeRequired);
+        Assert.Null(result.Value.PortalUrl);
     }
 
     [Fact]
@@ -821,6 +886,8 @@ public sealed class CentralLoginHandlersTests
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
             Microsoft.Extensions.Options.Options.Create(new TaxVision.Auth.Application.Common.MfaOptions()),
+            world.Domains,
+            world.Platform,
             CancellationToken.None
         );
 
@@ -914,6 +981,8 @@ public sealed class CentralLoginHandlersTests
         public FakeSecretProtector Protector { get; } = new();
         public FakeRoleRepository Roles { get; } = new();
         public FakeAuthSessionIssuer Issuer { get; } = new();
+        public FakeTenantDomainRepository Domains { get; } = new();
+        public FixedPlatformSettings Platform { get; } = FixedPlatformSettings.For("taxoffix.test");
 
         private readonly Dictionary<Guid, Guid> _userByTenant = [];
 

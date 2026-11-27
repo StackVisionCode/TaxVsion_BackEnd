@@ -27,6 +27,9 @@ public sealed class JwtOptions
     /// <summary>Vida del token solo-MFA (minutos): corta, alcanza para configurar el segundo factor.</summary>
     public int MfaEnrollmentAccessMinutes { get; set; } = 10;
 
+    /// <summary>Vida del token de cambio obligatorio (minutos): alcanza para elegir la contraseña nueva.</summary>
+    public int PasswordChangeAccessMinutes { get; set; } = 10;
+
     /// <summary>Clave privada RSA en PEM (activa RS256). Preferir PrivateKeyPath con un secret montado.</summary>
     public string? PrivateKeyPem { get; set; }
 
@@ -46,7 +49,8 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
         IReadOnlyCollection<string> authMethods,
         SessionSurface surface = SessionSurface.Workspace,
         DateTime? reauthenticatedAtUtc = null,
-        bool mfaEnrollmentOnly = false
+        bool mfaEnrollmentOnly = false,
+        bool passwordChangeOnly = false
     )
     {
         var now = DateTime.UtcNow;
@@ -79,7 +83,13 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
             claims.Add(new Claim(SessionChannelClaim.Type, SessionChannelClaim.Mobile));
 
         // Solo para configurar el MFA exigido: audiencia propia, marca y vida corta (ver MfaEnrollmentToken).
-        if (mfaEnrollmentOnly)
+        // Cambio obligatorio: gana sobre el solo-MFA (D-12); audiencia propia, marca y vida corta.
+        if (passwordChangeOnly)
+        {
+            claims.Add(new Claim(PasswordChangeToken.ClaimType, PasswordChangeToken.Required));
+            claims.Add(new Claim(PasswordChangeToken.MfaClaimType, user.MfaEnabled ? "true" : "false"));
+        }
+        else if (mfaEnrollmentOnly)
             claims.Add(new Claim(MfaEnrollmentToken.ClaimType, MfaEnrollmentToken.Pending));
 
         if (reauthenticatedAtUtc is { } reauthAt)
@@ -95,11 +105,13 @@ public sealed class JwtTokenGenerator(IOptions<JwtOptions> options, SigningKeyPr
             );
         }
 
-        var minutes = mfaEnrollmentOnly
-            ? Math.Min(_options.AccessMinutes, _options.MfaEnrollmentAccessMinutes)
+        var minutes =
+            passwordChangeOnly ? Math.Min(_options.AccessMinutes, _options.PasswordChangeAccessMinutes)
+            : mfaEnrollmentOnly ? Math.Min(_options.AccessMinutes, _options.MfaEnrollmentAccessMinutes)
             : _options.AccessMinutes;
         var audience =
-            mfaEnrollmentOnly ? MfaEnrollmentToken.Audience
+            passwordChangeOnly ? PasswordChangeToken.Audience
+            : mfaEnrollmentOnly ? MfaEnrollmentToken.Audience
             : surface == SessionSurface.Account ? _options.AccountAudience
             : _options.Audience;
         var token = new JwtSecurityToken(

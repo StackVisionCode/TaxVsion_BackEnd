@@ -38,6 +38,7 @@ public sealed class DeactivateUserHandlerTests
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new InMemoryCredentialTokenRepository(),
             CancellationToken.None
         );
 
@@ -74,12 +75,63 @@ public sealed class DeactivateUserHandlerTests
             new FakeCorrelationContext(),
             new FakeUnitOfWork(),
             new FakeMessageBus(),
+            new InMemoryCredentialTokenRepository(),
             CancellationToken.None
         );
 
         Assert.Equal("User.SelfAction", result.Error.Code);
         Assert.Empty(calls);
         Assert.True(self.IsActive);
+    }
+
+    // 04 §3.5: la baja anula los links pendientes para que no revivan al reactivar la cuenta.
+    [Fact]
+    public async Task Deactivating_cancels_the_pending_reset_links()
+    {
+        var tenantId = Guid.NewGuid();
+        var target = User.Register(
+            tenantId,
+            "Eva",
+            "Staff",
+            "eva@example.com",
+            "hash",
+            UserActorType.TenantEmployee
+        ).Value;
+        var requester = Guid.NewGuid();
+        var credentials = new InMemoryCredentialTokenRepository();
+        var link = TaxVision.Auth.Domain.Credentials.PasswordResetToken.Create(
+            tenantId,
+            target.Id,
+            "hash:pending",
+            null,
+            TimeSpan.FromHours(24),
+            TaxVision.Auth.Domain.Credentials.ResetOrigin.Administrative,
+            Guid.NewGuid()
+        );
+        credentials.PasswordResets.Add(link);
+
+        var result = await DeactivateUserHandler.Handle(
+            new DeactivateUserCommand(tenantId, target.Id, requester, UserActorType.TenantAdmin),
+            new OrderRecordingUserRepository(target, [], activeAdmins: 2),
+            new RecordingTenantAdminLock([]),
+            new SessionAccessCutoff(
+                new EmptyUserSessionRepository(),
+                new RecordingAccessTokenDenylist(),
+                new QuietRevocations()
+            ),
+            new FakeAuthAuditWriter(),
+            new FakeRequestContext(),
+            new FakeCorrelationContext(),
+            new FakeUnitOfWork(),
+            new FakeMessageBus(),
+            credentials,
+            CancellationToken.None
+        );
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(TaxVision.Auth.Domain.Credentials.ResetRevocationReason.CancelledByOffice, link.RevocationReason);
+        Assert.Equal(requester, link.RevokedByUserId);
+        Assert.False(link.IsUsable(DateTime.UtcNow));
     }
 
     private sealed class RecordingTenantAdminLock(List<string> calls) : ITenantAdminLock

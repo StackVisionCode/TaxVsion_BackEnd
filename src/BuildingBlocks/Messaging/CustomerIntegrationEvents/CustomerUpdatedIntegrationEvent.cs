@@ -30,5 +30,11 @@ public sealed record CustomerUpdatedIntegrationEvent : IntegrationEvent
     /// </summary>
     public string? Status { get; init; }
 
+    /// <summary>
+    /// Correo con el que empezó esta edición (igual a <see cref="PrimaryEmail"/> si no cambió). Aditivo: null en
+    /// mensajes viejos o si el cliente no tenía correo; los consumidores que no lo conocen lo ignoran.
+    /// </summary>
+    public string? PreviousEmail { get; init; }
+
     public required Guid ModifiedByUserId { get; init; }
 }

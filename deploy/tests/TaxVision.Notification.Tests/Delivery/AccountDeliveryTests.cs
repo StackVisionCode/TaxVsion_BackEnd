@@ -154,7 +154,7 @@ public sealed class SecurityAlertConsumerDeliveryTests
                 OccurredOn = DeliveryCase.OccurredOn,
                 CorrelationId = "corr",
                 UserId = DeliveryCase.StaffUserId,
-                AlertType = SecurityAlertType.PasswordChanged,
+                AlertType = SecurityAlertType.MfaDisabled,
                 IpAddress = "203.0.113.7",
             },
             recorder.Dispatcher,
@@ -165,6 +165,7 @@ public sealed class SecurityAlertConsumerDeliveryTests
             TestPlatform.Settings,
             new DeliveryCase.PortalResolver(DeliveryCase.OtherUserId),
             recorder.Locales,
+            new FakeTenantHostResolver(),
             recorder.Correlation,
             NullLogger<SecurityAlertIntegrationEvent>.Instance,
             CancellationToken.None
@@ -174,12 +175,12 @@ public sealed class SecurityAlertConsumerDeliveryTests
             [
                 "email to=staff@example.com tpl=auth.security_alert event=evt scope=System confidential=False idem= attachments=0",
                 "event NotificationsEmailSendRequestedIntegrationEvent To=staff@example.com TemplateKey=auth.security_alert",
-                "inapp kind=auth.security_alert to=other cat=Security priority=Urgent title=Security alert on your TaxOffix account body= rt=security_settings rid= ctx= params=alertType=password_changed action=review src=evt srcType=auth.security_alert.v1 group= actor=staff/ at=2026-11-20T15:00:00.0000000Z",
-                "inapp kind=auth.security_alert to=staff cat=Security priority=Urgent title=Security alert on your TaxOffix account body= rt=security_settings rid= ctx= params=alertType=password_changed action=review src=evt srcType=auth.security_alert.v1 group= actor=staff/ at=2026-11-20T15:00:00.0000000Z",
+                "inapp kind=auth.security_alert to=other cat=Security priority=Urgent title=Security alert on your TaxOffix account body= rt=security_settings rid= ctx= params=alertType=mfa_disabled action=review src=evt srcType=auth.security_alert.v1 group= actor=staff/ at=2026-11-20T15:00:00.0000000Z",
+                "inapp kind=auth.security_alert to=staff cat=Security priority=Urgent title=Security alert on your TaxOffix account body= rt=security_settings rid= ctx= params=alertType=mfa_disabled action=review src=evt srcType=auth.security_alert.v1 group= actor=staff/ at=2026-11-20T15:00:00.0000000Z",
                 "log Email kind=auth.security_alert tpl=auth.security_alert to=staff@example.com status=Pending event=evt subject=subject",
                 "log InApp kind=auth.security_alert tpl=auth.security_alert to=user:other status=Sent event=evt subject=Security alert on your TaxOffix account",
                 "log InApp kind=auth.security_alert tpl=auth.security_alert to=user:staff status=Sent event=evt subject=Security alert on your TaxOffix account",
-                "render auth.email_change_security_alert.v1 audience=Staff vars=description=The password of your TaxOffix workspace account was changed.;ip_address=203.0.113.7;language=En",
+                "render auth.email_change_security_alert.v1 audience=Staff vars=description=Two-step verification was turned off on your TaxOffix workspace account.;ip_address=203.0.113.7;language=En",
             ],
             recorder.Lines()
         );

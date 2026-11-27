@@ -23,8 +23,9 @@ namespace Internal.Generated.WolverineHandlers
         public override async System.Threading.Tasks.Task HandleAsync(Wolverine.Runtime.MessageContext context, System.Threading.CancellationToken cancellation)
         {
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
-            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
             var tenantContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<BuildingBlocks.Web.Tenancy.TenantContext>(serviceScope.ServiceProvider);
+            var domainEventScraperIEnumerable = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<System.Collections.Generic.IEnumerable<Wolverine.EntityFrameworkCore.IDomainEventScraper>>(serviceScope.ServiceProvider);
+            var userLoginLock = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.IUserLoginLock>(serviceScope.ServiceProvider);
             
             /*
             * The service registration for BuildingBlocks.Common.ICorrelationContext is an 'opaque' lambda factory with the Scoped lifetime and requires service location
@@ -37,12 +38,13 @@ namespace Internal.Generated.WolverineHandlers
             */
             var authAuditWriter = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.IAuthAuditWriter>(serviceScope.ServiceProvider);
             var passwordHasher = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.IPasswordHasher>(serviceScope.ServiceProvider);
+            var mfaRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.IMfaRepository>(serviceScope.ServiceProvider);
             
             /*
+            * Dependency: Descriptor: ServiceType: TaxVision.Auth.Application.Abstractions.IAccessTokenDenylist Lifetime: Scoped ImplementationFactory: TaxVision.Auth.Infrastructure.DependencyInjection+<>c.<AddAuthInfrastructure>b__0_9
             * The service registration for TaxVision.Auth.Application.Abstractions.IAccessTokenDenylist is an 'opaque' lambda factory with the Scoped lifetime and requires service location
             */
-            var accessTokenDenylist = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.IAccessTokenDenylist>(serviceScope.ServiceProvider);
-            var sessionRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.ISessionRepository>(serviceScope.ServiceProvider);
+            var sessionAccessCutoff = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Common.SessionAccessCutoff>(serviceScope.ServiceProvider);
             var tenantRegistry = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.ITenantRegistry>(serviceScope.ServiceProvider);
             var userRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.IUserRepository>(serviceScope.ServiceProvider);
             var credentialTokenRepository = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Application.Abstractions.ICredentialTokenRepository>(serviceScope.ServiceProvider);
@@ -69,7 +71,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Auth.Application.Credentials.Commands.ResetPasswordHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Auth.Application.Credentials.Commands.ResetPasswordHandler.Handle(resetPasswordCommand, credentialTokenRepository, _secureTokenService, userRepository, tenantRegistry, sessionRepository, accessTokenDenylist, passwordHasher, authAuditWriter, requestContext, correlationContext, unitOfWork, context, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Auth.Application.Credentials.Commands.ResetPasswordHandler.Handle(resetPasswordCommand, credentialTokenRepository, _secureTokenService, userRepository, tenantRegistry, sessionAccessCutoff, mfaRepository, passwordHasher, authAuditWriter, requestContext, correlationContext, unitOfWork, userLoginLock, context, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

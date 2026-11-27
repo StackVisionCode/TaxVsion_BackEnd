@@ -29,6 +29,7 @@ namespace Internal.Generated.WolverineHandlers
             await using var serviceScope = _serviceScopeFactory.CreateAsyncScope();
             // This service has been marked as requiring service location independent of Wolverine's ability to use constructor injection of everything else
             var authDbContext = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<TaxVision.Auth.Infrastructure.Persistence.AuthDbContext>(serviceScope.ServiceProvider);
+            var tenantDomainRepository = new TaxVision.Auth.Infrastructure.Persistence.Repositories.TenantDomainRepository(authDbContext);
             var tenantRegistry = new TaxVision.Auth.Infrastructure.Persistence.Repositories.TenantRegistry(authDbContext);
             var userRepository = new TaxVision.Auth.Infrastructure.Persistence.Repositories.UserRepository(authDbContext);
             var credentialTokenRepository = new TaxVision.Auth.Infrastructure.Persistence.Repositories.CredentialTokenRepository(authDbContext);
@@ -52,7 +53,7 @@ namespace Internal.Generated.WolverineHandlers
                 System.Diagnostics.Activity.Current?.SetTag("handler.type", "TaxVision.Auth.Application.Credentials.Queries.ValidatePasswordResetTokenHandler");
                 
                 // The actual message execution
-                var outgoing1 = await TaxVision.Auth.Application.Credentials.Queries.ValidatePasswordResetTokenHandler.Handle(validatePasswordResetTokenQuery, credentialTokenRepository, _secureTokenService, userRepository, tenantRegistry, cancellation).ConfigureAwait(false);
+                var outgoing1 = await TaxVision.Auth.Application.Credentials.Queries.ValidatePasswordResetTokenHandler.Handle(validatePasswordResetTokenQuery, credentialTokenRepository, _secureTokenService, userRepository, tenantRegistry, tenantDomainRepository, cancellation).ConfigureAwait(false);
 
                 
                 // Outgoing, cascaded message

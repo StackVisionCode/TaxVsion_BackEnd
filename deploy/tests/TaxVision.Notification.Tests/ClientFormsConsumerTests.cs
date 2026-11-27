@@ -1490,6 +1490,9 @@ public sealed class ClientFormsConsumerTests
 
     private sealed class CountingHostResolver : ITenantHostResolver
     {
+        public Task<string> ResolveRequiredHostAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult("office.taxproffice.com");
+
         public int Calls { get; private set; }
 
         public Task<string?> ResolveHostAsync(Guid tenantId, CancellationToken ct = default)
@@ -1685,6 +1688,9 @@ public sealed class ClientFormsConsumerTests
 
     private sealed class HostResolver : ITenantHostResolver
     {
+        public Task<string> ResolveRequiredHostAsync(Guid tenantId, CancellationToken ct = default) =>
+            Task.FromResult("office.taxproffice.com");
+
         public Task<string?> ResolveHostAsync(Guid tenantId, CancellationToken ct = default) =>
             Task.FromResult<string?>("office.taxproffice.com");
     }

@@ -10,8 +10,22 @@ namespace TaxVision.Customer.Application.Customers.Commands.PortalMfa;
 /// </summary>
 public sealed record GetCustomerPortalMfaQuery(Guid TenantId, Guid CustomerId, Guid ActorUserId, bool CanViewAll);
 
-/// <summary>La oficina quita el segundo factor del portal del cliente tras verificar su identidad.</summary>
-public sealed record ResetCustomerPortalMfaCommand(Guid TenantId, Guid CustomerId, Guid ActorUserId, bool CanViewAll);
+/// <summary>
+/// La oficina quita el segundo factor del portal del cliente tras verificar su identidad. Step-up, IP real y motivo
+/// (código de Auth como texto, nota ≤ 256) viajan a Auth, que decide quién puede (solo el Owner hoy).
+/// </summary>
+public sealed record ResetCustomerPortalMfaCommand(
+    Guid TenantId,
+    Guid CustomerId,
+    Guid ActorUserId,
+    bool CanViewAll,
+    DateTime ReauthenticatedAtUtc,
+    string? ActorIpAddress,
+    string? ActorUserAgent,
+    string ReasonCode,
+    string? ReasonNote,
+    bool? IdentityConfirmed
+);
 
 internal static class PortalMfaAccess
 {
@@ -53,6 +67,19 @@ public static class ResetCustomerPortalMfaHandler
         if (!PortalMfaAccess.CanUse(customer, command.TenantId, command.ActorUserId, command.CanViewAll))
             return Result.Failure<PortalMfaResetOutcome>(PortalMfaAccess.NotFound);
 
-        return await portalAccess.ResetMfaAsync(customer!.TenantId, customer.Id, command.ActorUserId, ct);
+        return await portalAccess.ResetMfaAsync(
+            customer!.TenantId,
+            customer.Id,
+            new PortalCredentialRequest(
+                command.ActorUserId,
+                command.ReauthenticatedAtUtc,
+                command.ActorIpAddress,
+                command.ActorUserAgent,
+                command.ReasonCode,
+                command.ReasonNote,
+                command.IdentityConfirmed
+            ),
+            ct
+        );
     }
 }

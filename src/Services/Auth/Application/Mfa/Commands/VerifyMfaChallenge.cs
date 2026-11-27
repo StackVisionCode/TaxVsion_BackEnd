@@ -35,7 +35,8 @@ public sealed record MfaVerifyResponse(
     AuthTokensResponse? Tokens,
     bool TakeoverRequired = false,
     string? TakeoverTicket = null,
-    int? TakeoverTicketExpiresInSeconds = null
+    int? TakeoverTicketExpiresInSeconds = null,
+    bool PasswordChangeRequired = false
 )
 {
     public static MfaVerifyResponse ForTokens(AuthTokensResponse tokens) => new(tokens);
@@ -82,8 +83,14 @@ public static class VerifyMfaChallengeHandler
             return Result.Failure<MfaVerifyResponse>(invalid);
 
         // Sesión de app sin permiso (staff de oficina): mismo error genérico que un código malo.
+        // I-2: si la oficina aseguró la cuenta después de la contraseña, el desafío pendiente ya no abre sesión.
         var user = await users.GetByIdAsync(challenge.UserId, ct);
-        if (user is null || !user.IsActive || !MobileSurfacePolicy.Allows(user, command.Surface))
+        if (
+            user is null
+            || !user.IsActive
+            || user.EnsurePasswordSignInAllowed().IsFailure
+            || !MobileSurfacePolicy.Allows(user, command.Surface)
+        )
             return Result.Failure<MfaVerifyResponse>(invalid);
 
         var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
@@ -196,7 +203,10 @@ public static class VerifyMfaChallengeHandler
                 MfaVerifyResponse.ForTakeover(
                     outcome.TakeoverTicket!.Value.ToString(),
                     (int)LockoutPolicy.TakeoverTicketValidity.TotalSeconds
-                )
+                ) with
+                {
+                    PasswordChangeRequired = PasswordChangeRequirement.Applies(user, command.Surface),
+                }
             );
         }
 
@@ -259,7 +269,10 @@ public static class VerifyMfaChallengeHandler
         return Result.Success(
             MfaVerifyResponse.ForTokens(
                 new AuthTokensResponse(issued.AccessToken, issued.RefreshToken, issued.ExpiresInSeconds, deviceToken)
-            )
+            ) with
+            {
+                PasswordChangeRequired = PasswordChangeRequirement.Applies(user, command.Surface),
+            }
         );
     }
 }

@@ -378,6 +378,7 @@ public sealed class AcceptInvitationHandlerTests
     {
         public string? IpAddress => null;
         public string? UserAgent => null;
+        public string? ActorType => null;
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

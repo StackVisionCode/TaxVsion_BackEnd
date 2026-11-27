@@ -22,6 +22,7 @@ public interface IAuthAuditReader
         DateTime? toUtc,
         int page,
         int size,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        Guid? targetId = null
     );
 }

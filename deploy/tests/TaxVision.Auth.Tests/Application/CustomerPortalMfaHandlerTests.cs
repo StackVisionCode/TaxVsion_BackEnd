@@ -1,83 +1,135 @@
 using BuildingBlocks.Messaging.AuthIntegrationEvents;
+using BuildingBlocks.Results;
 using TaxVision.Auth.Application.Abstractions;
+using TaxVision.Auth.Application.Customers;
 using TaxVision.Auth.Application.Customers.Commands;
+using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Mfa;
 using TaxVision.Auth.Domain.Users;
 
 namespace TaxVision.Auth.Tests.Application;
 
-// La oficina ve y resetea el segundo factor del portal de un cliente (vía Customer, M2M).
+// La oficina ve y resetea el segundo factor del portal de un cliente (vía Customer, M2M; D-10, D-16).
 public sealed class CustomerPortalMfaHandlerTests
 {
-    [Fact]
-    public async Task Reset_removes_every_factor_alerts_the_client_and_audits_who_did_it()
-    {
-        var world = new AccountSessionFixture();
-        var customerId = Guid.NewGuid();
-        var portal = Portal(world, customerId);
-        world.Users.Add(portal);
-        var mfa = new InMemoryMfaRepository();
-        mfa.Enroll(portal);
-        var bus = new FakeMessageBus();
+    private readonly OfficeCredentialFixture _office = new();
 
-        var result = await ResetCustomerPortalMfaHandler.Handle(
-            new ResetCustomerPortalMfaCommand(world.Tenant.Id, customerId, world.Admin.Id, "corr-1"),
-            world.Users,
-            mfa,
-            world.Audit,
-            world.UnitOfWork,
-            bus,
+    private PortalCredentialCommandEnvelope Envelope(
+        Guid? requestedBy = null,
+        DateTime? reauthenticatedAt = null,
+        CredentialAdministrationReasonCode? code = CredentialAdministrationReasonCode.UserRequest
+    ) =>
+        new(
+            requestedBy ?? _office.Owner.Id,
+            reauthenticatedAt ?? DateTime.UtcNow.AddMinutes(-1),
+            "203.0.113.7",
+            "Chrome",
+            code,
+            "lost phone",
+            true
+        );
+
+    private Task<Result<ResetCustomerPortalMfaResult>> ResetAsync(
+        PortalCredentialCommandEnvelope envelope,
+        Guid? customerId = null
+    ) =>
+        ResetCustomerPortalMfaHandler.Handle(
+            new ResetCustomerPortalMfaCommand(_office.Tenant.Id, customerId ?? _office.CustomerId, envelope, "corr-1"),
+            _office.Users,
+            new NoUserLoginLock(),
+            _office.Cutoff,
+            _office.Mfa,
+            _office.Options,
+            _office.Audit,
+            _office.UnitOfWork,
+            _office.Bus,
             CancellationToken.None
         );
 
+    [Fact]
+    public async Task Reset_clears_factors_cuts_portal_sessions_and_audits_the_real_ip_and_identity_check()
+    {
+        _office.Mfa.Enroll(_office.PortalClient);
+        var session = TaxVision.Auth.Domain.Sessions.UserSession.Start(
+            _office.Tenant.Id,
+            _office.PortalClient.Id,
+            "Chrome",
+            null,
+            null
+        );
+        await _office.Sessions.AddSessionAsync(session);
+
+        var result = await ResetAsync(Envelope());
+
         Assert.Equal(CustomerPortalMfaResetOutcome.Reset, result.Value.Outcome);
-        Assert.False(portal.MfaEnabled);
-        Assert.Empty(mfa.Methods);
-        Assert.Empty(mfa.Codes);
-        Assert.All(mfa.Devices, device => Assert.False(device.IsActive));
-        var alert = Assert.Single(bus.Published.OfType<SecurityAlertIntegrationEvent>());
-        Assert.Equal(portal.Id, alert.UserId);
-        Assert.Equal(SecurityAlertType.MfaDisabled, alert.AlertType);
-        Assert.Contains("office", alert.DetailsJson);
+        Assert.False(_office.PortalClient.MfaEnabled);
+        Assert.Empty(_office.Mfa.Methods);
+        Assert.Empty(_office.Mfa.Codes);
+        Assert.All(_office.Mfa.Devices, device => Assert.False(device.IsActive));
+        Assert.Equal((session.Id, "mfa_reset_by_office"), Assert.Single(_office.Revocations.Published));
+
+        var log = Assert.Single(_office.Audit.Logs);
+        Assert.Equal("auth.mfa.reset_by_office", log.Action);
+        Assert.Equal(_office.Owner.Id, log.UserId);
+        Assert.Equal(_office.PortalClient.Id, log.TargetId);
+        Assert.Equal("203.0.113.7", log.IpAddress);
+        Assert.Equal("Chrome", log.UserAgent);
+        Assert.Contains("\"identityConfirmed\":true", log.DetailsJson);
+        Assert.DoesNotContain("lost phone", log.DetailsJson);
+
+        var alert = Assert.Single(_office.Bus.Published.OfType<SecurityAlertIntegrationEvent>());
+        Assert.Equal(_office.PortalClient.Id, alert.UserId);
+        Assert.Equal(SecurityAlertType.MfaResetByOffice, alert.AlertType);
         Assert.Equal("corr-1", alert.CorrelationId);
+    }
+
+    [Fact]
+    public async Task A_stale_step_up_is_rejected_and_audited()
+    {
+        _office.Mfa.Enroll(_office.PortalClient);
+
+        var result = await ResetAsync(Envelope(reauthenticatedAt: DateTime.UtcNow.AddMinutes(-30)));
+
+        Assert.Equal("Auth.CredentialAdmin.StaleReauthentication", result.Error.Code);
+        Assert.True(_office.PortalClient.MfaEnabled);
+        Assert.Equal("auth.credential_admin.denied", Assert.Single(_office.Audit.Logs).Action);
+    }
+
+    [Fact]
+    public async Task Without_a_reason_nothing_changes()
+    {
+        _office.Mfa.Enroll(_office.PortalClient);
+
+        var result = await ResetAsync(Envelope(code: null));
+
+        Assert.Equal("Auth.CredentialAdmin.ReasonRequired", result.Error.Code);
+        Assert.True(_office.PortalClient.MfaEnabled);
+    }
+
+    [Fact]
+    public async Task An_employee_can_no_longer_reset_a_clients_two_step()
+    {
+        _office.Mfa.Enroll(_office.PortalClient);
+
+        var result = await ResetAsync(Envelope(requestedBy: _office.Employee.Id));
+
+        Assert.Equal("Auth.CredentialAdmin.ActorNotAllowed", result.Error.Code);
+        Assert.True(_office.PortalClient.MfaEnabled);
     }
 
     [Fact]
     public async Task Reset_of_a_client_without_two_step_changes_nothing()
     {
-        var world = new AccountSessionFixture();
-        var customerId = Guid.NewGuid();
-        world.Users.Add(Portal(world, customerId));
-        var bus = new FakeMessageBus();
-
-        var result = await ResetCustomerPortalMfaHandler.Handle(
-            new ResetCustomerPortalMfaCommand(world.Tenant.Id, customerId, world.Admin.Id, "corr-1"),
-            world.Users,
-            new InMemoryMfaRepository(),
-            world.Audit,
-            world.UnitOfWork,
-            bus,
-            CancellationToken.None
-        );
+        var result = await ResetAsync(Envelope());
 
         Assert.Equal(CustomerPortalMfaResetOutcome.NotEnabled, result.Value.Outcome);
-        Assert.Empty(bus.Published);
+        Assert.Empty(_office.Bus.Published);
     }
 
     [Fact]
     public async Task Reset_of_a_client_without_portal_access_is_rejected()
     {
-        var world = new AccountSessionFixture();
-
-        var result = await ResetCustomerPortalMfaHandler.Handle(
-            new ResetCustomerPortalMfaCommand(world.Tenant.Id, Guid.NewGuid(), world.Admin.Id, "corr-1"),
-            world.Users,
-            new InMemoryMfaRepository(),
-            world.Audit,
-            world.UnitOfWork,
-            new FakeMessageBus(),
-            CancellationToken.None
-        );
+        var result = await ResetAsync(Envelope(), customerId: Guid.NewGuid());
 
         Assert.Equal(ResetCustomerPortalMfaHandler.NoPortalAccount, result.Error);
     }

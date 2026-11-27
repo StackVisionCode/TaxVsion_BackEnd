@@ -58,6 +58,10 @@ public sealed class LoginPasswordCheck(
             );
         }
 
+        // I-2: cuenta asegurada por la oficina. Igual que una contraseña mala, sin sumar al bloqueo ni dar el motivo.
+        if (user.EnsurePasswordSignInAllowed().IsFailure)
+            return await RefuseAsync(user, """{"reason":"credential_reset_required"}""", InvalidCredentials, ct);
+
         // Fase 2 — corte de acceso por facturación: la suscripción del tenant está Suspended/Expired.
         // Se bloquea a empleados y clientes; el TenantAdmin/PlatformAdmin pasa para poder ir a renovar.
         if (BillingAccessPolicy.IsBlockedForBilling(attempt.Tenant, user.ActorType))

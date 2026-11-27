@@ -27,6 +27,7 @@ public static class SecurityAlertConsumer
         IPlatformSettings platform,
         IRecipientResolver recipientResolver,
         IRecipientLocale locales,
+        ITenantHostResolver hostResolver,
         ICorrelationContext correlation,
         ILogger<SecurityAlertIntegrationEvent> logger,
         CancellationToken ct
@@ -35,29 +36,64 @@ public static class SecurityAlertConsumer
         using (correlation.Push(Correlation.From(evt.CorrelationId, evt.EventId)))
         {
             var brand = platform.Current.BrandName;
-            var to = PreviousEmail(evt) ?? await emails.ResolveAsync(evt.TenantId, evt.UserId, ct);
-            if (string.IsNullOrWhiteSpace(to))
-                logger.LogWarning(
-                    "Security alert {AlertType} for user {UserId} in tenant {TenantId} has no email address; only the in-app notice is sent.",
-                    evt.AlertType,
-                    evt.UserId,
-                    evt.TenantId
-                );
-            else
-                await SendEmailAsync(
+            // El afectado ya recibe el correo propio de la acción (p. ej. el link de la oficina): sin un segundo correo.
+            if (!TypesWithOwnEmail.Contains(evt.AlertType))
+                await SendEmailIfKnownAsync(
                     evt,
-                    to,
                     brand,
                     dispatcher,
                     scribeClient,
+                    emails,
                     portalAccounts,
-                    await locales.ForUserAsync(evt.TenantId, evt.UserId, ct),
+                    locales,
+                    hostResolver,
+                    portal.Value,
+                    logger,
                     correlation.CorrelationId,
                     ct
                 );
 
             await NotifyInAppAsync(evt, brand, dispatcher, recipientResolver, correlation.CorrelationId, ct);
         }
+    }
+
+    private static async Task SendEmailIfKnownAsync(
+        SecurityAlertIntegrationEvent evt,
+        string brand,
+        NotificationDispatcher dispatcher,
+        IScribeRenderClient scribeClient,
+        IUserEmailResolver emails,
+        ICustomerPortalAccountProjectionRepository portalAccounts,
+        IRecipientLocale locales,
+        ITenantHostResolver hostResolver,
+        PortalOptions portal,
+        ILogger logger,
+        string? correlationId,
+        CancellationToken ct
+    )
+    {
+        var to = PreviousEmail(evt) ?? await emails.ResolveAsync(evt.TenantId, evt.UserId, ct);
+        if (string.IsNullOrWhiteSpace(to))
+            logger.LogWarning(
+                "Security alert {AlertType} for user {UserId} in tenant {TenantId} has no email address; only the in-app notice is sent.",
+                evt.AlertType,
+                evt.UserId,
+                evt.TenantId
+            );
+        else
+            await SendEmailAsync(
+                evt,
+                to,
+                brand,
+                dispatcher,
+                scribeClient,
+                portalAccounts,
+                await locales.ForUserAsync(evt.TenantId, evt.UserId, ct),
+                hostResolver,
+                portal,
+                correlationId,
+                ct
+            );
     }
 
     private static async Task SendEmailAsync(
@@ -68,6 +104,8 @@ public static class SecurityAlertConsumer
         IScribeRenderClient scribeClient,
         ICustomerPortalAccountProjectionRepository portalAccounts,
         RecipientLocale locale,
+        ITenantHostResolver hostResolver,
+        PortalOptions portal,
         string? correlationId,
         CancellationToken ct
     )
@@ -76,34 +114,79 @@ public static class SecurityAlertConsumer
         var audience = await portalAccounts.GetByUserAsync(evt.TenantId, evt.UserId, ct) is not null
             ? ScribeRenderAudience.Client
             : ScribeRenderAudience.Staff;
-        var render = (
-            await scribeClient.RenderForRecipientAsync(
+        var (eventKey, templateKey, variables) = OwnNotices.TryGetValue(evt.AlertType, out var notice)
+            ? (
+                notice.EventKey,
+                notice.TemplateKey,
+                await OfficeNoticeVariablesAsync(evt, audience, hostResolver, portal, ct)
+            )
+            : (
                 EmailEventKey,
-                evt.TenantId,
+                NotificationKinds.AuthSecurityAlert,
                 new Dictionary<string, object?>
                 {
                     ["description"] = Describe(evt.AlertType, audience, brand, locale),
                     ["ip_address"] = evt.IpAddress,
-                },
-                audience,
-                locale,
-                ct
-            )
-        ).EnsureRendered(EmailEventKey);
+                }
+            );
+        var render = (
+            await scribeClient.RenderForRecipientAsync(eventKey, evt.TenantId, variables, audience, locale, ct)
+        ).EnsureRendered(eventKey);
 
         await dispatcher.DispatchAsync(
             Intent(evt, new NotificationTarget(evt.UserId, to, Locale: locale), correlationId) with
             {
                 Email = new EmailContent(
-                    EmailEventKey,
+                    eventKey,
                     new Dictionary<string, object?>(),
                     audience,
-                    TemplateKey: NotificationKinds.AuthSecurityAlert,
+                    TemplateKey: templateKey,
                     Render: (_, _) => Task.FromResult(render)
                 ),
             },
             ct
         );
+    }
+
+    // Avisos sin token con plantilla propia sobre tenant-base (F4-L7, DM-02): buzón de la oficina con caída al sistema.
+    private static readonly Dictionary<string, (string EventKey, string TemplateKey)> OwnNotices = new()
+    {
+        [SecurityAlertType.PasswordChanged] = ("auth.password_changed.v1", "auth.password-changed"),
+        [SecurityAlertType.PasswordChangeRequired] = (
+            "auth.password_change_required.v1",
+            "auth.password-change-required"
+        ),
+    };
+
+    // El botón lleva al login del subdominio de la oficina; sin host, el correo sale sin botón (nunca otra base, D-04).
+    private static async Task<Dictionary<string, object?>> OfficeNoticeVariablesAsync(
+        SecurityAlertIntegrationEvent evt,
+        ScribeRenderAudience audience,
+        ITenantHostResolver hostResolver,
+        PortalOptions portal,
+        CancellationToken ct
+    )
+    {
+        string? host;
+        try
+        {
+            host = await hostResolver.ResolveRequiredHostAsync(evt.TenantId, ct);
+        }
+        catch (TenantHostUnavailableException)
+        {
+            host = null;
+        }
+
+        var isPortal = audience == ScribeRenderAudience.Client;
+        return new Dictionary<string, object?>
+        {
+            ["account_kind"] = isPortal ? "portal" : "workspace",
+            ["changed_at"] = ScribeDates.Instant(evt.OccurredOn),
+            ["sign_in_link"] =
+                host is null ? null
+                : isPortal ? $"{TenantEmailLinks.RequiredClientBase(host, portal)}/client/auth/login"
+                : $"{TenantEmailLinks.RequiredStaffBase(host)}/login",
+        };
     }
 
     private static async Task NotifyInAppAsync(
@@ -123,7 +206,9 @@ public static class SecurityAlertConsumer
             recipientResolver,
             ct
         );
-        var recipients = new[] { evt.UserId }.Concat(officeRecipients).Distinct();
+        // Quien hizo la acción (p. ej. el Owner que envió el link) no recibe aviso de lo que él mismo hizo.
+        var actor = DetailsGuid(evt, "actorUserId");
+        var recipients = new[] { evt.UserId }.Concat(officeRecipients.Where(userId => userId != actor)).Distinct();
 
         foreach (var userId in recipients)
         {
@@ -155,6 +240,34 @@ public static class SecurityAlertConsumer
             evt.OccurredOn,
             correlationId
         );
+
+    // El correo de la acción ya lo manda otra plantilla (el link de la oficina o el link seguro).
+    private static readonly HashSet<string> TypesWithOwnEmail =
+    [
+        SecurityAlertType.PasswordResetSentByOffice,
+        SecurityAlertType.AccountSecured,
+    ];
+
+    private static Guid? DetailsGuid(SecurityAlertIntegrationEvent evt, string property)
+    {
+        if (string.IsNullOrWhiteSpace(evt.DetailsJson))
+            return null;
+        try
+        {
+            using var details = JsonDocument.Parse(evt.DetailsJson);
+            return
+                details.RootElement.ValueKind == JsonValueKind.Object
+                && details.RootElement.TryGetProperty(property, out var value)
+                && value.ValueKind == JsonValueKind.String
+                && Guid.TryParse(value.GetString(), out var id)
+                ? id
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     // En email_changed Auth manda la dirección anterior en DetailsJson; si no se puede leer, se usa el directorio.
     private static string? PreviousEmail(SecurityAlertIntegrationEvent evt)
@@ -198,6 +311,10 @@ public static class SecurityAlertConsumer
             SecurityAlertType.TokenReuseDetected => "auth.security_alert.token_reuse_detected",
             SecurityAlertType.RefreshTokenHostMismatch => "auth.security_alert.refresh_token_host_mismatch",
             SecurityAlertType.EmailChanged => "auth.security_alert.email_changed",
+            SecurityAlertType.PasswordResetSentByOffice => "auth.security_alert.password_reset_sent_by_office",
+            SecurityAlertType.PasswordChangeRequired => "auth.security_alert.password_change_required",
+            SecurityAlertType.AccountSecured => "auth.security_alert.account_secured",
+            SecurityAlertType.MfaResetByOffice => "auth.security_alert.mfa_reset_by_office",
             _ => "auth.security_alert.other",
         };
         return EmailText.For(

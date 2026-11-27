@@ -122,6 +122,34 @@ public sealed class GetUsersHandlerTests
         Assert.Null(result.Value.Items[1].AvatarFileId);
     }
 
+    // El CRM pinta el badge "Owner" y oculta las acciones sobre el Owner (H-B02).
+    [Fact]
+    public async Task Rows_say_which_user_is_the_owner()
+    {
+        var tenantId = Guid.NewGuid();
+        var owner = User.Register(
+            tenantId,
+            "Olga",
+            "Owner",
+            "olga@acme.com",
+            "hash",
+            UserActorType.TenantAdmin,
+            onboardingId: Guid.NewGuid()
+        ).Value;
+        var coAdmin = User.Register(tenantId, "Ana", "Admin", "ana@acme.com", "hash", UserActorType.TenantAdmin).Value;
+
+        var result = await GetUsersHandler.Handle(
+            new GetUsersQuery(tenantId),
+            new FakeUserRepository { Page = [owner, coAdmin] },
+            new FakeRoleRepository(),
+            new FakeSlotProjectionRepository(),
+            CancellationToken.None
+        );
+
+        Assert.True(result.Value.Items[0].IsOwner);
+        Assert.False(result.Value.Items[1].IsOwner);
+    }
+
     private sealed class FakeUserRepository : IUserRepository
     {
         public Task<IReadOnlyList<User>> GetActiveStaffForSlotGatingAsync(

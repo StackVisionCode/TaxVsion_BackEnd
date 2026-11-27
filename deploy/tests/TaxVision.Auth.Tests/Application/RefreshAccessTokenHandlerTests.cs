@@ -307,6 +307,81 @@ public sealed class RefreshAccessTokenHandlerTests
         Assert.Single(bus.Published.OfType<SessionEndedIntegrationEvent>());
     }
 
+    // F7-L2: el refresh rechazado dice por qué se cortó la sesión (campo "reason" en la raíz del error), solo para
+    // los motivos que el usuario puede entender; "account_secured" y los demás quedan sin motivo (genérico).
+    [Theory]
+    [InlineData("password_change")]
+    [InlineData("admin_revoke")]
+    [InlineData("mfa_reset_by_office")]
+    [InlineData("credential_change_required")]
+    public async Task A_session_cut_for_a_known_reason_tells_the_client_why(string reason)
+    {
+        var world = new AccountSessionFixture();
+        var mobile = await world.Issuer.StartSessionAsync(
+            world.Admin,
+            "UTC",
+            [],
+            ["pwd"],
+            "iPhone",
+            SessionSurface.Mobile
+        );
+        var (_, workspaceRefresh) = await world.StartWorkspaceSessionAsync();
+        await world.Sessions.RevokeAllForUserAsync(world.Admin.Id, reason);
+
+        var mobileResult = await RefreshAsync(world, mobile.RefreshToken, SessionSurface.Mobile);
+        var webResult = await RefreshAsync(world, workspaceRefresh, SessionSurface.Workspace);
+
+        Assert.Equal("Auth.InvalidRefreshToken", mobileResult.Error.Code);
+        Assert.Equal(reason, mobileResult.Error.Reason);
+        Assert.Equal(reason, webResult.Error.Reason);
+    }
+
+    [Theory]
+    [InlineData("account_secured")]
+    [InlineData("single_session_superseded")]
+    public async Task Other_reasons_stay_generic(string reason)
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, refresh) = await world.StartWorkspaceSessionAsync();
+        await world.Sessions.RevokeSessionAsync(sessionId, reason);
+
+        var result = await RefreshAsync(world, refresh, SessionSurface.Workspace);
+
+        Assert.Equal("Auth.InvalidRefreshToken", result.Error.Code);
+        Assert.Null(result.Error.Reason);
+    }
+
+    [Fact]
+    public async Task A_session_only_revoked_by_an_admin_also_tells_the_client_why()
+    {
+        var world = new AccountSessionFixture();
+        var (sessionId, refresh) = await world.StartWorkspaceSessionAsync();
+        await world.Sessions.RevokeSessionAsync(sessionId, "admin_revoke");
+
+        var result = await RefreshAsync(world, refresh, SessionSurface.Workspace);
+
+        Assert.Equal("admin_revoke", result.Error.Reason);
+    }
+
+    [Fact]
+    public void The_reason_travels_at_the_root_of_the_error_body_and_is_omitted_when_absent()
+    {
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        var withReason = new BuildingBlocks.Results.Error("Auth.InvalidRefreshToken", "x")
+        {
+            Reason = "password_change",
+        };
+
+        Assert.Contains(
+            "\"reason\":\"password_change\"",
+            System.Text.Json.JsonSerializer.Serialize(withReason, options)
+        );
+        Assert.DoesNotContain(
+            "reason",
+            System.Text.Json.JsonSerializer.Serialize(new BuildingBlocks.Results.Error("Auth.Invalid", "x"), options)
+        );
+    }
+
     private static Task<BuildingBlocks.Results.Result<AuthTokensResponse>> RefreshAsync(
         AccountSessionFixture world,
         string refreshToken,

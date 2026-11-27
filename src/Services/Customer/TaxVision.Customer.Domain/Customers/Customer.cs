@@ -175,11 +175,19 @@ public sealed class Customer : AggregateRoot
     }
 
     // Un aviso de edición por transacción; si el alta está pendiente, ella ya anuncia el estado completo.
-    private void RaiseUpdated(Guid byUserId)
+    private void RaiseUpdated(Guid byUserId) => RaiseUpdated(byUserId, PrimaryEmail);
+
+    // emailBefore: el correo con el que empezó la transacción (solo ChangePrimaryEmail lo cambia).
+    private void RaiseUpdated(Guid byUserId, EmailAddress? emailBefore)
     {
         if (DomainEvents.Any(e => e is CustomerCreatedDomainEvent or CustomerUpdatedDomainEvent))
             return;
-        AddDomainEvent(new CustomerUpdatedDomainEvent(Id, TenantId, byUserId, DateTime.UtcNow));
+        AddDomainEvent(
+            new CustomerUpdatedDomainEvent(Id, TenantId, byUserId, DateTime.UtcNow)
+            {
+                PreviousPrimaryEmail = emailBefore?.Value,
+            }
+        );
     }
 
     // Un snapshot de asignaciones por transacción: se arma con el cliente guardado.
@@ -195,9 +203,10 @@ public sealed class Customer : AggregateRoot
         var active = EnsureActive();
         if (active.IsFailure)
             return active;
+        var emailBefore = PrimaryEmail;
         PrimaryEmail = newEmail;
         Touch(byUserId);
-        RaiseUpdated(byUserId);
+        RaiseUpdated(byUserId, emailBefore);
         return Result.Success();
     }
 

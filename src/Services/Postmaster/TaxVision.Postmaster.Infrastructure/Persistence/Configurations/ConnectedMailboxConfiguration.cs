@@ -24,6 +24,10 @@ internal sealed class ConnectedMailboxConfiguration : IEntityTypeConfiguration<C
         builder.Property(a => a.ConnectedAtUtc).IsRequired();
         builder.Property(a => a.DisconnectedAtUtc);
         builder.Property(a => a.UpdatedAtUtc).IsRequired();
+        builder.Property(a => a.OwnerUserId);
+        // Filas anteriores: dueño desconocido hasta que MailboxOwnershipBackfill lo lea de Connectors.
+        builder.Property(a => a.OwnershipKnown).IsRequired();
+        builder.Ignore(a => a.IsOfficeMailbox);
 
         builder.HasIndex(a => new { a.TenantId, a.AccountId }).IsUnique();
         builder.HasIndex(a => new

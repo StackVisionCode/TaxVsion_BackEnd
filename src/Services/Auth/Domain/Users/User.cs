@@ -3,6 +3,7 @@ using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
 using BuildingBlocks.TimeZones;
 using TaxVision.Auth.Domain.Common;
+using TaxVision.Auth.Domain.Credentials;
 using TaxVision.Auth.Domain.Users.Events;
 
 namespace TaxVision.Auth.Domain.Users;
@@ -43,6 +44,31 @@ public sealed class User : AggregateRoot
     public bool EmailVerified { get; private set; }
     public bool PhoneVerified { get; private set; }
     public DateTime? PasswordChangedAtUtc { get; private set; }
+
+    /// <summary>Último cambio del correo de login pedido por la oficina y confirmado (D-08: pausa el reset administrativo).</summary>
+    public DateTime? EmailChangedByOfficeAtUtc { get; private set; }
+
+    // Estado de la credencial puesto por la oficina (03 §4.3, §16); la nota nunca va a la auditoría.
+    public CredentialStatus CredentialStatus { get; private set; }
+    public CredentialAdministrationReasonCode? CredentialStateReasonCode { get; private set; }
+    public string? CredentialStateReasonNote { get; private set; }
+    public DateTime? CredentialStateChangedAtUtc { get; private set; }
+
+    [UserReference(
+        UserReferenceKind.Provenance,
+        Note = "Quién de la oficina puso el estado de la credencial: historia."
+    )]
+    public Guid? CredentialStateChangedByUserId { get; private set; }
+
+    public CredentialState CredentialState =>
+        new(
+            CredentialStatus,
+            CredentialStateReasonCode is { } code
+                ? new CredentialAdministrationReason(code, CredentialStateReasonNote)
+                : null,
+            CredentialStateChangedAtUtc,
+            CredentialStateChangedByUserId
+        );
 
     // Foto de perfil (solo staff): la confirmada y la que espera el antivirus de CloudStorage.
     public Guid? AvatarFileId { get; private set; }
@@ -191,14 +217,119 @@ public sealed class User : AggregateRoot
         LockoutEndUtc = null;
     }
 
+    /// <summary>Cambio autenticado: limpia <c>ChangeRequired</c>; con <c>ResetRequired</c> solo sirve un link (I-3).</summary>
     public Result ChangePassword(string newPasswordHash, DateTime utcNow)
+    {
+        if (CredentialStatus == CredentialStatus.ResetRequired)
+            return Result.Failure(CredentialAdministrationErrors.CredentialResetRequired);
+
+        return SetPassword(newPasswordHash, utcNow);
+    }
+
+    /// <summary>Reset por link (cualquier origen): limpia cualquier estado de la credencial.</summary>
+    public Result CompletePasswordReset(string newPasswordHash, DateTime utcNow) =>
+        SetPassword(newPasswordHash, utcNow);
+
+    private Result SetPassword(string newPasswordHash, DateTime utcNow)
     {
         if (string.IsNullOrWhiteSpace(newPasswordHash))
             return Result.Failure(new Error("User.Password", "Password hash is required."));
 
         PasswordHash = newPasswordHash;
         PasswordChangedAtUtc = utcNow;
+        ClearCredentialState();
         return Result.Success();
+    }
+
+    /// <summary>I-2: con <c>ResetRequired</c> la contraseña no sirve para entrar ni para reautenticarse.</summary>
+    public Result EnsurePasswordSignInAllowed() =>
+        CredentialStatus == CredentialStatus.ResetRequired
+            ? Result.Failure(CredentialAdministrationErrors.CredentialResetRequired)
+            : Result.Success();
+
+    /// <summary>Cambio obligatorio en el próximo login (03 §4.6). No acepta sospecha de compromiso: para eso, asegurar.</summary>
+    public Result<CredentialTransition> RequirePasswordChange(
+        CredentialAdministrationReason reason,
+        Guid byUserId,
+        DateTime utcNow
+    )
+    {
+        if (!IsActive || Status != UserStatus.Active)
+            return Result.Failure<CredentialTransition>(CredentialAdministrationErrors.TargetInactive);
+        if (reason.Code == CredentialAdministrationReasonCode.SuspectedCompromise)
+            return Result.Failure<CredentialTransition>(CredentialAdministrationErrors.InvalidReason);
+
+        switch (CredentialStatus)
+        {
+            case CredentialStatus.ChangeRequired:
+                return Result.Success(CredentialTransition.AlreadyInState);
+            case CredentialStatus.ResetRequired:
+                return Result.Failure<CredentialTransition>(CredentialAdministrationErrors.InvalidTransition);
+        }
+
+        SetCredentialState(CredentialStatus.ChangeRequired, reason, byUserId, utcNow);
+        return Result.Success(CredentialTransition.Changed);
+    }
+
+    /// <summary>
+    /// Cuenta asegurada (03 §4.6): la contraseña deja de servir. Solo con sospecha u <c>Other</c>. Repetido sobre una
+    /// cuenta ya asegurada es idempotente; el motivo nuevo reemplaza al guardado (reenvío del link seguro).
+    /// </summary>
+    public Result<CredentialTransition> MarkResetRequired(
+        CredentialAdministrationReason reason,
+        Guid byUserId,
+        DateTime utcNow
+    )
+    {
+        var allowed = CanMarkResetRequired(reason);
+        if (allowed.IsFailure)
+            return Result.Failure<CredentialTransition>(allowed.Error);
+
+        if (CredentialStatus == CredentialStatus.ResetRequired)
+        {
+            CredentialStateReasonCode = reason.Code;
+            CredentialStateReasonNote = reason.Note;
+            return Result.Success(CredentialTransition.AlreadyInState);
+        }
+
+        SetCredentialState(CredentialStatus.ResetRequired, reason, byUserId, utcNow);
+        return Result.Success(CredentialTransition.Changed);
+    }
+
+    /// <summary>Lo que <see cref="MarkResetRequired"/> exige, sin cambiar nada: el handler lo consulta antes de emitir el link.</summary>
+    public Result CanMarkResetRequired(CredentialAdministrationReason reason)
+    {
+        if (!IsActive || Status != UserStatus.Active)
+            return Result.Failure(CredentialAdministrationErrors.TargetInactive);
+        return
+            reason.Code
+                is CredentialAdministrationReasonCode.SuspectedCompromise
+                    or CredentialAdministrationReasonCode.Other
+            ? Result.Success()
+            : Result.Failure(CredentialAdministrationErrors.InvalidReason);
+    }
+
+    private void SetCredentialState(
+        CredentialStatus status,
+        CredentialAdministrationReason reason,
+        Guid byUserId,
+        DateTime utcNow
+    )
+    {
+        CredentialStatus = status;
+        CredentialStateReasonCode = reason.Code;
+        CredentialStateReasonNote = reason.Note;
+        CredentialStateChangedAtUtc = utcNow;
+        CredentialStateChangedByUserId = byUserId;
+    }
+
+    private void ClearCredentialState()
+    {
+        CredentialStatus = CredentialStatus.Active;
+        CredentialStateReasonCode = null;
+        CredentialStateReasonNote = null;
+        CredentialStateChangedAtUtc = null;
+        CredentialStateChangedByUserId = null;
     }
 
     public Result UpdateProfile(string name, string lastName)
@@ -250,6 +381,8 @@ public sealed class User : AggregateRoot
         Language = normalized;
         return Result.Success();
     }
+
+    public void MarkEmailChangedByOffice(DateTime utcNow) => EmailChangedByOfficeAtUtc = utcNow;
 
     public Result ChangeEmail(string newEmail)
     {

@@ -1,10 +1,12 @@
 using BuildingBlocks.Common;
 using BuildingBlocks.Persistence;
+using BuildingBlocks.Platform;
 using BuildingBlocks.Results;
 using BuildingBlocks.Security;
 using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
+using TaxVision.Auth.Application.TenantDomains.Internal.Queries;
 using TaxVision.Auth.Application.Users.Commands;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.RefreshTokens;
@@ -30,7 +32,11 @@ public sealed record MobileSignInCommand(
 
 public sealed record MobileOffice(Guid TenantId, string Name, string Subdomain, bool MfaRequired);
 
-/// <summary>O el selector de oficinas, o los tokens de la sesión móvil, o el vale de takeover.</summary>
+/// <summary>
+/// O el selector de oficinas, o los tokens de la sesión móvil, o el vale de takeover. Con
+/// <see cref="PasswordChangeRequired"/> el token es de cambio obligatorio: la app no abre sesión y ofrece
+/// <see cref="PortalUrl"/> (login del portal en el subdominio primario; null si la oficina no tiene uno activo).
+/// </summary>
 public sealed record MobileSignInResponse(
     bool RequiresTenantSelection,
     Guid? DiscoverySessionRef,
@@ -42,7 +48,9 @@ public sealed record MobileSignInResponse(
     bool TakeoverRequired,
     string? TakeoverTicket,
     int? TakeoverTicketExpiresInSeconds,
-    string? DeviceToken
+    string? DeviceToken,
+    bool PasswordChangeRequired = false,
+    string? PortalUrl = null
 )
 {
     public static MobileSignInResponse ForSelection(Guid reference, IReadOnlyList<MobileOffice> offices) =>
@@ -111,6 +119,8 @@ public static class MobileSignInHandler
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IOptions<MfaOptions> mfaOptions,
+        ITenantDomainRepository domains,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -171,8 +181,24 @@ public static class MobileSignInHandler
             request,
             correlation,
             unitOfWork,
+            domains,
+            platform,
             ct
         );
+    }
+
+    /// <summary>Login del portal en el subdominio primario de la oficina (D-04: sin fallback; sin host, null).</summary>
+    public static async Task<string?> PortalLoginUrlAsync(
+        Guid tenantId,
+        ITenantDomainRepository domains,
+        IPlatformSettings platform,
+        CancellationToken ct
+    )
+    {
+        var primary = GetTenantPrimaryHostHandler.PickPrimarySubdomain(await domains.GetByTenantAsync(tenantId, ct));
+        return primary?.SubdomainSlug is { } slug
+            ? $"https://{platform.Current.TenantHost(slug)}/portal/client/auth/login"
+            : null;
     }
 
     private static async Task<Result<MobileSignInResponse>> DiscoverAsync(
@@ -278,6 +304,8 @@ public static class MobileSignInHandler
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        ITenantDomainRepository domains,
+        IPlatformSettings platform,
         CancellationToken ct
     )
     {
@@ -373,11 +401,17 @@ public static class MobileSignInHandler
         );
         await unitOfWork.SaveChangesAsync(ct);
 
-        return Result.Success(
-            outcome.TakeoverRequired
-                ? MobileSignInResponse.ForTakeover(outcome.TakeoverTicket!.Value, office.MustEnroll, deviceToken)
-                : MobileSignInResponse.ForTokens(outcome.Tokens!, office.MustEnroll, deviceToken)
-        );
+        var response = outcome.TakeoverRequired
+            ? MobileSignInResponse.ForTakeover(outcome.TakeoverTicket!.Value, office.MustEnroll, deviceToken)
+            : MobileSignInResponse.ForTokens(outcome.Tokens!, office.MustEnroll, deviceToken);
+        // Cambio obligatorio (03 §9.3): la app lo hace en el portal web de la oficina.
+        if (PasswordChangeRequirement.Applies(user, SessionSurface.Mobile))
+            response = response with
+            {
+                PasswordChangeRequired = true,
+                PortalUrl = await PortalLoginUrlAsync(user.TenantId, domains, platform, ct),
+            };
+        return Result.Success(response);
     }
 
     private static AuthAuditLog Audit(

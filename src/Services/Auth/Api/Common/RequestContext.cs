@@ -1,3 +1,4 @@
+using BuildingBlocks.ActorTypeAuthorization;
 using TaxVision.Auth.Application.Abstractions;
 
 namespace TaxVision.Auth.Api.Common;
@@ -9,4 +10,7 @@ public sealed class RequestContext(IHttpContextAccessor accessor) : IRequestCont
 
     public string? UserAgent =>
         accessor.HttpContext?.Request.Headers.UserAgent.ToString() is { Length: > 0 } value ? value : null;
+
+    public string? ActorType =>
+        accessor.HttpContext?.User.FindFirst(ClaimNames.ActorType)?.Value is { Length: > 0 } value ? value : null;
 }

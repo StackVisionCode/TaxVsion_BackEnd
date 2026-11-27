@@ -18,6 +18,20 @@ public static class TenantEmailLinks
             ? portal.ClientBaseUrl.TrimEnd('/')
             : $"https://{tenantHost}{NormalizePrefix(portal.ClientPathPrefix)}";
 
+    /// <summary>Base de STAFF para links de cuenta: solo el subdominio de la oficina, sin base fijo (D-04).</summary>
+    public static string RequiredStaffBase(string host)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(host);
+        return $"https://{host}";
+    }
+
+    /// <summary>Base de CLIENTE para links de cuenta: solo el subdominio de la oficina, sin base fijo (D-04).</summary>
+    public static string RequiredClientBase(string host, PortalOptions portal)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(host);
+        return $"https://{host}{NormalizePrefix(portal.ClientPathPrefix)}";
+    }
+
     /// <summary>
     /// Deep-link a la pestaña de documentos del portal (donde el cliente ve "Requested from you"
     /// y sube lo pedido): <c>{ClientBase}/client/documents</c>. Un correo que pide subir un

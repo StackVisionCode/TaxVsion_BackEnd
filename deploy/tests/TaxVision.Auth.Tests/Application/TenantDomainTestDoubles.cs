@@ -110,6 +110,7 @@ internal sealed class FakeRequestContext : IRequestContext
 {
     public string? IpAddress => "127.0.0.1";
     public string? UserAgent => "xunit";
+    public string? ActorType => null;
 }
 
 internal sealed class FakeCorrelationContext : ICorrelationContext

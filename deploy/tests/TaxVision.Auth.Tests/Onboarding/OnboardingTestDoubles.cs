@@ -25,6 +25,7 @@ internal sealed class FakeRequestContext : IRequestContext
 {
     public string? IpAddress => "203.0.113.10";
     public string? UserAgent => "test-agent";
+    public string? ActorType => null;
 }
 
 /// <summary>Test doubles for PayFlow's Onboarding module, shared across the Fase 9 handler/consumer tests.</summary>

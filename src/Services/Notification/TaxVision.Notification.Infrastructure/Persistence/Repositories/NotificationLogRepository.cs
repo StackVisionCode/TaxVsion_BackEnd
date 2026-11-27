@@ -6,8 +6,27 @@ namespace TaxVision.Notification.Infrastructure.Persistence.Repositories;
 
 public sealed class NotificationLogRepository(NotificationDbContext db)
     : INotificationLogRepository,
-        INotificationLogStatusRepository
+        INotificationLogStatusRepository,
+        INotificationDeliveryStatusReader
 {
+    // Índice RelatedEventId; filtra por oficina explícitamente (el token de servicio trae su tenant).
+    public async Task<NotificationStatus?> GetEmailStatusByEventAsync(
+        Guid tenantId,
+        Guid relatedEventId,
+        CancellationToken ct = default
+    ) =>
+        await db
+            .NotificationLogs.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(log =>
+                log.TenantId == tenantId
+                && log.RelatedEventId == relatedEventId
+                && log.Channel == NotificationChannel.Email
+            )
+            .OrderByDescending(log => log.CreatedAtUtc)
+            .Select(log => (NotificationStatus?)log.Status)
+            .FirstOrDefaultAsync(ct);
+
     public Task<NotificationLog?> FindAsync(Guid tenantId, Guid logId, CancellationToken ct = default) =>
         db
             .NotificationLogs.IgnoreQueryFilters()

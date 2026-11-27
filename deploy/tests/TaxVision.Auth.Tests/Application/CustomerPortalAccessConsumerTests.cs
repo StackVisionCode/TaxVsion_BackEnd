@@ -84,6 +84,7 @@ public sealed class CustomerPortalAccessConsumerTests
             new FakeCorrelationContext(),
             _unitOfWork,
             _bus,
+            new InMemoryCredentialTokenRepository(),
             CancellationToken.None
         );
 
@@ -154,6 +155,7 @@ public sealed class CustomerPortalAccessConsumerTests
             new FakeCorrelationContext(),
             _unitOfWork,
             _bus,
+            new InMemoryCredentialTokenRepository(),
             CancellationToken.None
         );
 

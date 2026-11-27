@@ -56,7 +56,8 @@ public static partial class RateLimitPolicyCatalog
         int quota,
         int windowSeconds,
         RateLimitAlgorithm algorithm,
-        int? overlayQuota = null
+        int? overlayQuota = null,
+        bool auditBlocked = false
     ) =>
         new()
         {
@@ -72,5 +73,6 @@ public static partial class RateLimitPolicyCatalog
                 category == RateLimitCategory.I && overlayQuota is not null
                     ? overlayQuota.Value * EndpointCapMultiplier
                     : null,
+            AuditBlocked = auditBlocked,
         };
 }

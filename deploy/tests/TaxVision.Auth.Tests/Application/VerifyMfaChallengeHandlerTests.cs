@@ -62,6 +62,19 @@ public sealed class VerifyMfaChallengeHandlerTests
         );
 
     [Fact]
+    public async Task A_secured_account_cannot_finish_the_mfa_step()
+    {
+        // La oficina aseguró la cuenta entre la contraseña y el código: el desafío pendiente ya no abre sesión.
+        var (world, mfa) = WithChallenge(UserActorType.TenantAdmin);
+        world.Admin.Secure();
+
+        var result = await VerifyAsync(world, mfa, SessionSurface.Workspace);
+
+        Assert.True(result.IsFailure);
+        Assert.Empty(world.Sessions.Sessions);
+    }
+
+    [Fact]
     public async Task The_web_route_keeps_opening_web_sessions()
     {
         var (world, mfa) = WithChallenge(UserActorType.TenantAdmin);

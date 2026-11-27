@@ -27,7 +27,8 @@ public sealed class EventBasedEmailDispatchGateway(
     INotificationLogRepository logRepository,
     IUnitOfWork unitOfWork,
     NotificationDeliveryGate deliveryGate,
-    ILogger<EventBasedEmailDispatchGateway> logger
+    ILogger<EventBasedEmailDispatchGateway> logger,
+    IOfficeReplyToResolver? officeReplyTo = null
 ) : IEmailDispatchGateway
 {
     // Cola propia de Postmaster (Postmaster.Api/Program.cs): recibe igual lo que llega por el fanout.
@@ -169,6 +170,7 @@ public sealed class EventBasedEmailDispatchGateway(
                     ? $"{eventKey:N}:{request.To.ToLowerInvariant()}"
                     : $"{log.Id:N}:{attempt.Id:N}"
             );
+        var replyTo = await ReplyToAsync(request, ct);
         var evt = new NotificationsEmailSendRequestedIntegrationEvent
         {
             TenantId = request.TenantId,
@@ -189,6 +191,7 @@ public sealed class EventBasedEmailDispatchGateway(
             TemplateVariables = SerializeVariables(request.TemplateVariables),
             PriorityHint = request.PriorityHint,
             ReplyToThreadId = request.ReplyToThreadId,
+            ReplyTo = replyTo,
             AttachmentFileIds = request.AttachmentFileIds,
             // Hardening Fase 9: propaga las referencias de logo/CID tal cual — mismo tipo
             // (EmailInlineAssetReference) en ambos lados, sin mapeo, porque el evento es exactamente
@@ -219,6 +222,21 @@ public sealed class EventBasedEmailDispatchGateway(
             ProviderMessageId: null,
             Error: null
         );
+    }
+
+    // DM-02: un correo transaccional de la oficina sin buzón conectado cae al sistema solo con ReplyTo. Postmaster lo
+    // ignora cuando sale por el buzón.
+    private async Task<string?> ReplyToAsync(EmailDispatchRequest request, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(request.ReplyTo))
+            return request.ReplyTo;
+        if (
+            request.Scope != EmailDispatchScope.TenantPreferred
+            || request.Stream != EmailDispatchStream.Transactional
+            || officeReplyTo is null
+        )
+            return null;
+        return await officeReplyTo.ResolveAsync(request.TenantId, ct);
     }
 
     // Tamaño decodificado estimado desde el base64 (3 bytes por cada 4 caracteres), sin decodificar.

@@ -48,4 +48,7 @@ public sealed record RateLimitPolicyDefinition
 
     /// <summary>Capa 4 (H/I) — cap agregado cross-tenant, a diferencia de <see cref="OverlayQuotaPerMinute"/> que es por tenant. Null si no aplica.</summary>
     public int? EndpointCapPerWindow { get; init; }
+
+    /// <summary>Audita el 429 aunque la categoría no sea M (opcional; por defecto no).</summary>
+    public bool AuditBlocked { get; init; }
 }

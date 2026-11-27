@@ -31,11 +31,14 @@ public interface ICustomerPortalAccessClient
     /// <summary>¿Tiene acceso al portal, segundo factor activo y la oficina lo exige?</summary>
     Task<Result<PortalMfaStatus>> GetMfaStatusAsync(Guid tenantId, Guid customerId, CancellationToken ct = default);
 
-    /// <summary>Quita el segundo factor del portal del cliente (perdió el teléfono); queda auditado en Auth.</summary>
+    /// <summary>
+    /// Quita el segundo factor del portal del cliente (perdió el teléfono). El sobre lleva quién, la marca de
+    /// reautenticación, la IP real, el UA y el motivo: Auth los valida y los audita.
+    /// </summary>
     Task<Result<PortalMfaResetOutcome>> ResetMfaAsync(
         Guid tenantId,
         Guid customerId,
-        Guid requestedByUserId,
+        PortalCredentialRequest request,
         CancellationToken ct = default
     );
 }

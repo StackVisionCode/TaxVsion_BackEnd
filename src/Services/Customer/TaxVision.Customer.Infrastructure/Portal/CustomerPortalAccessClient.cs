@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using BuildingBlocks.ActorTypeAuthorization;
 using BuildingBlocks.Infrastructure.Security;
 using BuildingBlocks.Results;
 using Microsoft.Extensions.Logging;
@@ -9,14 +10,17 @@ using TaxVision.Customer.Application.Abstractions;
 namespace TaxVision.Customer.Infrastructure.Portal;
 
 /// <summary>
-/// Llama a los endpoints M2M de Auth del acceso al portal (invitación y segundo factor). Los rechazos de
+/// Llama a los endpoints M2M de Auth del acceso al portal (invitación, segundo factor y link de reset). Los rechazos de
 /// Auth (409 y demás) vuelven con su código y mensaje tal cual; token o red caídos se informan como transitorios.
+/// Las acciones sobre la credencial, el MFA, las sesiones y la invitación reenvían además el token del actor
+/// (SR-03, SR-11).
 /// </summary>
 internal sealed class CustomerPortalAccessClient(
     HttpClient httpClient,
     IServiceTokenAcquirer tokenAcquirer,
+    IActorAccessTokenReader actorToken,
     ILogger<CustomerPortalAccessClient> logger
-) : ICustomerPortalAccessClient, ICustomerPortalSessionsClient
+) : ICustomerPortalAccessClient, ICustomerPortalSessionsClient, ICustomerPortalCredentialsClient
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -52,7 +56,8 @@ internal sealed class CustomerPortalAccessClient(
                 lastName,
             },
             InvitationUnavailable,
-            ct
+            ct,
+            forwardActor: true
         );
 
     public Task<Result<PortalMfaStatus>> GetMfaStatusAsync(
@@ -64,7 +69,7 @@ internal sealed class CustomerPortalAccessClient(
     public Task<Result<PortalMfaResetOutcome>> ResetMfaAsync(
         Guid tenantId,
         Guid customerId,
-        Guid requestedByUserId,
+        PortalCredentialRequest request,
         CancellationToken ct = default
     ) =>
         SendAsync<PortalMfaResetOutcome>(
@@ -72,9 +77,10 @@ internal sealed class CustomerPortalAccessClient(
             customerId,
             HttpMethod.Post,
             "portal-mfa/reset",
-            new { requestedByUserId },
+            request,
             SecurityUnavailable,
-            ct
+            ct,
+            forwardActor: true
         );
 
     public Task<Result<PortalSessionPage>> ListSessionsAsync(
@@ -101,7 +107,8 @@ internal sealed class CustomerPortalAccessClient(
             resource,
             null,
             SecurityUnavailable,
-            ct
+            ct,
+            forwardActor: true
         );
     }
 
@@ -116,7 +123,8 @@ internal sealed class CustomerPortalAccessClient(
             tenantId,
             customerId,
             $"portal-sessions/{sessionId:D}?requestedByUserId={requestedByUserId:D}",
-            ct
+            ct,
+            forwardActor: true
         );
 
     public Task<Result> RevokeAllSessionsAsync(
@@ -130,7 +138,84 @@ internal sealed class CustomerPortalAccessClient(
             tenantId,
             customerId,
             $"portal-sessions?requestedByUserId={requestedByUserId:D}&forgetTrustedDevices={(forgetTrustedDevices ? "true" : "false")}",
-            ct
+            ct,
+            forwardActor: true
+        );
+
+    public Task<Result<PortalCredentialStatusResponse>> GetStatusAsync(
+        Guid tenantId,
+        Guid customerId,
+        Guid requestedByUserId,
+        CancellationToken ct = default
+    ) =>
+        SendAsync<PortalCredentialStatusResponse>(
+            tenantId,
+            customerId,
+            HttpMethod.Get,
+            $"portal-credentials?requestedByUserId={requestedByUserId:D}",
+            null,
+            SecurityUnavailable,
+            ct,
+            forwardActor: true
+        );
+
+    public Task<Result<ResetLinkIssuedResponse>> SendResetLinkAsync(
+        Guid tenantId,
+        Guid customerId,
+        PortalCredentialRequest request,
+        CancellationToken ct = default
+    ) =>
+        SendAsync<ResetLinkIssuedResponse>(
+            tenantId,
+            customerId,
+            HttpMethod.Post,
+            "portal-credentials/reset-link",
+            request,
+            SecurityUnavailable,
+            ct,
+            forwardActor: true
+        );
+
+    public Task<Result> CancelResetLinkAsync(
+        Guid tenantId,
+        Guid customerId,
+        PortalCredentialRequest request,
+        CancellationToken ct = default
+    ) =>
+        SendWithoutContentAsync(tenantId, customerId, "portal-credentials/reset-link", ct, request, forwardActor: true);
+
+    public Task<Result<CredentialStateChangedResponse>> RequireChangeAsync(
+        Guid tenantId,
+        Guid customerId,
+        PortalCredentialRequest request,
+        CancellationToken ct = default
+    ) =>
+        SendAsync<CredentialStateChangedResponse>(
+            tenantId,
+            customerId,
+            HttpMethod.Post,
+            "portal-credentials/require-change",
+            request,
+            SecurityUnavailable,
+            ct,
+            forwardActor: true
+        );
+
+    public Task<Result<AccountSecuredResponse>> SecureAsync(
+        Guid tenantId,
+        Guid customerId,
+        PortalCredentialRequest request,
+        CancellationToken ct = default
+    ) =>
+        SendAsync<AccountSecuredResponse>(
+            tenantId,
+            customerId,
+            HttpMethod.Post,
+            "portal-credentials/secure",
+            request,
+            SecurityUnavailable,
+            ct,
+            forwardActor: true
         );
 
     /// <summary>DELETE que responde 204: mismo trato de errores que <see cref="SendAsync{T}"/>.</summary>
@@ -138,7 +223,9 @@ internal sealed class CustomerPortalAccessClient(
         Guid tenantId,
         Guid customerId,
         string resource,
-        CancellationToken ct
+        CancellationToken ct,
+        object? body = null,
+        bool forwardActor = false
     )
     {
         var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
@@ -151,14 +238,19 @@ internal sealed class CustomerPortalAccessClient(
                 HttpMethod.Delete,
                 $"internal/tenants/{tenantId:D}/customers/{customerId:D}/{resource}"
             );
+            if (body is not null)
+                request.Content = JsonContent.Create(body, options: Json);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            if (forwardActor)
+                AttachActorToken(request);
             using var response = await httpClient.SendAsync(request, ct);
             if (response.IsSuccessStatusCode)
                 return Result.Success();
             if ((int)response.StatusCode < 500 && await ReadErrorAsync(response, ct) is { } rejection)
                 return Result.Failure(rejection);
             logger.LogWarning(
-                "Portal sessions call for customer {CustomerId} in tenant {TenantId} failed with {Status}.",
+                "Portal call {Resource} for customer {CustomerId} in tenant {TenantId} failed with {Status}.",
+                resource.Split('?')[0],
                 customerId,
                 tenantId,
                 (int)response.StatusCode
@@ -179,7 +271,8 @@ internal sealed class CustomerPortalAccessClient(
         string resource,
         object? body,
         Error unavailable,
-        CancellationToken ct
+        CancellationToken ct,
+        bool forwardActor = false
     )
         where T : class
     {
@@ -196,6 +289,8 @@ internal sealed class CustomerPortalAccessClient(
             if (body is not null)
                 request.Content = JsonContent.Create(body, options: Json);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            if (forwardActor)
+                AttachActorToken(request);
 
             using var response = await httpClient.SendAsync(request, ct);
             if (response.IsSuccessStatusCode)
@@ -228,12 +323,22 @@ internal sealed class CustomerPortalAccessClient(
         }
     }
 
+    // Sin token del actor no se manda la cabecera: Auth responde ActorTokenInvalid.
+    private void AttachActorToken(HttpRequestMessage request)
+    {
+        if (actorToken.Current is { Length: > 0 } token)
+            request.Headers.TryAddWithoutValidation(ForwardedActorToken.HeaderName, $"Bearer {token}");
+    }
+
     private static async Task<Error?> ReadErrorAsync(HttpResponseMessage response, CancellationToken ct)
     {
         try
         {
             var body = await response.Content.ReadFromJsonAsync<ErrorBody>(Json, ct);
-            return string.IsNullOrWhiteSpace(body?.Code) ? null : new Error(body.Code, body.Message ?? string.Empty);
+            // La espera del 429 por objetivo (retryAfterSeconds) también vuelve al CRM.
+            return string.IsNullOrWhiteSpace(body?.Code)
+                ? null
+                : new Error(body.Code, body.Message ?? string.Empty) { RetryAfterSeconds = body.RetryAfterSeconds };
         }
         catch (JsonException)
         {
@@ -241,5 +346,5 @@ internal sealed class CustomerPortalAccessClient(
         }
     }
 
-    private sealed record ErrorBody(string? Code, string? Message);
+    private sealed record ErrorBody(string? Code, string? Message, int? RetryAfterSeconds = null);
 }

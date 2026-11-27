@@ -66,6 +66,23 @@ public sealed class GetMeHandlerTests
         Assert.Null(me.Language);
     }
 
+    [Fact]
+    public async Task Says_whether_the_user_is_the_owner()
+    {
+        var owner = User.Register(
+            Guid.NewGuid(),
+            "Olga",
+            "Owner",
+            "olga@acme.com",
+            "hash",
+            UserActorType.TenantAdmin,
+            onboardingId: Guid.NewGuid()
+        ).Value;
+
+        Assert.True((await HandleAsync(owner)).IsOwner);
+        Assert.False((await HandleAsync(AvatarDoubles.Employee())).IsOwner);
+    }
+
     private static async Task<MeResponse> HandleAsync(User user)
     {
         var tenants = StubProxy<ITenantRegistry>.Create(

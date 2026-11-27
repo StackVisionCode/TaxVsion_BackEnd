@@ -299,9 +299,11 @@ public class AccountManagementHandlersTests
         var officeRow = mailboxes.Single(x => x.AccountId == office.Id);
         Assert.Null(officeRow.OwnerUserId);
         Assert.True(officeRow.IsActive);
+        Assert.True(officeRow.IsOffice);
         var personalRow = mailboxes.Single(x => x.AccountId == personal.Id);
         Assert.Equal(me, personalRow.OwnerUserId);
         Assert.False(personalRow.IsActive);
+        Assert.False(personalRow.IsOffice);
     }
 
     [Fact]

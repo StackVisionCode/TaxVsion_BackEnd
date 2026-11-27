@@ -46,7 +46,9 @@ public sealed record LoginResponse(
     // Actor del propio usuario autenticado (ya viaja en su JWT). Deja que el frontend rechace temprano
     // un login en la superficie equivocada (cliente en el CRM / staff en el portal) ANTES del takeover,
     // sin tocarle la sesión existente.
-    string? ActorType = null
+    string? ActorType = null,
+    // 03 §9.2: el token emitido es de cambio obligatorio; el front abre "Update your password" (gana sobre el MFA).
+    bool PasswordChangeRequired = false
 )
 {
     public static LoginResponse ForTokens(

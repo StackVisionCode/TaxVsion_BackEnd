@@ -14,7 +14,11 @@ namespace TaxVision.Auth.Api.RateLimiting;
 /// en el filtro antes de llegar a ningún handler — así que este sink hace su propio
 /// <see cref="IUnitOfWork.SaveChangesAsync"/> explícito, o el log quedaría solo en el change
 /// tracker y se perdería al terminar el request.</summary>
-public sealed class AuthAuditLogRateLimitAuditSink(IAuthAuditWriter audit, IUnitOfWork unitOfWork) : IRateLimitAuditSink
+public sealed class AuthAuditLogRateLimitAuditSink(
+    IAuthAuditWriter audit,
+    IUnitOfWork unitOfWork,
+    IRequestContext request
+) : IRateLimitAuditSink
 {
     public async Task OnBlockedAsync(RateLimitAuditContext context, CancellationToken ct = default)
     {
@@ -28,7 +32,9 @@ public sealed class AuthAuditLogRateLimitAuditSink(IAuthAuditWriter audit, IUnit
                 context.UserAgent,
                 context.CorrelationId,
                 targetType: "RateLimitPolicy",
-                detailsJson: $"{{\"policy\":\"{context.PolicyName}\"}}"
+                detailsJson: $"{{\"policy\":\"{context.PolicyName}\"}}",
+                // Tipo de actor del claim, como AuthAuditTrail.
+                actorType: request.ActorType
             ),
             ct
         );

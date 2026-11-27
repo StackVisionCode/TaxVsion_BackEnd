@@ -72,6 +72,11 @@ builder.Services.AddTaxVisionJwtAuthentication(builder.Configuration);
 // reemplaza a la copia local que tenía este servicio.
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
+// M2M-only (AJ-08): estado de entrega por evento que consulta Auth (InternalNotificationLogsController).
+builder
+    .Services.AddAuthorizationBuilder()
+    .AddPolicy("ServiceOnly", policy => policy.RequireClaim("actor_type", "Service"));
+
 // H-05 — fuente de permisos de la Capa 2. Revienta al arrancar si hay endpoints con
 // [HasPermission] y la config no pide "Projection": el claim `perm` ya no se emite (Fase
 // 7.5.10), así que en modo Jwt esos endpoints darían 403 siempre, en silencio.
@@ -282,6 +287,27 @@ builder.Host.UseWolverine(options =>
     options.Policies.AddMiddleware(typeof(TaxVision.Notification.Infrastructure.Messaging.HandlerBusMiddleware));
 
     options.UseTaxVisionConflictPolicy();
+
+    // IA-02: sin subdominio de la oficina se reintenta como siempre (1/5/15 s) y, al agotarse, va a la cola de
+    // errores dejando una fila Failed por el EventId (estado de entrega del panel, 04 §4.3).
+    options
+        .Policies.OnException<TenantHostUnavailableException>()
+        .RetryWithCooldown(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15))
+        .Then.MoveToErrorQueue()
+        .And(
+            async (runtime, lifecycle, ex) =>
+            {
+                using var scope = runtime.Services.CreateScope();
+                await UnsentAccountEmailTrail.RecordAsync(
+                    lifecycle.Envelope?.Message,
+                    ex,
+                    scope.ServiceProvider.GetRequiredService<INotificationLogRepository>(),
+                    scope.ServiceProvider.GetRequiredService<IUnitOfWork>(),
+                    CancellationToken.None
+                );
+            },
+            "Leave a Failed trail for an account email without the office subdomain"
+        );
     options.ApplyStandardFailurePolicies();
 });
 

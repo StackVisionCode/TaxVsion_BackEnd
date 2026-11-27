@@ -3,9 +3,11 @@ using BuildingBlocks.Messaging.AuthIntegrationEvents;
 using BuildingBlocks.Persistence;
 using BuildingBlocks.Results;
 using BuildingBlocks.Tenancy;
+using Microsoft.Extensions.Options;
 using TaxVision.Auth.Application.Abstractions;
 using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Credentials;
+using TaxVision.Auth.Application.Credentials.Administration;
 using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.Credentials;
@@ -40,12 +42,14 @@ public static class ForgotPasswordHandler
         ICredentialTokenRepository credentials,
         ISecureTokenService tokens,
         IAccountTokenProtector tokenProtector,
+        IUserLoginLock userLock,
         ILoginThrottler throttler,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
         IMessageBus bus,
+        IOptions<CredentialAdministrationOptions> credentialOptions,
         CancellationToken ct
     )
     {
@@ -70,13 +74,30 @@ public static class ForgotPasswordHandler
                 var user = await users.GetByEmailAsync(tenantId, email, kind, ct);
                 if (user is null || !user.IsActive)
                     continue;
+                // D-08: durante la pausa tras un cambio de correo pedido por la oficina, el correo nuevo tampoco
+                // resetea por su cuenta; si no, quien cambió el correo podría tomar la cuenta (03 §21).
+                // Solo portal: el empleado conserva su forgot (IA-47).
+                if (
+                    kind == UserAccountKind.Portal
+                    && OfficeCredentialAdministration.EmailChangeCooldownUntil(
+                        user,
+                        credentialOptions.Value,
+                        DateTime.UtcNow
+                    )
+                        is not null
+                )
+                    continue;
 
-                await IssueResetForUserAsync(
+                await PasswordResetIssuer.IssueAsync(
                     user,
-                    tenants,
+                    ResetOrigin.SelfService,
+                    null,
+                    ResetValidity,
                     credentials,
                     tokens,
                     tokenProtector,
+                    tenants,
+                    userLock,
                     audit,
                     request,
                     correlation,
@@ -106,81 +127,65 @@ public static class ForgotPasswordHandler
         var tenant = await tenants.GetByIdAsync(tenantId, ct);
         return tenant?.Kind == TenantKind.Customer ? tenant.Id : null;
     }
-
-    /// <summary>Emite el token de reset del usuario, publica el evento (con su ActorType y oficina, para que
-    /// el correo enlace a su superficie) y audita. No guarda: Handle hace un único SaveChanges.</summary>
-    private static async Task IssueResetForUserAsync(
-        User user,
-        ITenantRegistry tenants,
-        ICredentialTokenRepository credentials,
-        ISecureTokenService tokens,
-        IAccountTokenProtector tokenProtector,
-        IAuthAuditWriter audit,
-        IRequestContext request,
-        ICorrelationContext correlation,
-        IMessageBus bus,
-        CancellationToken ct
-    )
-    {
-        var rawToken = tokens.GenerateToken();
-        var resetToken = PasswordResetToken.Create(
-            user.TenantId,
-            user.Id,
-            tokens.Hash(rawToken),
-            request.IpAddress,
-            ResetValidity
-        );
-        await credentials.AddPasswordResetAsync(resetToken, ct);
-        var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
-
-        var tokenFields = tokenProtector.Seal(
-            AuthTokenPayloadSchemas.PasswordReset,
-            AuthTokenPayloadSchemas.PasswordResetBinding(user.TenantId, user.Id),
-            rawToken
-        );
-        await bus.PublishAsync(
-            new PasswordResetRequestedIntegrationEvent
-            {
-                TenantId = user.TenantId,
-                UserId = user.Id,
-                Email = user.Email,
-                RawToken = tokenFields.RawToken,
-                ProtectedToken = tokenFields.ProtectedToken,
-                ExpiresAtUtc = resetToken.ExpiresAtUtc,
-                ActorType = user.ActorType.ToString(),
-                TenantName = tenant?.Name,
-                CorrelationId = correlation.CorrelationId,
-            }
-        );
-
-        await audit.AddAsync(
-            AuthAuditLog.Record(
-                user.TenantId,
-                user.Id,
-                AuthAuditAction.PasswordResetRequested,
-                true,
-                request.IpAddress,
-                request.UserAgent,
-                correlation.CorrelationId
-            ),
-            ct
-        );
-    }
 }
 
 /// <summary>Cuando la contraseña de una cuenta cambia, sus enlaces de reset pendientes dejan de servir (OWASP).
 /// Los de otras cuentas con el mismo email, por ejemplo en otra oficina, no se tocan.</summary>
 internal static class PendingPasswordResets
 {
-    public static async Task RevokeAsync(
+    public static Task RevokeAsync(
         ICredentialTokenRepository credentials,
         Guid userId,
         DateTime utcNow,
         CancellationToken ct
+    ) => RevokeAsync(credentials, userId, utcNow, ResetRevocationReason.PasswordChanged, null, ct);
+
+    /// <summary>Con motivo: la baja de la cuenta los anula como <see cref="ResetRevocationReason.CancelledByOffice"/>
+    /// para que no revivan al reactivarla.</summary>
+    public static async Task RevokeAsync(
+        ICredentialTokenRepository credentials,
+        Guid userId,
+        DateTime utcNow,
+        ResetRevocationReason reason,
+        Guid? byUserId,
+        CancellationToken ct
     )
     {
         foreach (var token in await credentials.GetPendingPasswordResetsAsync(userId, utcNow, ct))
-            token.Revoke(utcNow);
+            token.Revoke(utcNow, reason, byUserId);
+    }
+}
+
+/// <summary>
+/// Reglas de una contraseña nueva elegida por el usuario (03 §10): la política con su contexto (nombre, oficina,
+/// MFA para el mínimo de D-13) y distinta de la actual (<c>User.Password</c>).
+/// </summary>
+internal static class NewPasswordRules
+{
+    public static readonly Error SameAsCurrent = new(
+        "User.Password",
+        "Choose a password different from your current one."
+    );
+
+    public static async Task<Result> CheckAsync(
+        User user,
+        string? newPassword,
+        IPasswordHasher hasher,
+        ITenantRegistry tenants,
+        CancellationToken ct
+    )
+    {
+        var tenant = await tenants.GetByIdAsync(user.TenantId, ct);
+        var context = new PasswordContext(
+            user.Email,
+            user.MfaEnabled,
+            [user.Name, user.LastName, tenant?.Name ?? string.Empty, tenant?.SubDomain ?? string.Empty]
+        );
+        var policy = PasswordPolicy.Validate(newPassword, context);
+        if (policy.IsFailure)
+            return policy;
+
+        return hasher.Verify(newPassword!, user.PasswordHash) ? Result.Failure(SameAsCurrent) : Result.Success();
     }
 }
 
@@ -202,13 +207,14 @@ public static class ResetPasswordHandler
         ISecureTokenService tokens,
         IUserRepository users,
         ITenantRegistry tenantRegistry,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
+        SessionAccessCutoff cutoff,
+        IMfaRepository mfa,
         IPasswordHasher hasher,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
         IUnitOfWork unitOfWork,
+        IUserLoginLock userLock,
         IMessageBus bus,
         CancellationToken ct
     )
@@ -242,19 +248,26 @@ public static class ResetPasswordHandler
             return Result.Failure(PasswordResetLinks.Invalid);
         }
 
-        var policyResult = PasswordPolicy.Validate(command.NewPassword, user.Email);
+        // 03 §18.4: canje y cancelación en fila con el candado del usuario; si el link ya no está pendiente
+        // (cancelado o usado mientras esperaba), el error genérico. La consulta filtra en SQL: no ve el link en memoria.
+        await userLock.AcquireAsync(user, ct);
+        if (!(await credentials.GetPendingPasswordResetsAsync(user.Id, now, ct)).Any(link => link.Id == resetToken.Id))
+            return Result.Failure(PasswordResetLinks.Invalid);
+
+        var policyResult = await NewPasswordRules.CheckAsync(user, command.NewPassword, hasher, tenantRegistry, ct);
         if (policyResult.IsFailure)
         {
             resetToken.RegisterAttempt();
-            await unitOfWork.SaveChangesAsync(ct);
+            await ConcurrentSave.TrySaveAsync(unitOfWork, ct);
             return policyResult;
         }
 
-        var changeResult = user.ChangePassword(hasher.Hash(command.NewPassword), now);
+        // El link limpia cualquier estado de la credencial, también una cuenta asegurada (I-3).
+        var changeResult = user.CompletePasswordReset(hasher.Hash(command.NewPassword), now);
         if (changeResult.IsFailure)
         {
             resetToken.RegisterAttempt();
-            await unitOfWork.SaveChangesAsync(ct);
+            await ConcurrentSave.TrySaveAsync(unitOfWork, ct);
             return changeResult;
         }
 
@@ -262,11 +275,14 @@ public static class ResetPasswordHandler
         await PendingPasswordResets.RevokeAsync(credentials, user.Id, now, ct);
         user.RegisterSuccessfulLogin(); // limpia lockout previo
 
-        // Cambio de contraseña ⇒ todas las sesiones anteriores dejan de ser válidas.
-        var active = await sessions.GetActiveSessionsByUserAsync(user.Id, ct);
-        foreach (var session in active)
-            await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
-        await sessions.RevokeAllForUserAsync(user.Id, "password_change", null, ct);
+        // Cambio de contraseña ⇒ todas las sesiones dejan de valer, con aviso en tiempo real (I-6).
+        var revoked = await cutoff.ForUserAsync(user, "password_change", ct);
+        // D-05: el reset (cualquier origen) también olvida los dispositivos de confianza.
+        foreach (var device in await mfa.GetTrustedDevicesAsync(user.Id, ct))
+        {
+            if (device.IsActive)
+                device.Revoke();
+        }
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -276,11 +292,14 @@ public static class ResetPasswordHandler
                 true,
                 request.IpAddress,
                 request.UserAgent,
-                correlation.CorrelationId
+                correlation.CorrelationId,
+                detailsJson: $$"""{"origin":"{{resetToken.Origin}}"}"""
             ),
             ct
         );
-        await unitOfWork.SaveChangesAsync(ct);
+        // Otro escritor tocó el link entre la lectura y el guardado: nada cambió y responde como token no válido.
+        if (!await ConcurrentSave.TrySaveAsync(unitOfWork, ct))
+            return Result.Failure(PasswordResetLinks.Invalid);
         await bus.PublishAsync(
             new SecurityAlertIntegrationEvent
             {
@@ -292,7 +311,7 @@ public static class ResetPasswordHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-        if (active.Count > 0)
+        if (revoked > 0)
             await bus.PublishAsync(
                 SessionEndedEvents.ForUser(
                     user.TenantId,
@@ -334,8 +353,8 @@ public static class ChangePasswordHandler
         IUserRepository users,
         ICredentialTokenRepository credentials,
         IPasswordHasher hasher,
-        ISessionRepository sessions,
-        IAccessTokenDenylist denylist,
+        ITenantRegistry tenants,
+        SessionAccessCutoff cutoff,
         IAuthAuditWriter audit,
         IRequestContext request,
         ICorrelationContext correlation,
@@ -348,10 +367,11 @@ public static class ChangePasswordHandler
         if (user is null || !user.IsActive)
             return Result.Failure(new Error("Auth.Invalid", "Invalid credentials."));
 
-        if (!hasher.Verify(command.CurrentPassword, user.PasswordHash))
+        // I-2: con la cuenta asegurada la contraseña actual ya no vale (solo un link la recupera).
+        if (!hasher.Verify(command.CurrentPassword, user.PasswordHash) || user.EnsurePasswordSignInAllowed().IsFailure)
             return Result.Failure(new Error("Auth.Invalid", "Invalid credentials."));
 
-        var policyResult = PasswordPolicy.Validate(command.NewPassword, user.Email);
+        var policyResult = await NewPasswordRules.CheckAsync(user, command.NewPassword, hasher, tenants, ct);
         if (policyResult.IsFailure)
             return policyResult;
 
@@ -362,15 +382,8 @@ public static class ChangePasswordHandler
 
         await PendingPasswordResets.RevokeAsync(credentials, user.Id, now, ct);
 
-        // Revocar todas las sesiones excepto la actual.
-        var active = await sessions.GetActiveSessionsByUserAsync(user.Id, ct);
-        foreach (var session in active)
-        {
-            if (session.Id == command.SessionId)
-                continue;
-            await denylist.DenySessionAsync(session.Id, TimeSpan.FromMinutes(20), ct);
-        }
-        await sessions.RevokeAllForUserAsync(user.Id, "password_change", command.SessionId, ct);
+        // Revocar todas las sesiones excepto la actual, con aviso en tiempo real (I-6).
+        var revoked = await cutoff.ForUserAsync(user, "password_change", command.SessionId, ct);
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -396,7 +409,7 @@ public static class ChangePasswordHandler
                 CorrelationId = correlation.CorrelationId,
             }
         );
-        if (active.Any(session => session.Id != command.SessionId))
+        if (revoked > 0)
         {
             await bus.PublishAsync(
                 SessionEndedEvents.ForUser(

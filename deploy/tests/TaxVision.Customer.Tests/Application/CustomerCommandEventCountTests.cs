@@ -114,6 +114,60 @@ public sealed class CustomerCommandEventCountTests
         Assert.False(updated.SmsEnabled);
     }
 
+    // SR-09: el aviso lleva el correo anterior para que Auth sepa si cambió en esta edición.
+    [Fact]
+    public async Task Update_CarriesThePreviousEmail()
+    {
+        var customer = NewCustomer();
+        var before = customer.PrimaryEmail!.Value;
+        var fixture = new Fixture(customer);
+
+        await fixture.RunAsync(typeof(UpdateCustomerHandler), UpdateWithEmail(customer.Id, "maria.new@example.com"));
+
+        var updated = Assert.Single((await fixture.EmittedAsync()).OfType<CustomerUpdatedIntegrationEvent>());
+        Assert.Equal(before, updated.PreviousEmail);
+        Assert.Equal("maria.new@example.com", updated.PrimaryEmail);
+    }
+
+    [Fact]
+    public async Task Update_WithTheSameEmail_CarriesItAsThePreviousEmail()
+    {
+        var customer = NewCustomer();
+        var same = customer.PrimaryEmail!.Value;
+        var fixture = new Fixture(customer);
+
+        await fixture.RunAsync(typeof(UpdateCustomerHandler), UpdateWithEmail(customer.Id, same));
+
+        var updated = Assert.Single((await fixture.EmittedAsync()).OfType<CustomerUpdatedIntegrationEvent>());
+        Assert.Equal(same, updated.PreviousEmail);
+        Assert.Equal(same, updated.PrimaryEmail);
+    }
+
+    private static UpdateCustomerCommand UpdateWithEmail(Guid customerId, string email) =>
+        new(
+            TenantId,
+            customerId,
+            Staff,
+            Language.Es,
+            null,
+            email,
+            "+13055550100",
+            "Maria",
+            null,
+            "Perez",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            CallerCanViewAllCustomers: true,
+            EmailEnabled: true,
+            SmsEnabled: false
+        );
+
     [Fact]
     public async Task Archive_EmitsExactlyOneArchived()
     {

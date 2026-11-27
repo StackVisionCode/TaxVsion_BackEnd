@@ -11,6 +11,11 @@ public sealed record Error(string Code, string Message)
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? RetryAfterSeconds { get; init; }
 
+    /// <summary>Motivo legible por el cliente (p. ej. por qué se cortó la sesión). Opcional: viaja como <c>reason</c>
+    /// en la raíz del body solo si tiene valor.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Reason { get; init; }
+
     public Error WithRetryAfter(TimeSpan wait) =>
         this with
         {

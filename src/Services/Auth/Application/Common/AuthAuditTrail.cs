@@ -32,7 +32,8 @@ public sealed class AuthAuditTrail(IAuthAuditWriter audit, IRequestContext reque
                 correlation.CorrelationId,
                 targetType,
                 targetId,
-                detailsJson
+                detailsJson,
+                request.ActorType
             ),
             ct
         );

@@ -7,6 +7,7 @@ using TaxVision.Auth.Application.Common;
 using TaxVision.Auth.Application.Sessions;
 using TaxVision.Auth.Domain.Audit;
 using TaxVision.Auth.Domain.RefreshTokens;
+using TaxVision.Auth.Domain.Sessions;
 using Wolverine;
 
 namespace TaxVision.Auth.Application.Users.Commands;
@@ -125,8 +126,13 @@ public static class RefreshAccessTokenHandler
         // presentarse se trata como robo — se revoca la sesión completa.
         if (!stored.IsActive)
         {
+            // Sesión ya cortada (cambio de contraseña, la oficina…): se rechaza diciendo por qué, sin re-auditar.
+            var revokedSession = await sessions.GetSessionByIdAsync(stored.SessionId.Value, ct);
+            if (revokedSession?.RevokedAtUtc is not null)
+                return Result.Failure<AuthTokensResponse>(RefreshRejection.For(revokedSession, invalid));
+
             // Una sesión ya revocada no vuelve a auditar ni a alertar: un cliente en bucle llenaría los avisos.
-            if (stored.RevokedAtUtc is not null && !await IsSessionRevokedAsync(sessions, stored.SessionId.Value, ct))
+            if (stored.RevokedAtUtc is not null)
             {
                 await sessions.RevokeSessionAsync(stored.SessionId.Value, "token_reuse", ct);
                 await denylist.DenySessionAsync(stored.SessionId.Value, TimeSpan.FromMinutes(20), ct);
@@ -166,7 +172,7 @@ public static class RefreshAccessTokenHandler
 
         var session = await sessions.GetSessionByIdAsync(stored.SessionId.Value, ct);
         if (session is null || !session.IsActive)
-            return Result.Failure<AuthTokensResponse>(invalid);
+            return Result.Failure<AuthTokensResponse>(RefreshRejection.For(session, invalid));
 
         // Política de la plataforma: sin actividad (el front deja de renovar) o pasado el máximo, la sesión se corta
         // aquí aunque el navegador siga intentando. Es la defensa del servidor; el aviso del front es solo la UX.
@@ -250,6 +256,24 @@ public static class RefreshAccessTokenHandler
         Guid sessionId,
         CancellationToken ct
     ) => (await sessions.GetSessionByIdAsync(sessionId, ct))?.RevokedAtUtc is not null;
+}
+
+/// <summary>
+/// Motivo del refresh rechazado para el aviso del cliente (CRM, portal y app, IA-M01): solo los que el usuario
+/// entiende. <c>account_secured</c> y el resto van sin motivo para no delatar una cuenta asegurada.
+/// </summary>
+public static class RefreshRejection
+{
+    private static readonly HashSet<string> Explained = new(StringComparer.Ordinal)
+    {
+        "password_change",
+        "admin_revoke",
+        "mfa_reset_by_office",
+        "credential_change_required",
+    };
+
+    public static Error For(UserSession? session, Error invalid) =>
+        session?.RevokedReason is { } reason && Explained.Contains(reason) ? invalid with { Reason = reason } : invalid;
 }
 
 public sealed record RevokeRefreshTokenCommand(string RefreshToken);

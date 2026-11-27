@@ -16,11 +16,17 @@ internal sealed class FakeConnectedMailboxRepository : IConnectedMailboxReposito
     public Task<ConnectedMailbox?> GetByAccountIdAsync(Guid tenantId, Guid accountId, CancellationToken ct = default) =>
         Task.FromResult(_accounts.Find(a => a.TenantId == tenantId && a.AccountId == accountId));
 
+    // Misma regla que el repositorio de SQL: solo buzones de oficina.
     public Task<ConnectedMailbox?> FindActiveByTenantIdAsync(Guid tenantId, CancellationToken ct = default) =>
         Task.FromResult(
             _accounts
-                .Where(a => a.TenantId == tenantId && a.IsActive)
+                .Where(a => a.TenantId == tenantId && a.IsActive && a.IsOfficeMailbox)
                 .OrderByDescending(a => a.ConnectedAtUtc)
                 .FirstOrDefault()
         );
+
+    public Task<IReadOnlyList<ConnectedMailbox>> ListWithUnknownOwnershipAsync(
+        int max,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<ConnectedMailbox>>([.. _accounts.Where(a => !a.OwnershipKnown).Take(max)]);
 }

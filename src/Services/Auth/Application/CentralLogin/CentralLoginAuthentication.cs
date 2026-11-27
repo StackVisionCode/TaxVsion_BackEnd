@@ -134,7 +134,8 @@ public static class CentralLoginAuthentication
             var user = await users.GetByEmailAsync(tenantId, email, kind, ct);
             if (user is null || !user.IsActive || user.IsLockedOut(now))
                 continue;
-            if (!hasher.Verify(password, user.PasswordHash))
+            // I-2: una cuenta asegurada no entra al selector, como si la contraseña no hubiera coincidido.
+            if (!hasher.Verify(password, user.PasswordHash) || user.EnsurePasswordSignInAllowed().IsFailure)
                 continue;
 
             // El PlatformAdmin no entra por el login central: se descarta ANTES del MFA (antes se le pedía

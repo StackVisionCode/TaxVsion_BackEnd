@@ -159,4 +159,16 @@ public static partial class RateLimitPolicyCatalog
         windowSeconds: 3600,
         RateLimitAlgorithm.FixedWindow
     );
+
+    // Credenciales del portal de un cliente (reset link, cambio obligatorio, asegurar): N por usuario, 429 auditado.
+    public static readonly RateLimitPolicyDefinition CustomerPortalCredentialAdmin = Define(
+        "customer.n.portal_credential_admin",
+        RateLimitCategory.N,
+        RateLimitPartitionDimension.User,
+        [],
+        quota: 20,
+        windowSeconds: 3600,
+        RateLimitAlgorithm.FixedWindow,
+        auditBlocked: true
+    );
 }

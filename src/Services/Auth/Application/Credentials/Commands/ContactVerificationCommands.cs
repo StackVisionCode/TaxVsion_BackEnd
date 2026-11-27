@@ -141,6 +141,9 @@ public static class ConfirmEmailChangeHandler
             return changed;
 
         verification.MarkUsed();
+        // Cambio pedido por la oficina (D-08, D-11): su fecha pausa el reset administrativo de un cliente.
+        if (verification.RequestedByOffice)
+            user.MarkEmailChangedByOffice(now);
 
         await audit.AddAsync(
             AuthAuditLog.Record(
@@ -150,7 +153,8 @@ public static class ConfirmEmailChangeHandler
                 true,
                 request.IpAddress,
                 request.UserAgent,
-                correlation.CorrelationId
+                correlation.CorrelationId,
+                detailsJson: verification.RequestedByOffice ? """{"origin":"office"}""" : null
             ),
             ct
         );

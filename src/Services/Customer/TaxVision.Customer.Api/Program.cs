@@ -51,6 +51,13 @@ builder.Services.AddBuildingBlocks();
 builder.Services.AddTimeZoneSelfCheck();
 builder.Services.AddCustomerInfrastructure(builder.Configuration);
 
+// SR-03: el bearer de la petición viaja a Auth en los M2M de credenciales del portal.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<
+    TaxVision.Customer.Application.Abstractions.IActorAccessTokenReader,
+    TaxVision.Customer.Api.Security.HttpActorAccessTokenReader
+>();
+
 // Flag de visibilidad por asignación (default false = todos ven todo hasta el backfill).
 builder
     .Services.AddOptions<TaxVision.Customer.Application.Abstractions.CustomerVisibilityOptions>()

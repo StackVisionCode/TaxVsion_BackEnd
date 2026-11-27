@@ -13,7 +13,8 @@ public sealed record MailboxAddressDto(
     string EmailAddress,
     string? DisplayName,
     Guid? OwnerUserId = null,
-    bool IsActive = false
+    bool IsActive = false,
+    bool IsOffice = false
 );
 
 public static class ListMailboxAddressesHandler
@@ -31,7 +32,8 @@ public static class ListMailboxAddressesHandler
                 a.EmailAddress,
                 a.DisplayName,
                 a.OwnerUserId,
-                a.Status != TenantEmailAccountStatus.Disconnected
+                a.Status != TenantEmailAccountStatus.Disconnected,
+                a.IsOffice
             ))
             .ToList();
     }

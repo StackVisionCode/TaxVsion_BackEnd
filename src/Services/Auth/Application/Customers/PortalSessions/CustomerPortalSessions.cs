@@ -11,17 +11,21 @@ using Wolverine;
 
 namespace TaxVision.Auth.Application.Customers.PortalSessions;
 
-// Sesiones de la cuenta del portal de un cliente, a pedido de Customer: el permiso y la visibilidad del
-// cliente ya se comprobaron allí. Solo alcanzan al usuario del portal de ESE cliente en esa oficina.
+// Sesiones de la cuenta del portal de un cliente, a pedido de Customer: la visibilidad del cliente la comprobó
+// Customer; el actor y su permiso, el gate del M2M (SR-11). Solo alcanzan al usuario del portal de ESE cliente.
 
-/// <summary>Historial de sesiones del portal de un cliente, por fecha de inicio (máximo 90 días).</summary>
+/// <summary>
+/// Historial de sesiones del portal de un cliente, por fecha de inicio (máximo 90 días). Sin el permiso de
+/// ubicación del actor, sin ubicación.
+/// </summary>
 public sealed record GetCustomerPortalSessionsQuery(
     Guid TenantId,
     Guid CustomerId,
     DateTime? FromUtc = null,
     DateTime? ToUtc = null,
     int? Page = null,
-    int? PageSize = null
+    int? PageSize = null,
+    bool ShowLocation = true
 );
 
 public static class GetCustomerPortalSessionsHandler
@@ -45,7 +49,7 @@ public static class GetCustomerPortalSessionsHandler
         var result = await history.ListForUserAsync(query.TenantId, user.Id, from, to, page, size, ct);
         return Result.Success(
             new SessionPageResponse(
-                result.Items.Select(row => SessionResponse.From(row, window, null, showLocation: true)).ToList(),
+                result.Items.Select(row => SessionResponse.From(row, window, null, query.ShowLocation)).ToList(),
                 page,
                 size,
                 result.TotalCount,
@@ -62,7 +66,8 @@ public sealed record RevokeCustomerPortalSessionCommand(
     Guid CustomerId,
     Guid SessionId,
     Guid RequestedByUserId,
-    string CorrelationId
+    string CorrelationId,
+    string? ActorType = null
 );
 
 public static class RevokeCustomerPortalSessionHandler
@@ -102,7 +107,8 @@ public static class RevokeCustomerPortalSessionHandler
                 command.CorrelationId,
                 targetType: "Session",
                 targetId: session.Id,
-                detailsJson: $$"""{"affectedUserId":"{{user.Id}}","customerId":"{{command.CustomerId}}"}"""
+                detailsJson: $$"""{"affectedUserId":"{{user.Id}}","customerId":"{{command.CustomerId}}"}""",
+                actorType: command.ActorType
             ),
             ct
         );
@@ -132,7 +138,8 @@ public sealed record RevokeCustomerPortalSessionsCommand(
     Guid CustomerId,
     Guid RequestedByUserId,
     bool ForgetTrustedDevices,
-    string CorrelationId
+    string CorrelationId,
+    string? ActorType = null
 );
 
 public static class RevokeCustomerPortalSessionsHandler
@@ -179,7 +186,8 @@ public static class RevokeCustomerPortalSessionsHandler
                 command.CorrelationId,
                 targetType: "User",
                 targetId: user.Id,
-                detailsJson: $$"""{"reason":"{{StaffSessions.AdminRevokeReason}}","customerId":"{{command.CustomerId}}","sessions":{{revoked}},"trustedDevicesForgotten":{{forgotten}}}"""
+                detailsJson: $$"""{"reason":"{{StaffSessions.AdminRevokeReason}}","customerId":"{{command.CustomerId}}","sessions":{{revoked}},"trustedDevicesForgotten":{{forgotten}}}""",
+                actorType: command.ActorType
             ),
             ct
         );

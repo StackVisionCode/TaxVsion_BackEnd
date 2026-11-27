@@ -25,6 +25,34 @@ public class TenantEmailLinksTests
     }
 
     [Fact]
+    public void Required_bases_use_only_the_office_host()
+    {
+        var portal = new PortalOptions
+        {
+            BaseUrl = "https://app.test",
+            ClientBaseUrl = "https://client.test",
+            ClientPathPrefix = "/portal",
+        };
+
+        Assert.Equal("https://manfer.taxproffice.com", TenantEmailLinks.RequiredStaffBase("manfer.taxproffice.com"));
+        Assert.Equal(
+            "https://manfer.taxproffice.com/portal",
+            TenantEmailLinks.RequiredClientBase("manfer.taxproffice.com", portal)
+        );
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(" ")]
+    public void Required_bases_never_fall_back_to_the_fixed_base(string? host)
+    {
+        var portal = new PortalOptions { BaseUrl = "https://app.test", ClientBaseUrl = "https://client.test" };
+
+        Assert.ThrowsAny<ArgumentException>(() => TenantEmailLinks.RequiredStaffBase(host!));
+        Assert.ThrowsAny<ArgumentException>(() => TenantEmailLinks.RequiredClientBase(host!, portal));
+    }
+
+    [Fact]
     public void PublicShareDownloadLink_uses_office_subdomain_and_escapes_email()
     {
         var portal = new PortalOptions { BaseUrl = "https://app.test" };

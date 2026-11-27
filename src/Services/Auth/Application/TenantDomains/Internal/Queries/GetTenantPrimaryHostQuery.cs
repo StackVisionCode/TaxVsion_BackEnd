@@ -40,13 +40,7 @@ public static class GetTenantPrimaryHostHandler
         // F6: la zona horaria viaja junto al host (misma consulta M2M) para que Communication la ponga en sus eventos.
         var timeZoneId = (await tenants.GetByIdAsync(query.TenantId, ct))?.DefaultTimeZoneId;
 
-        var primary =
-            all.FirstOrDefault(d =>
-                d.DomainType == TenantDomainType.Subdomain && d.IsPrimary && d.Status == TenantDomainStatus.Active
-            )
-            ?? all.FirstOrDefault(d =>
-                d.DomainType == TenantDomainType.Subdomain && d.Status == TenantDomainStatus.Active
-            );
+        var primary = PickPrimarySubdomain(all);
 
         return primary?.SubdomainSlug is null
             ? Result.Failure<TenantPrimaryHostResponse>(
@@ -55,5 +49,15 @@ public static class GetTenantPrimaryHostHandler
             : Result.Success(
                 new TenantPrimaryHostResponse(platform.Current.TenantHost(primary.SubdomainSlug), timeZoneId)
             );
+    }
+
+    /// <summary>Regla única del host de los links de cuenta: subdominio primario activo, o cualquier subdominio activo.</summary>
+    public static TenantDomain? PickPrimarySubdomain(IEnumerable<TenantDomain> all)
+    {
+        var subdomains = all.Where(d =>
+                d.DomainType == TenantDomainType.Subdomain && d.Status == TenantDomainStatus.Active
+            )
+            .ToList();
+        return subdomains.FirstOrDefault(d => d.IsPrimary) ?? subdomains.FirstOrDefault();
     }
 }

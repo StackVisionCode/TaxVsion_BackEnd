@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -37,18 +38,43 @@ public sealed class TenantHostResolver(
         if (cache.TryGet(tenantId, out var cached))
             return cached;
 
-        var host = await FetchAsync(tenantId, ct);
+        var (host, _) = await FetchAsync(tenantId, ct);
         if (!string.IsNullOrWhiteSpace(host))
             cache.Set(tenantId, host!);
 
         return host;
     }
 
-    private async Task<string?> FetchAsync(Guid tenantId, CancellationToken ct)
+    // Links de cuenta: sin host lanza para que Wolverine reintente; nunca base fijo (D-04).
+    public async Task<string> ResolveRequiredHostAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        if (cache.TryGet(tenantId, out var cached))
+            return cached;
+
+        var (host, failure) = await FetchAsync(tenantId, ct);
+        if (!string.IsNullOrWhiteSpace(host))
+        {
+            cache.Set(tenantId, host!);
+            return host!;
+        }
+
+        var reason = failure ?? TenantHostUnavailableReason.NoActiveSubdomain;
+        logger.LogError(
+            "tenant_host_unresolved: account link for tenant {TenantId} not sent ({Reason}); the message will be retried.",
+            tenantId,
+            reason
+        );
+        throw new TenantHostUnavailableException(tenantId, reason);
+    }
+
+    private async Task<(string? Host, TenantHostUnavailableReason? Failure)> FetchAsync(
+        Guid tenantId,
+        CancellationToken ct
+    )
     {
         var token = await tokenAcquirer.GetTokenAsync(tenantId, ct);
         if (string.IsNullOrEmpty(token))
-            return null;
+            return (null, TenantHostUnavailableReason.Transient);
 
         try
         {
@@ -63,16 +89,23 @@ public sealed class TenantHostResolver(
                     tenantId,
                     (int)response.StatusCode
                 );
-                return null;
+                // Auth responde 400/404 cuando la oficina no tiene subdominio activo; lo demás es transitorio.
+                var noSubdomain = response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest;
+                return (
+                    null,
+                    noSubdomain ? TenantHostUnavailableReason.NoActiveSubdomain : TenantHostUnavailableReason.Transient
+                );
             }
 
             var dto = await response.Content.ReadFromJsonAsync<HostDto>(Json, ct);
-            return string.IsNullOrWhiteSpace(dto?.Host) ? null : dto!.Host;
+            return string.IsNullOrWhiteSpace(dto?.Host)
+                ? (null, TenantHostUnavailableReason.NoActiveSubdomain)
+                : (dto!.Host, null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             logger.LogWarning(ex, "Primary-host pull call threw for tenant {TenantId}.", tenantId);
-            return null;
+            return (null, TenantHostUnavailableReason.Transient);
         }
     }
 

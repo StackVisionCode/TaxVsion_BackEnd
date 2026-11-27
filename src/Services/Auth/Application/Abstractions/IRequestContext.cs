@@ -8,4 +8,7 @@ public interface IRequestContext
 {
     string? IpAddress { get; }
     string? UserAgent { get; }
+
+    /// <summary>Tipo de actor del claim (<c>actor_type</c>); nulo en pedidos anónimos.</summary>
+    string? ActorType { get; }
 }

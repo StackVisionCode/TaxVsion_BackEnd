@@ -93,6 +93,21 @@ namespace Internal.Generated.WolverineHandlers
             * Concrete type TaxVision.Notification.Infrastructure.Notifications.PushAttemptRecorder is not public, so requires service location
             * 
             * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IEmailDispatchGateway Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.EventBasedEmailDispatchGateway
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IOfficeReplyToResolver Lifetime: Scoped ImplementationType: TaxVision.Notification.Application.Common.OfficeReplyToResolver
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IRecipientResolver Lifetime: Scoped ImplementationType: TaxVision.Notification.Infrastructure.Permissions.RecipientResolver
+            * 
+            * Dependency: Descriptor: ServiceType: BuildingBlocks.CustomerVisibility.ICustomerAssignmentProjectionStore Lifetime: Scoped ImplementationFactory: BuildingBlocks.CustomerVisibility.CustomerVisibilityServiceCollectionExtensions+<>c__0"1.<AddCustomerVisibilityProjection>b__0_0
+            * The service registration for BuildingBlocks.CustomerVisibility.ICustomerAssignmentProjectionStore is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * 
+            * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IUserEmailResolver Lifetime: Scoped ImplementationFactory: TaxVision.Notification.Infrastructure.DependencyInjection+<>c.<AddNotificationInfrastructure>b__0_10
+            * The service registration for TaxVision.Notification.Application.Abstractions.IUserEmailResolver is an 'opaque' lambda factory with the Scoped lifetime and requires service location
+            * 
+            * 
+            * 
             * Dependency: Descriptor: ServiceType: TaxVision.Notification.Application.Abstractions.IScribeRenderClient Lifetime: Transient ImplementationFactory: Microsoft.Extensions.DependencyInjection.HttpClientBuilderExtensions+<>c__DisplayClass16_0"2.<AddTypedClientCore>b__0
             * The service registration for TaxVision.Notification.Application.Abstractions.IScribeRenderClient is an 'opaque' lambda factory with the Transient lifetime and requires service location
             * 

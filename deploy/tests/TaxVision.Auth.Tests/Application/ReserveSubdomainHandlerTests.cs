@@ -37,7 +37,8 @@ public sealed class ReserveSubdomainHandlerTests
             TaxVision.Auth.Domain.RefreshTokens.SessionSurface surface =
                 TaxVision.Auth.Domain.RefreshTokens.SessionSurface.Workspace,
             DateTime? reauthenticatedAtUtc = null,
-            bool mfaEnrollmentOnly = false
+            bool mfaEnrollmentOnly = false,
+            bool passwordChangeOnly = false
         ) => new("fake-access-token", 900);
 
         public AccessToken GenerateServiceToken(

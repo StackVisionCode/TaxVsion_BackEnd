@@ -51,6 +51,10 @@ public interface IEmailDispatchGateway
 /// <param name="NotificationKind">
 /// Kind del catálogo para la regla de obligatorio; sin él el gate busca por <c>TemplateKey</c>.
 /// </param>
+/// <param name="ReplyTo">
+/// A quién responder si un correo <c>TenantPreferred</c> sale por el SMTP del sistema (DM-02): quien lo inició, si el
+/// consumer lo sabe. Sin valor, el gateway pone el del Owner; sin <c>ReplyTo</c> Postmaster no cae al sistema.
+/// </param>
 public sealed record EmailDispatchRequest(
     Guid TenantId,
     string To,
@@ -76,7 +80,8 @@ public sealed record EmailDispatchRequest(
     NotificationCategory? Category = null,
     int? RenderedTemplateVersion = null,
     int? RenderedLayoutVersion = null,
-    string? NotificationKind = null
+    string? NotificationKind = null,
+    string? ReplyTo = null
 );
 
 public sealed record EmailDispatchResult(

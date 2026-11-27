@@ -385,6 +385,7 @@ public sealed class OfficeAlertConsumersTests
             TestPlatform.Settings,
             resolver,
             FixedRecipientLocale.English,
+            new FakeTenantHostResolver(),
             new TestCorrelationContext(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<SecurityAlertIntegrationEvent>.Instance,
             CancellationToken.None

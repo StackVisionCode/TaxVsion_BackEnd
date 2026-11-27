@@ -55,10 +55,16 @@ public static class DependencyInjection
         services.Configure<CloudflareOptions>(configuration.GetSection(CloudflareOptions.SectionName));
         services.Configure<TermsOptions>(configuration.GetSection(TermsOptions.SectionName));
         services.Configure<MfaOptions>(configuration.GetSection(MfaOptions.SectionName));
+        services.Configure<CredentialAdministrationOptions>(
+            configuration.GetSection(CredentialAdministrationOptions.SectionName)
+        );
         services.Configure<SessionLocationOptions>(configuration.GetSection(SessionLocationOptions.SectionName));
         services
             .AddOptions<CloudStorageClientOptions>()
             .Bind(configuration.GetSection(CloudStorageClientOptions.SectionName));
+        services
+            .AddOptions<Notifications.NotificationClientOptions>()
+            .Bind(configuration.GetSection(Notifications.NotificationClientOptions.SectionName));
 
         // Persistencia
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<AuthDbContext>());
@@ -172,6 +178,15 @@ public static class DependencyInjection
         });
         // Fotos de perfil del staff: misma cuenta IAM y bucket temporal, prefijo {SourcePrefix}/avatars.
         services.AddScoped<IUserAvatarStorage, TaxVision.Auth.Infrastructure.Storage.UserAvatarStorage>();
+        // Estado de entrega del link de reset (AJ-08): corto, para no demorar el panel.
+        services.AddHttpClient<INotificationDeliveryClient, Notifications.NotificationDeliveryClient>(
+            (sp, http) =>
+            {
+                var opt = sp.GetRequiredService<IOptions<Notifications.NotificationClientOptions>>().Value;
+                http.BaseAddress = new Uri(opt.BaseUrl.EndsWith('/') ? opt.BaseUrl : opt.BaseUrl + "/");
+                http.Timeout = TimeSpan.FromSeconds(3);
+            }
+        );
         services.AddHttpClient<ITermsContentStorageClient, TermsContentStorageClient>(
             (sp, http) =>
             {

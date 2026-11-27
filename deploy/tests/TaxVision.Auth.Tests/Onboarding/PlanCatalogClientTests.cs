@@ -89,7 +89,8 @@ public sealed class PlanCatalogClientTests
             IReadOnlyCollection<string> authMethods,
             SessionSurface surface = SessionSurface.Workspace,
             DateTime? reauthenticatedAtUtc = null,
-            bool mfaEnrollmentOnly = false
+            bool mfaEnrollmentOnly = false,
+            bool passwordChangeOnly = false
         ) => throw new NotSupportedException();
 
         public AccessToken GenerateTenantRegistrationTicket(string slug, string email, DateTime expiresAtUtc) =>

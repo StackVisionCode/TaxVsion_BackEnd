@@ -56,6 +56,7 @@ public sealed class TermsAcceptanceMiddleware(RequestDelegate next)
     {
         if (
             ExemptPathPrefixes.Any(prefix => context.Request.Path.StartsWithSegments(prefix))
+            || IsMfaEnrollmentFlow(context)
             || context.User.Identity is not { IsAuthenticated: true }
             || context.User.GetActorType() is ActorType.Service or ActorType.PlatformAdmin
             || !context.User.TryGetTenantId(out var tenantId)
@@ -94,4 +95,9 @@ public sealed class TermsAcceptanceMiddleware(RequestDelegate next)
             }
         );
     }
+
+    // El token solo-MFA puede configurar el MFA aunque falten los términos (si no, se bloquean entre sí).
+    private static bool IsMfaEnrollmentFlow(HttpContext context) =>
+        MfaEnrollmentToken.IsPending(context.User)
+        && MfaEnrollmentToken.IsAllowed(context.Request.Method, context.Request.Path);
 }

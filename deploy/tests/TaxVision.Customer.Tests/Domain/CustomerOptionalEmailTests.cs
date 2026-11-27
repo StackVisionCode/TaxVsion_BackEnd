@@ -119,6 +119,42 @@ public sealed class CustomerOptionalEmailTests
         Assert.True(customer.ChangePrimaryPhone(null, ByUser).IsSuccess);
     }
 
+    // SR-09: el aviso de edición guarda el correo con el que empezó la transacción, aunque el cambio llegue después.
+    [Fact]
+    public void The_edit_event_keeps_the_email_the_edit_started_with()
+    {
+        var customer = DomainCustomer
+            .Register(
+                Tenant,
+                CustomerKind.Individual,
+                PersonalName.Create("Ada", "Lovelace").Value,
+                null,
+                EmailAddress.Create("first@example.com").Value,
+                null,
+                Language.En,
+                ByUser
+            )
+            .Value;
+        customer.ClearDomainEvents();
+
+        customer.ChangeLanguage(Language.Es, ByUser);
+        customer.ChangePrimaryEmail(EmailAddress.Create("second@example.com").Value, ByUser);
+
+        var updated = Assert.Single(customer.DomainEvents.OfType<CustomerUpdatedDomainEvent>());
+        Assert.Equal("first@example.com", updated.PreviousPrimaryEmail);
+    }
+
+    [Fact]
+    public void An_email_added_to_a_customer_without_one_has_no_previous_email()
+    {
+        var customer = Individual(phone: Phone).Value;
+        customer.ClearDomainEvents();
+
+        customer.ChangePrimaryEmail(EmailAddress.Create("late@example.com").Value, ByUser);
+
+        Assert.Null(Assert.Single(customer.DomainEvents.OfType<CustomerUpdatedDomainEvent>()).PreviousPrimaryEmail);
+    }
+
     private static BuildingBlocks.Results.Result<DomainCustomer> Business(
         PhoneNumber? phone = null,
         bool withTaxIdentifier = false
